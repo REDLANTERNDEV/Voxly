@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, MouseEvent, ReactNode } from "react";
-import type { ChatMessage, PresenceUser, PublicUser, RoomSummary, VoiceMediaState, VoiceSnapshot } from "@voxly/shared";
+import type {
+  ChatMessage,
+  PresenceUser,
+  PublicUser,
+  RoomSummary,
+  VisualMediaKind,
+  VisualTarget,
+  VoiceMediaState,
+  VoiceSetVisualSubscriptionsAck,
+  VoiceSnapshot
+} from "@voxly/shared";
 import {
   acceptInvite,
   ApiError,
@@ -26,6 +36,7 @@ import { getInviteTokenFromPath, getOwnerClaimTokenFromHash, parsePathRoute, res
 import { buildInviteUrl, inviteReference, resolveInviteOrigin } from "./lib/invites.js";
 import { messageDeleteFailureCopy, messagePermissions } from "./lib/messages.js";
 import { useVoiceMedia } from "./lib/useVoiceMedia.js";
+import { replaceVisualTarget, toggleVisualTarget, visualTargetKey } from "./lib/voiceResume.js";
 import { remoteStreamKey, type RemoteStreamState } from "./lib/voiceStreams.js";
 import {
   DEFAULT_VOLUME_PERCENT,
@@ -76,7 +87,8 @@ export function App() {
   const [language, setLanguage] = useState<LanguageCode>(() => readLanguageChoice());
   const socketRef = useRef<VoxlySocket | null>(null);
   const t = useCallback<Translate>((key, values) => translate(language, key, values), [language]);
-  const voice = useVoiceMedia({ socket: socketInstance, user, iceServers: appConfig.rtc.iceServers });
+  const voiceRoomIds = useMemo(() => rooms.filter((room) => room.kind === "voice").map((room) => room.id), [rooms]);
+  const voice = useVoiceMedia({ socket: socketInstance, user, iceServers: appConfig.rtc.iceServers, voiceRoomIds });
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
   const [screenVolumes, setScreenVolumes] = useState<Record<string, number>>({});
 
@@ -375,7 +387,8 @@ export function App() {
     currentRoom,
     appConfig,
     voiceError: voice.error,
-    voiceSnapshot: voice.snapshot,
+    visualTargets: voice.visualTargets,
+    voiceSnapshots: voice.voiceSnapshots,
     remoteStreams: voice.remoteStreams,
     localPreviews: voice.localPreviews,
     memberVolumes,
@@ -392,6 +405,7 @@ export function App() {
     },
     onJoinVoice: voice.join,
     onRequestVoiceSnapshot: voice.requestSnapshot,
+    onSetVisualSubscriptions: voice.setVisualSubscriptions,
     onMemberVolumeChange: changeMemberVolume,
     onScreenVolumeChange: changeScreenVolume,
     onToggleControl: voice.toggleControl,
@@ -544,7 +558,8 @@ interface ShellProps {
   controls: VoiceControls;
   appConfig: AppConfigResponse;
   voiceError: string;
-  voiceSnapshot: VoiceSnapshot | null;
+  visualTargets: VisualTarget[];
+  voiceSnapshots: Record<string, VoiceSnapshot>;
   remoteStreams: RemoteStreamState[];
   localPreviews: Array<{ kind: "camera" | "screen"; stream: MediaStream }>;
   memberVolumes: Record<string, number>;
@@ -560,6 +575,7 @@ interface ShellProps {
   onLanguageChange: (language: LanguageCode) => void;
   onJoinVoice: (roomId: string) => Promise<void>;
   onRequestVoiceSnapshot: (roomId: string) => void;
+  onSetVisualSubscriptions: (targets: VisualTarget[]) => Promise<VoiceSetVisualSubscriptionsAck>;
   onMemberVolumeChange: (userId: string, volume: number) => void;
   onScreenVolumeChange: (streamId: string, volume: number) => void;
   onToggleControl: (key: keyof VoiceControls) => void;
@@ -656,27 +672,92 @@ function TextRoomScreen(props: ShellProps & {
   );
 }
 
+interface StageSource {
+  key: string;
+  kind: VisualMediaKind;
+  ownerId: string;
+  ownerName: string;
+  ownerIsLocal: boolean;
+  stream: MediaStream | null;
+  target: VisualTarget | null;
+}
+
 function VoiceRoomScreen(props: ShellProps) {
+  const [localStageKeys, setLocalStageKeys] = useState<string[]>([]);
+  const [focusedSourceKey, setFocusedSourceKey] = useState<string | null>(null);
+  const [stageStatus, setStageStatus] = useState("");
   const viewedRoomId = props.currentRoom?.id ?? (props.route.name === "voice" ? props.route.roomId : props.activeVoiceRoomId);
-  const snapshotMembers = props.voiceSnapshot?.roomId === viewedRoomId ? props.voiceSnapshot.members : [];
+  const snapshotMembers = viewedRoomId ? props.voiceSnapshots[viewedRoomId]?.members ?? [] : [];
   const participants = snapshotMembers.length > 0
     ? snapshotMembers.map((member) => member.user)
     : props.activeVoiceRoomId
       ? [presenceFromUser(props.user)]
       : [];
   const connectedCount = participants.length;
-  const remoteStreamByKey = new Map(props.remoteStreams.map((item) => [remoteStreamKey(item.userId, item.kind), item.stream]));
+  const streamByKey = new Map(props.remoteStreams.map((item) => [remoteStreamKey(item.userId, item.kind), item.stream]));
   for (const preview of props.localPreviews) {
-    remoteStreamByKey.set(remoteStreamKey(props.user.id, preview.kind), preview.stream);
+    streamByKey.set(remoteStreamKey(props.user.id, preview.kind), preview.stream);
   }
   const mediaByUser = new Map(snapshotMembers.map((member) => [member.user.userId, member.media]));
-  const screenMember = snapshotMembers.find((member) => member.media.screen);
-  const stageStream = screenMember?.user.userId === props.user.id
-    ? remoteStreamByKey.get(remoteStreamKey(props.user.id, "screen"))
-    : screenMember
-      ? remoteStreamByKey.get(remoteStreamKey(screenMember.user.userId, "screen"))
-      : null;
+  const mediaFor = (userId: string) => userId === props.user.id
+    ? {
+        mic: props.controls.mic.on,
+        camera: props.controls.camera.on,
+        screen: props.controls.screenShare.on,
+        deafened: props.controls.deafen.on,
+        speaking: mediaByUser.get(userId)?.speaking ?? false
+      }
+    : mediaByUser.get(userId);
+  const visualSources: StageSource[] = participants.flatMap((participant) => {
+    const media = mediaFor(participant.userId);
+    return (["camera", "screen"] as const)
+      .filter((kind) => media?.[kind])
+      .map((kind) => ({
+        key: visualTargetKey({ publisherUserId: participant.userId, kind }),
+        kind,
+        ownerId: participant.userId,
+        ownerName: participant.nickname,
+        ownerIsLocal: participant.userId === props.user.id,
+        stream: streamByKey.get(remoteStreamKey(participant.userId, kind)) ?? null,
+        target: participant.userId === props.user.id ? null : { publisherUserId: participant.userId, kind }
+      }));
+  });
+  const selectedRemoteKeys = new Set(props.visualTargets.map(visualTargetKey));
+  const selectedKeys = new Set([...selectedRemoteKeys, ...localStageKeys]);
+  const stageSources = visualSources.filter((source) => selectedKeys.has(source.key));
+  const focusedSource = stageSources.find((source) => source.key === focusedSourceKey) ?? stageSources[0] ?? null;
   const hasVoiceActivity = Boolean(props.activeVoiceRoomId || snapshotMembers.length > 0);
+
+  const updateRemoteSelection = async (targets: VisualTarget[], focusKey: string) => {
+    const response = await props.onSetVisualSubscriptions(targets);
+    if (response.ok) {
+      setFocusedSourceKey(focusKey);
+      setStageStatus("");
+      return;
+    }
+    props.onRequestVoiceSnapshot(viewedRoomId ?? props.activeVoiceRoomId ?? "");
+    setStageStatus(props.t("voice.sourceUnavailable"));
+  };
+
+  const watchSource = (source: StageSource) => {
+    if (source.ownerIsLocal) {
+      setLocalStageKeys([source.key]);
+      setFocusedSourceKey(source.key);
+      return;
+    }
+    if (source.target) void updateRemoteSelection(replaceVisualTarget(props.visualTargets, source.target), source.key);
+  };
+
+  const toggleSource = (source: StageSource) => {
+    if (source.ownerIsLocal) {
+      setLocalStageKeys((current) => current.includes(source.key)
+        ? current.filter((key) => key !== source.key)
+        : [...current, source.key]);
+      setFocusedSourceKey(source.key);
+      return;
+    }
+    if (source.target) void updateRemoteSelection(toggleVisualTarget(props.visualTargets, source.target), source.key);
+  };
 
   return (
     <AppChrome {...props} mobileTitle={props.currentRoom?.name ?? props.t("room.lobbyVoice")}>
@@ -689,58 +770,87 @@ function VoiceRoomScreen(props: ShellProps) {
           t={props.t}
         />
         {hasVoiceActivity ? (
-          <section className={`call-surface ${screenMember ? "has-screen-share" : ""}`}>
-            {screenMember ? (
-              <ScreenShareStage
-                label={props.t("status.screenSharing")}
-                ownerName={screenMember.user.nickname}
-                ownerIsLocal={screenMember.user.userId === props.user.id}
-                stream={stageStream}
+          <section className="call-surface voice-control-room" aria-label={props.t("room.voiceRooms")}>
+            {stageSources.length > 0 ? (
+              <VisualStage
+                sources={stageSources}
+                focusedSource={focusedSource}
                 muted={props.controls.deafen.on}
-                volume={stageStream ? props.screenVolumes[stageStream.id] ?? DEFAULT_VOLUME_PERCENT : DEFAULT_VOLUME_PERCENT}
-                onVolumeChange={(volume) => {
-                  if (stageStream) props.onScreenVolumeChange(stageStream.id, volume);
-                }}
+                screenVolumes={props.screenVolumes}
+                onFocus={setFocusedSourceKey}
+                onScreenVolumeChange={props.onScreenVolumeChange}
                 t={props.t}
               />
+            ) : (
+              <section className="stage-empty" aria-live="polite">
+                <p className="label">{props.t("voice.stage")}</p>
+                <strong>{props.t("voice.chooseSource")}</strong>
+                <span>{props.t("voice.chooseSourceCopy")}</span>
+              </section>
+            )}
+
+            {visualSources.length > 0 ? (
+              <section className="visual-source-rail" aria-labelledby="sourceRailTitle">
+                <header className="compact-section-head">
+                  <div><p className="label" id="sourceRailTitle">{props.t("voice.sources")}</p><span>{props.t("voice.sourcesCopy")}</span></div>
+                  <span className="muted small">{visualSources.length}</span>
+                </header>
+                <ul className="visual-source-list">
+                  {visualSources.map((source) => {
+                    const selected = selectedKeys.has(source.key);
+                    return (
+                      <li className={`visual-source ${selected ? "is-selected" : ""}`} key={source.key}>
+                        <button className="visual-source-main" type="button" onClick={() => watchSource(source)} aria-pressed={selected}>
+                          <span className="source-thumb" aria-hidden="true">
+                            {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span>{initial(source.ownerName)}</span>}
+                          </span>
+                          <span className="source-copy"><strong>{source.ownerName}</strong><span>{source.kind === "screen" ? props.t("status.screenSharing") : props.t("status.cameraOn")}</span></span>
+                          <span className="source-watch">{props.t("voice.watch")}</span>
+                        </button>
+                        <button
+                          className={`icon-btn source-multi-toggle ${selected ? "is-active" : ""}`}
+                          type="button"
+                          onClick={() => toggleSource(source)}
+                          aria-label={selected ? props.t("voice.removeFromStage", { nickname: source.ownerName }) : props.t("voice.addToStage", { nickname: source.ownerName })}
+                          aria-pressed={selected}
+                        >
+                          <EyeIcon />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
             ) : null}
-            <div className={screenMember ? "participant-strip" : "call-grid"} aria-label={props.t("room.voiceRooms")}>
-              {participants.map((participant) => {
-                const media = mediaByUser.get(participant.userId);
-                const cameraStream = participant.userId === props.user.id
-                  ? remoteStreamByKey.get(remoteStreamKey(props.user.id, "camera"))
-                  : remoteStreamByKey.get(remoteStreamKey(participant.userId, "camera"));
-                const audioStream = participant.userId === props.user.id ? null : remoteStreamByKey.get(remoteStreamKey(participant.userId, "audio"));
-                const isSpeaking = Boolean(media?.speaking && media.mic && !media.deafened);
-                return (
-                  <article className={`call-tile ${isSpeaking ? "is-speaking" : ""} ${screenMember ? "is-compact" : ""}`} key={participant.userId}>
-                    {audioStream ? (
-                      <RemoteAudio
-                        stream={audioStream}
-                        muted={props.controls.deafen.on}
-                        volume={props.memberVolumes[participant.userId] ?? DEFAULT_VOLUME_PERCENT}
-                      />
-                    ) : null}
-                    {cameraStream ? (
-                      <RemoteVideo stream={cameraStream} muted={props.controls.deafen.on} />
-                    ) : (
-                      <span className="call-avatar">{initial(participant.nickname)}</span>
-                    )}
-                    <div className="call-meta">
-                      <strong>{participant.nickname}</strong>
-                      <VoiceStatusBadges media={media} t={props.t} />
-                    </div>
-                    {audioStream ? (
-                      <VolumeControl
-                        label={props.t("voice.memberVolume", { nickname: participant.nickname })}
-                        value={props.memberVolumes[participant.userId] ?? DEFAULT_VOLUME_PERCENT}
-                        onChange={(volume) => props.onMemberVolumeChange(participant.userId, volume)}
-                      />
-                    ) : null}
-                  </article>
-                );
-              })}
-            </div>
+
+            <section className="voice-participants" aria-labelledby="participantTitle">
+              <header className="compact-section-head"><div><p className="label" id="participantTitle">{props.t("common.members")}</p><span>{props.t("room.pushToMute", { count: connectedCount })}</span></div></header>
+              <ul className="participant-list">
+                {participants.map((participant) => {
+                  const media = mediaFor(participant.userId);
+                  const audioStream = participant.userId === props.user.id ? null : streamByKey.get(remoteStreamKey(participant.userId, "audio"));
+                  const isSpeaking = Boolean(media?.speaking && media.mic && !media.deafened);
+                  return (
+                    <li className={`participant-row ${isSpeaking ? "is-speaking" : ""}`} key={participant.userId}>
+                      {audioStream ? <RemoteAudio stream={audioStream} muted={props.controls.deafen.on} volume={props.memberVolumes[participant.userId] ?? DEFAULT_VOLUME_PERCENT} /> : null}
+                      <span className="call-avatar" aria-hidden="true">{initial(participant.nickname)}</span>
+                      <span className="participant-copy"><strong>{participant.nickname}</strong><VoiceStatusBadges media={media} t={props.t} /></span>
+                      {audioStream ? (
+                        <details className="volume-popover">
+                          <summary aria-label={props.t("voice.memberVolume", { nickname: participant.nickname })}><VolumeIcon /></summary>
+                          <VolumeControl
+                            label={props.t("voice.memberVolume", { nickname: participant.nickname })}
+                            value={props.memberVolumes[participant.userId] ?? DEFAULT_VOLUME_PERCENT}
+                            onChange={(volume) => props.onMemberVolumeChange(participant.userId, volume)}
+                          />
+                        </details>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+            <p className="voice-stage-status" aria-live="polite">{stageStatus}</p>
           </section>
         ) : (
           <section className="call-surface">
@@ -930,8 +1040,8 @@ function OwnerPanel(props: ShellProps) {
 
 function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: string }) {
   const onlineCount = props.onlineUsers.length || 1;
-  const voiceConnectedCount = props.activeVoiceRoomId && props.voiceSnapshot?.roomId === props.activeVoiceRoomId
-    ? props.voiceSnapshot.members.length
+  const voiceConnectedCount = props.activeVoiceRoomId && props.voiceSnapshots[props.activeVoiceRoomId]
+    ? props.voiceSnapshots[props.activeVoiceRoomId].members.length
     : props.activeVoiceRoomId
       ? 1
       : 0;
@@ -1454,13 +1564,17 @@ function RemoteAudio({ stream, muted, volume }: { stream: MediaStream; muted: bo
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const contextRef = useRef<AudioContext | null>(null);
   const gainRef = useRef<GainNode | null>(null);
-  const [useFallback, setUseFallback] = useState(false);
+  const [useFallback, setUseFallback] = useState(true);
 
   useEffect(() => {
     if (stream.getAudioTracks().length === 0) {
       setUseFallback(false);
       return;
     }
+
+    // Keep the native output mounted until Web Audio has actually reached a
+    // running state; a suspended context can otherwise make a new peer silent.
+    setUseFallback(true);
 
     const AudioContextClass = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextClass) {
@@ -1475,10 +1589,24 @@ function RemoteAudio({ stream, muted, volume }: { stream: MediaStream; muted: bo
       source.connect(gain).connect(context.destination);
       contextRef.current = context;
       gainRef.current = gain;
-      setUseFallback(false);
-      void context.resume().catch(() => undefined);
+      let isDisposed = false;
+      const resumeContext = () => {
+        void context.resume()
+          .then(() => {
+            if (!isDisposed) setUseFallback(false);
+          })
+          .catch(() => {
+            if (!isDisposed) setUseFallback(true);
+          });
+      };
+      resumeContext();
+      window.addEventListener("pointerdown", resumeContext);
+      window.addEventListener("keydown", resumeContext);
 
       return () => {
+        isDisposed = true;
+        window.removeEventListener("pointerdown", resumeContext);
+        window.removeEventListener("keydown", resumeContext);
         source.disconnect();
         gain.disconnect();
         gainRef.current = null;
@@ -1494,55 +1622,87 @@ function RemoteAudio({ stream, muted, volume }: { stream: MediaStream; muted: bo
     const gain = gainRef.current;
     if (!gain) return;
     gain.gain.value = muted ? 0 : volumeGain(volume);
-    void contextRef.current?.resume().catch(() => undefined);
+    void contextRef.current?.resume().catch(() => setUseFallback(true));
   }, [muted, volume]);
 
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.srcObject = stream;
-      audioRef.current.volume = Math.min(1, volumeGain(volume));
-    }
-  }, [stream, useFallback, volume]);
+    const audio = audioRef.current;
+    if (!audio) return;
+    const playFallback = () => {
+      audio.srcObject = stream;
+      audio.volume = Math.min(1, volumeGain(volume));
+      audio.muted = muted;
+      void audio.play().catch(() => undefined);
+    };
+    playFallback();
+    window.addEventListener("pointerdown", playFallback);
+    window.addEventListener("keydown", playFallback);
+    return () => {
+      window.removeEventListener("pointerdown", playFallback);
+      window.removeEventListener("keydown", playFallback);
+    };
+  }, [muted, stream, useFallback, volume]);
 
   if (!useFallback) return null;
   return <audio className="remote-audio" ref={audioRef} autoPlay muted={muted} />;
 }
 
-function ScreenShareStage({
-  label,
-  ownerName,
-  ownerIsLocal,
-  stream,
+function VisualStage({
+  sources,
+  focusedSource,
   muted,
-  volume,
-  onVolumeChange,
+  screenVolumes,
+  onFocus,
+  onScreenVolumeChange,
   t
 }: {
-  label: string;
-  ownerName: string;
-  ownerIsLocal: boolean;
-  stream: MediaStream | null | undefined;
+  sources: StageSource[];
+  focusedSource: StageSource | null;
   muted: boolean;
-  volume: number;
-  onVolumeChange: (volume: number) => void;
+  screenVolumes: Record<string, number>;
+  onFocus: (key: string) => void;
+  onScreenVolumeChange: (streamId: string, volume: number) => void;
   t: Translate;
 }) {
-  const stageRef = useRef<HTMLElement | null>(null);
-  const hasAudio = Boolean(stream?.getAudioTracks().length);
+  const focusedElementRef = useRef<HTMLButtonElement | null>(null);
+  const orderedSources = focusedSource
+    ? [focusedSource, ...sources.filter((source) => source.key !== focusedSource.key)]
+    : sources;
+  const focusedStream = focusedSource?.stream ?? null;
+  const focusedHasAudio = Boolean(focusedSource?.kind === "screen" && focusedStream?.getAudioTracks().length);
+  const focusedVolume = focusedStream ? screenVolumes[focusedStream.id] ?? DEFAULT_VOLUME_PERCENT : DEFAULT_VOLUME_PERCENT;
+
   return (
-    <section className="screen-stage" ref={stageRef} aria-label={`${ownerName} ${label}`}>
-      {stream ? <RemoteVideo stream={stream} muted /> : <span className="screen-stage-placeholder">{ownerName}</span>}
-      {!ownerIsLocal && stream && hasAudio ? <RemoteAudio stream={stream} muted={muted} volume={volume} /> : null}
+    <section className={`screen-stage stage-count-${Math.min(orderedSources.length, 4)}`} aria-label={t("voice.stage")}>
+      <div className="stage-grid">
+        {orderedSources.map((source) => (
+          <button
+            className={`stage-media ${source.key === focusedSource?.key ? "is-focused" : ""}`}
+            type="button"
+            key={source.key}
+            ref={(element) => {
+              if (source.key === focusedSource?.key) focusedElementRef.current = element;
+            }}
+            onClick={() => onFocus(source.key)}
+            aria-pressed={source.key === focusedSource?.key}
+            aria-label={`${source.ownerName} ${source.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}`}
+          >
+            {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span className="screen-stage-placeholder">{source.ownerName}</span>}
+            <span className="stage-media-label"><strong>{source.ownerName}</strong><span>{source.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}</span></span>
+          </button>
+        ))}
+      </div>
+      {!focusedSource?.ownerIsLocal && focusedSource?.kind === "screen" && focusedStream && focusedHasAudio ? <RemoteAudio stream={focusedStream} muted={muted} volume={focusedVolume} /> : null}
       <div className="screen-stage-bar">
-        <span><strong>{ownerName}</strong><span className="muted small">{label}</span></span>
-        {!ownerIsLocal && stream ? (
-          hasAudio
-            ? <VolumeControl label={t("voice.screenVolume")} value={volume} onChange={onVolumeChange} />
+        <span><strong>{focusedSource?.ownerName}</strong><span className="muted small">{focusedSource?.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}</span></span>
+        {!focusedSource?.ownerIsLocal && focusedSource?.kind === "screen" ? (
+          focusedHasAudio && focusedStream
+            ? <details className="volume-popover stage-volume"><summary aria-label={t("voice.screenVolume")}><VolumeIcon /></summary><VolumeControl label={t("voice.screenVolume")} value={focusedVolume} onChange={(volume) => onScreenVolumeChange(focusedStream.id, volume)} /></details>
             : <span className="muted small">{t("voice.noScreenAudio")}</span>
         ) : null}
-        <button className="icon-btn" type="button" onClick={() => stageRef.current?.requestFullscreen?.()} aria-label="Fullscreen">
+        <button className="icon-btn" type="button" onClick={() => focusedElementRef.current?.requestFullscreen?.()} aria-label={t("common.fullscreen")}>
           <MaximizeIcon />
-          <span>Full</span>
+          <span>{t("common.fullscreen")}</span>
         </button>
       </div>
     </section>
@@ -1743,8 +1903,8 @@ function voiceStatusItems(media: VoiceMediaState | undefined, t: Translate) {
 }
 
 function voiceMembersForRoom(props: ShellProps, roomId: string) {
-  if (props.voiceSnapshot?.roomId === roomId) {
-    return props.voiceSnapshot.members;
+  if (props.voiceSnapshots[roomId]) {
+    return props.voiceSnapshots[roomId].members;
   }
   if (props.activeVoiceRoomId === roomId) {
     return [{
@@ -1781,6 +1941,7 @@ function CopyIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-h
 function TrashIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12" /><path d="M9 7V5h6v2" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M8 7l1 12h6l1-12" /></svg>; }
 function LeaveIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8 4 12l4 4" /><path d="M4 12h11" /><path d="M14 5h5v14h-5" /></svg>; }
 function MaximizeIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5" /><path d="M16 3h5v5" /><path d="M21 16v5h-5" /><path d="M3 16v5h5" /></svg>; }
+function EyeIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12s3-5 8.5-5 8.5 5 8.5 5-3 5-8.5 5-8.5-5-8.5-5Z" /><circle cx="12" cy="12" r="2.5" /></svg>; }
 function VolumeIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h4l5-4v12l-5-4H4z" /><path d="M16 9a4 4 0 0 1 0 6" /><path d="M19 6a8 8 0 0 1 0 12" /></svg>; }
 function MicIcon({ off }: { off: boolean }) { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" /><path d="M6 11a6 6 0 0 0 12 0" /><path d="M12 17v3" />{off ? <path d="M4 4l16 16" /> : null}</svg>; }
 function HeadsetIcon({ off }: { off: boolean }) { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 14v-2a7 7 0 0 1 14 0v2" /><path d="M5 14h3v5H6a1 1 0 0 1-1-1z" /><path d="M16 14h3v4a1 1 0 0 1-1 1h-2z" />{off ? <path d="M4 4l16 16" /> : null}</svg>; }

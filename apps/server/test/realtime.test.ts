@@ -97,6 +97,96 @@ describe("Voxly realtime MVP", () => {
     assert.equal(snapshot.members.filter((member) => member.media.camera || member.media.screen).length, 3);
   });
 
+  it("notifies only a visual publisher when a viewer changes subscriptions", async () => {
+    const owner = await bootstrapOwner(app);
+    const publisher = await acceptInvite(app, owner.cookies, "Publisher");
+    const viewer = await acceptInvite(app, owner.cookies, "Viewer");
+    const outsider = await acceptInvite(app, owner.cookies, "Outsider");
+
+    const publisherSocket = await connectSocket(baseUrl, publisher.cookies.voxly_session);
+    const viewerSocket = await connectSocket(baseUrl, viewer.cookies.voxly_session);
+    const outsiderSocket = await connectSocket(baseUrl, outsider.cookies.voxly_session);
+    sockets.push(publisherSocket, viewerSocket, outsiderSocket);
+
+    publisherSocket.emit("voice:join", "lobby");
+    viewerSocket.emit("voice:join", "lobby");
+    await emitWithAck(viewerSocket, "voice:snapshot", "lobby");
+    await emitWithAck(publisherSocket, "voice:setMediaState", {
+      roomId: "lobby",
+      media: { screen: true }
+    });
+
+    const subscribed = await onceEvent<{
+      roomId: string;
+      viewerUserId: string;
+      subscribedKinds: string[];
+    }>(publisherSocket, "voice:visualSubscriberState", () => {
+      viewerSocket.emit("voice:setVisualSubscriptions", {
+        roomId: "lobby",
+        targets: [{ publisherUserId: publisher.user.id, kind: "screen" }]
+      });
+    });
+    assert.deepEqual(subscribed, {
+      roomId: "lobby",
+      viewerUserId: viewer.user.id,
+      subscribedKinds: ["screen"]
+    });
+
+    const cleared = await onceEvent<{
+      roomId: string;
+      viewerUserId: string;
+      subscribedKinds: string[];
+    }>(publisherSocket, "voice:visualSubscriberState", () => {
+      viewerSocket.emit("voice:setVisualSubscriptions", { roomId: "lobby", targets: [] });
+    });
+    assert.deepEqual(cleared.subscribedKinds, []);
+
+    const rejected = await emitWithAck<{ ok: boolean; error: string }>(outsiderSocket, "voice:setVisualSubscriptions", {
+      roomId: "lobby",
+      targets: [{ publisherUserId: publisher.user.id, kind: "screen" }]
+    });
+    assert.deepEqual(rejected, { ok: false, error: "not_in_voice_room" });
+
+    const malformed = await emitWithAck<{ ok: boolean; error: string }>(viewerSocket, "voice:setVisualSubscriptions", {
+      roomId: "lobby",
+      targets: null
+    });
+    assert.deepEqual(malformed, { ok: false, error: "invalid_payload" });
+  });
+
+  it("clears a publisher's visual subscription when a viewer leaves", async () => {
+    const owner = await bootstrapOwner(app);
+    const publisher = await acceptInvite(app, owner.cookies, "Publisher");
+    const viewer = await acceptInvite(app, owner.cookies, "Viewer");
+
+    const publisherSocket = await connectSocket(baseUrl, publisher.cookies.voxly_session);
+    const viewerSocket = await connectSocket(baseUrl, viewer.cookies.voxly_session);
+    sockets.push(publisherSocket, viewerSocket);
+    publisherSocket.emit("voice:join", "lobby");
+    viewerSocket.emit("voice:join", "lobby");
+    await emitWithAck(publisherSocket, "voice:setMediaState", { roomId: "lobby", media: { screen: true } });
+
+    await onceEvent(publisherSocket, "voice:visualSubscriberState", () => {
+      viewerSocket.emit("voice:setVisualSubscriptions", {
+        roomId: "lobby",
+        targets: [{ publisherUserId: publisher.user.id, kind: "screen" }]
+      });
+    });
+
+    const cleared = await onceEvent<{
+      roomId: string;
+      viewerUserId: string;
+      subscribedKinds: string[];
+    }>(publisherSocket, "voice:visualSubscriberState", () => {
+      viewerSocket.emit("voice:leave", "lobby");
+    });
+    assert.deepEqual(cleared, {
+      roomId: "lobby",
+      viewerUserId: viewer.user.id,
+      subscribedKinds: []
+    });
+  });
+
   it("broadcasts deafened and speaking state while deafen forces mic off", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");

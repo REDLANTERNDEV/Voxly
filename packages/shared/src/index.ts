@@ -54,6 +54,20 @@ export interface VoiceSnapshot {
   members: VoiceMemberState[];
 }
 
+export type VisualMediaKind = "camera" | "screen";
+
+export interface VisualTarget {
+  publisherUserId: string;
+  kind: VisualMediaKind;
+}
+
+export type VoiceSetVisualSubscriptionsAck =
+  | { ok: true; targets: VisualTarget[] }
+  | {
+    ok: false;
+    error: "invalid_payload" | "room_not_found" | "not_in_voice_room" | "target_not_in_voice_room" | "target_visual_unavailable";
+  };
+
 export type RtcSignal = Record<string, unknown>;
 
 export type RtcSignalAck =
@@ -70,6 +84,11 @@ export interface ServerToClientEvents {
   "voice:joined": (payload: { roomId: string; user: PresenceUser }) => void;
   "voice:left": (payload: { roomId: string; userId: string }) => void;
   "voice:snapshot": (snapshot: VoiceSnapshot) => void;
+  "voice:visualSubscriberState": (payload: {
+    roomId: string;
+    viewerUserId: string;
+    subscribedKinds: VisualMediaKind[];
+  }) => void;
   "rtc:signal": (payload: { roomId: string; fromUserId: string; signal: RtcSignal }) => void;
 }
 
@@ -80,5 +99,6 @@ export interface ClientToServerEvents {
   "voice:leave": (roomId: string) => void;
   "voice:snapshot": (roomId: string, ack: (snapshot: VoiceSnapshot) => void) => void;
   "voice:setMediaState": (payload: { roomId: string; media: Partial<VoiceMediaState> }, ack: (response: VoiceSetMediaAck) => void) => void;
+  "voice:setVisualSubscriptions": (payload: { roomId: string; targets: VisualTarget[] }, ack?: (response: VoiceSetVisualSubscriptionsAck) => void) => void;
   "rtc:signal": (payload: { roomId: string; toUserId: string; signal: RtcSignal }, ack?: (response: RtcSignalAck) => void) => void;
 }

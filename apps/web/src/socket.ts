@@ -7,6 +7,6 @@ export function createVoxlySocket(): VoxlySocket {
   return io({
     transports: ["websocket"],
     withCredentials: true,
-    reconnectionAttempts: 6
+    reconnectionAttempts: Infinity
   });
 }

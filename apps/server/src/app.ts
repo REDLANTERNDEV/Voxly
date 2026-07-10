@@ -8,6 +8,9 @@ import type {
   PresenceUser,
   RtcSignalAck,
   ServerToClientEvents,
+  VisualMediaKind,
+  VisualTarget,
+  VoiceSetVisualSubscriptionsAck,
   VoiceMediaState,
   VoiceMemberState,
   VoiceSetMediaAck,
@@ -84,6 +87,15 @@ type MessageRow = {
 };
 
 type VoiceRoomMembership = Map<string, VoiceMemberState>;
+type VisualSubscriptions = Map<string, Map<string, Set<VisualMediaKind>>>;
+
+const visualSubscriptionsPayloadSchema = z.object({
+  roomId: z.string().min(1),
+  targets: z.array(z.object({
+    publisherUserId: z.string().min(1),
+    kind: z.enum(["camera", "screen"])
+  }).strict()).max(6)
+}).strict();
 
 const visualPublisherLimit = 3;
 
@@ -547,6 +559,7 @@ function registerRealtime(
 ) {
   const online = new Map<string, { user: PresenceUser; sockets: Set<string> }>();
   const voiceMembership = new Map<string, VoiceRoomMembership>();
+  const visualSubscriptions = new Map<string, VisualSubscriptions>();
 
   io.use((socket, next) => {
     const sessionToken = parseCookieHeader(socket.handshake.headers.cookie ?? "")[sessionCookieName];
@@ -596,7 +609,7 @@ function registerRealtime(
     });
 
     socket.on("voice:leave", (roomId) => {
-      leaveVoice(io, socket, roomId, user.userId, voiceMembership);
+      leaveVoice(io, socket, roomId, user.userId, voiceMembership, visualSubscriptions);
     });
 
     socket.on("voice:snapshot", (roomId, ack) => {
@@ -622,9 +635,33 @@ function registerRealtime(
       }
       const nextState = { ...current, media: nextMedia };
       members.set(user.userId, nextState);
+      clearUnavailableVisualSubscriptions(
+        io,
+        payload.roomId,
+        user.userId,
+        nextMedia,
+        visualSubscriptions
+      );
       const snapshot = voiceSnapshot(payload.roomId, members);
       io.emit("voice:snapshot", snapshot);
       ack({ ok: true, state: nextState });
+    });
+
+    socket.on("voice:setVisualSubscriptions", (payload, ack) => {
+      const parsed = visualSubscriptionsPayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        ack?.({ ok: false, error: "invalid_payload" });
+        return;
+      }
+      const response = setVisualSubscriptions(
+        io,
+        database,
+        voiceMembership,
+        visualSubscriptions,
+        user.userId,
+        parsed.data
+      );
+      ack?.(response);
     });
 
     socket.on("rtc:signal", (payload, ack) => {
@@ -635,7 +672,7 @@ function registerRealtime(
     socket.on("disconnect", () => {
       for (const [roomId, members] of voiceMembership) {
         if (members.has(user.userId)) {
-          leaveVoice(io, socket, roomId, user.userId, voiceMembership);
+          leaveVoice(io, socket, roomId, user.userId, voiceMembership, visualSubscriptions);
         }
       }
 
@@ -657,13 +694,16 @@ function leaveVoice(
   socket: Parameters<Parameters<Server["on"]>[1]>[0],
   roomId: string,
   userId: string,
-  voiceMembership: Map<string, VoiceRoomMembership>
+  voiceMembership: Map<string, VoiceRoomMembership>,
+  visualSubscriptions: Map<string, VisualSubscriptions>
 ) {
   const members = voiceMembership.get(roomId);
   if (!members?.has(userId)) {
     socket.leave(`voice:${roomId}`);
     return;
   }
+  clearViewerVisualSubscriptions(io, roomId, userId, visualSubscriptions);
+  clearPublisherVisualSubscriptions(roomId, userId, visualSubscriptions);
   members.delete(userId);
   if (members.size === 0) {
     voiceMembership.delete(roomId);
@@ -671,6 +711,159 @@ function leaveVoice(
   socket.leave(`voice:${roomId}`);
   io.emit("voice:snapshot", voiceSnapshot(roomId, members));
   socket.broadcast.emit("voice:left", { roomId, userId });
+}
+
+function setVisualSubscriptions(
+  io: Server<ClientToServerEvents, ServerToClientEvents>,
+  database: VoxlyDatabase,
+  voiceMembership: Map<string, VoiceRoomMembership>,
+  visualSubscriptions: Map<string, VisualSubscriptions>,
+  viewerUserId: string,
+  payload: { roomId: string; targets: VisualTarget[] }
+): VoiceSetVisualSubscriptionsAck {
+  const room = roomById(database.sqlite, payload.roomId);
+  if (!room || room.kind !== "voice") {
+    return { ok: false, error: "room_not_found" };
+  }
+  const members = voiceMembership.get(payload.roomId);
+  if (!members?.has(viewerUserId)) {
+    return { ok: false, error: "not_in_voice_room" };
+  }
+
+  const targets = uniqueVisualTargets(payload.targets);
+  for (const target of targets) {
+    const publisher = members.get(target.publisherUserId);
+    if (!publisher || target.publisherUserId === viewerUserId) {
+      return { ok: false, error: "target_not_in_voice_room" };
+    }
+    if (!publisher.media[target.kind]) {
+      return { ok: false, error: "target_visual_unavailable" };
+    }
+  }
+
+  const roomSubscriptions = visualSubscriptions.get(payload.roomId) ?? new Map<string, Map<string, Set<VisualMediaKind>>>();
+  const previous = roomSubscriptions.get(viewerUserId) ?? new Map<string, Set<VisualMediaKind>>();
+  const next = new Map<string, Set<VisualMediaKind>>();
+  for (const target of targets) {
+    const kinds = next.get(target.publisherUserId) ?? new Set<VisualMediaKind>();
+    kinds.add(target.kind);
+    next.set(target.publisherUserId, kinds);
+  }
+
+  const publishers = new Set([...previous.keys(), ...next.keys()]);
+  for (const publisherUserId of publishers) {
+    const previousKinds = previous.get(publisherUserId) ?? new Set<VisualMediaKind>();
+    const nextKinds = next.get(publisherUserId) ?? new Set<VisualMediaKind>();
+    if (!sameVisualKinds(previousKinds, nextKinds)) {
+      emitVisualSubscriberState(io, payload.roomId, publisherUserId, viewerUserId, [...nextKinds]);
+    }
+  }
+
+  if (next.size === 0) {
+    roomSubscriptions.delete(viewerUserId);
+  } else {
+    roomSubscriptions.set(viewerUserId, next);
+  }
+  if (roomSubscriptions.size === 0) {
+    visualSubscriptions.delete(payload.roomId);
+  } else {
+    visualSubscriptions.set(payload.roomId, roomSubscriptions);
+  }
+
+  return { ok: true, targets };
+}
+
+function clearUnavailableVisualSubscriptions(
+  io: Server<ClientToServerEvents, ServerToClientEvents>,
+  roomId: string,
+  publisherUserId: string,
+  media: VoiceMediaState,
+  visualSubscriptions: Map<string, VisualSubscriptions>
+) {
+  const roomSubscriptions = visualSubscriptions.get(roomId);
+  if (!roomSubscriptions) return;
+
+  for (const [viewerUserId, subscriptions] of roomSubscriptions) {
+    const currentKinds = subscriptions.get(publisherUserId);
+    if (!currentKinds) continue;
+    const nextKinds = new Set([...currentKinds].filter((kind) => media[kind]));
+    if (sameVisualKinds(currentKinds, nextKinds)) continue;
+    if (nextKinds.size === 0) {
+      subscriptions.delete(publisherUserId);
+    } else {
+      subscriptions.set(publisherUserId, nextKinds);
+    }
+    emitVisualSubscriberState(io, roomId, publisherUserId, viewerUserId, [...nextKinds]);
+  }
+
+  cleanupVisualSubscriptions(roomId, visualSubscriptions);
+}
+
+function clearViewerVisualSubscriptions(
+  io: Server<ClientToServerEvents, ServerToClientEvents>,
+  roomId: string,
+  viewerUserId: string,
+  visualSubscriptions: Map<string, VisualSubscriptions>
+) {
+  const roomSubscriptions = visualSubscriptions.get(roomId);
+  const subscriptions = roomSubscriptions?.get(viewerUserId);
+  if (!roomSubscriptions || !subscriptions) return;
+  for (const publisherUserId of subscriptions.keys()) {
+    emitVisualSubscriberState(io, roomId, publisherUserId, viewerUserId, []);
+  }
+  roomSubscriptions.delete(viewerUserId);
+  cleanupVisualSubscriptions(roomId, visualSubscriptions);
+}
+
+function clearPublisherVisualSubscriptions(
+  roomId: string,
+  publisherUserId: string,
+  visualSubscriptions: Map<string, VisualSubscriptions>
+) {
+  const roomSubscriptions = visualSubscriptions.get(roomId);
+  if (!roomSubscriptions) return;
+  for (const subscriptions of roomSubscriptions.values()) {
+    subscriptions.delete(publisherUserId);
+  }
+  cleanupVisualSubscriptions(roomId, visualSubscriptions);
+}
+
+function cleanupVisualSubscriptions(roomId: string, visualSubscriptions: Map<string, VisualSubscriptions>) {
+  const roomSubscriptions = visualSubscriptions.get(roomId);
+  if (!roomSubscriptions) return;
+  for (const [viewerUserId, subscriptions] of roomSubscriptions) {
+    if (subscriptions.size === 0) roomSubscriptions.delete(viewerUserId);
+  }
+  if (roomSubscriptions.size === 0) visualSubscriptions.delete(roomId);
+}
+
+function emitVisualSubscriberState(
+  io: Server<ClientToServerEvents, ServerToClientEvents>,
+  roomId: string,
+  publisherUserId: string,
+  viewerUserId: string,
+  subscribedKinds: VisualMediaKind[]
+) {
+  for (const socket of io.sockets.sockets.values()) {
+    const user = socket.data.user as PresenceUser | undefined;
+    if (user?.userId === publisherUserId && socket.rooms.has(`voice:${roomId}`)) {
+      socket.emit("voice:visualSubscriberState", { roomId, viewerUserId, subscribedKinds });
+    }
+  }
+}
+
+function uniqueVisualTargets(targets: VisualTarget[]) {
+  const seen = new Set<string>();
+  return targets.filter((target) => {
+    const key = `${target.publisherUserId}:${target.kind}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function sameVisualKinds(left: Set<VisualMediaKind>, right: Set<VisualMediaKind>) {
+  return left.size === right.size && [...left].every((kind) => right.has(kind));
 }
 
 function createUser(database: VoxlyDatabase, nickname: string, role: "owner" | "member") {

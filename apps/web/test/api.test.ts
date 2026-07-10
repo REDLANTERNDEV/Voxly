@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { acceptInvite, ApiError, claimOwnerSession } from "../src/api.js";
+import { acceptInvite, ApiError, claimOwnerSession, deleteMessage, revokeInvite } from "../src/api.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -39,5 +39,29 @@ describe("frontend api", () => {
       () => acceptInvite("invite-token", "Mert", "turnstile-token"),
       (error: unknown) => error instanceof ApiError && error.code === "turnstile_failed"
     );
+  });
+
+  it("omits the JSON content type for an empty invite revoke request", async () => {
+    let headers: HeadersInit | undefined;
+    globalThis.fetch = async (_input, init) => {
+      headers = init?.headers;
+      return new Response(null, { status: 204 });
+    };
+
+    await revokeInvite("invite-id");
+
+    assert.equal(new Headers(headers).has("Content-Type"), false);
+  });
+
+  it("omits the JSON content type for an empty message delete request", async () => {
+    let headers: HeadersInit | undefined;
+    globalThis.fetch = async (_input, init) => {
+      headers = init?.headers;
+      return new Response(null, { status: 204 });
+    };
+
+    await deleteMessage("general", "message-id");
+
+    assert.equal(new Headers(headers).has("Content-Type"), false);
   });
 });

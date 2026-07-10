@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PublicUser, RtcSignal, VoiceMediaState, VoiceSetMediaAck, VoiceSnapshot } from "@voxly/shared";
+import type {
+  PublicUser,
+  RtcSignal,
+  VisualMediaKind,
+  VisualTarget,
+  VoiceMediaState,
+  VoiceSetMediaAck,
+  VoiceSetVisualSubscriptionsAck,
+  VoiceSnapshot
+} from "@voxly/shared";
 import type { VoxlySocket } from "../socket.js";
 import { createInitialVoiceControls, toggleVoiceControl, type VoiceControlKey, type VoiceControls } from "./voiceControls.js";
 import { mediaConstraintsFor, micConstraints } from "./voiceMedia.js";
 import { shouldOfferToJoiningMember } from "./voiceNegotiation.js";
+import { clearVoiceResume, readVoiceResume, voiceResumeWindowMs, writeVoiceResume } from "./voiceResume.js";
 import {
   pruneRemoteStreamsForSnapshot,
   upsertRemoteStream,
@@ -20,6 +30,7 @@ interface UseVoiceMediaInput {
   socket: VoxlySocket | null;
   user: PublicUser | null;
   iceServers: RTCIceServer[];
+  voiceRoomIds: string[];
 }
 
 type PeerSignal =
@@ -34,16 +45,29 @@ interface SignalStreamDescriptor {
   kind: RemoteMediaKind;
 }
 
-export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) {
+export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds }: UseVoiceMediaInput) {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [controls, setControls] = useState<VoiceControls>(() => createInitialVoiceControls());
-  const [snapshot, setSnapshot] = useState<VoiceSnapshot | null>(null);
+  const [voiceSnapshots, setVoiceSnapshots] = useState<Record<string, VoiceSnapshot>>({});
+  const [visualTargets, setVisualTargets] = useState<VisualTarget[]>([]);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStreamState[]>([]);
   const [localPreviews, setLocalPreviews] = useState<LocalPreviewState[]>([]);
   const [error, setError] = useState("");
   const localStreamsRef = useRef<Partial<Record<LocalStreamKind, MediaStream>>>({});
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const remoteStreamKindsRef = useRef<Map<string, Map<string, RemoteMediaKind>>>(new Map());
+  const viewerVisualSubscriptionsRef = useRef<Map<string, Set<VisualMediaKind>>>(new Map());
+  const visualTargetsRef = useRef<VisualTarget[]>([]);
+  const makingOfferPeersRef = useRef<Set<string>>(new Set());
+  const pendingOfferPeersRef = useRef<Set<string>>(new Set());
+  const peerRecoveryTimersRef = useRef<Map<string, number>>(new Map());
+  const recoverPeerRef = useRef<(peerUserId: string) => void>(() => undefined);
+  const resumeAttemptRef = useRef(false);
+  const recoveryInProgressRef = useRef(false);
+  const resumeDeadlineRef = useRef<number | null>(null);
+  const resumeDeadlineTimerRef = useRef<number | null>(null);
+  const controlsRef = useRef(controls);
+  const voiceRoomIdsRef = useRef(voiceRoomIds);
   const speakingRef = useRef(false);
   const speakingCleanupRef = useRef<(() => void) | null>(null);
   const roomRef = useRef<string | null>(null);
@@ -52,6 +76,21 @@ export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) 
   useEffect(() => {
     userIdRef.current = user?.id ?? null;
   }, [user?.id]);
+
+  useEffect(() => {
+    controlsRef.current = controls;
+  }, [controls]);
+
+  const persistVoiceResume = useCallback((targets = visualTargetsRef.current, resetDeadline = false) => {
+    if (!roomRef.current) return;
+    const storage = voiceResumeStorage();
+    const now = Date.now();
+    const expiresAt = resetDeadline || !resumeDeadlineRef.current || resumeDeadlineRef.current <= now
+      ? now + voiceResumeWindowMs
+      : resumeDeadlineRef.current;
+    resumeDeadlineRef.current = expiresAt;
+    if (storage) writeVoiceResume(storage, roomRef.current, targets, now, expiresAt);
+  }, []);
 
   const emitMediaState = useCallback((media: Partial<VoiceMediaState>) => {
     if (!socket || !roomRef.current) {
@@ -136,18 +175,26 @@ export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) 
     }
     peersRef.current.clear();
     remoteStreamKindsRef.current.clear();
+    viewerVisualSubscriptionsRef.current.clear();
+    makingOfferPeersRef.current.clear();
+    pendingOfferPeersRef.current.clear();
+    for (const timer of peerRecoveryTimersRef.current.values()) {
+      window.clearTimeout(timer);
+    }
+    peerRecoveryTimersRef.current.clear();
     setRemoteStreams([]);
   }, []);
 
-  const localStreamDescriptors = useCallback((): SignalStreamDescriptor[] => {
+  const localStreamDescriptors = useCallback((peerUserId: string): SignalStreamDescriptor[] => {
     const descriptors: SignalStreamDescriptor[] = [];
     if (localStreamsRef.current.mic) {
       descriptors.push({ id: localStreamsRef.current.mic.id, kind: "audio" });
     }
-    if (localStreamsRef.current.camera) {
+    const subscribedKinds = viewerVisualSubscriptionsRef.current.get(peerUserId) ?? new Set<VisualMediaKind>();
+    if (localStreamsRef.current.camera && subscribedKinds.has("camera")) {
       descriptors.push({ id: localStreamsRef.current.camera.id, kind: "camera" });
     }
-    if (localStreamsRef.current.screen) {
+    if (localStreamsRef.current.screen && subscribedKinds.has("screen")) {
       descriptors.push({ id: localStreamsRef.current.screen.id, kind: "screen" });
     }
     return descriptors;
@@ -164,9 +211,16 @@ export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) 
     remoteStreamKindsRef.current.set(peerUserId, streamKinds);
   }, []);
 
-  const syncLocalTracks = useCallback((peer: RTCPeerConnection) => {
+  const syncLocalTracks = useCallback((peer: RTCPeerConnection, peerUserId: string) => {
     const currentTracks = new Set<MediaStreamTrack>();
-    for (const stream of Object.values(localStreamsRef.current)) {
+    const subscribedKinds = viewerVisualSubscriptionsRef.current.get(peerUserId) ?? new Set<VisualMediaKind>();
+    const streams: Array<[LocalStreamKind, MediaStream | undefined]> = [
+      ["mic", localStreamsRef.current.mic],
+      ["camera", localStreamsRef.current.camera],
+      ["screen", localStreamsRef.current.screen]
+    ];
+    for (const [kind, stream] of streams) {
+      if (!stream || (kind !== "mic" && !subscribedKinds.has(kind))) continue;
       for (const track of stream.getTracks()) {
         currentTracks.add(track);
         if (!peer.getSenders().some((sender) => sender.track === track)) {
@@ -184,13 +238,23 @@ export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) 
 
   const sendOffer = useCallback(async (peerUserId: string, peer: RTCPeerConnection) => {
     if (!socket || !roomRef.current) return;
-    const offer = await peer.createOffer();
-    await peer.setLocalDescription(offer);
-    socket.emit("rtc:signal", {
-      roomId: roomRef.current,
-      toUserId: peerUserId,
-      signal: { type: "offer", sdp: offer.sdp ?? "", streams: localStreamDescriptors() }
-    });
+    if (peer.signalingState !== "stable" || makingOfferPeersRef.current.has(peerUserId)) {
+      pendingOfferPeersRef.current.add(peerUserId);
+      return;
+    }
+    makingOfferPeersRef.current.add(peerUserId);
+    try {
+      const offer = await peer.createOffer();
+      if (peer.signalingState !== "stable" || !roomRef.current) return;
+      await peer.setLocalDescription(offer);
+      socket.emit("rtc:signal", {
+        roomId: roomRef.current,
+        toUserId: peerUserId,
+        signal: { type: "offer", sdp: offer.sdp ?? "", streams: localStreamDescriptors(peerUserId) }
+      });
+    } finally {
+      makingOfferPeersRef.current.delete(peerUserId);
+    }
   }, [localStreamDescriptors, socket]);
 
   const ensurePeer = useCallback((peerUserId: string) => {
@@ -204,7 +268,7 @@ export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) 
 
     const peer = new RTCPeerConnection({ iceServers });
     peersRef.current.set(peerUserId, peer);
-    syncLocalTracks(peer);
+    syncLocalTracks(peer, peerUserId);
     peer.onicecandidate = (event) => {
       if (!event.candidate || !roomRef.current) return;
       socket.emit("rtc:signal", {
@@ -221,28 +285,67 @@ export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) 
         return upsertRemoteStream(current, peerUserId, kind, stream);
       });
       event.track.addEventListener("ended", () => {
+        if (kind === "screen" && event.track.kind === "audio") return;
         setRemoteStreams((current) => current.filter((item) => item.userId !== peerUserId || item.kind !== kind));
       }, { once: true });
+    };
+    peer.onconnectionstatechange = () => {
+      if (peer.connectionState !== "failed" || peersRef.current.get(peerUserId) !== peer) return;
+      peer.close();
+      peersRef.current.delete(peerUserId);
+      const previousTimer = peerRecoveryTimersRef.current.get(peerUserId);
+      if (previousTimer) window.clearTimeout(previousTimer);
+      const timer = window.setTimeout(() => {
+        peerRecoveryTimersRef.current.delete(peerUserId);
+        recoverPeerRef.current(peerUserId);
+      }, 300);
+      peerRecoveryTimersRef.current.set(peerUserId, timer);
     };
 
     return peer;
   }, [iceServers, socket, syncLocalTracks]);
 
+  useEffect(() => {
+    recoverPeerRef.current = (peerUserId) => {
+      const peer = ensurePeer(peerUserId);
+      if (peer) void sendOffer(peerUserId, peer).catch(() => setError("Could not recover peer connection."));
+    };
+    return () => {
+      recoverPeerRef.current = () => undefined;
+    };
+  }, [ensurePeer, sendOffer]);
+
   const renegotiatePeers = useCallback(() => {
     for (const [peerUserId, peer] of peersRef.current) {
-      syncLocalTracks(peer);
+      syncLocalTracks(peer, peerUserId);
       void sendOffer(peerUserId, peer).catch(() => setError("Could not update media."));
     }
   }, [sendOffer, syncLocalTracks]);
 
-  const join = useCallback(async (roomId: string) => {
+  const setVisualSubscriptions = useCallback((targets: VisualTarget[]) => {
+    if (!socket || !roomRef.current) {
+      return Promise.resolve<VoiceSetVisualSubscriptionsAck>({ ok: false, error: "not_in_voice_room" });
+    }
+    return new Promise<VoiceSetVisualSubscriptionsAck>((resolve) => {
+      socket.emit("voice:setVisualSubscriptions", { roomId: roomRef.current as string, targets }, (response) => {
+        if (response.ok) {
+          visualTargetsRef.current = response.targets;
+          setVisualTargets(response.targets);
+          persistVoiceResume(response.targets);
+        }
+        resolve(response);
+      });
+    });
+  }, [persistVoiceResume, socket]);
+
+  const join = useCallback(async (roomId: string, restoredTargets: VisualTarget[] = []) => {
     if (!socket || !user) {
       setError("Socket is not connected.");
       return;
     }
     setError("");
     try {
-      const mic = await navigator.mediaDevices.getUserMedia(micConstraints);
+      const mic = localStreamsRef.current.mic ?? await navigator.mediaDevices.getUserMedia(micConstraints);
       localStreamsRef.current.mic = mic;
       startSpeakingMonitor(mic);
       roomRef.current = roomId;
@@ -254,12 +357,19 @@ export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) 
       }));
       socket.emit("voice:join", roomId);
       await emitMediaState({ mic: true, deafened: false, speaking: false });
-      socket.emit("voice:snapshot", roomId, setSnapshot);
+      socket.emit("voice:snapshot", roomId, (nextSnapshot) => {
+        setVoiceSnapshots((current) => ({ ...current, [nextSnapshot.roomId]: nextSnapshot }));
+      });
+      if (restoredTargets.length > 0) {
+        await setVisualSubscriptions(restoredTargets);
+      } else {
+        persistVoiceResume([]);
+      }
     } catch {
       setError("Microphone permission is required to join voice.");
       stopStream("mic");
     }
-  }, [emitMediaState, socket, startSpeakingMonitor, stopStream, user]);
+  }, [emitMediaState, persistVoiceResume, setVisualSubscriptions, socket, startSpeakingMonitor, stopStream, user]);
 
   const leave = useCallback(() => {
     if (socket && roomRef.current) {
@@ -270,8 +380,18 @@ export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) 
     stopStream("screen");
     closePeers();
     roomRef.current = null;
+    visualTargetsRef.current = [];
+    setVisualTargets([]);
+    recoveryInProgressRef.current = false;
+    resumeDeadlineRef.current = null;
+    if (resumeDeadlineTimerRef.current) {
+      window.clearTimeout(resumeDeadlineTimerRef.current);
+      resumeDeadlineTimerRef.current = null;
+    }
+    const storage = voiceResumeStorage();
+    if (storage) clearVoiceResume(storage);
     setActiveRoomId(null);
-    setSnapshot(null);
+    setVoiceSnapshots({});
     setLocalPreviews([]);
     setError("");
     setControls(createInitialVoiceControls());
@@ -379,8 +499,17 @@ export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) 
 
   const requestSnapshot = useCallback((roomId: string) => {
     if (!socket) return;
-    socket.emit("voice:snapshot", roomId, setSnapshot);
+    socket.emit("voice:snapshot", roomId, (nextSnapshot) => {
+      setVoiceSnapshots((current) => ({ ...current, [nextSnapshot.roomId]: nextSnapshot }));
+    });
   }, [socket]);
+
+  useEffect(() => {
+    voiceRoomIdsRef.current = voiceRoomIds;
+    if (socket?.connected) {
+      for (const roomId of voiceRoomIds) requestSnapshot(roomId);
+    }
+  }, [requestSnapshot, socket, voiceRoomIds]);
 
   const handleSignal = useCallback(async (payload: { fromUserId: string; signal: RtcSignal }) => {
     const signal = payload.signal as PeerSignal;
@@ -388,6 +517,11 @@ export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) 
     if (!peer) return;
     if (signal.type === "offer") {
       rememberRemoteStreamKinds(payload.fromUserId, signal.streams);
+      if (peer.signalingState !== "stable") {
+        const isPolitePeer = (userIdRef.current ?? "") > payload.fromUserId;
+        if (!isPolitePeer) return;
+        await peer.setLocalDescription({ type: "rollback" });
+      }
       await peer.setRemoteDescription({ type: "offer", sdp: signal.sdp });
       const answer = await peer.createAnswer();
       await peer.setLocalDescription(answer);
@@ -395,27 +529,121 @@ export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) 
         socket.emit("rtc:signal", {
           roomId: roomRef.current,
           toUserId: payload.fromUserId,
-          signal: { type: "answer", sdp: answer.sdp ?? "", streams: localStreamDescriptors() }
+          signal: { type: "answer", sdp: answer.sdp ?? "", streams: localStreamDescriptors(payload.fromUserId) }
         });
+      }
+      if (pendingOfferPeersRef.current.delete(payload.fromUserId)) {
+        void sendOffer(payload.fromUserId, peer).catch(() => setError("Could not update media."));
       }
       return;
     }
     if (signal.type === "answer") {
       rememberRemoteStreamKinds(payload.fromUserId, signal.streams);
       await peer.setRemoteDescription({ type: "answer", sdp: signal.sdp });
+      if (pendingOfferPeersRef.current.delete(payload.fromUserId)) {
+        void sendOffer(payload.fromUserId, peer).catch(() => setError("Could not update media."));
+      }
       return;
     }
     if (signal.type === "candidate") {
       await peer.addIceCandidate(signal.candidate);
     }
-  }, [ensurePeer, localStreamDescriptors, rememberRemoteStreamKinds, socket]);
+  }, [ensurePeer, localStreamDescriptors, rememberRemoteStreamKinds, sendOffer, socket]);
+
+  useEffect(() => {
+    const saveResume = () => {
+      persistVoiceResume(visualTargetsRef.current, !recoveryInProgressRef.current);
+      recoveryInProgressRef.current = true;
+    };
+    window.addEventListener("pagehide", saveResume);
+    return () => window.removeEventListener("pagehide", saveResume);
+  }, [persistVoiceResume]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const requestKnownSnapshots = () => {
+      for (const roomId of voiceRoomIdsRef.current) requestSnapshot(roomId);
+    };
+    const onConnect = () => {
+      requestKnownSnapshots();
+      const activeRoomId = roomRef.current;
+      if (activeRoomId) {
+        if (recoveryInProgressRef.current && resumeDeadlineRef.current && Date.now() >= resumeDeadlineRef.current) {
+          leave();
+          return;
+        }
+        if (resumeDeadlineTimerRef.current) {
+          window.clearTimeout(resumeDeadlineTimerRef.current);
+          resumeDeadlineTimerRef.current = null;
+        }
+        socket.emit("voice:join", activeRoomId);
+        void emitMediaState({
+          mic: Boolean(localStreamsRef.current.mic),
+          camera: false,
+          screen: false,
+          deafened: controlsRef.current.deafen.on,
+          speaking: false
+        });
+        void setVisualSubscriptions(visualTargetsRef.current);
+        recoveryInProgressRef.current = false;
+        resumeDeadlineRef.current = null;
+        return;
+      }
+
+      const storage = voiceResumeStorage();
+      const record = storage ? readVoiceResume(storage) : null;
+      if (!record || resumeAttemptRef.current) return;
+      resumeDeadlineRef.current = record.expiresAt;
+      recoveryInProgressRef.current = true;
+      resumeAttemptRef.current = true;
+      void join(record.roomId, record.targets).finally(() => {
+        if (roomRef.current === record.roomId) {
+          recoveryInProgressRef.current = false;
+          resumeDeadlineRef.current = null;
+        }
+        resumeAttemptRef.current = false;
+      });
+    };
+    const onDisconnect = () => {
+      if (!roomRef.current) return;
+      persistVoiceResume(visualTargetsRef.current, !recoveryInProgressRef.current);
+      recoveryInProgressRef.current = true;
+      if (resumeDeadlineTimerRef.current) window.clearTimeout(resumeDeadlineTimerRef.current);
+      const delay = Math.max(0, (resumeDeadlineRef.current ?? Date.now()) - Date.now());
+      resumeDeadlineTimerRef.current = window.setTimeout(() => {
+        resumeDeadlineTimerRef.current = null;
+        if (!socket.connected && roomRef.current) leave();
+      }, delay);
+      stopStream("camera");
+      stopStream("screen");
+      setControls((current) => ({
+        ...current,
+        camera: { ...current.camera, on: false },
+        screenShare: { ...current.screenShare, on: false }
+      }));
+    };
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    if (socket.connected) onConnect();
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+    };
+  }, [emitMediaState, join, leave, persistVoiceResume, requestSnapshot, setVisualSubscriptions, socket, stopStream]);
 
   useEffect(() => {
     if (!socket) return;
     const onSnapshot = (nextSnapshot: VoiceSnapshot) => {
-      setSnapshot(nextSnapshot);
-      setRemoteStreams((current) => pruneRemoteStreamsForSnapshot(current, nextSnapshot.members));
+      setVoiceSnapshots((current) => ({ ...current, [nextSnapshot.roomId]: nextSnapshot }));
       if (roomRef.current === nextSnapshot.roomId) {
+        setRemoteStreams((current) => pruneRemoteStreamsForSnapshot(current, nextSnapshot.members));
+        const membersByUserId = new Map(nextSnapshot.members.map((member) => [member.user.userId, member.media]));
+        const availableTargets = visualTargetsRef.current.filter((target) => membersByUserId.get(target.publisherUserId)?.[target.kind]);
+        if (availableTargets.length !== visualTargetsRef.current.length) {
+          visualTargetsRef.current = availableTargets;
+          setVisualTargets(availableTargets);
+          persistVoiceResume(availableTargets);
+        }
         for (const member of nextSnapshot.members) {
           ensurePeer(member.user.userId);
         }
@@ -435,15 +663,25 @@ export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) 
     const onSignal = (payload: { fromUserId: string; signal: RtcSignal }) => {
       void handleSignal(payload).catch(() => setError("RTC signal could not be handled."));
     };
+    const onVisualSubscriberState = (payload: { roomId: string; viewerUserId: string; subscribedKinds: VisualMediaKind[] }) => {
+      if (roomRef.current !== payload.roomId) return;
+      viewerVisualSubscriptionsRef.current.set(payload.viewerUserId, new Set(payload.subscribedKinds));
+      const peer = ensurePeer(payload.viewerUserId);
+      if (!peer) return;
+      syncLocalTracks(peer, payload.viewerUserId);
+      void sendOffer(payload.viewerUserId, peer).catch(() => setError("Could not update media."));
+    };
     socket.on("voice:snapshot", onSnapshot);
     socket.on("voice:joined", onVoiceJoined);
+    socket.on("voice:visualSubscriberState", onVisualSubscriberState);
     socket.on("rtc:signal", onSignal);
     return () => {
       socket.off("voice:snapshot", onSnapshot);
       socket.off("voice:joined", onVoiceJoined);
+      socket.off("voice:visualSubscriberState", onVisualSubscriberState);
       socket.off("rtc:signal", onSignal);
     };
-  }, [ensurePeer, handleSignal, sendOffer, socket]);
+  }, [ensurePeer, handleSignal, persistVoiceResume, sendOffer, socket, syncLocalTracks]);
 
   useEffect(() => {
     if (!user) {
@@ -460,7 +698,17 @@ export function useVoiceMedia({ socket, user, iceServers }: UseVoiceMediaInput) 
     localPreviews,
     requestSnapshot,
     remoteStreams,
-    snapshot,
+    setVisualSubscriptions,
+    visualTargets,
+    voiceSnapshots,
     toggleControl
   };
+}
+
+function voiceResumeStorage() {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
 }

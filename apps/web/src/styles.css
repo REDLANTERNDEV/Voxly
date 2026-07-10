@@ -1068,6 +1068,317 @@ h3 {
   max-width: 280px;
 }
 
+/* Voice control room: selected visual media stays bounded; its natural size never
+   pushes the participant controls below the viewport. */
+.voice-control-room {
+  align-content: start;
+  gap: 14px;
+  min-height: 0;
+}
+
+.screen-stage {
+  block-size: min(58dvh, 640px);
+  min-block-size: 260px;
+  max-block-size: calc(100dvh - 210px);
+}
+
+.stage-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  min-block-size: 0;
+  padding: 8px;
+}
+
+.stage-count-2 .stage-grid,
+.stage-count-3 .stage-grid,
+.stage-count-4 .stage-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stage-media {
+  align-items: stretch;
+  appearance: none;
+  background: var(--scene);
+  border: 1px solid color-mix(in oklab, var(--on-scene), transparent 82%);
+  border-radius: calc(var(--radius-lg) - 5px);
+  color: var(--on-scene);
+  cursor: pointer;
+  display: grid;
+  min-block-size: 0;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+}
+
+.stage-media.is-focused {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.stage-media .call-video {
+  border: 0;
+  border-radius: 0;
+  min-height: 0;
+  object-fit: contain;
+}
+
+.stage-media-label {
+  align-items: baseline;
+  background: color-mix(in oklab, var(--black), transparent 32%);
+  bottom: 0;
+  display: flex;
+  gap: 7px;
+  justify-content: space-between;
+  left: 0;
+  padding: 7px 9px;
+  position: absolute;
+  right: 0;
+}
+
+.stage-media-label span {
+  color: color-mix(in oklab, var(--on-scene), transparent 30%);
+  font-size: 11px;
+}
+
+.stage-empty,
+.visual-source-rail,
+.voice-participants {
+  background: color-mix(in oklab, var(--surface), var(--khaki-beige) 12%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.stage-empty {
+  display: grid;
+  gap: 5px;
+  min-block-size: 200px;
+  padding: 18px;
+  place-content: center;
+  text-align: center;
+}
+
+.stage-empty span,
+.compact-section-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.visual-source-rail,
+.voice-participants {
+  overflow: hidden;
+}
+
+.compact-section-head {
+  align-items: start;
+  background: color-mix(in oklab, var(--surface-2), transparent 38%);
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.compact-section-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.visual-source-list,
+.participant-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.visual-source-list {
+  display: grid;
+  gap: 1px;
+}
+
+.visual-source {
+  align-items: stretch;
+  border-top: 1px solid var(--border-soft);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 7px;
+}
+
+.visual-source:first-child,
+.participant-row:first-child {
+  border-top: 0;
+}
+
+.visual-source.is-selected {
+  background: var(--accent-soft);
+}
+
+.visual-source-main {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 2px;
+  text-align: left;
+}
+
+.visual-source-main:hover {
+  color: var(--fg-2);
+}
+
+.source-thumb {
+  align-items: center;
+  background: var(--scene);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--on-scene);
+  display: grid;
+  height: 34px;
+  justify-content: center;
+  overflow: hidden;
+  width: 48px;
+}
+
+.source-thumb .call-video {
+  border: 0;
+  border-radius: 0;
+  min-height: 0;
+  object-fit: cover;
+}
+
+.source-copy {
+  display: grid;
+  line-height: 1.18;
+  min-width: 0;
+}
+
+.source-copy strong,
+.source-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-copy span,
+.source-watch {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.source-watch {
+  color: var(--accent-on);
+  font-family: var(--font-mono);
+  font-weight: 650;
+}
+
+.source-multi-toggle {
+  align-self: center;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  width: 34px;
+}
+
+.source-multi-toggle.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-on);
+}
+
+.participant-list {
+  display: grid;
+}
+
+.participant-row {
+  align-items: center;
+  border-top: 1px solid var(--border-soft);
+  display: grid;
+  gap: 9px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 52px;
+  padding: 8px 12px;
+}
+
+.participant-row.is-speaking {
+  background: var(--speaking-soft);
+  box-shadow: inset 3px 0 0 var(--speaking);
+}
+
+.participant-row .call-avatar {
+  font-size: 15px;
+  height: 32px;
+  width: 32px;
+}
+
+.participant-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.participant-copy > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.volume-popover {
+  position: relative;
+}
+
+.volume-popover > summary {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  height: 32px;
+  justify-content: center;
+  list-style: none;
+  width: 32px;
+}
+
+.volume-popover > summary::-webkit-details-marker {
+  display: none;
+}
+
+.volume-popover[open] > summary {
+  background: var(--surface-2);
+}
+
+.volume-popover .volume-control {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  min-width: 190px;
+  padding: 10px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 4;
+}
+
+.stage-volume {
+  margin-left: auto;
+}
+
+.screen-stage-bar .stage-volume .volume-control {
+  max-width: none;
+}
+
+.voice-stage-status {
+  color: var(--danger);
+  font-size: 12px;
+  min-height: 18px;
+}
+
 .voice-status-list {
   align-items: center;
   display: flex;
