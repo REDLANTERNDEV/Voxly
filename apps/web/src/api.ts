@@ -7,7 +7,11 @@ import type {
   OwnerInvite,
   OwnerSession,
   PublicUser,
-  RoomsResponse
+  RoomSummary,
+  RoomsResponse,
+  ServerMember,
+  ServerSummary,
+  ServersResponse
 } from "./types.js";
 
 type JsonBody = Record<string, unknown>;
@@ -47,6 +51,26 @@ export async function fetchRooms() {
   return apiGet<RoomsResponse>("/api/rooms");
 }
 
+export async function fetchServers() {
+  return apiGet<ServersResponse>("/api/servers");
+}
+
+export async function createServer(name: string) {
+  return apiPost<{ server: ServerSummary }>("/api/servers", { name });
+}
+
+export async function fetchServerRooms(serverId: string) {
+  return apiGet<RoomsResponse>(`/api/servers/${encodeURIComponent(serverId)}/rooms`);
+}
+
+export async function createServerRoom(serverId: string, name: string, kind: "text" | "voice") {
+  return apiPost<{ room: RoomSummary }>(`/api/servers/${encodeURIComponent(serverId)}/rooms`, { name, kind });
+}
+
+export async function fetchServerMembers(serverId: string) {
+  return apiGet<{ members: ServerMember[] }>(`/api/servers/${encodeURIComponent(serverId)}/members`);
+}
+
 export async function fetchMessages(roomId: string, limit = 100) {
   return apiGet<MessagesResponse>(`/api/rooms/${roomId}/messages?limit=${encodeURIComponent(String(limit))}`);
 }
@@ -69,7 +93,11 @@ export async function deleteMessage(roomId: string, messageId: string) {
 }
 
 export async function acceptInvite(inviteToken: string, nickname: string, turnstileToken?: string) {
-  return apiPost<CurrentUserResponse>("/api/invites/accept", { inviteToken, nickname, turnstileToken });
+  return apiPost<CurrentUserResponse & { serverId: string }>("/api/invites/accept", { inviteToken, nickname: nickname || undefined, turnstileToken });
+}
+
+export async function claimAccessLink(token: string) {
+  return apiPost<CurrentUserResponse>("/api/access/claim", { token });
 }
 
 export async function claimOwnerSession(claimToken: string) {
@@ -94,6 +122,22 @@ export async function createInvite(label: string, expiresInHours: number) {
   return apiPost<InviteResponse>("/api/owner/invites", { label, expiresInHours });
 }
 
+export async function createServerInvite(serverId: string, label: string, expiresInHours: number) {
+  return apiPost<InviteResponse>(`/api/servers/${encodeURIComponent(serverId)}/invites`, { label, expiresInHours });
+}
+
+export async function revokeServerInvite(serverId: string, inviteId: string) {
+  await apiPost<void>(`/api/servers/${encodeURIComponent(serverId)}/invites/${encodeURIComponent(inviteId)}/revoke`);
+}
+
+export async function fetchServerOwnerData(serverId: string) {
+  const [members, invites] = await Promise.all([
+    fetchServerMembers(serverId),
+    apiGet<{ invites: OwnerInvite[] }>(`/api/servers/${encodeURIComponent(serverId)}/invites`)
+  ]);
+  return { users: members.members, invites: invites.invites };
+}
+
 export async function fetchOwnerData() {
   const [users, invites, sessions] = await Promise.all([
     apiGet<{ users: PublicUser[] }>("/api/owner/users"),
@@ -106,6 +150,22 @@ export async function fetchOwnerData() {
 
 export async function banUser(userId: string) {
   await apiPost<void>(`/api/owner/users/${userId}/ban`);
+}
+
+export async function moderateServerMember(serverId: string, userId: string, action: "ban" | "unban" | "kick") {
+  await apiPost<void>(`/api/servers/${encodeURIComponent(serverId)}/members/${encodeURIComponent(userId)}/${action}`);
+}
+
+export async function createAccessLink(serverId: string, userId: string) {
+  return apiPost<{ token: string; expiresAt: string }>(
+    `/api/servers/${encodeURIComponent(serverId)}/members/${encodeURIComponent(userId)}/access-links`
+  );
+}
+
+export async function disconnectVoiceMember(serverId: string, roomId: string, userId: string) {
+  await apiPost<void>(
+    `/api/servers/${encodeURIComponent(serverId)}/voice/${encodeURIComponent(roomId)}/members/${encodeURIComponent(userId)}/disconnect`
+  );
 }
 
 export async function revokeSession(sessionId: string) {

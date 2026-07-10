@@ -14,25 +14,31 @@ import type {
 import {
   acceptInvite,
   ApiError,
-  banUser,
   claimOwnerSession,
-  createInvite,
+  claimAccessLink,
+  createServer,
+  createServerRoom,
+  createAccessLink,
+  createServerInvite,
   deleteMessage,
+  disconnectVoiceMember,
   fetchConfig,
   fetchMe,
   fetchMessages,
-  fetchOwnerData,
-  fetchRooms,
+  fetchServerOwnerData,
+  fetchServerRooms,
+  fetchServers,
   logout,
-  revokeInvite,
-  revokeSession,
+  revokeServerInvite,
+  moderateServerMember,
   sendMessage,
   updateMessage
 } from "./api.js";
 import { createVoxlySocket, type VoxlySocket } from "./socket.js";
-import type { AppConfigResponse, OwnerInvite, OwnerSession } from "./types.js";
+import type { AppConfigResponse, OwnerInvite, ServerMember, ServerSummary } from "./types.js";
+import { connectAudioOutput, type AudioOutput } from "./lib/audioOutput.js";
 import { controlPresentation, type VoiceControls } from "./lib/voiceControls.js";
-import { getInviteTokenFromPath, getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "./lib/navigation.js";
+import { defaultServerId, getAccessClaimTokenFromHash, getInviteTokenFromPath, getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "./lib/navigation.js";
 import { buildInviteUrl, inviteReference, resolveInviteOrigin } from "./lib/invites.js";
 import { messageDeleteFailureCopy, messagePermissions } from "./lib/messages.js";
 import { useVoiceMedia } from "./lib/useVoiceMedia.js";
@@ -60,9 +66,10 @@ type Route =
   | { name: "landing" }
   | { name: "invite"; token: string }
   | { name: "owner-claim"; token: string }
-  | { name: "text"; roomId: string }
-  | { name: "voice"; roomId: string }
-  | { name: "owner" };
+  | { name: "access-claim"; token: string }
+  | { name: "text"; serverId: string; roomId: string }
+  | { name: "voice"; serverId: string; roomId: string }
+  | { name: "owner"; serverId: string };
 
 type LoadState = "loading" | "ready" | "error";
 type ThemeChoice = "auto" | "light" | "dark";
@@ -76,9 +83,10 @@ export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
   const [user, setUser] = useState<PublicUser | null>(null);
   const [authState, setAuthState] = useState<LoadState>("loading");
+  const [servers, setServers] = useState<ServerSummary[]>([]);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [messagesByRoom, setMessagesByRoom] = useState<Record<string, ChatMessage[]>>({});
-  const [onlineUsers, setOnlineUsers] = useState<PresenceUser[]>([]);
+  const [onlineUsersByServer, setOnlineUsersByServer] = useState<Record<string, PresenceUser[]>>({});
   const [socketState, setSocketState] = useState<"connecting" | "live" | "reconnecting" | "offline">("connecting");
   const [socketInstance, setSocketInstance] = useState<VoxlySocket | null>(null);
   const [appConfig, setAppConfig] = useState<AppConfigResponse>({ publicUrl: null, rtc: { iceServers: [] }, turnstile: null });
@@ -87,10 +95,21 @@ export function App() {
   const [language, setLanguage] = useState<LanguageCode>(() => readLanguageChoice());
   const socketRef = useRef<VoxlySocket | null>(null);
   const t = useCallback<Translate>((key, values) => translate(language, key, values), [language]);
+  const activeServerId = route.name === "text" || route.name === "voice" || route.name === "owner"
+    ? route.serverId
+    : servers[0]?.id ?? defaultServerId;
+  const onlineUsers = onlineUsersByServer[activeServerId] ?? (user ? [presenceFromUser(user)] : []);
   const voiceRoomIds = useMemo(() => rooms.filter((room) => room.kind === "voice").map((room) => room.id), [rooms]);
   const voice = useVoiceMedia({ socket: socketInstance, user, iceServers: appConfig.rtc.iceServers, voiceRoomIds });
+  const activeVoiceRoomRef = useRef<string | null>(voice.activeRoomId);
+  const leaveVoiceRef = useRef<() => void>(voice.leave);
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
   const [screenVolumes, setScreenVolumes] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    activeVoiceRoomRef.current = voice.activeRoomId;
+    leaveVoiceRef.current = voice.leave;
+  }, [voice.activeRoomId, voice.leave]);
 
   useEffect(() => {
     setMemberVolumes(user ? readUserVolumes(user.id) : {});
@@ -124,7 +143,7 @@ export function App() {
 
   const handleOwnerClaimed = useCallback((claimedUser: PublicUser) => {
     setUser(claimedUser);
-    navigate("/owner");
+    navigate(`/app/server/${defaultServerId}/owner`);
   }, [navigate]);
 
   useEffect(() => {
@@ -163,16 +182,13 @@ export function App() {
         if (!isMounted) return;
         setUser(response.user);
         setAuthState("ready");
-        if (window.location.pathname === "/" || route.name === "landing" || route.name === "invite") {
-          navigate(resolveInitialRoute({ isAuthenticated: true, inviteToken: null }));
-        }
       })
       .catch((error: unknown) => {
         if (!isMounted) return;
         if (error instanceof ApiError && error.status === 401) {
           setUser(null);
           setAuthState("ready");
-          if (route.name !== "landing" && route.name !== "invite" && route.name !== "owner-claim") {
+          if (route.name !== "landing" && route.name !== "invite" && route.name !== "owner-claim" && route.name !== "access-claim") {
             navigate(resolveInitialRoute({ isAuthenticated: false, inviteToken: getInviteTokenFromPath(window.location.pathname) || null }));
           }
           return;
@@ -189,20 +205,40 @@ export function App() {
     if (!user) return;
 
     let isMounted = true;
-    fetchRooms()
+    fetchServers()
       .then((response) => {
-        if (isMounted) {
-          setRooms(response.rooms);
+        if (!isMounted) return;
+        setServers(response.servers);
+        if ((route.name === "landing" || route.name === "invite") && response.servers[0]) {
+          void fetchServerRooms(response.servers[0].id).then((roomsResponse) => {
+            const target = roomsResponse.rooms.find((room) => room.kind === "text") ?? roomsResponse.rooms[0];
+            if (target && isMounted) navigate(`/app/server/${response.servers[0].id}/${target.kind}/${target.id}`);
+          });
         }
       })
       .catch(() => {
-        if (isMounted) setRooms([]);
+        if (isMounted) setServers([]);
       });
 
     return () => {
       isMounted = false;
     };
-  }, [user]);
+  }, [navigate, route.name, user]);
+
+  useEffect(() => {
+    if (!user || !activeServerId) return;
+    let isMounted = true;
+    fetchServerRooms(activeServerId)
+      .then((response) => {
+        if (isMounted) setRooms(response.rooms);
+      })
+      .catch(() => {
+        if (isMounted) setRooms([]);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [activeServerId, user]);
 
   useEffect(() => {
     if (!user || route.name !== "text") return;
@@ -229,7 +265,7 @@ export function App() {
       socketRef.current?.disconnect();
       socketRef.current = null;
       setSocketInstance(null);
-      setOnlineUsers([]);
+      setOnlineUsersByServer({});
       return;
     }
 
@@ -241,12 +277,20 @@ export function App() {
     socket.on("connect", () => setSocketState("live"));
     socket.io.on("reconnect_attempt", () => setSocketState("reconnecting"));
     socket.on("disconnect", () => setSocketState("offline"));
-    socket.on("presence:snapshot", (users) => setOnlineUsers(includeCurrentPresence(users, user)));
-    socket.on("presence:online", (presenceUser) => {
-      setOnlineUsers((current) => upsertPresence(current, presenceUser, user));
+    socket.on("presence:serverSnapshot", ({ serverId, users }) => {
+      setOnlineUsersByServer((current) => ({ ...current, [serverId]: includeCurrentPresence(users, user) }));
     });
-    socket.on("presence:offline", (userId) => {
-      setOnlineUsers((current) => current.filter((item) => item.userId !== userId));
+    socket.on("presence:serverOnline", ({ serverId, user: presenceUser }) => {
+      setOnlineUsersByServer((current) => ({
+        ...current,
+        [serverId]: upsertPresence(current[serverId] ?? [presenceFromUser(user)], presenceUser, user)
+      }));
+    });
+    socket.on("presence:serverOffline", ({ serverId, userId }) => {
+      setOnlineUsersByServer((current) => ({
+        ...current,
+        [serverId]: (current[serverId] ?? []).filter((item) => item.userId !== userId)
+      }));
     });
     socket.on("message:new", (message) => {
       setMessagesByRoom((current) => ({
@@ -265,6 +309,16 @@ export function App() {
         ...current,
         [roomId]: (current[roomId] ?? []).filter((message) => message.id !== messageId)
       }));
+    });
+    socket.on("voice:forceLeave", ({ roomId }) => {
+      if (activeVoiceRoomRef.current === roomId) leaveVoiceRef.current();
+    });
+    socket.on("server:accessRevoked", ({ serverId }) => {
+      setOnlineUsersByServer((current) => {
+        const next = { ...current };
+        delete next[serverId];
+        return next;
+      });
     });
 
     return () => {
@@ -297,7 +351,7 @@ export function App() {
 
   const currentRoom = rooms.find((room) => {
     if (route.name === "text" || route.name === "voice") {
-      return room.id === route.roomId;
+      return room.id === route.roomId && room.serverId === route.serverId;
     }
     return false;
   });
@@ -323,6 +377,10 @@ export function App() {
         onClaimed={handleOwnerClaimed}
       />
     );
+  }
+
+  if (route.name === "access-claim") {
+    return <AccessClaimScreen token={route.token} t={t} onNavigate={navigate} onClaimed={(claimedUser) => setUser(claimedUser)} />;
   }
 
   if (!user && route.name === "landing") {
@@ -364,9 +422,12 @@ export function App() {
           saveLanguageChoice(nextLanguage);
           setLanguage(nextLanguage);
         }}
-        onAccepted={(acceptedUser) => {
+        onAccepted={(acceptedUser, serverId) => {
           setUser(acceptedUser);
-          navigate("/app/text/general");
+          void fetchServerRooms(serverId).then((response) => {
+            const target = response.rooms.find((room) => room.kind === "text") ?? response.rooms[0];
+            if (target) navigate(`/app/server/${serverId}/${target.kind}/${target.id}`);
+          });
         }}
       />
     );
@@ -375,6 +436,8 @@ export function App() {
   const shellProps = {
     user,
     route,
+    servers,
+    activeServerId,
     rooms: roomGroups,
     onlineUsers,
     socketState,
@@ -394,6 +457,29 @@ export function App() {
     memberVolumes,
     screenVolumes,
     onNavigate: navigate,
+    onSelectServer: async (serverId: string) => {
+      const response = await fetchServerRooms(serverId);
+      const target = response.rooms.find((room) => room.kind === "text") ?? response.rooms[0];
+      if (target) navigate(serverPath(serverId, target.kind, target.id));
+    },
+    onCreateServer: async (name: string) => {
+      const response = await createServer(name);
+      setServers((current) => [...current, response.server]);
+      const roomsResponse = await fetchServerRooms(response.server.id);
+      const target = roomsResponse.rooms.find((room) => room.kind === "text") ?? roomsResponse.rooms[0];
+      if (target) navigate(serverPath(response.server.id, target.kind, target.id));
+    },
+    onCreateRoom: async (name: string, kind: "text" | "voice") => {
+      const response = await createServerRoom(activeServerId, name, kind);
+      setRooms((current) => [...current, response.room].sort((left, right) => left.position - right.position));
+      navigate(serverPath(activeServerId, response.room.kind, response.room.id));
+    },
+    onModerateMember: async (userId: string, action: "ban" | "unban" | "kick") => {
+      await moderateServerMember(activeServerId, userId, action);
+    },
+    onDisconnectMember: async (roomId: string, userId: string) => {
+      await disconnectVoiceMember(activeServerId, roomId, userId);
+    },
     onDrawerChange: setDrawer,
     onThemeChange: (nextTheme: ThemeChoice) => {
       saveThemeChoice(nextTheme);
@@ -557,6 +643,8 @@ function InviteRequiredScreen({ language, t, onLanguageChange, onNavigate }: { l
 interface ShellProps {
   user: PublicUser;
   route: Route;
+  servers: ServerSummary[];
+  activeServerId: string;
   rooms: { text: RoomSummary[]; voice: RoomSummary[] };
   onlineUsers: PresenceUser[];
   socketState: "connecting" | "live" | "reconnecting" | "offline";
@@ -576,6 +664,11 @@ interface ShellProps {
   t: Translate;
   currentRoom: RoomSummary | undefined;
   onNavigate: (path: string) => void;
+  onSelectServer: (serverId: string) => Promise<void>;
+  onCreateServer: (name: string) => Promise<void>;
+  onCreateRoom: (name: string, kind: "text" | "voice") => Promise<void>;
+  onModerateMember: (userId: string, action: "ban" | "unban" | "kick") => Promise<void>;
+  onDisconnectMember: (roomId: string, userId: string) => Promise<void>;
   onDrawerChange: (drawer: Drawer) => void;
   onThemeChange: (theme: ThemeChoice) => void;
   onLanguageChange: (language: LanguageCode) => void;
@@ -631,7 +724,7 @@ function TextRoomScreen(props: ShellProps & {
           title={`#${props.currentRoom?.name ?? "lobby"}`}
           subtitle={props.t("room.generalTalk")}
           actionLabel={props.t("room.joinVoice")}
-          onAction={() => props.onNavigate(`/app/voice/${props.rooms.voice[0]?.id ?? "lobby"}`)}
+          onAction={() => props.onNavigate(serverPath(props.activeServerId, "voice", props.rooms.voice[0]?.id ?? "lobby"))}
           t={props.t}
         />
         <section className="message-list" ref={listRef} aria-label={props.t("room.messages")}>
@@ -772,7 +865,7 @@ function VoiceRoomScreen(props: ShellProps) {
           title={props.currentRoom?.name ?? props.t("room.lobbyVoice")}
           subtitle={props.t("room.pushToMute", { count: connectedCount })}
           actionLabel={props.t("room.openChat")}
-          onAction={() => props.onNavigate(`/app/text/${props.rooms.text[0]?.id ?? "general"}`)}
+          onAction={() => props.onNavigate(serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general"))}
           t={props.t}
         />
         {hasVoiceActivity ? (
@@ -869,21 +962,21 @@ function VoiceRoomScreen(props: ShellProps) {
 }
 
 function OwnerPanel(props: ShellProps) {
-  const [users, setUsers] = useState<PublicUser[]>([]);
+  const [users, setUsers] = useState<ServerMember[]>([]);
   const [invites, setInvites] = useState<OwnerInvite[]>([]);
-  const [sessions, setSessions] = useState<OwnerSession[]>([]);
   const [expiry, setExpiry] = useState(24);
   const [inviteLabel, setInviteLabel] = useState("");
   const [newInvite, setNewInvite] = useState<{ id: string; token: string; label: string } | null>(null);
+  const [accessLink, setAccessLink] = useState<{ nickname: string; token: string; expiresAt: string } | null>(null);
   const [status, setStatus] = useState("");
+  const [pendingAction, setPendingAction] = useState<{ title: string; copy: string; confirmLabel: string; perform: () => Promise<void> } | null>(null);
   const newInviteUrl = newInvite ? buildInviteUrl(newInvite.token, resolveInviteOrigin(props.appConfig.publicUrl, window.location.origin)) : "";
 
   const reload = useCallback(async () => {
-    const data = await fetchOwnerData();
+    const data = await fetchServerOwnerData(props.activeServerId);
     setUsers(data.users);
     setInvites(data.invites);
-    setSessions(data.sessions);
-  }, []);
+  }, [props.activeServerId]);
 
   useEffect(() => {
     reload().catch(() => setStatus(props.t("owner.dataError")));
@@ -896,7 +989,7 @@ function OwnerPanel(props: ShellProps) {
       setStatus(props.t("owner.inviteLabelRequired"));
       return;
     }
-    const response = await createInvite(label, expiry);
+    const response = await createServerInvite(props.activeServerId, label, expiry);
     setNewInvite({ id: response.invite.id, token: response.invite.token, label: response.invite.label });
     setInviteLabel("");
     setStatus(props.t("owner.created"));
@@ -906,11 +999,10 @@ function OwnerPanel(props: ShellProps) {
   return (
     <div className="owner-shell">
       <aside className="owner-nav">
-        <BrandLockup subtitle={props.t("owner.panel")} href="/app/text/general" onNavigate={props.onNavigate} />
+        <BrandLockup subtitle={props.t("owner.panel")} href={serverPath(props.activeServerId, "text", "general")} onNavigate={props.onNavigate} />
         <section className="rail-section">
-          <a className="channel-item is-active" href="#invites"><span className="channel-prefix">01</span><span>{props.t("owner.invites")}</span><span /></a>
-          <a className="channel-item" href="#users"><span className="channel-prefix">02</span><span>{props.t("common.users")}</span><span /></a>
-          <a className="channel-item" href="#sessions"><span className="channel-prefix">03</span><span>{props.t("common.sessions")}</span><span /></a>
+          <a className="channel-item is-active" href="#invites"><span>{props.t("owner.invites")}</span><span /></a>
+          <a className="channel-item" href="#users"><span>{props.t("common.users")}</span><span /></a>
         </section>
         <section className="session-card">
           <span className="label">{props.t("owner.access")}</span>
@@ -925,7 +1017,7 @@ function OwnerPanel(props: ShellProps) {
             <h1>{props.t("owner.title")}</h1>
             <p className="muted">{props.t("owner.heroCopy")}</p>
           </div>
-          <NavLink className="btn" href="/app/text/general" onNavigate={props.onNavigate}>
+          <NavLink className="btn" href={serverPath(props.activeServerId, "text", "general")} onNavigate={props.onNavigate}>
             <ChatIcon />
             <span>{props.t("common.backToChat")}</span>
           </NavLink>
@@ -981,16 +1073,16 @@ function OwnerPanel(props: ShellProps) {
                 <span>{invite.usedAt ? props.t("status.claimed") : invite.revokedAt ? props.t("status.revoked") : props.t("status.oneUseLeft")}</span>
                 <span>{formatShortDate(invite.expiresAt, props.language, props.t)}</span>
                 <span>
-                  <button className="btn btn-danger" type="button" disabled={Boolean(invite.usedAt || invite.revokedAt)} onClick={async () => {
-                    if (!window.confirm(props.t("owner.revokeConfirm"))) return;
-                    try {
+                  <button className="btn btn-danger" type="button" disabled={Boolean(invite.usedAt || invite.revokedAt)} onClick={() => setPendingAction({
+                    title: "Revoke invite?",
+                    copy: props.t("owner.revokeConfirm"),
+                    confirmLabel: props.t("common.revoke"),
+                    perform: async () => {
                       setStatus("");
-                      await revokeInvite(invite.id);
+                      await revokeServerInvite(props.activeServerId, invite.id);
                       await reload();
-                    } catch {
-                      setStatus(props.t("owner.revokeFailed"));
                     }
-                  }}>
+                  })}>
                     <TrashIcon />
                     <span>{props.t("common.revoke")}</span>
                   </button>
@@ -1008,10 +1100,40 @@ function OwnerPanel(props: ShellProps) {
                 <span>{item.role === "owner" ? props.t("common.owner") : props.t("common.member")}</span>
                 <span><StatusPill tone={item.bannedAt ? "danger" : "online"}>{item.bannedAt ? props.t("common.banned") : props.t("common.online")}</StatusPill></span>
                 <span>
-                  <button className="btn btn-danger" type="button" disabled={item.role === "owner" || Boolean(item.bannedAt)} onClick={async () => { if (!window.confirm(props.t("owner.banConfirm", { nickname: item.nickname }))) return; await banUser(item.id); await reload(); }}>
-                    <ShieldIcon />
-                    <span>{props.t("common.ban")}</span>
-                  </button>
+                  {item.role !== "owner" ? <>
+                    <button className="btn btn-ghost" type="button" onClick={async () => {
+                      try {
+                        const response = await createAccessLink(props.activeServerId, item.id);
+                        setAccessLink({ nickname: item.nickname, token: response.token, expiresAt: response.expiresAt });
+                      } catch {
+                        setStatus("Access link could not be created.");
+                      }
+                    }}><CopyIcon /><span>Access link</span></button>
+                    <button className="btn btn-danger" type="button" onClick={() => {
+                      const action = item.bannedAt ? "unban" : "ban";
+                      setPendingAction({
+                        title: action === "ban" ? `Ban ${item.nickname}?` : `Unban ${item.nickname}?`,
+                        copy: action === "ban" ? props.t("owner.banConfirm", { nickname: item.nickname }) : "This restores the member's access to this server.",
+                        confirmLabel: action === "ban" ? props.t("common.ban") : "Unban",
+                        perform: async () => {
+                          await moderateServerMember(props.activeServerId, item.id, action);
+                          await reload();
+                        }
+                      });
+                    }}>
+                      <ShieldIcon />
+                      <span>{item.bannedAt ? "Unban" : props.t("common.ban")}</span>
+                    </button>
+                    {!item.bannedAt ? <button className="btn btn-danger" type="button" onClick={() => setPendingAction({
+                      title: `Kick ${item.nickname}?`,
+                      copy: "The member can return only with a new invite.",
+                      confirmLabel: "Kick",
+                      perform: async () => {
+                        await moderateServerMember(props.activeServerId, item.id, "kick");
+                        await reload();
+                      }
+                    })}><LeaveIcon /><span>Kick</span></button> : null}
+                  </> : null}
                 </span>
               </div>
             ))}
@@ -1022,23 +1144,26 @@ function OwnerPanel(props: ShellProps) {
             <div className="invite-status is-valid"><strong>{props.t("owner.normalView")}</strong><span className="muted small">{props.t("owner.normalViewCopy")}</span></div>
           </section>
         </section>
-        <section className="table-card" id="sessions">
-          <div className="table-head"><span>{props.t("common.session")}</span><span>{props.t("common.user")}</span><span>{props.t("common.state")}</span><span>{props.t("common.actions")}</span></div>
-          {sessions.map((session) => (
-            <div className="table-row" key={session.id}>
-              <span className="mono">{session.id.slice(0, 8)}</span>
-              <span>{session.nickname}</span>
-              <span><StatusPill tone={session.revokedAt ? "danger" : "live"}>{session.revokedAt ? props.t("common.revoked") : props.t("common.active")}</StatusPill></span>
-              <span>
-                <button className="btn btn-danger" type="button" disabled={Boolean(session.revokedAt)} onClick={async () => { if (!window.confirm(props.t("owner.endSessionConfirm", { nickname: session.nickname }))) return; await revokeSession(session.id); await reload(); }}>
-                  <LeaveIcon />
-                  <span>{props.t("common.end")}</span>
-                </button>
-              </span>
-            </div>
-          ))}
-        </section>
+        {accessLink ? (
+          <section className="owner-card access-link-card" aria-live="polite">
+            <h2>Access link for {accessLink.nickname}</h2>
+            <p className="mono">{`${resolveInviteOrigin(props.appConfig.publicUrl, window.location.origin)}/access/claim#token=${accessLink.token}`}</p>
+            <p className="muted small">Expires {formatShortDate(accessLink.expiresAt, props.language, props.t)}. It can be used once.</p>
+            <button className="btn btn-ghost" type="button" onClick={() => void navigator.clipboard?.writeText(`${resolveInviteOrigin(props.appConfig.publicUrl, window.location.origin)}/access/claim#token=${accessLink.token}`)}><CopyIcon /><span>{props.t("common.copy")}</span></button>
+          </section>
+        ) : null}
         <p className="error-text" aria-live="polite">{status}</p>
+        {pendingAction ? <ConfirmDialog
+          title={pendingAction.title}
+          copy={pendingAction.copy}
+          confirmLabel={pendingAction.confirmLabel}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={() => {
+            const action = pendingAction;
+            setPendingAction(null);
+            void action.perform().catch(() => setStatus("This action could not be completed."));
+          }}
+        /> : null}
       </main>
     </div>
   );
@@ -1060,7 +1185,7 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
           <MenuIcon />
           <span>{props.t("common.rooms")}</span>
         </button>
-        <BrandLockup title={props.mobileTitle} subtitle={props.t("common.connected", { count: onlineCount })} href="/app/text/general" onNavigate={props.onNavigate} />
+        <BrandLockup title={props.mobileTitle} subtitle={props.t("common.connected", { count: onlineCount })} href={serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general")} onNavigate={props.onNavigate} />
         <button className="icon-btn" type="button" onClick={() => props.onDrawerChange(props.drawer === "members" ? null : "members")} aria-label={props.t("common.users")}>
           <UsersIcon />
           <span>{props.t("common.users")}</span>
@@ -1069,7 +1194,16 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
       <div className={`app-shell drawer-${props.drawer ?? "none"}`}>
         <ChannelRail {...props} />
         {props.children}
-        <MemberPanel users={props.onlineUsers} activeVoiceRoomId={props.activeVoiceRoomId} t={props.t} />
+        <MemberPanel
+          users={props.onlineUsers}
+          voiceRooms={props.rooms.voice}
+          voiceSnapshots={props.voiceSnapshots}
+          currentUser={props.user}
+          canModerate={props.user.role === "owner"}
+          onModerate={props.onModerateMember}
+          onDisconnect={props.onDisconnectMember}
+          t={props.t}
+        />
       </div>
       <VoiceDock {...props} connectedCount={voiceConnectedCount} />
       <Toast message={props.voiceError} />
@@ -1080,22 +1214,29 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
 function ChannelRail(props: ShellProps) {
   return (
     <aside className="rail">
-      <BrandLockup href="/app/text/general" onNavigate={props.onNavigate} />
+      <BrandLockup href={serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general")} onNavigate={props.onNavigate} />
+      <ServerSwitcher
+        activeServerId={props.activeServerId}
+        servers={props.servers}
+        canCreate={props.user.role === "owner"}
+        onSelect={props.onSelectServer}
+        onCreate={props.onCreateServer}
+      />
       <section className="rail-section">
-        <div className="rail-section-head"><span className="label">{props.t("room.textRooms")}</span><span className="badge">{props.rooms.text.length}</span></div>
+        <div className="rail-section-head"><span className="label">{props.t("room.textRooms")}</span><span className="badge">{props.rooms.text.length}</span>{props.user.role === "owner" ? <ChannelCreateControl kind="text" onCreate={props.onCreateRoom} /> : null}</div>
         {props.rooms.text.map((room) => (
-          <NavLink className={`channel-item ${props.route.name === "text" && props.route.roomId === room.id ? "is-active" : ""}`} href={`/app/text/${room.id}`} key={room.id} onNavigate={props.onNavigate}>
+            <NavLink className={`channel-item ${props.route.name === "text" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "text", room.id)} key={room.id} onNavigate={props.onNavigate}>
             <span className="channel-prefix">#</span><span>{room.name}</span><span className="badge">0</span>
           </NavLink>
         ))}
       </section>
       <section className="rail-section">
-        <div className="rail-section-head"><span className="label">{props.t("room.voiceRooms")}</span><span className="badge">{props.rooms.voice.length}</span></div>
+        <div className="rail-section-head"><span className="label">{props.t("room.voiceRooms")}</span><span className="badge">{props.rooms.voice.length}</span>{props.user.role === "owner" ? <ChannelCreateControl kind="voice" onCreate={props.onCreateRoom} /> : null}</div>
         {props.rooms.voice.map((room) => {
           const members = voiceMembersForRoom(props, room.id);
           return (
             <div className="voice-channel-block" key={room.id}>
-              <NavLink className={`channel-item ${props.route.name === "voice" && props.route.roomId === room.id ? "is-active" : ""}`} href={`/app/voice/${room.id}`} onNavigate={props.onNavigate}>
+              <NavLink className={`channel-item ${props.route.name === "voice" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "voice", room.id)} onNavigate={props.onNavigate}>
                 <span className="channel-prefix">vc</span><span>{room.name}</span><span className="badge">{members.length}</span>
               </NavLink>
               {members.length > 0 ? (
@@ -1126,7 +1267,112 @@ function ChannelRail(props: ShellProps) {
   );
 }
 
-function MemberPanel({ users, activeVoiceRoomId, t }: { users: PresenceUser[]; activeVoiceRoomId: string | null; t: Translate }) {
+function ServerSwitcher({
+  activeServerId,
+  servers,
+  canCreate,
+  onSelect,
+  onCreate
+}: {
+  activeServerId: string;
+  servers: ServerSummary[];
+  canCreate: boolean;
+  onSelect: (serverId: string) => Promise<void>;
+  onCreate: (name: string) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState("");
+
+  return (
+    <section className="server-switcher" aria-label="Server switcher">
+      <label className="form-field" htmlFor="serverSelect">
+        <span className="label">Server</span>
+        <select
+          className="input"
+          id="serverSelect"
+          value={activeServerId}
+          onChange={(event) => { void onSelect(event.currentTarget.value); }}
+        >
+          {servers.map((server) => <option key={server.id} value={server.id}>{server.name}</option>)}
+        </select>
+      </label>
+      {canCreate ? (
+        <details className="server-create-disclosure">
+          <summary><PlusIcon /><span>Create server</span></summary>
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            const nextName = name.trim();
+            if (!nextName) {
+              setError("Enter a server name.");
+              return;
+            }
+            setIsCreating(true);
+            setError("");
+            void onCreate(nextName)
+              .then(() => setName(""))
+              .catch(() => setError("Server could not be created."))
+              .finally(() => setIsCreating(false));
+          }}>
+            <label className="form-field" htmlFor="serverName"><span>Server name</span><input className="input" id="serverName" name="serverName" value={name} onChange={(event) => setName(event.currentTarget.value)} autoComplete="off" maxLength={64} /></label>
+            <p className="error-text" aria-live="polite">{error}</p>
+            <button className="btn btn-primary" type="submit" disabled={isCreating}><span>{isCreating ? "Creating…" : "Create server"}</span></button>
+          </form>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
+function ChannelCreateControl({ kind, onCreate }: { kind: "text" | "voice"; onCreate: (name: string, kind: "text" | "voice") => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [isBusy, setIsBusy] = useState(false);
+  return (
+    <details className="channel-create-disclosure">
+      <summary aria-label={`Create ${kind} channel`}><PlusIcon /></summary>
+      <form onSubmit={(event) => {
+        event.preventDefault();
+        const nextName = name.trim();
+        if (!nextName) return;
+        setIsBusy(true);
+        void onCreate(nextName, kind).finally(() => {
+          setName("");
+          setIsBusy(false);
+        });
+      }}>
+        <label className="form-field"><span>{kind === "text" ? "Text channel name" : "Voice channel name"}</span><input className="input" name={`${kind}ChannelName`} value={name} onChange={(event) => setName(event.currentTarget.value)} maxLength={64} autoComplete="off" /></label>
+        <button className="btn btn-primary" type="submit" disabled={isBusy}>{isBusy ? "Creating…" : "Create"}</button>
+      </form>
+    </details>
+  );
+}
+
+function MemberPanel({
+  users,
+  voiceRooms,
+  voiceSnapshots,
+  currentUser,
+  canModerate,
+  onModerate,
+  onDisconnect,
+  t
+}: {
+  users: PresenceUser[];
+  voiceRooms: RoomSummary[];
+  voiceSnapshots: Record<string, VoiceSnapshot>;
+  currentUser: PublicUser;
+  canModerate: boolean;
+  onModerate: (userId: string, action: "ban" | "unban" | "kick") => Promise<void>;
+  onDisconnect: (roomId: string, userId: string) => Promise<void>;
+  t: Translate;
+}) {
+  const roomByMemberId = new Map<string, RoomSummary>();
+  const [pendingAction, setPendingAction] = useState<{ user: PresenceUser; roomId?: string; action: "disconnect" | "ban" | "kick" } | null>(null);
+  for (const room of voiceRooms) {
+    for (const member of voiceSnapshots[room.id]?.members ?? []) {
+      roomByMemberId.set(member.user.userId, room);
+    }
+  }
   return (
     <aside className="member-panel">
       <section className="member-section">
@@ -1134,14 +1380,41 @@ function MemberPanel({ users, activeVoiceRoomId, t }: { users: PresenceUser[]; a
         {users.length === 0 ? (
           <p className="muted small">{t("room.presenceWaiting")}</p>
         ) : (
-          users.map((user, index) => (
+          users.map((user) => {
+            const voiceRoom = roomByMemberId.get(user.userId);
+            return (
             <div className="member-row" key={user.userId}>
               <span className={`avatar ${user.role === "owner" ? "owner" : ""}`}>{initial(user.nickname)}</span>
-              <span className="member-copy"><strong>{user.nickname}</strong><span>{activeVoiceRoomId && index === 0 ? t("room.inLobby") : t("common.online")}</span></span>
+              <span className="member-copy"><strong>{user.nickname}</strong><span>{voiceRoom ? `${t("room.inLobby")}, ${voiceRoom.name}` : t("common.online")}</span></span>
+              {user.userId !== currentUser.id && (voiceRoom || canModerate) ? (
+                <details className="member-action-menu">
+                  <summary aria-label={`Actions for ${user.nickname}`}><MoreIcon /></summary>
+                  <div className="member-action-panel">
+                    {voiceRoom && canModerate ? <button className="btn btn-ghost" type="button" onClick={() => setPendingAction({ user, roomId: voiceRoom.id, action: "disconnect" })}>Disconnect from voice</button> : null}
+                    {canModerate ? <>
+                      <button className="btn btn-danger" type="button" onClick={() => setPendingAction({ user, action: "kick" })}>Kick from server</button>
+                      <button className="btn btn-danger" type="button" onClick={() => setPendingAction({ user, action: "ban" })}>Ban from server</button>
+                    </> : null}
+                  </div>
+                </details>
+              ) : null}
             </div>
-          ))
+            );
+          })
         )}
       </section>
+      {pendingAction ? <ConfirmDialog
+        title={pendingAction.action === "disconnect" ? `Disconnect ${pendingAction.user.nickname}?` : `${pendingAction.action === "kick" ? "Kick" : "Ban"} ${pendingAction.user.nickname}?`}
+        copy={pendingAction.action === "disconnect" ? "This removes the member from voice without changing server membership." : pendingAction.action === "kick" ? "The member can return only with a new invite." : "The member loses access to this server until unbanned."}
+        confirmLabel={pendingAction.action === "disconnect" ? "Disconnect" : pendingAction.action === "kick" ? "Kick" : "Ban"}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={() => {
+          const action = pendingAction;
+          setPendingAction(null);
+          if (action.action === "disconnect" && action.roomId) void onDisconnect(action.roomId, action.user.userId);
+          if (action.action === "kick" || action.action === "ban") void onModerate(action.user.userId, action.action);
+        }}
+      /> : null}
     </aside>
   );
 }
@@ -1158,6 +1431,7 @@ function RoomHeader({ title, subtitle, actionLabel, onAction }: { title: string;
 }
 
 function VoiceDock(props: ShellProps & { connectedCount: number }) {
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
   const roomName = props.activeVoiceRoomId ? props.t("room.lobbyVoice") : props.t("common.offline");
   const canJoinCurrentVoice = !props.activeVoiceRoomId && props.route.name === "voice";
   const micControl = controlPresentation("mic", props.controls);
@@ -1186,16 +1460,50 @@ function VoiceDock(props: ShellProps & { connectedCount: number }) {
       </div>
       <div className="dock-self">
         {props.user.role === "owner" ? (
-          <NavLink className="btn btn-ghost" href="/owner" onNavigate={props.onNavigate}><ShieldIcon /><span>{props.t("owner.panel")}</span></NavLink>
+          <NavLink className="btn btn-ghost" href={`/app/server/${encodeURIComponent(props.activeServerId)}/owner`} onNavigate={props.onNavigate}><ShieldIcon /><span>{props.t("owner.panel")}</span></NavLink>
         ) : null}
-        <button className="btn btn-ghost" type="button" onClick={props.onLogout}>{props.t("common.logout")}</button>
-        <span className={`avatar ${props.user.role === "owner" ? "owner" : ""}`} title={props.user.nickname}>{initial(props.user.nickname)}</span>
+        <details className="account-menu">
+          <summary aria-label={`${props.user.nickname} account menu`}>
+            <span className={`avatar ${props.user.role === "owner" ? "owner" : ""}`} title={props.user.nickname}>{initial(props.user.nickname)}</span>
+          </summary>
+          <div className="account-menu-panel">
+            <strong>{props.user.nickname}</strong>
+            <button className="btn btn-danger" type="button" onClick={() => setConfirmingLogout(true)}>{props.t("common.logout")}</button>
+          </div>
+        </details>
       </div>
+      {confirmingLogout ? <ConfirmDialog title="Sign out?" copy="You will need a new access link to return on this device." confirmLabel={props.t("common.logout")} onCancel={() => setConfirmingLogout(false)} onConfirm={() => { setConfirmingLogout(false); void props.onLogout(); }} /> : null}
     </footer>
   );
 }
 
-function InviteScreen({ initialToken, turnstileSiteKey, onAccepted, language, t, onLanguageChange }: { initialToken: string; turnstileSiteKey: string | null; onAccepted: (user: PublicUser) => void; language: LanguageCode; t: Translate; onLanguageChange: (language: LanguageCode) => void }) {
+function ConfirmDialog({ title, copy, confirmLabel, onCancel, onConfirm }: { title: string; copy: string; confirmLabel: string; onCancel: () => void; onConfirm: () => void }) {
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    cancelRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onCancel]);
+
+  return (
+    <div className="confirm-backdrop" role="presentation" onMouseDown={onCancel}>
+      <section className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmDialogTitle" onMouseDown={(event) => event.stopPropagation()}>
+        <h2 id="confirmDialogTitle">{title}</h2>
+        <p>{copy}</p>
+        <div className="confirm-actions">
+          <button className="btn btn-ghost" type="button" ref={cancelRef} onClick={onCancel}>Cancel</button>
+          <button className="btn btn-danger" type="button" onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function InviteScreen({ initialToken, turnstileSiteKey, onAccepted, language, t, onLanguageChange }: { initialToken: string; turnstileSiteKey: string | null; onAccepted: (user: PublicUser, serverId: string) => void; language: LanguageCode; t: Translate; onLanguageChange: (language: LanguageCode) => void }) {
   const [inviteToken, setInviteToken] = useState(initialToken);
   const [nickname, setNickname] = useState("");
   const [status, setStatus] = useState<"ready" | "loading" | "valid" | "danger">("ready");
@@ -1231,7 +1539,7 @@ function InviteScreen({ initialToken, turnstileSiteKey, onAccepted, language, t,
     try {
       const response = await acceptInvite(extractInviteToken(inviteToken), nickname.trim(), turnstileToken || undefined);
       setStatus("valid");
-      onAccepted(response.user);
+      onAccepted(response.user, response.serverId);
     } catch (error: unknown) {
       setStatus("danger");
       if (turnstileSiteKey) {
@@ -1376,6 +1684,41 @@ function OwnerClaimScreen({ token, language, t, onLanguageChange, onClaimed }: {
   );
 }
 
+function AccessClaimScreen({ token, t, onNavigate, onClaimed }: { token: string; t: Translate; onNavigate: (path: string) => void; onClaimed: (user: PublicUser) => void }) {
+  const [status, setStatus] = useState<"loading" | "danger">("loading");
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!token) {
+      setStatus("danger");
+      return;
+    }
+    claimAccessLink(token)
+      .then((response) => {
+        if (isMounted) onClaimed(response.user);
+      })
+      .catch(() => {
+        if (isMounted) setStatus("danger");
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [onClaimed, token]);
+
+  return (
+    <main className="invite-shell">
+      <section className="invite-card">
+        <BrandLockup />
+        <div className={`invite-status ${status === "danger" ? "is-danger" : "is-loading"}`} aria-live="polite">
+          <strong>{status === "danger" ? "Access link is invalid" : "Restoring your account…"}</strong>
+          <span className="muted small">{status === "danger" ? "Ask the server owner for a new access link." : "This secure link can be used once."}</span>
+        </div>
+        {status === "danger" ? <NavLink className="btn btn-primary full-width" href="/invite" onNavigate={onNavigate}><span>{t("landing.haveInvite")}</span></NavLink> : null}
+      </section>
+    </main>
+  );
+}
+
 function MessageItem({
   message,
   user,
@@ -1392,6 +1735,7 @@ function MessageItem({
   onDelete: (messageId: string) => Promise<void>;
 }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [draft, setDraft] = useState(message.body);
   const [isBusy, setIsBusy] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -1418,7 +1762,6 @@ function MessageItem({
   }
 
   async function deleteCurrentMessage() {
-    if (!window.confirm(t("room.deleteMessageConfirm"))) return;
     setIsBusy(true);
     setActionError("");
     try {
@@ -1440,7 +1783,7 @@ function MessageItem({
         </div>
         {isEditing ? (
           <div className="message-edit">
-            <textarea className="textarea" value={draft} rows={2} onChange={(event) => setDraft(event.target.value)} />
+            <textarea className="textarea" aria-label={t("common.edit")} value={draft} rows={2} onChange={(event) => setDraft(event.target.value)} />
             <div className="message-actions">
               <button className="btn btn-primary" type="button" disabled={isBusy} onClick={saveEdit}>{t("common.save")}</button>
               <button className="btn btn-ghost" type="button" disabled={isBusy} onClick={() => { setDraft(message.body); setIsEditing(false); }}>{t("common.cancel")}</button>
@@ -1452,11 +1795,21 @@ function MessageItem({
         {!isEditing && (permissions.canEdit || permissions.canDelete) ? (
           <div className="message-actions">
             {permissions.canEdit ? <button className="btn btn-ghost" type="button" disabled={isBusy} onClick={() => setIsEditing(true)}>{t("common.edit")}</button> : null}
-            {permissions.canDelete ? <button className="btn btn-danger" type="button" disabled={isBusy} onClick={deleteCurrentMessage}>{t("common.delete")}</button> : null}
+            {permissions.canDelete ? <button className="btn btn-danger" type="button" disabled={isBusy} onClick={() => setConfirmingDelete(true)}>{t("common.delete")}</button> : null}
           </div>
         ) : null}
         {actionError ? <p className="error-text" aria-live="polite">{actionError}</p> : null}
       </div>
+      {confirmingDelete ? <ConfirmDialog
+        title={t("room.deleteMessageConfirm")}
+        copy="This message will be permanently removed."
+        confirmLabel={t("common.delete")}
+        onCancel={() => setConfirmingDelete(false)}
+        onConfirm={() => {
+          setConfirmingDelete(false);
+          void deleteCurrentMessage();
+        }}
+      /> : null}
     </article>
   );
 }
@@ -1568,9 +1921,8 @@ function VolumeControl({ label, value, onChange }: { label: string; value: numbe
 
 function RemoteAudio({ stream, muted, volume }: { stream: MediaStream; muted: boolean; volume: number }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const contextRef = useRef<AudioContext | null>(null);
-  const gainRef = useRef<GainNode | null>(null);
-  const [useFallback, setUseFallback] = useState(true);
+  const outputRef = useRef<AudioOutput | null>(null);
+  const [useFallback, setUseFallback] = useState(false);
 
   useEffect(() => {
     if (stream.getAudioTracks().length === 0) {
@@ -1578,76 +1930,32 @@ function RemoteAudio({ stream, muted, volume }: { stream: MediaStream; muted: bo
       return;
     }
 
-    // Keep the native output mounted until Web Audio has actually reached a
-    // running state; a suspended context can otherwise make a new peer silent.
-    setUseFallback(true);
-
-    const AudioContextClass = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) {
-      setUseFallback(true);
-      return;
-    }
-
-    try {
-      const context = new AudioContextClass();
-      const source = context.createMediaStreamSource(stream);
-      const gain = context.createGain();
-      source.connect(gain).connect(context.destination);
-      contextRef.current = context;
-      gainRef.current = gain;
-      let isDisposed = false;
-      const resumeContext = () => {
-        void context.resume()
-          .then(() => {
-            if (!isDisposed) setUseFallback(false);
-          })
-          .catch(() => {
-            if (!isDisposed) setUseFallback(true);
-          });
-      };
-      resumeContext();
-      window.addEventListener("pointerdown", resumeContext);
-      window.addEventListener("keydown", resumeContext);
-
-      return () => {
-        isDisposed = true;
-        window.removeEventListener("pointerdown", resumeContext);
-        window.removeEventListener("keydown", resumeContext);
-        source.disconnect();
-        gain.disconnect();
-        gainRef.current = null;
-        contextRef.current = null;
-        void context.close().catch(() => undefined);
-      };
-    } catch {
-      setUseFallback(true);
-    }
+    const output = connectAudioOutput(stream);
+    outputRef.current = output;
+    setUseFallback(!output);
+    return () => {
+      output?.dispose();
+      outputRef.current = null;
+    };
   }, [stream]);
 
   useEffect(() => {
-    const gain = gainRef.current;
-    if (!gain) return;
-    gain.gain.value = muted ? 0 : volumeGain(volume);
-    void contextRef.current?.resume().catch(() => setUseFallback(true));
+    outputRef.current?.setVolume(muted, volume);
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = Math.min(1, volumeGain(volume));
+    audio.muted = muted;
   }, [muted, volume]);
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
-    const playFallback = () => {
-      audio.srcObject = stream;
-      audio.volume = Math.min(1, volumeGain(volume));
-      audio.muted = muted;
-      void audio.play().catch(() => undefined);
-    };
-    playFallback();
-    window.addEventListener("pointerdown", playFallback);
-    window.addEventListener("keydown", playFallback);
+    if (!audio || !useFallback) return;
+    audio.srcObject = stream;
+    void audio.play().catch(() => undefined);
     return () => {
-      window.removeEventListener("pointerdown", playFallback);
-      window.removeEventListener("keydown", playFallback);
+      audio.srcObject = null;
     };
-  }, [muted, stream, useFallback, volume]);
+  }, [stream, useFallback]);
 
   if (!useFallback) return null;
   return <audio className="remote-audio" ref={audioRef} autoPlay muted={muted} />;
@@ -1670,7 +1978,8 @@ function VisualStage({
   onScreenVolumeChange: (streamId: string, volume: number) => void;
   t: Translate;
 }) {
-  const focusedElementRef = useRef<HTMLButtonElement | null>(null);
+  const stageRef = useRef<HTMLElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const orderedSources = focusedSource
     ? [focusedSource, ...sources.filter((source) => source.key !== focusedSource.key)]
     : sources;
@@ -1678,23 +1987,34 @@ function VisualStage({
   const focusedHasAudio = Boolean(focusedSource?.kind === "screen" && focusedStream?.getAudioTracks().length);
   const focusedVolume = focusedStream ? screenVolumes[focusedStream.id] ?? DEFAULT_VOLUME_PERCENT : DEFAULT_VOLUME_PERCENT;
 
+  useEffect(() => {
+    const syncFullscreenState = () => setIsFullscreen(document.fullscreenElement === stageRef.current);
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement === stageRef.current) {
+      void document.exitFullscreen?.();
+      return;
+    }
+    void stageRef.current?.requestFullscreen?.();
+  };
+
   return (
-    <section className={`screen-stage stage-count-${Math.min(orderedSources.length, 4)}`} aria-label={t("voice.stage")}>
+    <section ref={stageRef} className={`screen-stage stage-count-${Math.min(orderedSources.length, 4)}`} aria-label={t("voice.stage")}>
       <div className="stage-grid">
         {orderedSources.map((source) => (
           <button
             className={`stage-media ${source.key === focusedSource?.key ? "is-focused" : ""}`}
             type="button"
             key={source.key}
-            ref={(element) => {
-              if (source.key === focusedSource?.key) focusedElementRef.current = element;
-            }}
             onClick={() => onFocus(source.key)}
             aria-pressed={source.key === focusedSource?.key}
             aria-label={`${source.ownerName} ${source.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}`}
           >
             {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span className="screen-stage-placeholder">{source.ownerName}</span>}
-            <span className="stage-media-label"><strong>{source.ownerName}</strong><span>{source.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}</span></span>
+            {source.key !== focusedSource?.key ? <span className="stage-media-label"><strong>{source.ownerName}</strong><span>{source.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}</span></span> : null}
           </button>
         ))}
       </div>
@@ -1704,11 +2024,11 @@ function VisualStage({
         {!focusedSource?.ownerIsLocal && focusedSource?.kind === "screen" ? (
           focusedHasAudio && focusedStream
             ? <details className="volume-popover stage-volume"><summary aria-label={t("voice.screenVolume")}><VolumeIcon /></summary><VolumeControl label={t("voice.screenVolume")} value={focusedVolume} onChange={(volume) => onScreenVolumeChange(focusedStream.id, volume)} /></details>
-            : <span className="muted small">{t("voice.noScreenAudio")}</span>
+            : <button className="icon-btn screen-audio-unavailable" type="button" disabled aria-label={t("voice.noScreenAudio")} title={t("voice.noScreenAudio")}><VolumeIcon /></button>
         ) : null}
-        <button className="icon-btn" type="button" onClick={() => focusedElementRef.current?.requestFullscreen?.()} aria-label={t("common.fullscreen")}>
+        <button className="icon-btn" type="button" onClick={toggleFullscreen} aria-label={isFullscreen ? "Exit full screen" : t("common.fullscreen")}>
           <MaximizeIcon />
-          <span>{t("common.fullscreen")}</span>
+          <span>{isFullscreen ? "Exit full screen" : t("common.fullscreen")}</span>
         </button>
       </div>
     </section>
@@ -1778,6 +2098,10 @@ function parseRoute(pathname: string): Route {
   const route = parsePathRoute(pathname);
   if (route.name === "owner-claim") return { name: "owner-claim", token: getOwnerClaimTokenFromHash(window.location.hash) };
   return route;
+}
+
+function serverPath(serverId: string, kind: "text" | "voice", roomId: string) {
+  return `/app/server/${encodeURIComponent(serverId)}/${kind}/${encodeURIComponent(roomId)}`;
 }
 
 function readThemeChoice(): ThemeChoice {
@@ -1948,6 +2272,7 @@ function TrashIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-
 function LeaveIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8 4 12l4 4" /><path d="M4 12h11" /><path d="M14 5h5v14h-5" /></svg>; }
 function MaximizeIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5" /><path d="M16 3h5v5" /><path d="M21 16v5h-5" /><path d="M3 16v5h5" /></svg>; }
 function EyeIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12s3-5 8.5-5 8.5 5 8.5 5-3 5-8.5 5-8.5-5-8.5-5Z" /><circle cx="12" cy="12" r="2.5" /></svg>; }
+function MoreIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>; }
 function VolumeIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h4l5-4v12l-5-4H4z" /><path d="M16 9a4 4 0 0 1 0 6" /><path d="M19 6a8 8 0 0 1 0 12" /></svg>; }
 function MicIcon({ off }: { off: boolean }) { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" /><path d="M6 11a6 6 0 0 0 12 0" /><path d="M12 17v3" />{off ? <path d="M4 4l16 16" /> : null}</svg>; }
 function HeadsetIcon({ off }: { off: boolean }) { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 14v-2a7 7 0 0 1 14 0v2" /><path d="M5 14h3v5H6a1 1 0 0 1-1-1z" /><path d="M16 14h3v4a1 1 0 0 1-1 1h-2z" />{off ? <path d="M4 4l16 16" /> : null}</svg>; }
