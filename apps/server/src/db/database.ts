@@ -2,6 +2,9 @@ import { DatabaseSync } from "node:sqlite";
 
 type DbParam = string | number | bigint | Uint8Array | null;
 
+export const defaultServerId = "the-basement";
+export const defaultServerName = "The Basement";
+
 export interface VoxlyDatabase {
   sqlite: DatabaseSync;
   save: () => void;
@@ -38,12 +41,15 @@ export function run(sqlite: DatabaseSync, sql: string, params: DbParam[] = []) {
 
 export function dumpTables(sqlite: DatabaseSync) {
   return {
+    servers: all(sqlite, "select * from servers"),
+    serverMembers: all(sqlite, "select * from server_members"),
     users: all(sqlite, "select * from users"),
     invites: all(sqlite, "select * from invites"),
     sessions: all(sqlite, "select * from sessions"),
     rooms: all(sqlite, "select * from rooms"),
     messages: all(sqlite, "select * from messages"),
     ownerClaims: all(sqlite, "select * from owner_claims"),
+    accessClaims: all(sqlite, "select * from access_claims"),
     auditEvents: all(sqlite, "select * from audit_events")
   };
 }
@@ -89,6 +95,7 @@ function migrate(sqlite: DatabaseSync) {
 
     create table if not exists rooms (
       id text primary key,
+      server_id text,
       name text not null,
       kind text not null check (kind in ('text', 'voice')),
       position integer not null
@@ -112,6 +119,34 @@ function migrate(sqlite: DatabaseSync) {
       target_user_id text,
       created_at text not null
     );
+
+    create table if not exists servers (
+      id text primary key,
+      name text not null,
+      created_by_user_id text,
+      created_at text not null
+    );
+
+    create table if not exists server_members (
+      server_id text not null,
+      user_id text not null,
+      role text not null check (role in ('owner', 'member')),
+      banned_at text,
+      removed_at text,
+      joined_at text not null,
+      primary key (server_id, user_id)
+    );
+
+    create table if not exists access_claims (
+      id text primary key,
+      token_hash text not null unique,
+      user_id text not null,
+      server_id text not null,
+      created_by_user_id text not null,
+      created_at text not null,
+      expires_at text not null,
+      consumed_at text
+    );
   `);
 
   addColumnIfMissing(sqlite, "invites", "revoked_at", "text");
@@ -119,6 +154,23 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "messages", "edited_at", "text");
   addColumnIfMissing(sqlite, "messages", "deleted_at", "text");
   addColumnIfMissing(sqlite, "messages", "deleted_by_user_id", "text");
+  addColumnIfMissing(sqlite, "rooms", "server_id", "text");
+  addColumnIfMissing(sqlite, "invites", "server_id", "text");
+  addColumnIfMissing(sqlite, "audit_events", "server_id", "text");
+
+  const now = new Date().toISOString();
+  run(sqlite, "insert or ignore into servers (id, name, created_at) values (?, ?, ?)", [
+    defaultServerId,
+    defaultServerName,
+    now
+  ]);
+  run(sqlite, "update rooms set server_id = ? where server_id is null", [defaultServerId]);
+  run(sqlite, "update invites set server_id = ? where server_id is null", [defaultServerId]);
+  run(sqlite, "update audit_events set server_id = ? where server_id is null", [defaultServerId]);
+  sqlite.exec(`
+    insert or ignore into server_members (server_id, user_id, role, banned_at, joined_at)
+    select '${defaultServerId}', id, role, banned_at, '${now}' from users;
+  `);
 }
 
 function seedRooms(sqlite: DatabaseSync) {
@@ -127,14 +179,16 @@ function seedRooms(sqlite: DatabaseSync) {
     return;
   }
 
-  run(sqlite, "insert into rooms (id, name, kind, position) values (?, ?, ?, ?)", [
+  run(sqlite, "insert into rooms (id, server_id, name, kind, position) values (?, ?, ?, ?, ?)", [
     "general",
+    defaultServerId,
     "general",
     "text",
     10
   ]);
-  run(sqlite, "insert into rooms (id, name, kind, position) values (?, ?, ?, ?)", [
+  run(sqlite, "insert into rooms (id, server_id, name, kind, position) values (?, ?, ?, ?, ?)", [
     "lobby",
+    defaultServerId,
     "Lobby",
     "voice",
     20

@@ -11,6 +11,7 @@ export interface PublicUser {
 
 export interface RoomSummary {
   id: string;
+  serverId: string;
   name: string;
   kind: RoomKind;
   position: number;
@@ -30,6 +31,11 @@ export interface PresenceUser {
   userId: string;
   nickname: string;
   role: UserRole;
+}
+
+export interface ServerPresenceSnapshot {
+  serverId: string;
+  users: PresenceUser[];
 }
 
 export interface VoiceMediaState {
@@ -53,6 +59,8 @@ export interface VoiceSnapshot {
   roomId: string;
   members: VoiceMemberState[];
 }
+
+export type VoiceForceLeaveReason = "joined_another_room" | "owner_disconnect" | "server_access_revoked";
 
 export type VisualMediaKind = "camera" | "screen";
 
@@ -78,6 +86,9 @@ export interface ServerToClientEvents {
   "presence:snapshot": (users: PresenceUser[]) => void;
   "presence:online": (user: PresenceUser) => void;
   "presence:offline": (userId: string) => void;
+  "presence:serverSnapshot": (snapshot: ServerPresenceSnapshot) => void;
+  "presence:serverOnline": (payload: { serverId: string; user: PresenceUser }) => void;
+  "presence:serverOffline": (payload: { serverId: string; userId: string }) => void;
   "message:new": (message: ChatMessage) => void;
   "message:updated": (message: ChatMessage) => void;
   "message:deleted": (payload: { roomId: string; messageId: string }) => void;
@@ -89,6 +100,8 @@ export interface ServerToClientEvents {
     viewerUserId: string;
     subscribedKinds: VisualMediaKind[];
   }) => void;
+  "voice:forceLeave": (payload: { roomId: string; reason: VoiceForceLeaveReason }) => void;
+  "server:accessRevoked": (payload: { serverId: string; reason: "banned" | "kicked" }) => void;
   "rtc:signal": (payload: { roomId: string; fromUserId: string; signal: RtcSignal }) => void;
 }
 

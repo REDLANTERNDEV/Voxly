@@ -19,7 +19,7 @@ import type {
 import type { DatabaseSync } from "node:sqlite";
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import { consumeOwnerClaim } from "./auth/ownerClaims.js";
-import { all, dumpTables, one, openDatabase, run, type VoxlyDatabase } from "./db/database.js";
+import { all, defaultServerId, dumpTables, one, openDatabase, run, type VoxlyDatabase } from "./db/database.js";
 import type { TurnstileConfig } from "./turnstile.js";
 
 const sessionCookieName = "voxly_session";
@@ -86,8 +86,29 @@ type MessageRow = {
   editedAt: string | null;
 };
 
+type RoomRow = {
+  id: string;
+  serverId: string;
+  name: string;
+  kind: "text" | "voice";
+  position: number;
+};
+
+type ServerMemberRow = {
+  server_id: string;
+  user_id: string;
+  role: "owner" | "member";
+  banned_at: string | null;
+  removed_at: string | null;
+};
+
 type VoiceRoomMembership = Map<string, VoiceMemberState>;
 type VisualSubscriptions = Map<string, Map<string, Set<VisualMediaKind>>>;
+
+interface RealtimeModeration {
+  disconnectVoice: (serverId: string, roomId: string, userId: string) => boolean;
+  revokeServerAccess: (serverId: string, userId: string, reason: "banned" | "kicked") => void;
+}
 
 const visualSubscriptionsPayloadSchema = z.object({
   roomId: z.string().min(1),
@@ -98,6 +119,12 @@ const visualSubscriptionsPayloadSchema = z.object({
 }).strict();
 
 const visualPublisherLimit = 3;
+const serverNameSchema = z.string().trim().min(2).max(64);
+const roomNameSchema = z.string().trim().min(2).max(64);
+const inviteBodySchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  expiresInHours: z.number().int().positive().max(168).optional()
+});
 
 export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<VoxlyApp> {
   const database = await openDatabase(options.databasePath);
@@ -115,8 +142,8 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
     serveClient: false
   });
 
-  registerRoutes(server, database, options, io);
-  registerRealtime(io, database);
+  const realtime = registerRealtime(io, database);
+  registerRoutes(server, database, options, io, realtime);
   if (options.webDistPath) {
     await registerWebStatic(server, options.webDistPath);
   }
@@ -154,7 +181,8 @@ function registerRoutes(
   server: FastifyInstance,
   database: VoxlyDatabase,
   options: CreateVoxlyAppOptions,
-  io: Server<ClientToServerEvents, ServerToClientEvents>
+  io: Server<ClientToServerEvents, ServerToClientEvents>,
+  realtime: RealtimeModeration
 ) {
   server.get("/api/config", async () => {
     return {
@@ -195,6 +223,7 @@ function registerRoutes(
       }
 
       const user = createUser(database, body.nickname, "owner");
+      activateServerMembership(database, defaultServerId, user.id, "owner", new Date().toISOString());
       const token = createSession(database, user.id);
       setSessionCookie(reply, token, options.secureCookies);
 
@@ -221,38 +250,52 @@ function registerRoutes(
   server.post("/api/invites/accept", async (request, reply) => {
     const body = z.object({
       inviteToken: z.string().min(24),
-      nickname: nicknameSchema,
+      nickname: nicknameSchema.optional(),
       turnstileToken: z.string().optional()
     }).parse(request.body);
 
-    if (options.turnstile?.enabled) {
+    const existingUser = authenticateHttp(database, request, reply, options.secureCookies);
+
+    if (!existingUser && options.turnstile?.enabled) {
       const ok = await verifyTurnstile(options.turnstile.secretKey, body.turnstileToken, options.turnstile.expectedHostname);
       if (!ok) {
         return reply.code(403).send({ error: "turnstile_failed" });
       }
     }
 
-    const invite = one<{ id: string; used_at: string | null; expires_at: string | null; revoked_at: string | null }>(
+    const invite = one<{ id: string; server_id: string; used_at: string | null; expires_at: string | null; revoked_at: string | null }>(
       database.sqlite,
-      "select id, used_at, expires_at, revoked_at from invites where token_hash = ?",
+      "select id, server_id, used_at, expires_at, revoked_at from invites where token_hash = ?",
       [hashToken(body.inviteToken)]
     );
     if (!invite || invite.used_at || invite.revoked_at || isExpired(invite.expires_at)) {
       return reply.code(404).send({ error: "invite_invalid" });
     }
 
-    const user = createUser(database, body.nickname, "member");
+    if (!existingUser && !body.nickname) {
+      return reply.code(400).send({ error: "nickname_required" });
+    }
+
+    const member = existingUser ? serverMembership(database.sqlite, invite.server_id, existingUser.id) : null;
+    if (member?.banned_at) {
+      return reply.code(403).send({ error: "server_banned" });
+    }
+
+    const user = existingUser ?? createUser(database, body.nickname as string, "member");
     const now = new Date().toISOString();
+    activateServerMembership(database, invite.server_id, user.id, "member", now);
     run(database.sqlite, "update invites set used_by_user_id = ?, used_at = ? where id = ?", [
       user.id,
       now,
       invite.id
     ]);
-    const token = createSession(database, user.id);
     database.save();
-    setSessionCookie(reply, token, options.secureCookies);
+    if (!existingUser) {
+      const token = createSession(database, user.id);
+      setSessionCookie(reply, token, options.secureCookies);
+    }
 
-    return reply.code(201).send({ user: publicUser(user) });
+    return reply.code(existingUser ? 200 : 201).send({ user: publicUser(user), serverId: invite.server_id });
   });
 
   server.post("/api/logout", async (request, reply) => {
@@ -268,31 +311,216 @@ function registerRoutes(
     return reply.code(204).send();
   });
 
+  server.get("/api/servers", async (request, reply) => {
+    const user = requireUser(database, request, reply, options.secureCookies);
+    if (!user) return;
+    return {
+      servers: all(
+        database.sqlite,
+        `select servers.id, servers.name, server_members.role
+         from server_members
+         join servers on servers.id = server_members.server_id
+         where server_members.user_id = ?
+           and server_members.banned_at is null
+           and server_members.removed_at is null
+         order by servers.created_at asc`,
+        [user.id]
+      )
+    };
+  });
+
+  server.post("/api/servers", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const body = z.object({ name: serverNameSchema }).parse(request.body);
+    const serverId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    run(database.sqlite, "insert into servers (id, name, created_by_user_id, created_at) values (?, ?, ?, ?)", [
+      serverId,
+      body.name,
+      owner.id,
+      now
+    ]);
+    activateServerMembership(database, serverId, owner.id, "owner", now);
+    createServerRoom(database, serverId, "general", "text", 10);
+    createServerRoom(database, serverId, "Lobby", "voice", 20);
+    audit(database, owner.id, "server.created", null, serverId);
+    database.save();
+    return reply.code(201).send({ server: { id: serverId, name: body.name, role: "owner" } });
+  });
+
+  server.get("/api/servers/:serverId/rooms", async (request, reply) => {
+    const user = requireUser(database, request, reply, options.secureCookies);
+    if (!user) return;
+    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    if (!requireServerMember(database, serverId, user.id, reply)) return;
+    return {
+      rooms: all<RoomRow>(
+        database.sqlite,
+        "select id, server_id as serverId, name, kind, position from rooms where server_id = ? order by position asc",
+        [serverId]
+      )
+    };
+  });
+
+  server.post("/api/servers/:serverId/rooms", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const body = z.object({ name: roomNameSchema, kind: z.enum(["text", "voice"]) }).parse(request.body);
+    const position = one<{ position: number | null }>(
+      database.sqlite,
+      "select max(position) as position from rooms where server_id = ?",
+      [serverId]
+    )?.position ?? 0;
+    const room = createServerRoom(database, serverId, body.name, body.kind, position + 10);
+    audit(database, owner.id, "room.created", null, serverId);
+    database.save();
+    return reply.code(201).send({ room });
+  });
+
+  server.get("/api/servers/:serverId/members", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    return {
+      members: all(
+        database.sqlite,
+        `select users.id, users.nickname, server_members.role,
+          server_members.banned_at as bannedAt, server_members.removed_at as removedAt,
+          server_members.joined_at as joinedAt
+         from server_members
+         join users on users.id = server_members.user_id
+         where server_members.server_id = ?
+         order by users.nickname asc`,
+        [serverId]
+      )
+    };
+  });
+
+  server.post("/api/servers/:serverId/invites", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const invite = createInviteForServer(database, serverId, owner.id, inviteBodySchema.parse(request.body ?? {}));
+    audit(database, owner.id, "invite.created", null, serverId);
+    database.save();
+    return reply.code(201).send({ invite });
+  });
+
+  server.get("/api/servers/:serverId/invites", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    return { invites: serverInvites(database.sqlite, serverId) };
+  });
+
+  server.post("/api/servers/:serverId/invites/:inviteId/revoke", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId, inviteId } = z.object({ serverId: z.string().min(1), inviteId: z.string().uuid() }).parse(request.params);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const result = revokeServerInvite(database, serverId, inviteId, owner.id);
+    if (result === "not_found") return reply.code(404).send({ error: "invite_not_found" });
+    if (result === "inactive") return reply.code(409).send({ error: "invite_not_active" });
+    return reply.code(204).send();
+  });
+
+  server.post("/api/servers/:serverId/members/:userId/:action", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId, userId, action } = z.object({
+      serverId: z.string().min(1),
+      userId: z.string().uuid(),
+      action: z.enum(["ban", "unban", "kick"])
+    }).parse(request.params);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    if (userId === owner.id) return reply.code(409).send({ error: "cannot_moderate_owner" });
+    const member = serverMembership(database.sqlite, serverId, userId);
+    if (!member) return reply.code(404).send({ error: "member_not_found" });
+    const now = new Date().toISOString();
+    if (action === "ban") {
+      run(database.sqlite, "update server_members set banned_at = ?, removed_at = null where server_id = ? and user_id = ?", [now, serverId, userId]);
+    } else if (action === "unban") {
+      run(database.sqlite, "update server_members set banned_at = null where server_id = ? and user_id = ?", [serverId, userId]);
+    } else {
+      run(database.sqlite, "update server_members set removed_at = ? where server_id = ? and user_id = ?", [now, serverId, userId]);
+    }
+    audit(database, owner.id, `member.${action}`, userId, serverId);
+    database.save();
+    if (action === "ban" || action === "kick") {
+      realtime.revokeServerAccess(serverId, userId, action === "ban" ? "banned" : "kicked");
+    }
+    return reply.code(204).send();
+  });
+
+  server.post("/api/servers/:serverId/voice/:roomId/members/:userId/disconnect", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId, roomId, userId } = z.object({
+      serverId: z.string().min(1),
+      roomId: z.string().min(1),
+      userId: z.string().uuid()
+    }).parse(request.params);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const room = roomById(database.sqlite, roomId);
+    if (!room || room.serverId !== serverId || room.kind !== "voice") return reply.code(404).send({ error: "room_not_found" });
+    if (!realtime.disconnectVoice(serverId, roomId, userId)) return reply.code(409).send({ error: "member_not_in_voice" });
+    audit(database, owner.id, "voice.disconnected", userId, serverId);
+    database.save();
+    return reply.code(204).send();
+  });
+
+  server.post("/api/servers/:serverId/members/:userId/access-links", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId, userId } = z.object({ serverId: z.string().min(1), userId: z.string().uuid() }).parse(request.params);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const member = serverMembership(database.sqlite, serverId, userId);
+    if (!member || member.removed_at || member.banned_at) return reply.code(404).send({ error: "member_not_found" });
+    const token = createOpaqueToken();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
+    run(
+      database.sqlite,
+      "insert into access_claims (id, token_hash, user_id, server_id, created_by_user_id, created_at, expires_at) values (?, ?, ?, ?, ?, ?, ?)",
+      [crypto.randomUUID(), hashToken(token), userId, serverId, owner.id, now.toISOString(), expiresAt]
+    );
+    audit(database, owner.id, "access_link.created", userId, serverId);
+    database.save();
+    return reply.code(201).send({ token, expiresAt });
+  });
+
+  server.post("/api/access/claim", async (request, reply) => {
+    const { token } = z.object({ token: z.string().min(24) }).parse(request.body);
+    const claim = one<{ id: string; user_id: string; expires_at: string; consumed_at: string | null }>(
+      database.sqlite,
+      "select id, user_id, expires_at, consumed_at from access_claims where token_hash = ?",
+      [hashToken(token)]
+    );
+    if (!claim || claim.consumed_at || isExpired(claim.expires_at)) return reply.code(404).send({ error: "access_claim_invalid" });
+    const user = one<UserRow>(database.sqlite, "select id, nickname, role, banned_at from users where id = ?", [claim.user_id]);
+    if (!user) return reply.code(404).send({ error: "access_claim_invalid" });
+    run(database.sqlite, "update access_claims set consumed_at = ? where id = ?", [new Date().toISOString(), claim.id]);
+    audit(database, user.id, "access_link.consumed", user.id);
+    const sessionToken = createSession(database, user.id);
+    setSessionCookie(reply, sessionToken, options.secureCookies);
+    return reply.code(201).send({ user: publicUser({ ...user, bannedAt: user.banned_at }) });
+  });
+
   server.post("/api/owner/invites", async (request, reply) => {
     const owner = requireOwner(database, request, reply, options.secureCookies);
     if (!owner) {
       return;
     }
-    const body = z.object({
-      label: z.string().trim().min(1).max(80),
-      expiresInHours: z.number().int().positive().max(168).optional()
-    }).parse(request.body ?? {});
-
-    const token = createOpaqueToken();
-    const id = crypto.randomUUID();
-    const now = new Date();
-    const expiresAt = body.expiresInHours
-      ? new Date(now.getTime() + body.expiresInHours * 60 * 60 * 1000).toISOString()
-      : null;
-    run(
-      database.sqlite,
-      "insert into invites (id, token_hash, label, created_by_user_id, expires_at, created_at) values (?, ?, ?, ?, ?, ?)",
-      [id, hashToken(token), body.label, owner.id, expiresAt, now.toISOString()]
-    );
-    audit(database, owner.id, "invite.created", null);
+    const invite = createInviteForServer(database, defaultServerId, owner.id, inviteBodySchema.parse(request.body ?? {}));
+    audit(database, owner.id, "invite.created", null, defaultServerId);
     database.save();
-
-    return reply.code(201).send({ invite: { id, token, label: body.label, expiresAt } });
+    return reply.code(201).send({ invite });
   });
 
   server.get("/api/owner/invites", async (request, reply) => {
@@ -302,16 +530,7 @@ function registerRoutes(
     }
 
     return {
-      invites: all(
-        database.sqlite,
-        `select invites.id, coalesce(invites.label, '') as label,
-          invites.created_by_user_id as createdByUserId,
-          invites.used_by_user_id as usedByUserId, invites.used_at as usedAt,
-          invites.expires_at as expiresAt, invites.revoked_at as revokedAt,
-          invites.created_at as createdAt
-         from invites
-         order by invites.created_at desc`
-      )
+      invites: serverInvites(database.sqlite, defaultServerId)
     };
   });
 
@@ -321,23 +540,9 @@ function registerRoutes(
       return;
     }
     const { inviteId } = z.object({ inviteId: z.string().uuid() }).parse(request.params);
-    const invite = one<{ id: string; used_at: string | null; revoked_at: string | null }>(
-      database.sqlite,
-      "select id, used_at, revoked_at from invites where id = ?",
-      [inviteId]
-    );
-    if (!invite) {
-      return reply.code(404).send({ error: "invite_not_found" });
-    }
-    if (invite.used_at || invite.revoked_at) {
-      return reply.code(409).send({ error: "invite_not_active" });
-    }
-    run(database.sqlite, "update invites set revoked_at = ? where id = ?", [
-      new Date().toISOString(),
-      inviteId
-    ]);
-    audit(database, owner.id, "invite.revoked", inviteId);
-    database.save();
+    const result = revokeServerInvite(database, defaultServerId, inviteId, owner.id);
+    if (result === "not_found") return reply.code(404).send({ error: "invite_not_found" });
+    if (result === "inactive") return reply.code(409).send({ error: "invite_not_active" });
     return reply.code(204).send();
   });
 
@@ -350,7 +555,12 @@ function registerRoutes(
     return {
       users: all(
         database.sqlite,
-        "select id, nickname, role, banned_at as bannedAt from users order by nickname asc"
+        `select users.id, users.nickname, server_members.role,
+          server_members.banned_at as bannedAt
+         from server_members join users on users.id = server_members.user_id
+         where server_members.server_id = ? and server_members.removed_at is null
+         order by users.nickname asc`,
+        [defaultServerId]
       )
     };
   });
@@ -379,9 +589,10 @@ function registerRoutes(
     if (!user) {
       return;
     }
+    if (!requireServerMember(database, defaultServerId, user.id, reply)) return;
 
     return {
-      rooms: all(database.sqlite, "select id, name, kind, position from rooms order by position asc")
+      rooms: all(database.sqlite, "select id, server_id as serverId, name, kind, position from rooms where server_id = ? order by position asc", [defaultServerId])
     };
   });
 
@@ -395,6 +606,7 @@ function registerRoutes(
     if (!room || room.kind !== "text") {
       return reply.code(404).send({ error: "room_not_found" });
     }
+    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
     const { limit } = z.object({
       limit: z.coerce.number().int().positive().max(200).default(100)
     }).parse(request.query ?? {});
@@ -429,6 +641,7 @@ function registerRoutes(
     if (!room) {
       return reply.code(404).send({ error: "room_not_found" });
     }
+    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
     if (room.kind !== "text") {
       return reply.code(400).send({ error: "messages_require_text_room" });
     }
@@ -468,6 +681,7 @@ function registerRoutes(
     if (!room || room.kind !== "text") {
       return reply.code(404).send({ error: "room_not_found" });
     }
+    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
     const current = messageById(database.sqlite, roomId, messageId);
     if (!current) {
       return reply.code(404).send({ error: "message_not_found" });
@@ -504,11 +718,12 @@ function registerRoutes(
     if (!room || room.kind !== "text") {
       return reply.code(404).send({ error: "room_not_found" });
     }
+    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
     const current = messageById(database.sqlite, roomId, messageId);
     if (!current) {
       return reply.code(404).send({ error: "message_not_found" });
     }
-    if (current.userId !== user.id && user.role !== "owner") {
+    if (current.userId !== user.id && !isServerOwner(database.sqlite, room.serverId, user.id)) {
       return reply.code(403).send({ error: "forbidden" });
     }
 
@@ -556,7 +771,7 @@ function registerRoutes(
 function registerRealtime(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
   database: VoxlyDatabase
-) {
+): RealtimeModeration {
   const online = new Map<string, { user: PresenceUser; sockets: Set<string> }>();
   const voiceMembership = new Map<string, VoiceRoomMembership>();
   const visualSubscriptions = new Map<string, VisualSubscriptions>();
@@ -575,17 +790,34 @@ function registerRealtime(
 
   io.on("connection", (socket) => {
     const user = socket.data.user as PresenceUser;
-    socket.emit("presence:snapshot", [...online.values()].map((entry) => entry.user));
-
+    const serverIds = all<{ server_id: string }>(
+      database.sqlite,
+      "select server_id from server_members where user_id = ? and banned_at is null and removed_at is null",
+      [user.userId]
+    ).map((membership) => membership.server_id);
+    for (const serverId of serverIds) {
+      socket.join(`server:${serverId}`);
+    }
     const entry = online.get(user.userId);
+    const isNewPresence = !entry;
     if (entry) {
       entry.sockets.add(socket.id);
     } else {
       online.set(user.userId, { user, sockets: new Set([socket.id]) });
-      socket.broadcast.emit("presence:online", user);
+    }
+    for (const serverId of serverIds) {
+      socket.emit("presence:serverSnapshot", {
+        serverId,
+        users: serverPresenceUsers(database.sqlite, online, serverId)
+      });
+      if (isNewPresence) socket.to(`server:${serverId}`).emit("presence:serverOnline", { serverId, user });
     }
 
     socket.on("room:join", (roomId) => {
+      const room = roomById(database.sqlite, roomId);
+      if (!room || !serverMembership(database.sqlite, room.serverId, user.userId) || !requireActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
+        return;
+      }
       socket.join(`room:${roomId}`);
     });
 
@@ -595,8 +827,13 @@ function registerRealtime(
 
     socket.on("voice:join", (roomId) => {
       const room = roomById(database.sqlite, roomId);
-      if (!room || room.kind !== "voice") {
+      if (!room || room.kind !== "voice" || !requireActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
         return;
+      }
+      for (const [activeRoomId, members] of voiceMembership) {
+        if (activeRoomId !== roomId && members.has(user.userId)) {
+          leaveVoiceMember(io, database, activeRoomId, user.userId, voiceMembership, visualSubscriptions);
+        }
       }
       socket.join(`voice:${roomId}`);
       const members = ensureVoiceRoom(voiceMembership, roomId);
@@ -604,15 +841,20 @@ function registerRealtime(
         user,
         media: defaultVoiceMediaState()
       });
-      io.emit("voice:snapshot", voiceSnapshot(roomId, members));
-      socket.broadcast.emit("voice:joined", { roomId, user });
+      emitVoiceSnapshot(io, database, roomId, members);
+      socket.to(`server:${room.serverId}`).emit("voice:joined", { roomId, user });
     });
 
     socket.on("voice:leave", (roomId) => {
-      leaveVoice(io, socket, roomId, user.userId, voiceMembership, visualSubscriptions);
+      leaveVoice(io, database, socket, roomId, user.userId, voiceMembership, visualSubscriptions);
     });
 
     socket.on("voice:snapshot", (roomId, ack) => {
+      const room = roomById(database.sqlite, roomId);
+      if (!room || !requireActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
+        ack({ roomId, members: [] });
+        return;
+      }
       ack(voiceSnapshot(roomId, voiceMembership.get(roomId)));
     });
 
@@ -642,8 +884,7 @@ function registerRealtime(
         nextMedia,
         visualSubscriptions
       );
-      const snapshot = voiceSnapshot(payload.roomId, members);
-      io.emit("voice:snapshot", snapshot);
+      emitVoiceSnapshot(io, database, payload.roomId, members);
       ack({ ok: true, state: nextState });
     });
 
@@ -672,7 +913,7 @@ function registerRealtime(
     socket.on("disconnect", () => {
       for (const [roomId, members] of voiceMembership) {
         if (members.has(user.userId)) {
-          leaveVoice(io, socket, roomId, user.userId, voiceMembership, visualSubscriptions);
+          leaveVoice(io, database, socket, roomId, user.userId, voiceMembership, visualSubscriptions);
         }
       }
 
@@ -683,34 +924,109 @@ function registerRealtime(
       current.sockets.delete(socket.id);
       if (current.sockets.size === 0) {
         online.delete(user.userId);
-        socket.broadcast.emit("presence:offline", user.userId);
+        for (const serverId of serverIds) {
+          socket.to(`server:${serverId}`).emit("presence:serverOffline", { serverId, userId: user.userId });
+        }
       }
     });
   });
+
+  return {
+    disconnectVoice(serverId, roomId, userId) {
+      const room = roomById(database.sqlite, roomId);
+      if (!room || room.serverId !== serverId || !voiceMembership.get(roomId)?.has(userId)) {
+        return false;
+      }
+      leaveVoiceMember(io, database, roomId, userId, voiceMembership, visualSubscriptions);
+      emitVoiceForceLeave(io, userId, roomId, "owner_disconnect");
+      return true;
+    },
+    revokeServerAccess(serverId, userId, reason) {
+      const textRoomIds = all<{ id: string }>(
+        database.sqlite,
+        "select id from rooms where server_id = ? and kind = 'text'",
+        [serverId]
+      ).map((room) => room.id);
+      for (const [roomId, members] of voiceMembership) {
+        const room = roomById(database.sqlite, roomId);
+        if (room?.serverId === serverId && members.has(userId)) {
+          leaveVoiceMember(io, database, roomId, userId, voiceMembership, visualSubscriptions);
+          emitVoiceForceLeave(io, userId, roomId, "server_access_revoked");
+        }
+      }
+      for (const socket of io.sockets.sockets.values()) {
+        const socketUser = socket.data.user as PresenceUser | undefined;
+        if (socketUser?.userId !== userId) continue;
+        socket.leave(`server:${serverId}`);
+        for (const roomId of textRoomIds) {
+          socket.leave(`room:${roomId}`);
+        }
+        socket.emit("server:accessRevoked", { serverId, reason });
+      }
+    }
+  };
+}
+
+function emitVoiceForceLeave(
+  io: Server<ClientToServerEvents, ServerToClientEvents>,
+  userId: string,
+  roomId: string,
+  reason: "joined_another_room" | "owner_disconnect" | "server_access_revoked"
+) {
+  for (const socket of io.sockets.sockets.values()) {
+    const socketUser = socket.data.user as PresenceUser | undefined;
+    if (socketUser?.userId === userId) socket.emit("voice:forceLeave", { roomId, reason });
+  }
 }
 
 function leaveVoice(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
+  database: VoxlyDatabase,
   socket: Parameters<Parameters<Server["on"]>[1]>[0],
   roomId: string,
   userId: string,
   voiceMembership: Map<string, VoiceRoomMembership>,
   visualSubscriptions: Map<string, VisualSubscriptions>
 ) {
+  socket.leave(`voice:${roomId}`);
+  leaveVoiceMember(io, database, roomId, userId, voiceMembership, visualSubscriptions);
+}
+
+function leaveVoiceMember(
+  io: Server<ClientToServerEvents, ServerToClientEvents>,
+  database: VoxlyDatabase,
+  roomId: string,
+  userId: string,
+  voiceMembership: Map<string, VoiceRoomMembership>,
+  visualSubscriptions: Map<string, VisualSubscriptions>
+) {
   const members = voiceMembership.get(roomId);
-  if (!members?.has(userId)) {
-    socket.leave(`voice:${roomId}`);
-    return;
-  }
+  if (!members?.has(userId)) return;
   clearViewerVisualSubscriptions(io, roomId, userId, visualSubscriptions);
   clearPublisherVisualSubscriptions(roomId, userId, visualSubscriptions);
   members.delete(userId);
   if (members.size === 0) {
     voiceMembership.delete(roomId);
   }
-  socket.leave(`voice:${roomId}`);
-  io.emit("voice:snapshot", voiceSnapshot(roomId, members));
-  socket.broadcast.emit("voice:left", { roomId, userId });
+  for (const candidate of io.sockets.sockets.values()) {
+    const candidateUser = candidate.data.user as PresenceUser | undefined;
+    if (candidateUser?.userId === userId) candidate.leave(`voice:${roomId}`);
+  }
+  const room = roomById(database.sqlite, roomId);
+  if (!room) return;
+  emitVoiceSnapshot(io, database, roomId, members);
+  io.to(`server:${room.serverId}`).emit("voice:left", { roomId, userId });
+}
+
+function emitVoiceSnapshot(
+  io: Server<ClientToServerEvents, ServerToClientEvents>,
+  database: VoxlyDatabase,
+  roomId: string,
+  members: VoiceRoomMembership | undefined
+) {
+  const room = roomById(database.sqlite, roomId);
+  if (!room) return;
+  io.to(`server:${room.serverId}`).emit("voice:snapshot", voiceSnapshot(roomId, members));
 }
 
 function setVisualSubscriptions(
@@ -883,6 +1199,141 @@ function createUser(database: VoxlyDatabase, nickname: string, role: "owner" | "
   return user;
 }
 
+function activateServerMembership(
+  database: VoxlyDatabase,
+  serverId: string,
+  userId: string,
+  role: "owner" | "member",
+  joinedAt: string
+) {
+  run(
+    database.sqlite,
+    `insert into server_members (server_id, user_id, role, joined_at)
+     values (?, ?, ?, ?)
+     on conflict(server_id, user_id) do update set removed_at = null`,
+    [serverId, userId, role, joinedAt]
+  );
+}
+
+function serverMembership(sqlite: DatabaseSync, serverId: string, userId: string) {
+  return one<ServerMemberRow>(
+    sqlite,
+    "select server_id, user_id, role, banned_at, removed_at from server_members where server_id = ? and user_id = ?",
+    [serverId, userId]
+  );
+}
+
+function isServerOwner(sqlite: DatabaseSync, serverId: string, userId: string) {
+  const membership = serverMembership(sqlite, serverId, userId);
+  return Boolean(membership && membership.role === "owner" && !membership.banned_at && !membership.removed_at);
+}
+
+function requireActiveServerMembership(sqlite: DatabaseSync, serverId: string, userId: string) {
+  const membership = serverMembership(sqlite, serverId, userId);
+  return Boolean(membership && !membership.banned_at && !membership.removed_at);
+}
+
+function serverPresenceUsers(
+  sqlite: DatabaseSync,
+  online: Map<string, { user: PresenceUser; sockets: Set<string> }>,
+  serverId: string
+) {
+  return [...online.values()]
+    .filter((entry) => requireActiveServerMembership(sqlite, serverId, entry.user.userId))
+    .map((entry) => entry.user);
+}
+
+function requireServerMember(database: VoxlyDatabase, serverId: string, userId: string, reply: FastifyReply) {
+  const membership = serverMembership(database.sqlite, serverId, userId);
+  if (!membership || membership.removed_at || membership.banned_at) {
+    reply.code(403).send({ error: "server_forbidden" });
+    return null;
+  }
+  return membership;
+}
+
+function requireServerOwner(database: VoxlyDatabase, serverId: string, userId: string, reply: FastifyReply) {
+  const membership = requireServerMember(database, serverId, userId, reply);
+  if (!membership) return null;
+  if (membership.role !== "owner") {
+    reply.code(403).send({ error: "forbidden" });
+    return null;
+  }
+  return membership;
+}
+
+function createServerRoom(
+  database: VoxlyDatabase,
+  serverId: string,
+  name: string,
+  kind: "text" | "voice",
+  position: number
+) {
+  const id = serverId === defaultServerId && name === "general" && kind === "text"
+    ? "general"
+    : serverId === defaultServerId && name === "Lobby" && kind === "voice"
+      ? "lobby"
+      : crypto.randomUUID();
+  const room = { id, serverId, name, kind, position };
+  run(database.sqlite, "insert into rooms (id, server_id, name, kind, position) values (?, ?, ?, ?, ?)", [
+    room.id,
+    room.serverId,
+    room.name,
+    room.kind,
+    room.position
+  ]);
+  return room;
+}
+
+function createInviteForServer(
+  database: VoxlyDatabase,
+  serverId: string,
+  createdByUserId: string,
+  body: z.infer<typeof inviteBodySchema>
+) {
+  const token = createOpaqueToken();
+  const id = crypto.randomUUID();
+  const now = new Date();
+  const expiresAt = body.expiresInHours
+    ? new Date(now.getTime() + body.expiresInHours * 60 * 60 * 1000).toISOString()
+    : null;
+  run(
+    database.sqlite,
+    "insert into invites (id, server_id, token_hash, label, created_by_user_id, expires_at, created_at) values (?, ?, ?, ?, ?, ?, ?)",
+    [id, serverId, hashToken(token), body.label, createdByUserId, expiresAt, now.toISOString()]
+  );
+  return { id, token, label: body.label, expiresAt, serverId };
+}
+
+function serverInvites(sqlite: DatabaseSync, serverId: string) {
+  return all(
+    sqlite,
+    `select invites.id, invites.server_id as serverId, coalesce(invites.label, '') as label,
+      invites.created_by_user_id as createdByUserId,
+      invites.used_by_user_id as usedByUserId, invites.used_at as usedAt,
+      invites.expires_at as expiresAt, invites.revoked_at as revokedAt,
+      invites.created_at as createdAt
+     from invites
+     where invites.server_id = ?
+     order by invites.created_at desc`,
+    [serverId]
+  );
+}
+
+function revokeServerInvite(database: VoxlyDatabase, serverId: string, inviteId: string, ownerId: string) {
+  const invite = one<{ id: string; used_at: string | null; revoked_at: string | null }>(
+    database.sqlite,
+    "select id, used_at, revoked_at from invites where id = ? and server_id = ?",
+    [inviteId, serverId]
+  );
+  if (!invite) return "not_found" as const;
+  if (invite.used_at || invite.revoked_at) return "inactive" as const;
+  run(database.sqlite, "update invites set revoked_at = ? where id = ?", [new Date().toISOString(), inviteId]);
+  audit(database, ownerId, "invite.revoked", inviteId, serverId);
+  database.save();
+  return "revoked" as const;
+}
+
 function createSession(database: VoxlyDatabase, userId: string) {
   const token = createOpaqueToken();
   const now = new Date();
@@ -1032,9 +1483,9 @@ function messageById(sqlite: DatabaseSync, roomId: string, messageId: string) {
 }
 
 function roomById(sqlite: DatabaseSync, roomId: string) {
-  return one<{ id: string; name: string; kind: "text" | "voice"; position: number }>(
+  return one<RoomRow>(
     sqlite,
-    "select id, name, kind, position from rooms where id = ?",
+    "select id, server_id as serverId, name, kind, position from rooms where id = ?",
     [roomId]
   );
 }
@@ -1133,11 +1584,17 @@ function forwardRtcSignal(
   return { ok: true };
 }
 
-function audit(database: VoxlyDatabase, actorUserId: string | null, action: string, targetUserId: string | null) {
+function audit(
+  database: VoxlyDatabase,
+  actorUserId: string | null,
+  action: string,
+  targetUserId: string | null,
+  serverId: string = defaultServerId
+) {
   run(
     database.sqlite,
-    "insert into audit_events (id, actor_user_id, action, target_user_id, created_at) values (?, ?, ?, ?, ?)",
-    [crypto.randomUUID(), actorUserId, action, targetUserId, new Date().toISOString()]
+    "insert into audit_events (id, actor_user_id, action, target_user_id, server_id, created_at) values (?, ?, ?, ?, ?, ?)",
+    [crypto.randomUUID(), actorUserId, action, targetUserId, serverId, new Date().toISOString()]
   );
 }
 
