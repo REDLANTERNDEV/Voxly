@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, FormEvent, MouseEvent, ReactNode } from "react";
+import type { FormEvent, MouseEvent, ReactNode } from "react";
 import type {
   ChatMessage,
   PresenceUser,
@@ -70,7 +70,7 @@ type Drawer = "channels" | "members" | null;
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 const themeKey = "voxly:theme";
-const landingFeatureKeys = ["privateAccess", "lowFootprint", "selfHosted", "voiceReady"] as const;
+const landingFeatureKeys = ["privateAccess", "lowFootprint", "selfHosted"] as const;
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
@@ -475,22 +475,28 @@ function LandingPage({ language, t, onLanguageChange, onNavigate }: { language: 
       </header>
 
       <section className="landing-hero reveal-block">
-        <p className="label">{t("landing.label")}</p>
-        <h1>{t("landing.title")}</h1>
-        <p className="landing-copy">{t("landing.copy")}</p>
-        <div className="landing-actions">
-          <NavLink className="btn btn-primary" href="/invite" onNavigate={onNavigate}>
-            <ArrowIcon />
-            <span>{t("landing.inviteCta")}</span>
-          </NavLink>
-          <span className="landing-note">{t("landing.ownerNote")}</span>
+        <div className="landing-hero-copy">
+          <p className="label">{t("landing.label")}</p>
+          <h1>{t("landing.title")}</h1>
+          <p className="landing-copy">{t("landing.copy")}</p>
+          <div className="landing-actions">
+            <NavLink className="btn btn-primary" href="/invite" onNavigate={onNavigate}>
+              <ArrowIcon />
+              <span>{t("landing.inviteCta")}</span>
+            </NavLink>
+          </div>
+        </div>
+        <div className="landing-signal" aria-hidden="true">
+          <span className="landing-signal-ring landing-signal-ring-one" />
+          <span className="landing-signal-ring landing-signal-ring-two" />
+          <span className="landing-signal-ring landing-signal-ring-three" />
+          <span className="landing-signal-core"><img src="/brand/logo-mark.svg" alt="" width="54" height="54" /></span>
         </div>
       </section>
 
-      <section className="landing-grid" aria-label={t("landing.features")}>
-        {landingFeatureKeys.map((key, index) => (
-          <article className="landing-card reveal-block" style={{ "--index": index } as CSSProperties} key={key}>
-            <span className="landing-card-index mono">{String(index + 1).padStart(2, "0")}</span>
+      <section className="landing-points reveal-block" aria-label={t("landing.features")}>
+        {landingFeatureKeys.map((key) => (
+          <article className="landing-point" key={key}>
             <h2>{t(`landing.${key}.title` as TranslationKey)}</h2>
             <p>{t(`landing.${key}.copy` as TranslationKey)}</p>
           </article>
