@@ -1,12 +1,13 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 import { hashToken } from "../src/auth/tokens.js";
 import { createOwnerClaim, createOwnerLoginClaim } from "../src/auth/ownerClaims.js";
-import { one, run } from "../src/db/database.js";
+import { defaultServerId, one, openDatabase, run } from "../src/db/database.js";
 
 describe("Voxly HTTP MVP", () => {
   let app: VoxlyApp;
@@ -23,6 +24,41 @@ describe("Voxly HTTP MVP", () => {
 
   afterEach(async () => {
     await app.close();
+  });
+
+  it("migrates legacy SQLite data into the default server without discarding it", async () => {
+    const databaseDir = await mkdtemp(join(tmpdir(), "voxly-legacy-migration-"));
+    const databasePath = join(databaseDir, "voxly.sqlite");
+    const legacy = new DatabaseSync(databasePath);
+    legacy.exec(`
+      create table users (id text primary key, nickname text not null, role text not null, banned_at text);
+      create table invites (id text primary key, token_hash text not null unique, label text, created_by_user_id text not null, used_by_user_id text, used_at text, expires_at text, revoked_at text, created_at text not null);
+      create table rooms (id text primary key, name text not null, kind text not null, position integer not null);
+      create table messages (id text primary key, room_id text not null, user_id text not null, body text not null, created_at text not null, edited_at text, deleted_at text, deleted_by_user_id text);
+      create table sessions (id text primary key, token_hash text not null unique, user_id text not null, created_at text not null, expires_at text not null, revoked_at text);
+      create table owner_claims (id text primary key, token_hash text not null unique, user_id text not null, created_at text not null, expires_at text not null, consumed_at text);
+      create table audit_events (id text primary key, actor_user_id text, action text not null, target_user_id text, created_at text not null);
+    `);
+    legacy.prepare("insert into users values (?, ?, ?, ?)").run("owner", "Red Lantern", "owner", null);
+    legacy.prepare("insert into rooms values (?, ?, ?, ?)").run("history", "history", "text", 50);
+    legacy.prepare("insert into invites values (?, ?, ?, ?, ?, ?, ?, ?, ?)").run("invite", "legacy-token-hash", "Legacy", "owner", null, null, null, null, "2026-01-01T00:00:00.000Z");
+    legacy.close();
+
+    const migrated = await openDatabase(databasePath);
+    try {
+      const tables = migrated.sqlite;
+      const server = tables.prepare("select id, name from servers where id = ?").get(defaultServerId) as { id: string; name: string };
+      assert.equal(server.id, defaultServerId);
+      assert.equal(server.name, "The Basement");
+      assert.equal(tables.prepare("select server_id from rooms where id = 'history'").get()?.server_id, defaultServerId);
+      assert.equal(tables.prepare("select server_id from invites where id = 'invite'").get()?.server_id, defaultServerId);
+      const membership = tables.prepare("select server_id, role from server_members where user_id = 'owner'").get() as { server_id: string; role: string };
+      assert.equal(membership.server_id, defaultServerId);
+      assert.equal(membership.role, "owner");
+    } finally {
+      migrated.close();
+      await rm(databaseDir, { force: true, recursive: true });
+    }
   });
 
   it("bootstraps the first owner and sets a session cookie", async () => {
@@ -581,6 +617,110 @@ describe("Voxly HTTP MVP", () => {
       afterDeleteHistory.json().messages.some((message: { id: string }) => message.id === firstMessage.id),
       false
     );
+  });
+
+  it("scopes channels, invites, memberships, and bans to a server", async () => {
+    const owner = await bootstrapOwner(app);
+    const firstMember = await acceptInvite(app, owner.cookies, "Ada");
+
+    const createdServer = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Friday Games" }
+    });
+    assert.equal(createdServer.statusCode, 201);
+    const server = createdServer.json().server as { id: string; name: string };
+    assert.equal(server.name, "Friday Games");
+
+    const channel = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${server.id}/rooms`,
+      cookies: owner.cookies,
+      payload: { name: "raids", kind: "voice" }
+    });
+    assert.equal(channel.statusCode, 201);
+    assert.equal(channel.json().room.serverId, server.id);
+
+    const invite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${server.id}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Ada Friday invite", expiresInHours: 24 }
+    });
+    assert.equal(invite.statusCode, 201);
+
+    const joinedExistingAccount = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: firstMember.cookies,
+      payload: { inviteToken: invite.json().invite.token }
+    });
+    assert.equal(joinedExistingAccount.statusCode, 200);
+    assert.equal(joinedExistingAccount.json().user.id, firstMember.user.id);
+
+    const servers = await app.server.inject({
+      method: "GET",
+      url: "/api/servers",
+      cookies: firstMember.cookies
+    });
+    assert.equal(servers.statusCode, 200);
+    assert.ok(servers.json().servers.some((item: { id: string }) => item.id === server.id));
+
+    const ban = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${server.id}/members/${firstMember.user.id}/ban`,
+      cookies: owner.cookies
+    });
+    assert.equal(ban.statusCode, 204);
+
+    const inaccessibleRooms = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${server.id}/rooms`,
+      cookies: firstMember.cookies
+    });
+    assert.equal(inaccessibleRooms.statusCode, 403);
+
+    const defaultRoomsRemainAvailable = await app.server.inject({
+      method: "GET",
+      url: "/api/rooms",
+      cookies: firstMember.cookies
+    });
+    assert.equal(defaultRoomsRemainAvailable.statusCode, 200);
+  });
+
+  it("issues one-time member access links without exposing their token", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Mehmet");
+    const defaultServer = (await app.server.inject({
+      method: "GET",
+      url: "/api/servers",
+      cookies: owner.cookies
+    })).json().servers[0] as { id: string };
+
+    const link = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServer.id}/members/${member.user.id}/access-links`,
+      cookies: owner.cookies
+    });
+    assert.equal(link.statusCode, 201);
+    const token = link.json().token as string;
+    assert.equal(JSON.stringify(app.dumpTables()).includes(token), false);
+
+    const claimed = await app.server.inject({
+      method: "POST",
+      url: "/api/access/claim",
+      payload: { token }
+    });
+    assert.equal(claimed.statusCode, 201);
+    assert.equal(claimed.json().user.id, member.user.id);
+
+    const reused = await app.server.inject({
+      method: "POST",
+      url: "/api/access/claim",
+      payload: { token }
+    });
+    assert.equal(reused.statusCode, 404);
   });
 });
 

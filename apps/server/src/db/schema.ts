@@ -39,9 +39,37 @@ export const ownerClaims = sqliteTable("owner_claims", {
 
 export const rooms = sqliteTable("rooms", {
   id: text("id").primaryKey(),
+  serverId: text("server_id").notNull(),
   name: text("name").notNull(),
   kind: text("kind", { enum: ["text", "voice"] }).notNull(),
   position: integer("position").notNull()
+});
+
+export const servers = sqliteTable("servers", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  createdByUserId: text("created_by_user_id"),
+  createdAt: text("created_at").notNull()
+});
+
+export const serverMembers = sqliteTable("server_members", {
+  serverId: text("server_id").notNull(),
+  userId: text("user_id").notNull(),
+  role: text("role", { enum: ["owner", "member"] }).notNull(),
+  bannedAt: text("banned_at"),
+  removedAt: text("removed_at"),
+  joinedAt: text("joined_at").notNull()
+});
+
+export const accessClaims = sqliteTable("access_claims", {
+  id: text("id").primaryKey(),
+  tokenHash: text("token_hash").notNull().unique(),
+  userId: text("user_id").notNull(),
+  serverId: text("server_id").notNull(),
+  createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  consumedAt: text("consumed_at")
 });
 
 export const messages = sqliteTable("messages", {

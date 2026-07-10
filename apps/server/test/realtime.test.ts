@@ -34,12 +34,13 @@ describe("Voxly realtime MVP", () => {
     const member = await acceptInvite(app, owner.cookies, "Ece");
 
     const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const onlinePromise = onceEvent<{ nickname: string }>(ownerSocket, "presence:online");
+    const onlinePromise = onceEvent<{ serverId: string; user: { nickname: string } }>(ownerSocket, "presence:serverOnline");
     const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
     sockets.push(ownerSocket, memberSocket);
 
     const online = await onlinePromise;
-    assert.equal(online.nickname, "Ece");
+    assert.equal(online.serverId, "the-basement");
+    assert.equal(online.user.nickname, "Ece");
 
     const roomsResponse = await app.server.inject({
       method: "GET",
@@ -301,6 +302,119 @@ describe("Voxly realtime MVP", () => {
     });
     assert.deepEqual(rejected, { ok: false, error: "target_not_in_voice_room" });
   });
+
+  it("enforces server voice membership and keeps an account in one room globally", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Aylin");
+    const outsider = await acceptInvite(app, owner.cookies, "Bora");
+    const serverResponse = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Weekend Crew" }
+    });
+    const secondServerId = serverResponse.json().server.id as string;
+    const secondServerRooms = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${secondServerId}/rooms`,
+      cookies: owner.cookies
+    });
+    const secondLobbyId = secondServerRooms.json().rooms.find((room: { kind: string }) => room.kind === "voice").id as string;
+    const inviteResponse = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${secondServerId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Aylin weekend", expiresInHours: 24 }
+    });
+    await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: inviteResponse.json().invite.token }
+    });
+
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const outsiderSocket = await connectSocket(baseUrl, outsider.cookies.voxly_session);
+    sockets.push(memberSocket, outsiderSocket);
+
+    memberSocket.emit("voice:join", "lobby");
+    await emitWithAck(memberSocket, "voice:snapshot", "lobby");
+    memberSocket.emit("voice:join", secondLobbyId);
+    const defaultLobby = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(memberSocket, "voice:snapshot", "lobby");
+    assert.equal(defaultLobby.members.some((entry) => entry.user.userId === member.user.id), false);
+
+    outsiderSocket.emit("voice:join", secondLobbyId);
+    const protectedLobby = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(outsiderSocket, "voice:snapshot", secondLobbyId);
+    assert.equal(protectedLobby.members.some((entry) => entry.user.userId === outsider.user.id), false);
+  });
+
+  it("removes a member from voice immediately when an owner disconnects or bans them", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(ownerSocket, memberSocket);
+
+    ownerSocket.emit("voice:join", "lobby");
+    memberSocket.emit("voice:join", "lobby");
+    await emitWithAck(memberSocket, "voice:snapshot", "lobby");
+
+    const disconnected = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/the-basement/voice/lobby/members/${member.user.id}/disconnect`,
+      cookies: owner.cookies
+    });
+    assert.equal(disconnected.statusCode, 204);
+    const afterDisconnect = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(ownerSocket, "voice:snapshot", "lobby");
+    assert.equal(afterDisconnect.members.some((entry) => entry.user.userId === member.user.id), false);
+
+    memberSocket.emit("voice:join", "lobby");
+    await emitWithAck(memberSocket, "voice:snapshot", "lobby");
+    const banned = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/the-basement/members/${member.user.id}/ban`,
+      cookies: owner.cookies
+    });
+    assert.equal(banned.statusCode, 204);
+    const afterBan = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(ownerSocket, "voice:snapshot", "lobby");
+    assert.equal(afterBan.members.some((entry) => entry.user.userId === member.user.id), false);
+  });
+
+  it("stops kicked and banned members from receiving future text-room messages", async () => {
+    const owner = await bootstrapOwner(app);
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    ownerSocket.emit("room:join", "general");
+    await waitForSocketRoom(app, ownerSocket, "room:general");
+
+    for (const action of ["kick", "ban"] as const) {
+      const member = await acceptInvite(app, owner.cookies, `${action} target`);
+      const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+      sockets.push(memberSocket);
+      memberSocket.emit("room:join", "general");
+      await waitForSocketRoom(app, memberSocket, "room:general");
+
+      const moderationResponse = await app.server.inject({
+        method: "POST",
+        url: `/api/servers/the-basement/members/${member.user.id}/${action}`,
+        cookies: owner.cookies
+      });
+      assert.equal(moderationResponse.statusCode, 204);
+
+      const ownerMessage = onceEvent<{ body: string }>(ownerSocket, "message:new");
+      const removedMemberMessage = expectNoEvent(memberSocket, "message:new");
+      const messageResponse = await app.server.inject({
+        method: "POST",
+        url: "/api/rooms/general/messages",
+        cookies: owner.cookies,
+        payload: { body: `${action} must not receive this` }
+      });
+
+      assert.equal(messageResponse.statusCode, 201);
+      assert.equal((await ownerMessage).body, `${action} must not receive this`);
+      await removedMemberMessage;
+    }
+  });
 });
 
 async function bootstrapOwner(app: VoxlyApp) {
@@ -367,4 +481,28 @@ function onceEvent<T>(socket: Socket, event: string, trigger?: () => void): Prom
     });
     trigger?.();
   });
+}
+
+function expectNoEvent(socket: Socket, event: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.off(event, onEvent);
+      resolve();
+    }, 250);
+    const onEvent = () => {
+      clearTimeout(timeout);
+      reject(new Error(`Unexpected ${event} event`));
+    };
+    socket.once(event, onEvent);
+  });
+}
+
+async function waitForSocketRoom(app: VoxlyApp, socket: Socket, room: string) {
+  const socketId = socket.id;
+  assert.ok(socketId, "Connected socket must have an id");
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (app.io.sockets.sockets.get(socketId)?.rooms.has(room)) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`Socket did not join ${room}`);
 }

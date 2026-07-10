@@ -1,5 +1,5 @@
 import { createOpaqueToken, hashToken } from "./tokens.js";
-import { all, one, openDatabase, run, type VoxlyDatabase } from "../db/database.js";
+import { all, defaultServerId, one, openDatabase, run, type VoxlyDatabase } from "../db/database.js";
 
 export type OwnerSetupErrorCode = "owner_exists" | "owner_missing" | "invalid_nickname";
 
@@ -109,6 +109,11 @@ export function createOwnerClaimInDatabase(
     user.nickname,
     user.role
   ]);
+  run(
+    database.sqlite,
+    "insert into server_members (server_id, user_id, role, joined_at) values (?, ?, ?, ?)",
+    [defaultServerId, user.id, "owner", now.toISOString()]
+  );
   audit(database, user.id, "owner.created", user.id, now);
   return createClaimForOwner(database, {
     user,

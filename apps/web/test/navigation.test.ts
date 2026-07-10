@@ -4,7 +4,7 @@ import { getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from 
 
 describe("frontend navigation", () => {
   it("routes authenticated users to text chat by default", () => {
-    assert.equal(resolveInitialRoute({ isAuthenticated: true, inviteToken: null }), "/app/text/general");
+    assert.equal(resolveInitialRoute({ isAuthenticated: true, inviteToken: null }), "/app/server/the-basement/text/general");
   });
 
   it("keeps invite tokens on the invite screen for unauthenticated users", () => {
@@ -24,5 +24,18 @@ describe("frontend navigation", () => {
     assert.deepEqual(parsePathRoute("/"), { name: "landing" });
     assert.deepEqual(parsePathRoute("/invite"), { name: "invite", token: "" });
     assert.deepEqual(parsePathRoute("/invite/VX-123"), { name: "invite", token: "VX-123" });
+  });
+
+  it("keeps server identity in new routes and maps legacy room links to the default server", () => {
+    assert.deepEqual(parsePathRoute("/app/server/weekend/text/raids"), {
+      name: "text",
+      serverId: "weekend",
+      roomId: "raids"
+    });
+    assert.deepEqual(parsePathRoute("/app/voice/lobby"), {
+      name: "voice",
+      serverId: "the-basement",
+      roomId: "lobby"
+    });
   });
 });

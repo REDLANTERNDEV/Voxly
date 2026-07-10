@@ -10,6 +10,25 @@ export interface RoomsResponse {
   rooms: RoomSummary[];
 }
 
+export interface ServerSummary {
+  id: string;
+  name: string;
+  role: "owner" | "member";
+}
+
+export interface ServersResponse {
+  servers: ServerSummary[];
+}
+
+export interface ServerMember {
+  id: string;
+  nickname: string;
+  role: "owner" | "member";
+  bannedAt: string | null;
+  removedAt: string | null;
+  joinedAt: string;
+}
+
 export interface MessagesResponse {
   messages: ChatMessage[];
 }
@@ -31,6 +50,7 @@ export interface AppConfigResponse {
 export interface InviteResponse {
   invite: {
     id: string;
+    serverId: string;
     token: string;
     label: string;
     expiresAt: string | null;
@@ -39,6 +59,7 @@ export interface InviteResponse {
 
 export interface OwnerInvite {
   id: string;
+  serverId: string;
   label: string;
   createdByUserId: string;
   usedByUserId: string | null;
