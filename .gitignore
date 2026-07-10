@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-test/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.DS_Store
+.env
+.env.*
+!.env.example
+Voxly-App-UI/
+voxly-web-logo-pack-v3-centered/

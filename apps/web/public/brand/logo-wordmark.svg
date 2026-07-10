@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 420" role="img" aria-labelledby="title desc">
+  <title>Voxly wordmark</title>
+  <desc>Voxly wordmark with centered icon mark and brand text.</desc>
+  <rect width="1500" height="420" fill="transparent"/>
+  <g transform="translate(20,20)">
+    <rect x="0" y="0" width="380" height="380" rx="58" fill="#fffff3"/>
+    <rect x="29" y="29" width="322" height="322" rx="47" fill="#030301"/>
+    <path d="M 96 86 L 150 86 C 159 86 167 90 171 97 L 190 165 L 209 97 C 213 90 221 86 230 86 L 284 86 L 241 215 C 232 241 217 255 190 255 C 163 255 148 241 139 215 Z" fill="#fffff3"/>
+    <path d="M 102 284 C 130 275 160 270 190 270 C 220 270 250 275 278 284 C 249 280 220 278 190 278 C 160 278 131 280 102 284 Z" fill="#00d9c0"/>
+  </g>
+  <text x="460" y="205" font-size="148" font-weight="700" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Arial, sans-serif" fill="#030301">Voxly</text>
+  <text x="462" y="270" font-size="38" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Arial, sans-serif" fill="#b7ad99">Private voice rooms</text>
+</svg>

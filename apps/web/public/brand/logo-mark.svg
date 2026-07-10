@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title>Voxly logo mark</title>
+  <desc>Rounded square Voxly logo mark with centered V and centered turquoise underline.</desc>
+  <rect x="0" y="0" width="1024" height="1024" rx="154" fill="#fffff3"/>
+  <rect x="78" y="78" width="868" height="868" rx="128" fill="#030301"/>
+  <path d="M 267 250 L 437 250 C 450 250 462 255 470 265 L 512 414 L 554 265 C 562 255 574 250 587 250 L 757 250 L 619 655 C 602 704 565 730 512 730 C 459 730 422 704 405 655 Z" fill="#fffff3"/>
+  <path d="M 280 829 C 357 803 434 790 512 790 C 590 790 667 803 744 829 C 665 817 589 811 512 811 C 435 811 359 817 280 829 Z" fill="#00d9c0"/>
+</svg>
