@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { acceptInvite, ApiError, claimOwnerSession, deleteMessage, revokeInvite } from "../src/api.js";
+import { acceptInvite, ApiError, claimOwnerSession, deleteMessage, fetchRtcConfig, revokeInvite } from "../src/api.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -63,5 +63,20 @@ describe("frontend api", () => {
     await deleteMessage("general", "message-id");
 
     assert.equal(new Headers(headers).has("Content-Type"), false);
+  });
+
+  it("loads user-scoped RTC credentials from the authenticated endpoint", async () => {
+    let requestedPath = "";
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      requestedPath = String(input);
+      return new Response(JSON.stringify({ iceServers: [], expiresAt: null }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }) as typeof fetch;
+
+    await fetchRtcConfig();
+
+    assert.equal(requestedPath, "/api/rtc/config");
   });
 });

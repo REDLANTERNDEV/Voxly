@@ -24,6 +24,7 @@ import {
   disconnectVoiceMember,
   fetchConfig,
   fetchMe,
+  fetchRtcConfig,
   fetchMessages,
   fetchServerOwnerData,
   fetchServerRooms,
@@ -35,7 +36,7 @@ import {
   updateMessage
 } from "./api.js";
 import { createVoxlySocket, type VoxlySocket } from "./socket.js";
-import type { AppConfigResponse, OwnerInvite, ServerMember, ServerSummary } from "./types.js";
+import type { AppConfigResponse, OwnerInvite, RtcConfigResponse, ServerMember, ServerSummary } from "./types.js";
 import { connectAudioOutput, type AudioOutput } from "./lib/audioOutput.js";
 import { controlPresentation, type VoiceControls } from "./lib/voiceControls.js";
 import { defaultServerId, getAccessClaimTokenFromHash, getInviteTokenFromPath, getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "./lib/navigation.js";
@@ -89,7 +90,8 @@ export function App() {
   const [onlineUsersByServer, setOnlineUsersByServer] = useState<Record<string, PresenceUser[]>>({});
   const [socketState, setSocketState] = useState<"connecting" | "live" | "reconnecting" | "offline">("connecting");
   const [socketInstance, setSocketInstance] = useState<VoxlySocket | null>(null);
-  const [appConfig, setAppConfig] = useState<AppConfigResponse>({ publicUrl: null, rtc: { iceServers: [] }, turnstile: null });
+  const [appConfig, setAppConfig] = useState<AppConfigResponse>({ publicUrl: null, turnstile: null });
+  const [rtcConfig, setRtcConfig] = useState<RtcConfigResponse>({ iceServers: [], expiresAt: null });
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
   const [language, setLanguage] = useState<LanguageCode>(() => readLanguageChoice());
@@ -100,7 +102,7 @@ export function App() {
     : servers[0]?.id ?? defaultServerId;
   const onlineUsers = onlineUsersByServer[activeServerId] ?? (user ? [presenceFromUser(user)] : []);
   const voiceRoomIds = useMemo(() => rooms.filter((room) => room.kind === "voice").map((room) => room.id), [rooms]);
-  const voice = useVoiceMedia({ socket: socketInstance, user, iceServers: appConfig.rtc.iceServers, voiceRoomIds });
+  const voice = useVoiceMedia({ socket: socketInstance, user, iceServers: rtcConfig.iceServers, voiceRoomIds });
   const activeVoiceRoomRef = useRef<string | null>(voice.activeRoomId);
   const leaveVoiceRef = useRef<() => void>(voice.leave);
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
@@ -167,12 +169,39 @@ export function App() {
         if (isMounted) setAppConfig(config);
       })
       .catch(() => {
-        if (isMounted) setAppConfig({ publicUrl: null, rtc: { iceServers: [] }, turnstile: null });
+        if (isMounted) setAppConfig({ publicUrl: null, turnstile: null });
       });
     return () => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setRtcConfig({ iceServers: [], expiresAt: null });
+      return;
+    }
+    let cancelled = false;
+    let refreshTimer: number | null = null;
+    const load = async () => {
+      try {
+        const config = await fetchRtcConfig();
+        if (cancelled) return;
+        setRtcConfig(config);
+        if (config.expiresAt) {
+          const refreshInMs = Math.max(60_000, config.expiresAt * 1000 - Date.now() - 5 * 60_000);
+          refreshTimer = window.setTimeout(() => void load(), refreshInMs);
+        }
+      } catch {
+        if (!cancelled) setRtcConfig({ iceServers: [], expiresAt: null });
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     let isMounted = true;

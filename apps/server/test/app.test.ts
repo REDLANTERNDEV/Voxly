@@ -8,6 +8,7 @@ import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 import { hashToken } from "../src/auth/tokens.js";
 import { createOwnerClaim, createOwnerLoginClaim } from "../src/auth/ownerClaims.js";
 import { defaultServerId, one, openDatabase, run } from "../src/db/database.js";
+import { createRtcConfigProvider } from "../src/rtcConfig.js";
 
 describe("Voxly HTTP MVP", () => {
   let app: VoxlyApp;
@@ -400,7 +401,7 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(acceptResponse.statusCode, 404);
   });
 
-  it("returns public config for invite URL and WebRTC setup", async () => {
+  it("keeps TURN credentials out of public config", async () => {
     const response = await app.server.inject({
       method: "GET",
       url: "/api/config"
@@ -408,8 +409,40 @@ describe("Voxly HTTP MVP", () => {
 
     assert.equal(response.statusCode, 200);
     assert.equal(response.json().publicUrl, "https://voxly.example.com");
-    assert.deepEqual(response.json().rtc.iceServers, []);
+    assert.equal("rtc" in response.json(), false);
     assert.equal(response.json().turnstile, null);
+  });
+
+  it("returns user-scoped RTC config only to authenticated users", async () => {
+    const rtcApp = await createVoxlyApp({
+      databasePath: ":memory:",
+      ownerBootstrapToken: "bootstrap-secret",
+      allowHttpOwnerBootstrap: true,
+      secureCookies: false,
+      rtc: createRtcConfigProvider({
+        TURN_REALM: "turn.voxly.example",
+        TURN_STATIC_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
+        TURN_CREDENTIAL_TTL_SECONDS: "3600"
+      })
+    });
+    try {
+      const unauthorized = await rtcApp.server.inject({ method: "GET", url: "/api/rtc/config" });
+      assert.equal(unauthorized.statusCode, 401);
+
+      const owner = await bootstrapOwner(rtcApp);
+      const response = await rtcApp.server.inject({
+        method: "GET",
+        url: "/api/rtc/config",
+        cookies: owner.cookies
+      });
+      assert.equal(response.statusCode, 200);
+      assert.equal(typeof response.json().expiresAt, "number");
+      const turn = response.json().iceServers.find((server: { username?: string }) => server.username);
+      assert.match(turn.username, new RegExp(`^[0-9]+:${owner.user.id}$`));
+      assert.equal(typeof turn.credential, "string");
+    } finally {
+      await rtcApp.close();
+    }
   });
 
   it("publishes only the public Turnstile site key", async () => {

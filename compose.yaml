@@ -20,6 +20,9 @@ services:
       ENABLE_HTTP_OWNER_BOOTSTRAP: ${ENABLE_HTTP_OWNER_BOOTSTRAP:-false}
       TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      TURN_REALM: ${TURN_REALM:-}
+      TURN_STATIC_AUTH_SECRET: ${TURN_STATIC_AUTH_SECRET:-}
+      TURN_CREDENTIAL_TTL_SECONDS: ${TURN_CREDENTIAL_TTL_SECONDS:-86400}
     ports:
       - "127.0.0.1:${VOXLY_HTTP_PORT:-3000}:3000"
     volumes:
@@ -46,32 +49,6 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
-
-  coturn:
-    image: coturn/coturn:4.6.3
-    profiles:
-      - turn
-    restart: unless-stopped
-    network_mode: host
-    command:
-      - --realm=${TURN_REALM:-turn.example.com}
-      - --server-name=${TURN_REALM:-turn.example.com}
-      - --listening-port=3478
-      - --fingerprint
-      - --lt-cred-mech
-      - --use-auth-secret
-      - --static-auth-secret=${TURN_STATIC_AUTH_SECRET:-replace-with-long-random-secret}
-      - --min-port=${TURN_MIN_PORT:-49160}
-      - --max-port=${TURN_MAX_PORT:-49200}
-      - --external-ip=${TURN_EXTERNAL_IP:-127.0.0.1}
-      - --no-stdout-log
-      - --simple-log
-      - --no-cli
-    security_opt:
-      - no-new-privileges:true
-    pids_limit: 128
-    mem_limit: ${VOXLY_TURN_MEMORY_LIMIT:-128m}
-    mem_reservation: ${VOXLY_TURN_MEMORY_RESERVATION:-32m}
 
 networks:
   voxly_bridge:

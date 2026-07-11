@@ -9,6 +9,7 @@ import type {
   PublicUser,
   RoomSummary,
   RoomsResponse,
+  RtcConfigResponse,
   ServerMember,
   ServerSummary,
   ServersResponse
@@ -45,6 +46,10 @@ export async function fetchMe() {
 
 export async function fetchConfig() {
   return apiGet<AppConfigResponse>("/api/config");
+}
+
+export async function fetchRtcConfig() {
+  return apiGet<RtcConfigResponse>("/api/rtc/config");
 }
 
 export async function fetchRooms() {

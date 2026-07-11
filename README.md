@@ -1,147 +1,120 @@
 # Voxly
 
-Voxly is a small, self-hosted voice and text chat app for private friend
-groups. It is deliberately not a public Discord replacement: the project is
-optimised for one modest VPS, invite-only access, and a straightforward
-operational model.
+Voxly is a small, self-hosted text and WebRTC voice chat application for
+private groups. It provides invite-only accounts, server-scoped rooms,
+presence, moderation, camera and screen sharing without depending on a hosted
+chat or TURN provider.
 
 ## Features
 
-- Invite-only accounts with persistent browser sessions
-- Owner CLI for initial access, recovery claims, and moderation
-- Text rooms backed by SQLite
-- Live presence and voice-room state over Socket.IO
-- WebRTC microphone audio, camera, and screen sharing
-- Optional system audio with screen sharing when the browser supports it
-- Per-listener member volume controls and per-share temporary volume controls
+- Invite-only accounts and persistent browser sessions
+- Text and voice rooms with live Socket.IO presence
+- Microphone, camera, screen sharing, and optional screen audio
+- Owner CLI for initial access and recovery
+- SQLite storage with a single Node.js application container
+- Optional self-hosted Coturn fallback for restrictive networks
 - English and Turkish interface
-- Self-hosted TURN fallback for difficult network paths
 
-## Architecture
+## Requirements
 
-```text
-Browser
-   |
-Cloudflare (optional: DNS, TLS edge, WAF, Turnstile)
-   |
-Reverse proxy (Caddy or Nginx)
-   |
-127.0.0.1:3000
-   |
-Voxly Node app
-  - Fastify API and Socket.IO
-  - React static files
-  - SQLite volume
-```
+For local development:
 
-WebRTC uses public STUN for peer discovery and tries browser-to-browser media
-first. When direct connectivity is not available, a self-hosted Coturn instance
-can relay media. TURN uses its own DNS-only hostname and is never placed behind
-Cloudflare's normal proxy.
+- Node.js 22 or later
+- npm
 
-## Repository layout
+For self-hosting:
 
-```text
-apps/server       Fastify, Socket.IO, SQLite, and owner CLI
-apps/web          React/Vite client
-packages/shared   Shared event and DTO types
-infra             Optional Caddy, Cloudflare, and Coturn examples
-compose.yaml      Docker Compose deployment
-Dockerfile        Production image
-```
+- A Linux server with Docker Engine and Docker Compose
+- A domain name and an HTTPS reverse proxy such as Nginx or Caddy
+- Optional: a second DNS hostname for Coturn
 
 ## Local development
-
-Requirements: Node.js 22 or later.
 
 ```sh
 npm install
 npm run build -w @voxly/server
-npm run start -w @voxly/server
+DATABASE_PATH=./voxly.sqlite VOXLY_PUBLIC_URL=http://127.0.0.1:3000 \
+  npm run start -w @voxly/server
 ```
 
-In another terminal, start the Vite client:
+In another terminal:
 
 ```sh
 npm run dev -w @voxly/web
 ```
 
-The development client proxies API and Socket.IO requests to
-`http://127.0.0.1:3000`.
-
-Create the first owner in a separate terminal:
+Create the first owner and open the one-use URL printed by the command:
 
 ```sh
 DATABASE_PATH=./voxly.sqlite VOXLY_PUBLIC_URL=http://127.0.0.1:3000 \
-  npm run owner:create -w @voxly/server -- --nickname "Red"
+  npm run owner:create -w @voxly/server -- --nickname "Owner"
 ```
 
-Open the one-use URL printed by the command to receive the owner session.
-
-## Docker deployment
-
-Copy and update the environment file before deployment:
+## Docker quick start
 
 ```sh
 cp .env.example .env
-```
-
-Build and start the application:
-
-```sh
 docker compose up -d --build app
+docker compose exec app npm run owner:create -w @voxly/server -- --nickname "Owner"
 ```
 
-Create the first owner from the app container:
+The application binds to `127.0.0.1:3000` by default. Put Nginx, Caddy, or an
+equivalent HTTPS reverse proxy in front of it before exposing it publicly.
 
-```sh
-docker compose exec app npm run owner:create -w @voxly/server -- --nickname "Red"
-```
+For a complete production walkthrough, including DNS, TLS, Nginx/Caddy,
+backups, updates, and troubleshooting, see
+[Self-hosting Voxly](docs/self-hosting.md).
 
-The app container listens only on `127.0.0.1`; place a reverse proxy in front
-of it. Start the optional TURN relay only when it is needed:
+For reliable WebRTC connections across mobile, corporate, and carrier-grade
+NAT networks, deploy the optional TURN overlay described in
+[Self-hosting Coturn](docs/turn.md).
 
-```sh
-docker compose --profile turn up -d coturn
+## Repository layout
+
+```text
+apps/server       Fastify, Socket.IO, SQLite, and owner CLI
+apps/web          React and Vite client
+packages/shared   Shared event and DTO types
+docs              Operator and deployment documentation
+infra             Runnable reverse-proxy and Coturn examples
+compose.yaml      Core application deployment
+compose.turn.yaml Optional Coturn overlay
+Dockerfile        Production application image
 ```
 
 ## Configuration
 
-Docker Compose reads `.env` from the repository root. Keep that file private.
-The most important settings are:
+Docker Compose reads `.env` from the repository root. Start from
+[`.env.example`](.env.example) and never commit the resulting `.env` file.
 
 | Variable | Purpose |
 | --- | --- |
-| `VOXLY_PUBLIC_URL` | Public application URL; also determines secure-cookie defaults. |
-| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Optional Cloudflare Turnstile protection for invite acceptance. |
-| `TURN_REALM` | TURN hostname when the optional Coturn service is enabled. |
-| `TURN_STATIC_AUTH_SECRET` | Long random secret shared by Voxly and Coturn. |
-| `TURN_EXTERNAL_IP` | Public IP address used by Coturn on the VPS. |
+| `VOXLY_PUBLIC_URL` | Public HTTPS URL used for links and secure-cookie defaults |
+| `VOXLY_HTTP_PORT` | Host loopback port used by the reverse proxy |
+| `DATABASE_PATH` | SQLite path when running without Docker |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Optional Cloudflare Turnstile protection |
+| `TURN_REALM` / `TURN_STATIC_AUTH_SECRET` | Enable authenticated self-hosted TURN |
 
-See [`.env.example`](.env.example) for the complete set of supported values.
-
-## Infrastructure examples
-
-The tracked `infra/` files are examples, not required runtime files:
-
-- [`Caddyfile.example`](infra/Caddyfile.example) configures a TLS reverse proxy
-  for the app.
-- [`cloudflare.md`](infra/cloudflare.md) explains the Cloudflare and DNS setup.
-- [`coturn.example.conf`](infra/coturn.example.conf) configures the optional
-  WebRTC relay. Replace all placeholder values before using it.
-
-Use a proxied DNS record for the web app. Create the TURN hostname only when
-Coturn is enabled, and keep that hostname DNS-only so UDP and TCP relay traffic
-can reach the server directly.
+The complete TURN variable reference is in [docs/turn.md](docs/turn.md).
 
 ## Security model
 
-- Invite, session, and owner-claim tokens are stored only as hashes.
-- Owner recovery happens through a short-lived shell-generated claim.
-- Backend authorization remains the boundary for API and Socket.IO actions.
-- WebRTC signaling and media are not written to SQLite.
-- Voxly uses no analytics, hosted TURN service, external authentication
-  provider, or external CDN.
+- Invite, session, access, and owner-claim tokens are stored as hashes.
+- TURN credentials are short-lived and available only from an authenticated
+  endpoint; the shared TURN secret is never returned to browsers.
+- The application port is loopback-only in Docker Compose.
+- WebRTC media is sent peer-to-peer when possible and is not stored by Voxly.
+- Coturn is optional, separately deployed, quota-limited, and has no public
+  administration interface.
+
+## Documentation
+
+- [Self-hosting guide](docs/self-hosting.md)
+- [Coturn/TURN guide](docs/turn.md)
+- [Optional Cloudflare notes](docs/cloudflare.md)
+- [Nginx example](infra/nginx.example.conf)
+- [Caddy example](infra/Caddyfile.example)
+- [Standalone Coturn example](infra/coturn.example.conf)
 
 ## Verification
 
@@ -149,6 +122,11 @@ can reach the server directly.
 npm run typecheck
 npm test
 npm run build
-npm audit --omit=dev
-docker compose config
+docker compose config --quiet
+```
+
+When TURN is enabled:
+
+```sh
+docker compose -f compose.yaml -f compose.turn.yaml config --quiet
 ```

@@ -39,12 +39,14 @@ export interface MessageResponse {
 
 export interface AppConfigResponse {
   publicUrl: string | null;
-  rtc: {
-    iceServers: RTCIceServer[];
-  };
   turnstile: {
     siteKey: string;
   } | null;
+}
+
+export interface RtcConfigResponse {
+  iceServers: RTCIceServer[];
+  expiresAt: number | null;
 }
 
 export interface InviteResponse {

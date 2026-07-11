@@ -1,0 +1,28 @@
+services:
+  coturn:
+    image: coturn/coturn:4.14.0-r0
+    restart: unless-stopped
+    network_mode: host
+    entrypoint: ["/bin/sh", "/usr/local/bin/start-voxly-coturn"]
+    environment:
+      TURN_REALM: ${TURN_REALM:?TURN_REALM is required}
+      TURN_EXTERNAL_IP: ${TURN_EXTERNAL_IP:?TURN_EXTERNAL_IP is required}
+      TURN_STATIC_AUTH_SECRET: ${TURN_STATIC_AUTH_SECRET:?TURN_STATIC_AUTH_SECRET is required}
+      TURN_MIN_PORT: ${TURN_MIN_PORT:-49160}
+      TURN_MAX_PORT: ${TURN_MAX_PORT:-49200}
+      TURN_USER_QUOTA: ${TURN_USER_QUOTA:-12}
+      TURN_TOTAL_QUOTA: ${TURN_TOTAL_QUOTA:-40}
+    volumes:
+      - ${TURN_CERT_DIR:?TURN_CERT_DIR is required}:/run/turn-certs:ro
+      - ./infra/start-coturn.sh:/usr/local/bin/start-voxly-coturn:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /var/tmp:size=16m,mode=1777
+      - /var/lib/coturn:size=16m,mode=0750
+      - /var/lib/turn:size=16m,mode=0750
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: ${VOXLY_TURN_MEMORY_LIMIT:-128m}
+    mem_reservation: ${VOXLY_TURN_MEMORY_RESERVATION:-32m}

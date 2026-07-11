@@ -1,5 +1,5 @@
 import { createVoxlyApp } from "./app.js";
-import { createHmac } from "node:crypto";
+import { createRtcConfigProvider } from "./rtcConfig.js";
 import { resolveTurnstileConfig } from "./turnstile.js";
 
 const port = Number(process.env.PORT ?? "3000");
@@ -17,9 +17,7 @@ const app = await createVoxlyApp({
     secretKey: process.env.TURNSTILE_SECRET_KEY,
     publicUrl: process.env.VOXLY_PUBLIC_URL
   }),
-  rtc: {
-    iceServers: createIceServers()
-  }
+  rtc: createRtcConfigProvider(process.env)
 });
 
 await app.server.listen({ host, port });
@@ -37,30 +35,4 @@ function resolveSecureCookies() {
   }
 
   return process.env.NODE_ENV === "production";
-}
-
-function createIceServers() {
-  const servers: Array<{ urls: string | string[]; username?: string; credential?: string }> = [
-    { urls: "stun:stun.l.google.com:19302" }
-  ];
-
-  if (!process.env.TURN_REALM || !process.env.TURN_STATIC_AUTH_SECRET) {
-    return servers;
-  }
-
-  const expiresAt = Math.floor(Date.now() / 1000) + 6 * 60 * 60;
-  const username = `${expiresAt}:voxly`;
-  const credential = createHmac("sha1", process.env.TURN_STATIC_AUTH_SECRET)
-    .update(username)
-    .digest("base64");
-  servers.push({
-    urls: [
-      `turn:${process.env.TURN_REALM}:3478?transport=udp`,
-      `turn:${process.env.TURN_REALM}:3478?transport=tcp`
-    ],
-    username,
-    credential
-  });
-
-  return servers;
 }

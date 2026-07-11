@@ -21,6 +21,7 @@ import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import { consumeOwnerClaim } from "./auth/ownerClaims.js";
 import { all, defaultServerId, dumpTables, one, openDatabase, run, type VoxlyDatabase } from "./db/database.js";
 import type { TurnstileConfig } from "./turnstile.js";
+import type { RtcConfigProvider } from "./rtcConfig.js";
 
 const sessionCookieName = "voxly_session";
 const sessionDays = 180;
@@ -32,9 +33,7 @@ export interface CreateVoxlyAppOptions {
   ownerBootstrapToken?: string;
   allowHttpOwnerBootstrap?: boolean;
   secureCookies: boolean;
-  rtc?: {
-    iceServers: IceServer[];
-  };
+  rtc?: RtcConfigProvider;
   turnstile?: TurnstileConfig;
   webDistPath?: string;
 }
@@ -187,11 +186,14 @@ function registerRoutes(
   server.get("/api/config", async () => {
     return {
       publicUrl: normalizePublicUrl(options.publicUrl),
-      rtc: {
-        iceServers: options.rtc?.iceServers ?? []
-      },
       turnstile: options.turnstile ? { siteKey: options.turnstile.siteKey } : null
     };
+  });
+
+  server.get("/api/rtc/config", async (request, reply) => {
+    const user = requireUser(database, request, reply, options.secureCookies);
+    if (!user) return;
+    return options.rtc?.getUserConfig(user.id) ?? { iceServers: [], expiresAt: null };
   });
 
   server.get("/api/me", async (request, reply) => {
