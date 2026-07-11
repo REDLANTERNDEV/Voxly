@@ -13,7 +13,7 @@ import type { VoxlySocket } from "../socket.js";
 import { createInitialVoiceControls, toggleVoiceControl, type VoiceControlKey, type VoiceControls } from "./voiceControls.js";
 import { mediaConstraintsFor, replaceMicrophoneTrack } from "./voiceMedia.js";
 import { buildMicrophoneConstraints } from "./audioDevices.js";
-import { shouldOfferToJoiningMember, type PeerConnectionState } from "./voiceNegotiation.js";
+import { shouldInitiatePeerConnection, type PeerConnectionState } from "./voiceNegotiation.js";
 import { clearVoiceResume, readVoiceResume, voiceResumeWindowMs, writeVoiceResume } from "./voiceResume.js";
 import {
   pruneRemoteStreamsForSnapshot,
@@ -750,7 +750,13 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           persistVoiceResume(availableTargets);
         }
         for (const member of nextSnapshot.members) {
-          ensurePeer(member.user.userId);
+          const peerUserId = member.user.userId;
+          const currentUserId = userIdRef.current;
+          const wasKnown = peersRef.current.has(peerUserId);
+          const peer = ensurePeer(peerUserId);
+          if (!wasKnown && peer && currentUserId && shouldInitiatePeerConnection(currentUserId, peerUserId)) {
+            void sendOffer(peerUserId, peer).catch(() => setError("Could not start peer connection."));
+          }
         }
       }
     };
@@ -758,9 +764,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       if (roomRef.current !== roomId) {
         return;
       }
-      const peer = ensurePeer(joinedUser.userId);
       const currentUserId = userIdRef.current;
-      if (!peer || !currentUserId || !shouldOfferToJoiningMember(currentUserId, joinedUser.userId, joinedUser.userId)) {
+      const wasKnown = peersRef.current.has(joinedUser.userId);
+      const peer = ensurePeer(joinedUser.userId);
+      if (wasKnown || !peer || !currentUserId || !shouldInitiatePeerConnection(currentUserId, joinedUser.userId)) {
         return;
       }
       void sendOffer(joinedUser.userId, peer).catch(() => setError("Could not start peer connection."));

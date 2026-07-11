@@ -3,6 +3,7 @@ import {
   supportsAudioOutputSelection,
   type AudioOutputApplication
 } from "./audioDevices.js";
+import { DEFAULT_VOLUME_PERCENT, volumeGain } from "./voiceVolume.js";
 
 let sharedContext: AudioContext | null = null;
 let activeOutputs = 0;
@@ -62,6 +63,18 @@ export function applySharedAudioOutputToMediaElement(element: HTMLMediaElement) 
   return applyAudioOutputDevice(selectedOutputDeviceId, { mediaElements: [element] });
 }
 
+export async function initializeFallbackAudioElement(
+  element: HTMLAudioElement,
+  stream: MediaStream,
+  state: { muted: boolean; volume: number }
+) {
+  element.srcObject = stream;
+  element.muted = state.muted;
+  element.volume = Math.min(1, volumeGain(state.volume));
+  await applySharedAudioOutputToMediaElement(element);
+  await element.play();
+}
+
 export async function selectSharedAudioOutputDevice(
   deviceId: string,
   mediaElements: readonly HTMLMediaElement[] = []
@@ -81,7 +94,10 @@ export async function selectSharedAudioOutputDevice(
   return outputSelectionQueue;
 }
 
-export function connectAudioOutput(stream: MediaStream): AudioOutput | null {
+export function connectAudioOutput(
+  stream: MediaStream,
+  initialState: { muted: boolean; volume: number } = { muted: false, volume: DEFAULT_VOLUME_PERCENT }
+): AudioOutput | null {
   const context = getContext();
   if (!context) return null;
   try {
@@ -89,13 +105,14 @@ export function connectAudioOutput(stream: MediaStream): AudioOutput | null {
     const gain = context.createGain();
     source.connect(gain);
     gain.connect(context.destination);
+    gain.gain.value = initialState.muted ? 0 : volumeGain(initialState.volume);
     activeOutputs += 1;
     attachResumeListeners();
     resumeSharedContext();
     let disposed = false;
     return {
       setVolume(muted, volume) {
-        gain.gain.value = muted ? 0 : Math.max(0, Math.min(1, volume / 100));
+        gain.gain.value = muted ? 0 : volumeGain(volume);
       },
       dispose() {
         if (disposed) return;

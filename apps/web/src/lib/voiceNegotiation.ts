@@ -1,5 +1,5 @@
-export function shouldOfferToJoiningMember(currentUserId: string, peerUserId: string, joiningUserId: string) {
-  return currentUserId !== joiningUserId && peerUserId === joiningUserId;
+export function shouldInitiatePeerConnection(currentUserId: string, peerUserId: string) {
+  return currentUserId !== peerUserId && currentUserId < peerUserId;
 }
 
 export type PeerConnectionState = "new" | "connecting" | "connected" | "failed";

@@ -38,7 +38,7 @@ import {
 } from "./api.js";
 import { createVoxlySocket, type VoxlySocket } from "./socket.js";
 import type { AppConfigResponse, OwnerInvite, RtcConfigResponse, ServerMember, ServerSummary } from "./types.js";
-import { applySharedAudioOutputToMediaElement, connectAudioOutput, type AudioOutput } from "./lib/audioOutput.js";
+import { connectAudioOutput, initializeFallbackAudioElement, type AudioOutput } from "./lib/audioOutput.js";
 import { controlPresentation, type VoiceControls } from "./lib/voiceControls.js";
 import { connectionStatusFor, type PeerConnectionState } from "./lib/voiceNegotiation.js";
 import { defaultServerId, getAccessClaimTokenFromHash, getInviteTokenFromPath, getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "./lib/navigation.js";
@@ -118,6 +118,11 @@ export function App() {
   const leaveVoiceRef = useRef<() => void>(voice.leave);
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
   const [screenVolumes, setScreenVolumes] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!voice.activeRoomId) return;
+    void audioDevices.refresh(false).catch(() => undefined);
+  }, [audioDevices.refresh, voice.activeRoomId]);
 
   useEffect(() => {
     activeVoiceRoomRef.current = voice.activeRoomId;
@@ -1377,6 +1382,7 @@ function ChannelRail(props: ShellProps) {
           refresh: props.t("audio.refresh"),
           unavailable: props.t("audio.unavailable")
         }}
+        onOpen={() => props.audioDevices.refresh(true)}
         onRefresh={() => props.audioDevices.refresh(true)}
         onSelectInput={props.audioDevices.selectInput}
         onSelectOutput={props.audioDevices.selectOutput}
@@ -2037,7 +2043,7 @@ function RemoteAudio({ stream, muted, volume }: { stream: MediaStream; muted: bo
       return;
     }
 
-    const output = connectAudioOutput(stream);
+    const output = connectAudioOutput(stream, { muted, volume });
     outputRef.current = output;
     setUseFallback(!output);
     return () => {
@@ -2057,9 +2063,7 @@ function RemoteAudio({ stream, muted, volume }: { stream: MediaStream; muted: bo
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !useFallback) return;
-    audio.srcObject = stream;
-    void applySharedAudioOutputToMediaElement(audio).catch(() => undefined);
-    void audio.play().catch(() => undefined);
+    void initializeFallbackAudioElement(audio, stream, { muted, volume }).catch(() => undefined);
     return () => {
       audio.srcObject = null;
     };

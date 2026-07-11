@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   applyAudioOutputDevice,
+  audioDeviceDisplayName,
   audioDevicePreferenceKey,
   buildMicrophoneConstraints,
   enumerateAudioDevices,
@@ -107,6 +108,12 @@ describe("audio device discovery", () => {
 
     assert.equal(calls, 1);
     assert.equal(handler, undefined);
+  });
+
+  it("shows browser device names and uses human labels only when a name is unavailable", () => {
+    assert.equal(audioDeviceDisplayName(device("mic-a", "audioinput", "MacBook Pro Microphone"), "Microphone", 0), "MacBook Pro Microphone");
+    assert.equal(audioDeviceDisplayName(device("mic-b", "audioinput", ""), "Microphone", 1), "Microphone 2");
+    assert.equal(audioDeviceDisplayName(device("speaker-a", "audiooutput", ""), "Audio output", 0), "Audio output 1");
   });
 });
 

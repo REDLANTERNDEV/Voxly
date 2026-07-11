@@ -84,6 +84,10 @@ export function reconcileAudioDevicePreference(deviceId: string, devices: readon
   return "";
 }
 
+export function audioDeviceDisplayName(device: Pick<MediaDeviceInfo, "label">, fallbackLabel: string, index: number) {
+  return device.label.trim() || `${fallbackLabel} ${index + 1}`;
+}
+
 export function subscribeToAudioDeviceChanges(
   mediaDevices: AudioDeviceChangeSource,
   onDeviceChange: () => void
