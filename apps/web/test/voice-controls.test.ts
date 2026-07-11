@@ -7,7 +7,7 @@ import {
   voiceDockStatus,
   voiceStatusLabels
 } from "../src/lib/voiceControls.js";
-import { createInitialMediaState, mediaConstraintsFor } from "../src/lib/voiceMedia.js";
+import { createInitialMediaState, mediaConstraintsFor, replaceMicrophoneTrack } from "../src/lib/voiceMedia.js";
 
 describe("voice control view state", () => {
   it("keeps camera and screen share off by default but available after joining", () => {
@@ -84,5 +84,21 @@ describe("voice control view state", () => {
       },
       audio: true
     });
+  });
+
+  it("replaces only the previous microphone sender and leaves screen audio untouched", async () => {
+    const previousMic = { id: "old-mic" } as MediaStreamTrack;
+    const nextMic = { id: "new-mic" } as MediaStreamTrack;
+    const screenAudio = { id: "screen-audio" } as MediaStreamTrack;
+    const replacements: string[] = [];
+    const peers = [{
+      getSenders: () => [
+        { track: previousMic, replaceTrack: async (track: MediaStreamTrack) => { replacements.push(track.id); } },
+        { track: screenAudio, replaceTrack: async () => { throw new Error("screen audio must not change"); } }
+      ]
+    }];
+
+    assert.equal(await replaceMicrophoneTrack(peers, previousMic, nextMic), 1);
+    assert.deepEqual(replacements, ["new-mic"]);
   });
 });

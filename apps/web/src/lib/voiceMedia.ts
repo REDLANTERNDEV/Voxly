@@ -44,3 +44,22 @@ export const micConstraints: MediaStreamConstraints = {
   audio: true,
   video: false
 };
+
+interface PeerWithSenders {
+  getSenders(): Array<{ track: MediaStreamTrack | null; replaceTrack(track: MediaStreamTrack | null): Promise<void> }>;
+}
+
+export async function replaceMicrophoneTrack(
+  peers: Iterable<PeerWithSenders>,
+  previousTrack: MediaStreamTrack | undefined,
+  nextTrack: MediaStreamTrack
+) {
+  if (!previousTrack) return 0;
+  const matchingSenders = [...peers].flatMap((peer) => peer.getSenders().filter((sender) => sender.track === previousTrack));
+  const results = await Promise.allSettled(matchingSenders.map((sender) => sender.replaceTrack(nextTrack)));
+  const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failures.length > 0) {
+    throw new AggregateError(failures.map((failure) => failure.reason), "Microphone track replacement failed");
+  }
+  return matchingSenders.length;
+}

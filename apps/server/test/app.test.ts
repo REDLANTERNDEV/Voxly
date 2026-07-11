@@ -56,6 +56,12 @@ describe("Voxly HTTP MVP", () => {
       const membership = tables.prepare("select server_id, role from server_members where user_id = 'owner'").get() as { server_id: string; role: string };
       assert.equal(membership.server_id, defaultServerId);
       assert.equal(membership.role, "owner");
+      const indexNames = [
+        ...tables.prepare("select name from sqlite_master where type = 'index'").all()
+      ].map((index) => (index as { name: string }).name);
+      for (const indexName of ["idx_server_members_user", "idx_rooms_server_position", "idx_invites_server_created", "idx_messages_room_created"]) {
+        assert.ok(indexNames.includes(indexName));
+      }
     } finally {
       migrated.close();
       await rm(databaseDir, { force: true, recursive: true });
@@ -682,6 +688,8 @@ describe("Voxly HTTP MVP", () => {
       payload: { label: "Ada Friday invite", expiresInHours: 24 }
     });
     assert.equal(invite.statusCode, 201);
+    const usersBeforeSecondMembership = (app.dumpTables().users as unknown[]).length;
+    const sessionsBeforeSecondMembership = (app.dumpTables().sessions as unknown[]).length;
 
     const joinedExistingAccount = await app.server.inject({
       method: "POST",
@@ -691,6 +699,9 @@ describe("Voxly HTTP MVP", () => {
     });
     assert.equal(joinedExistingAccount.statusCode, 200);
     assert.equal(joinedExistingAccount.json().user.id, firstMember.user.id);
+    assert.equal(joinedExistingAccount.headers["set-cookie"], undefined);
+    assert.equal((app.dumpTables().users as unknown[]).length, usersBeforeSecondMembership);
+    assert.equal((app.dumpTables().sessions as unknown[]).length, sessionsBeforeSecondMembership);
 
     const servers = await app.server.inject({
       method: "GET",
@@ -720,6 +731,109 @@ describe("Voxly HTTP MVP", () => {
       cookies: firstMember.cookies
     });
     assert.equal(defaultRoomsRemainAvailable.statusCode, 200);
+  });
+
+  it("keeps a server invite unused when the current user is already an active member", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ada");
+    const createdServer = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Friday Games" }
+    });
+    const serverId = createdServer.json().server.id as string;
+
+    const firstInvite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Ada first invite", expiresInHours: 24 }
+    });
+    const firstJoin = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: firstInvite.json().invite.token }
+    });
+    assert.equal(firstJoin.statusCode, 200);
+
+    const duplicateInvite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Ada duplicate invite", expiresInHours: 24 }
+    });
+    const duplicateJoin = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: duplicateInvite.json().invite.token }
+    });
+
+    assert.equal(duplicateJoin.statusCode, 409);
+    assert.deepEqual(duplicateJoin.json(), { error: "already_server_member", serverId });
+    const storedInvites = app.dumpTables().invites as Array<{ id: string; used_at: string | null }>;
+    const storedInvite = storedInvites.find((invite) => invite.id === duplicateInvite.json().invite.id);
+    assert.ok(storedInvite);
+    assert.equal(storedInvite.used_at, null);
+  });
+
+  it("lets a kicked member rejoin with an invite but keeps banned-member invites unused", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ece");
+    const createdServer = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Weekend Crew" }
+    });
+    const serverId = createdServer.json().server.id as string;
+    const createInvite = (label: string) => app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: owner.cookies,
+      payload: { label, expiresInHours: 24 }
+    });
+
+    const initialInvite = await createInvite("Initial membership");
+    await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: initialInvite.json().invite.token }
+    });
+    await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/members/${member.user.id}/kick`,
+      cookies: owner.cookies
+    });
+
+    const rejoinInvite = await createInvite("Rejoin after kick");
+    const rejoin = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: rejoinInvite.json().invite.token }
+    });
+    assert.equal(rejoin.statusCode, 200);
+
+    await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/members/${member.user.id}/ban`,
+      cookies: owner.cookies
+    });
+    const bannedInvite = await createInvite("Must remain unused");
+    const bannedJoin = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: bannedInvite.json().invite.token }
+    });
+    assert.equal(bannedJoin.statusCode, 403);
+    assert.deepEqual(bannedJoin.json(), { error: "server_banned" });
+    const storedInvites = app.dumpTables().invites as Array<{ id: string; used_at: string | null }>;
+    assert.equal(storedInvites.find((invite) => invite.id === bannedInvite.json().invite.id)?.used_at, null);
   });
 
   it("issues one-time member access links without exposing their token", async () => {

@@ -147,6 +147,7 @@ function migrate(sqlite: DatabaseSync) {
       expires_at text not null,
       consumed_at text
     );
+
   `);
 
   addColumnIfMissing(sqlite, "invites", "revoked_at", "text");
@@ -157,6 +158,17 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "rooms", "server_id", "text");
   addColumnIfMissing(sqlite, "invites", "server_id", "text");
   addColumnIfMissing(sqlite, "audit_events", "server_id", "text");
+
+  sqlite.exec(`
+    create index if not exists idx_server_members_user
+      on server_members (user_id, banned_at, removed_at);
+    create index if not exists idx_rooms_server_position
+      on rooms (server_id, position);
+    create index if not exists idx_invites_server_created
+      on invites (server_id, created_at desc);
+    create index if not exists idx_messages_room_created
+      on messages (room_id, created_at desc);
+  `);
 
   const now = new Date().toISOString();
   run(sqlite, "insert or ignore into servers (id, name, created_at) values (?, ?, ?)", [

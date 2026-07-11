@@ -106,6 +106,7 @@ type VisualSubscriptions = Map<string, Map<string, Set<VisualMediaKind>>>;
 
 interface RealtimeModeration {
   disconnectVoice: (serverId: string, roomId: string, userId: string) => boolean;
+  grantServerAccess: (serverId: string, userId: string) => Promise<void>;
   revokeServerAccess: (serverId: string, userId: string, reason: "banned" | "kicked") => void;
 }
 
@@ -282,6 +283,9 @@ function registerRoutes(
     if (member?.banned_at) {
       return reply.code(403).send({ error: "server_banned" });
     }
+    if (member && !member.removed_at) {
+      return reply.code(409).send({ error: "already_server_member", serverId: invite.server_id });
+    }
 
     const user = existingUser ?? createUser(database, body.nickname as string, "member");
     const now = new Date().toISOString();
@@ -292,6 +296,7 @@ function registerRoutes(
       invite.id
     ]);
     database.save();
+    await realtime.grantServerAccess(invite.server_id, user.id);
     if (!existingUser) {
       const token = createSession(database, user.id);
       setSessionCookie(reply, token, options.secureCookies);
@@ -348,6 +353,7 @@ function registerRoutes(
     createServerRoom(database, serverId, "Lobby", "voice", 20);
     audit(database, owner.id, "server.created", null, serverId);
     database.save();
+    await realtime.grantServerAccess(serverId, owner.id);
     return reply.code(201).send({ server: { id: serverId, name: body.name, role: "owner" } });
   });
 
@@ -926,7 +932,12 @@ function registerRealtime(
       current.sockets.delete(socket.id);
       if (current.sockets.size === 0) {
         online.delete(user.userId);
-        for (const serverId of serverIds) {
+        const activeServerIds = all<{ server_id: string }>(
+          database.sqlite,
+          "select server_id from server_members where user_id = ? and banned_at is null and removed_at is null",
+          [user.userId]
+        ).map((membership) => membership.server_id);
+        for (const serverId of activeServerIds) {
           socket.to(`server:${serverId}`).emit("presence:serverOffline", { serverId, userId: user.userId });
         }
       }
@@ -942,6 +953,27 @@ function registerRealtime(
       leaveVoiceMember(io, database, roomId, userId, voiceMembership, visualSubscriptions);
       emitVoiceForceLeave(io, userId, roomId, "owner_disconnect");
       return true;
+    },
+    async grantServerAccess(serverId, userId) {
+      const entry = online.get(userId);
+      if (!entry) return;
+
+      const userSockets = [...io.sockets.sockets.values()].filter((socket) => {
+        const socketUser = socket.data.user as PresenceUser | undefined;
+        return socketUser?.userId === userId;
+      });
+      await Promise.all(userSockets.map((socket) => socket.join(`server:${serverId}`)));
+
+      const users = serverPresenceUsers(database.sqlite, online, serverId);
+      for (const socket of userSockets) {
+        socket.emit("presence:serverSnapshot", { serverId, users });
+      }
+      for (const socket of io.sockets.sockets.values()) {
+        const socketUser = socket.data.user as PresenceUser | undefined;
+        if (socketUser?.userId !== userId && socket.rooms.has(`server:${serverId}`)) {
+          socket.emit("presence:serverOnline", { serverId, user: entry.user });
+        }
+      }
     },
     revokeServerAccess(serverId, userId, reason) {
       const textRoomIds = all<{ id: string }>(
@@ -1072,7 +1104,7 @@ function setVisualSubscriptions(
   for (const publisherUserId of publishers) {
     const previousKinds = previous.get(publisherUserId) ?? new Set<VisualMediaKind>();
     const nextKinds = next.get(publisherUserId) ?? new Set<VisualMediaKind>();
-    if (!sameVisualKinds(previousKinds, nextKinds)) {
+    if (!sameVisualKinds(previousKinds, nextKinds) || nextKinds.size > 0) {
       emitVisualSubscriberState(io, payload.roomId, publisherUserId, viewerUserId, [...nextKinds]);
     }
   }

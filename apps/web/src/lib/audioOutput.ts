@@ -1,6 +1,17 @@
+import {
+  applyAudioOutputDevice,
+  supportsAudioOutputSelection,
+  type AudioOutputApplication
+} from "./audioDevices.js";
+
 let sharedContext: AudioContext | null = null;
 let activeOutputs = 0;
 let listenersAttached = false;
+let selectedOutputDeviceId = "";
+let outputSelectionGeneration = 0;
+let outputSelectionQueue: Promise<AudioOutputApplication> = Promise.resolve("unsupported");
+
+type SinkAudioContext = AudioContext & { setSinkId?: (sinkId: string) => Promise<unknown> };
 
 function resumeSharedContext() {
   void sharedContext?.resume().catch(() => undefined);
@@ -11,6 +22,7 @@ function getContext() {
   if (!window.AudioContext) return null;
   try {
     sharedContext = new window.AudioContext();
+    void applyAudioOutputDevice(selectedOutputDeviceId, { audioContext: sharedContext as SinkAudioContext }).catch(() => undefined);
     return sharedContext;
   } catch {
     return null;
@@ -35,6 +47,39 @@ export type AudioOutput = {
   setVolume: (muted: boolean, volume: number) => void;
   dispose: () => void;
 };
+
+export function sharedAudioOutputSelectionSupported(mediaElements: readonly HTMLMediaElement[] = []) {
+  if (typeof window === "undefined") return false;
+  const AudioContextClass = window.AudioContext;
+  const audioContextPrototype = AudioContextClass?.prototype as SinkAudioContext | undefined;
+  return supportsAudioOutputSelection({
+    audioContext: audioContextPrototype,
+    mediaElements: mediaElements.length > 0 ? mediaElements : [window.HTMLMediaElement?.prototype].filter(Boolean) as HTMLMediaElement[]
+  });
+}
+
+export function applySharedAudioOutputToMediaElement(element: HTMLMediaElement) {
+  return applyAudioOutputDevice(selectedOutputDeviceId, { mediaElements: [element] });
+}
+
+export async function selectSharedAudioOutputDevice(
+  deviceId: string,
+  mediaElements: readonly HTMLMediaElement[] = []
+): Promise<AudioOutputApplication> {
+  const generation = ++outputSelectionGeneration;
+  selectedOutputDeviceId = deviceId;
+  outputSelectionQueue = outputSelectionQueue.catch(() => "unsupported").then(async () => {
+    const isCurrentSelection = generation === outputSelectionGeneration;
+    const effectiveDeviceId = isCurrentSelection ? deviceId : selectedOutputDeviceId;
+    const effectiveElements = isCurrentSelection ? mediaElements : [];
+    if (sharedContext) {
+      return applyAudioOutputDevice(effectiveDeviceId, { audioContext: sharedContext as SinkAudioContext, mediaElements: effectiveElements });
+    }
+    if (sharedAudioOutputSelectionSupported()) return "audio-context";
+    return applyAudioOutputDevice(effectiveDeviceId, { mediaElements: effectiveElements });
+  });
+  return outputSelectionQueue;
+}
 
 export function connectAudioOutput(stream: MediaStream): AudioOutput | null {
   const context = getContext();

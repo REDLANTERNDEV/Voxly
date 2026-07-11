@@ -188,6 +188,36 @@ describe("Voxly realtime MVP", () => {
     });
   });
 
+  it("notifies a publisher for every viewer and when a viewer retries a selected screen", async () => {
+    const owner = await bootstrapOwner(app);
+    const publisher = await acceptInvite(app, owner.cookies, "Publisher");
+    const firstViewer = await acceptInvite(app, owner.cookies, "First viewer");
+    const secondViewer = await acceptInvite(app, owner.cookies, "Second viewer");
+    const publisherSocket = await connectSocket(baseUrl, publisher.cookies.voxly_session);
+    const firstViewerSocket = await connectSocket(baseUrl, firstViewer.cookies.voxly_session);
+    const secondViewerSocket = await connectSocket(baseUrl, secondViewer.cookies.voxly_session);
+    sockets.push(publisherSocket, firstViewerSocket, secondViewerSocket);
+
+    for (const socket of [publisherSocket, firstViewerSocket, secondViewerSocket]) socket.emit("voice:join", "lobby");
+    await emitWithAck(publisherSocket, "voice:setMediaState", { roomId: "lobby", media: { screen: true } });
+    const target = [{ publisherUserId: publisher.user.id, kind: "screen" }];
+
+    const firstSubscription = onceEvent<{ viewerUserId: string; subscribedKinds: string[] }>(publisherSocket, "voice:visualSubscriberState", () => {
+      firstViewerSocket.emit("voice:setVisualSubscriptions", { roomId: "lobby", targets: target });
+    });
+    assert.deepEqual(await firstSubscription, { roomId: "lobby", viewerUserId: firstViewer.user.id, subscribedKinds: ["screen"] });
+
+    const secondSubscription = onceEvent<{ viewerUserId: string; subscribedKinds: string[] }>(publisherSocket, "voice:visualSubscriberState", () => {
+      secondViewerSocket.emit("voice:setVisualSubscriptions", { roomId: "lobby", targets: target });
+    });
+    assert.deepEqual(await secondSubscription, { roomId: "lobby", viewerUserId: secondViewer.user.id, subscribedKinds: ["screen"] });
+
+    const retry = onceEvent<{ viewerUserId: string; subscribedKinds: string[] }>(publisherSocket, "voice:visualSubscriberState", () => {
+      firstViewerSocket.emit("voice:setVisualSubscriptions", { roomId: "lobby", targets: target });
+    });
+    assert.deepEqual(await retry, { roomId: "lobby", viewerUserId: firstViewer.user.id, subscribedKinds: ["screen"] });
+  });
+
   it("broadcasts deafened and speaking state while deafen forces mic off", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");
@@ -346,6 +376,42 @@ describe("Voxly realtime MVP", () => {
     outsiderSocket.emit("voice:join", secondLobbyId);
     const protectedLobby = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(outsiderSocket, "voice:snapshot", secondLobbyId);
     assert.equal(protectedLobby.members.some((entry) => entry.user.userId === outsider.user.id), false);
+  });
+
+  it("joins an existing user's live sockets to a newly accepted server", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Aylin");
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(memberSocket);
+    const serverResponse = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Weekend Crew" }
+    });
+    const serverId = serverResponse.json().server.id as string;
+    const inviteResponse = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Aylin weekend", expiresInHours: 24 }
+    });
+    const snapshotPromise = onceEvent<{ serverId: string; users: Array<{ userId: string }> }>(
+      memberSocket,
+      "presence:serverSnapshot"
+    );
+
+    const joined = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: inviteResponse.json().invite.token }
+    });
+    const snapshot = await snapshotPromise;
+
+    assert.equal(joined.statusCode, 200);
+    assert.equal(snapshot.serverId, serverId);
+    assert.equal(snapshot.users.some((user) => user.userId === member.user.id), true);
   });
 
   it("removes a member from voice immediately when an owner disconnects or bans them", async () => {

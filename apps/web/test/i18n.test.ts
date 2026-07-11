@@ -29,7 +29,7 @@ describe("frontend localization", () => {
 
   it("keeps the landing invitation concise in both languages", () => {
     assert.equal(translate("en", "landing.title"), "A room for your people");
-    assert.equal(translate("tr", "landing.title"), "Kendinden insanlar için bir oda");
+    assert.equal(translate("tr", "landing.title"), "Kendi grubun için bir oda");
     assert.equal(translate("tr", "landing.inviteCta"), "Davetle katıl");
   });
 });
