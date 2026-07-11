@@ -87,6 +87,19 @@ type Translate = (key: TranslationKey, values?: Record<string, string | number>)
 
 const themeKey = "voxly:theme";
 const landingPrincipleKeys = ["privateAccess", "selfHosted", "lowFootprint"] as const;
+const rtcConfigRetryMs = 10_000;
+const publicStunRtcConfig: RtcConfigResponse = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  expiresAt: null
+};
+
+export function rtcConfigAfterFetchFailure(current: RtcConfigResponse, hasSuccessfulConfig: boolean) {
+  return hasSuccessfulConfig ? current : publicStunRtcConfig;
+}
+
+export function AuthenticatedAppSurface({ audio, children }: { audio: ReactNode; children: ReactNode }) {
+  return <>{audio}{children}</>;
+}
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
@@ -102,6 +115,7 @@ export function App() {
   const [appConfig, setAppConfig] = useState<AppConfigResponse>({ publicUrl: null, turnstile: null });
   const [rtcConfig, setRtcConfig] = useState<RtcConfigResponse>({ iceServers: [], expiresAt: null });
   const [rtcConfigReady, setRtcConfigReady] = useState(false);
+  const [rtcConfigError, setRtcConfigError] = useState("");
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
   const [language, setLanguage] = useState<LanguageCode>(() => readLanguageChoice());
@@ -118,6 +132,13 @@ export function App() {
   const leaveVoiceRef = useRef<() => void>(voice.leave);
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
   const [screenVolumes, setScreenVolumes] = useState<Record<string, number>>({});
+  const renderSurface = (surface: ReactNode) => user ? (
+    <AuthenticatedAppSurface
+      audio={<GlobalVoiceAudio streams={voice.remoteStreams} muted={voice.controls.deafen.on} memberVolumes={memberVolumes} />}
+    >
+      {surface}
+    </AuthenticatedAppSurface>
+  ) : surface;
 
   useEffect(() => {
     if (!voice.activeRoomId) return;
@@ -196,23 +217,33 @@ export function App() {
   useEffect(() => {
     if (!user) {
       setRtcConfig({ iceServers: [], expiresAt: null });
+      setRtcConfigError("");
       setRtcConfigReady(true);
       return;
     }
     setRtcConfigReady(false);
+    setRtcConfig({ iceServers: [], expiresAt: null });
+    setRtcConfigError("");
     let cancelled = false;
+    let hasSuccessfulConfig = false;
     let refreshTimer: number | null = null;
     const load = async () => {
       try {
         const config = await fetchRtcConfig();
         if (cancelled) return;
+        hasSuccessfulConfig = true;
         setRtcConfig(config);
+        setRtcConfigError("");
         if (config.expiresAt) {
           const refreshInMs = Math.max(60_000, config.expiresAt * 1000 - Date.now() - 5 * 60_000);
           refreshTimer = window.setTimeout(() => void load(), refreshInMs);
         }
       } catch {
-        if (!cancelled) setRtcConfig({ iceServers: [], expiresAt: null });
+        if (!cancelled) {
+          setRtcConfig((current) => rtcConfigAfterFetchFailure(current, hasSuccessfulConfig));
+          setRtcConfigError("RTC connection configuration could not be loaded. Retrying.");
+          refreshTimer = window.setTimeout(() => void load(), rtcConfigRetryMs);
+        }
       } finally {
         if (!cancelled) setRtcConfigReady(true);
       }
@@ -439,19 +470,19 @@ export function App() {
   });
 
   if (startupSurface(route.name, authState) === "shell-skeleton") {
-    return <AppShellSkeleton />;
+    return renderSurface(<AppShellSkeleton />);
   }
 
   if (user && !rtcConfigReady && (route.name === "text" || route.name === "voice" || route.name === "owner")) {
-    return <AppShellSkeleton />;
+    return renderSurface(<AppShellSkeleton />);
   }
 
   if (authState === "error" && (route.name === "text" || route.name === "voice" || route.name === "owner")) {
-    return <FatalState t={t} />;
+    return renderSurface(<FatalState t={t} />);
   }
 
   if (route.name === "owner-claim") {
-    return (
+    return renderSurface(
       <OwnerClaimScreen
         token={route.token}
         language={language}
@@ -466,7 +497,7 @@ export function App() {
   }
 
   if (route.name === "access-claim") {
-    return <AccessClaimScreen token={route.token} t={t} onNavigate={navigate} onClaimed={(claimedUser) => setUser(claimedUser)} />;
+    return renderSurface(<AccessClaimScreen token={route.token} t={t} onNavigate={navigate} onClaimed={(claimedUser) => setUser(claimedUser)} />);
   }
 
   if (!user && route.name === "landing") {
@@ -498,7 +529,7 @@ export function App() {
   }
 
   if (!user || route.name === "invite") {
-    return (
+    return renderSurface(
       <InviteScreen
         initialToken={route.name === "invite" ? route.token : ""}
         existingUser={Boolean(user)}
@@ -538,7 +569,7 @@ export function App() {
     t,
     currentRoom,
     appConfig,
-    voiceError: voice.error,
+    voiceError: voice.error || rtcConfigError,
     visualTargets: voice.visualTargets,
     voiceSnapshots: voice.voiceSnapshots,
     remoteStreams: voice.remoteStreams,
@@ -596,22 +627,22 @@ export function App() {
   };
 
   if (route.name === "owner" && servers.find((server) => server.id === route.serverId)?.role !== "owner") {
-    return <AppShellSkeleton />;
+    return renderSurface(<AppShellSkeleton />);
   }
 
   if (route.name === "owner") {
-    return <OwnerPanel {...shellProps} />;
+    return renderSurface(<OwnerPanel {...shellProps} />);
   }
 
   if (route.name === "voice") {
-    return <VoiceRoomScreen {...shellProps} />;
+    return renderSurface(<VoiceRoomScreen {...shellProps} />);
   }
 
   if (route.name !== "text") {
-    return <AppShellSkeleton />;
+    return renderSurface(<AppShellSkeleton />);
   }
 
-  return (
+  return renderSurface(
     <TextRoomScreen
       {...shellProps}
       messages={messagesByRoom[route.roomId] ?? []}
@@ -1005,7 +1036,6 @@ function VoiceRoomScreen(props: ShellProps) {
                   const isSpeaking = Boolean(media?.speaking && media.mic && !media.deafened);
                   return (
                     <li className={`participant-row ${isSpeaking ? "is-speaking" : ""}`} key={participant.userId}>
-                      {audioStream ? <RemoteAudio stream={audioStream} muted={props.controls.deafen.on} volume={props.memberVolumes[participant.userId] ?? DEFAULT_VOLUME_PERCENT} /> : null}
                       <span className="call-avatar" aria-hidden="true">{initial(participant.nickname)}</span>
                       <span className="participant-copy"><strong>{participant.nickname}</strong><VoiceStatusBadges media={media} t={props.t} /></span>
                       {audioStream ? (
@@ -2071,6 +2101,29 @@ function RemoteAudio({ stream, muted, volume }: { stream: MediaStream; muted: bo
 
   if (!useFallback) return null;
   return <audio className="remote-audio" ref={audioRef} autoPlay muted={muted} />;
+}
+
+function GlobalVoiceAudio({
+  streams,
+  muted,
+  memberVolumes
+}: {
+  streams: RemoteStreamState[];
+  muted: boolean;
+  memberVolumes: Record<string, number>;
+}) {
+  return (
+    <>
+      {streams.filter((item) => item.kind === "audio").map((item) => (
+        <RemoteAudio
+          key={remoteStreamKey(item.userId, item.kind)}
+          stream={item.stream}
+          muted={muted}
+          volume={memberVolumes[item.userId] ?? DEFAULT_VOLUME_PERCENT}
+        />
+      ))}
+    </>
+  );
 }
 
 function VisualStage({

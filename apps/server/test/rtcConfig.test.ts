@@ -26,6 +26,7 @@ describe("RTC configuration", () => {
     assert.equal(config.enabled, true);
     assert.equal(result.expiresAt, 1_700_003_600);
     assert.deepEqual(result.iceServers, [
+      { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:turn.voxly.example:3478" },
       {
         urls: [

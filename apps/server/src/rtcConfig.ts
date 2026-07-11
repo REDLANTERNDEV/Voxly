@@ -76,6 +76,7 @@ export function createUserRtcConfig(
   return {
     expiresAt,
     iceServers: [
+      publicStunServer,
       { urls: `stun:${config.realm}:3478` },
       {
         urls: [
