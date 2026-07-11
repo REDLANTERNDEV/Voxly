@@ -97,12 +97,44 @@ sudo certbot renew --dry-run
 
 TCP port 80 must be reachable while the HTTP challenge is validated.
 
+### Root-only Certbot files (recommended for Docker)
+
+Certbot normally protects `/etc/letsencrypt` with root-only directory and key
+permissions. Docker bind mounts preserve those host permissions, while the
+Coturn image runs as an unprivileged user. Mounting `/etc/letsencrypt` directly
+can therefore produce this expected failure:
+
+```text
+Voxly TURN configuration error: TLS certificate is not readable at /run/turn-certs/live/turn.example.com/fullchain.pem
+```
+
+Do not make `privkey.pem` world-readable and do not run Coturn as root. Export
+only the two required files into a private directory whose group matches the
+Coturn image:
+
+```sh
+cd /opt/voxly
+sudo ./infra/export-turn-cert.sh turn.example.com /etc/letsencrypt /opt/voxly/secrets/turn
+```
+
+The helper discovers the container's numeric group, creates directories with
+mode `0750`, and installs both PEM files with mode `0640`. Set:
+
+```dotenv
+TURN_CERT_DIR=/opt/voxly/secrets/turn
+```
+
+`TURN_CERT_GROUP=<numeric-gid>` can be supplied when Docker is unavailable to
+the export script. Obtain the group on another Docker-capable shell with:
+
+```sh
+docker run --rm --entrypoint id coturn/coturn:4.14.0-r0 -g
+```
+
 ### Caddy or another ACME client
 
 The certificate may be obtained by any ACME client. The overlay expects a
-Certbot-compatible certificate root containing both `live/` and `archive/`.
-If another client uses a different layout, copy or link the PEM files into a
-private directory with this structure:
+certificate root with this structure:
 
 ```text
 certificate-root/
@@ -127,12 +159,14 @@ Add the production values to `/opt/voxly/.env`:
 TURN_REALM=turn.example.com
 TURN_EXTERNAL_IP=203.0.113.10
 TURN_STATIC_AUTH_SECRET=replace-with-the-generated-secret
-TURN_CERT_DIR=/etc/letsencrypt
+TURN_CERT_DIR=/opt/voxly/secrets/turn
 TURN_CREDENTIAL_TTL_SECONDS=86400
 TURN_MIN_PORT=49160
 TURN_MAX_PORT=49200
 TURN_USER_QUOTA=12
 TURN_TOTAL_QUOTA=40
+VOXLY_TURN_MEMORY_LIMIT=128m
+VOXLY_TURN_MEMORY_RESERVATION=32m
 ```
 
 `TURN_STATIC_AUTH_SECRET` must contain at least 32 random bytes. The application
@@ -141,6 +175,12 @@ with the previous value.
 
 The default total quota fits inside the 41-port relay range. Increase the port
 range before increasing `TURN_TOTAL_QUOTA`.
+
+`VOXLY_TURN_MEMORY_LIMIT` is the hard container memory ceiling. Docker may kill
+Coturn if it exceeds this value. `VOXLY_TURN_MEMORY_RESERVATION` is the soft
+reservation used for scheduling and contention; it is not an additional limit.
+The defaults target small private rooms. Increase the limit only after observing
+actual usage with `docker stats`, and keep the reservation below the limit.
 
 ## 5. Validate and deploy
 
@@ -160,12 +200,13 @@ Deploy only `compose.yaml` when TURN is intentionally disabled, and leave both
 
 ## 6. Certificate renewal
 
-Coturn must restart after certificate renewal. With Certbot, create
-`/etc/letsencrypt/renewal-hooks/deploy/restart-voxly-turn.sh`:
+Coturn must receive the exported certificate and restart after renewal. With
+Certbot, create `/etc/letsencrypt/renewal-hooks/deploy/restart-voxly-turn.sh`:
 
 ```sh
 #!/bin/sh
 cd /opt/voxly || exit 1
+./infra/export-turn-cert.sh turn.example.com /etc/letsencrypt /opt/voxly/secrets/turn || exit 1
 docker compose -f compose.yaml -f compose.turn.yaml restart coturn
 ```
 
@@ -203,10 +244,19 @@ between two devices on different networks.
 
 ```sh
 docker compose -f compose.yaml -f compose.turn.yaml logs coturn
-sudo ls -l /etc/letsencrypt/live/turn.example.com/
+sudo ls -l /opt/voxly/secrets/turn/live/turn.example.com/
 ```
 
 Check the realm, certificate path, secret length, external IP, and relay range.
+
+When the log says a certificate is not readable, run the export helper again,
+confirm `.env` points `TURN_CERT_DIR` at the export directory, then recreate the
+container so the bind mount is refreshed:
+
+```sh
+sudo ./infra/export-turn-cert.sh turn.example.com /etc/letsencrypt /opt/voxly/secrets/turn
+docker compose -f compose.yaml -f compose.turn.yaml up -d --force-recreate coturn
+```
 
 ### TLS works but no relay candidate appears
 

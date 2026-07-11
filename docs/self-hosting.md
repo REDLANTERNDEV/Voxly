@@ -16,6 +16,10 @@ Nginx or Caddy reverse proxy. Commands assume the repository is installed at
 The server should have at least 1 GB of memory. The defaults in `.env.example`
 are conservative enough for a small private deployment.
 
+Coturn has separate `VOXLY_TURN_MEMORY_LIMIT` and
+`VOXLY_TURN_MEMORY_RESERVATION` controls. The TURN guide explains sizing and
+the safe certificate export required when ACME keys are root-only.
+
 ## 2. DNS
 
 Create an `A` record for the application hostname:

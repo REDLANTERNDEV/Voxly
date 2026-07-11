@@ -98,6 +98,8 @@ Docker Compose reads `.env` from the repository root. Start from
 | `DATABASE_PATH` | SQLite path when running without Docker |
 | `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Optional Cloudflare Turnstile protection |
 | `TURN_REALM` / `TURN_STATIC_AUTH_SECRET` | Enable authenticated self-hosted TURN |
+| `VOXLY_TURN_MEMORY_LIMIT` | Hard Coturn container memory ceiling |
+| `VOXLY_TURN_MEMORY_RESERVATION` | Soft Coturn memory reservation |
 
 The complete TURN variable reference is in [docs/turn.md](docs/turn.md).
 
