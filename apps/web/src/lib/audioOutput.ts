@@ -6,6 +6,7 @@ import {
 import { DEFAULT_VOLUME_PERCENT, volumeGain } from "./voiceVolume.js";
 
 let sharedContext: AudioContext | null = null;
+let sharedContextHeld = false;
 let activeOutputs = 0;
 let listenersAttached = false;
 let selectedOutputDeviceId = "";
@@ -28,6 +29,24 @@ function getContext() {
   } catch {
     return null;
   }
+}
+
+export function unlockSharedAudioOutput() {
+  const context = getContext();
+  if (!context) return false;
+  sharedContextHeld = true;
+  resumeSharedContext();
+  return true;
+}
+
+export function releaseUnusedSharedAudioOutput() {
+  sharedContextHeld = false;
+  if (activeOutputs > 0 || !sharedContext) return false;
+  const context = sharedContext;
+  sharedContext = null;
+  detachResumeListeners();
+  void context.close().catch(() => undefined);
+  return true;
 }
 
 function attachResumeListeners() {
@@ -120,7 +139,7 @@ export function connectAudioOutput(
         source.disconnect();
         gain.disconnect();
         activeOutputs = Math.max(0, activeOutputs - 1);
-        if (activeOutputs === 0) {
+        if (activeOutputs === 0 && !sharedContextHeld) {
           detachResumeListeners();
           const closingContext = sharedContext;
           sharedContext = null;

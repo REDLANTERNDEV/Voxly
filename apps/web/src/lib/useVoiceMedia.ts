@@ -13,6 +13,7 @@ import type { VoxlySocket } from "../socket.js";
 import { createInitialVoiceControls, toggleVoiceControl, type VoiceControlKey, type VoiceControls } from "./voiceControls.js";
 import { mediaConstraintsFor, replaceMicrophoneTrack } from "./voiceMedia.js";
 import { buildMicrophoneConstraints } from "./audioDevices.js";
+import { releaseUnusedSharedAudioOutput } from "./audioOutput.js";
 import {
   shouldIgnoreIncomingOffer,
   shouldInitiatePeerConnection,
@@ -481,7 +482,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const join = useCallback(async (roomId: string, restoredTargets: VisualTarget[] = []) => {
     if (!socket || !user) {
       setError("Socket is not connected.");
-      return;
+      return false;
     }
     setError("");
     try {
@@ -505,9 +506,11 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       } else {
         persistVoiceResume([]);
       }
+      return true;
     } catch {
       setError("Microphone permission is required to join voice.");
       stopStream("mic");
+      return false;
     }
   }, [applyVoiceSnapshot, emitMediaState, persistVoiceResume, setVisualSubscriptions, socket, startSpeakingMonitor, stopStream, user]);
 
@@ -593,6 +596,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     setLocalPreviews([]);
     setError("");
     setControls(createInitialVoiceControls());
+    releaseUnusedSharedAudioOutput();
   }, [closePeers, socket, stopStream]);
 
   const toggleMic = useCallback(async () => {

@@ -38,7 +38,13 @@ import {
 } from "./api.js";
 import { createVoxlySocket, type VoxlySocket } from "./socket.js";
 import type { AppConfigResponse, OwnerInvite, RtcConfigResponse, ServerMember, ServerSummary } from "./types.js";
-import { connectAudioOutput, initializeFallbackAudioElement, type AudioOutput } from "./lib/audioOutput.js";
+import {
+  connectAudioOutput,
+  initializeFallbackAudioElement,
+  releaseUnusedSharedAudioOutput,
+  unlockSharedAudioOutput,
+  type AudioOutput
+} from "./lib/audioOutput.js";
 import { controlPresentation, type VoiceControls } from "./lib/voiceControls.js";
 import { connectionStatusFor, type PeerConnectionState } from "./lib/voiceNegotiation.js";
 import { defaultServerId, getAccessClaimTokenFromHash, getInviteTokenFromPath, getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "./lib/navigation.js";
@@ -99,6 +105,21 @@ export function rtcConfigAfterFetchFailure(current: RtcConfigResponse, hasSucces
 
 export function AuthenticatedAppSurface({ audio, children }: { audio: ReactNode; children: ReactNode }) {
   return <>{audio}{children}</>;
+}
+
+export function joinVoiceWithAudioUnlock(
+  roomId: string,
+  unlock: () => void,
+  release: () => void,
+  join: (roomId: string) => Promise<boolean>
+) {
+  unlock();
+  return join(roomId).then((joined) => {
+    if (!joined) release();
+  }, (cause: unknown) => {
+    release();
+    throw cause;
+  });
 }
 
 export function App() {
@@ -611,7 +632,12 @@ export function App() {
       saveLanguageChoice(nextLanguage);
       setLanguage(nextLanguage);
     },
-    onJoinVoice: voice.join,
+    onJoinVoice: (roomId: string) => joinVoiceWithAudioUnlock(
+      roomId,
+      unlockSharedAudioOutput,
+      releaseUnusedSharedAudioOutput,
+      voice.join
+    ),
     onRequestVoiceSnapshot: voice.requestSnapshot,
     onSetVisualSubscriptions: voice.setVisualSubscriptions,
     onMemberVolumeChange: changeMemberVolume,

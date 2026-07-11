@@ -11,10 +11,122 @@ import * as audioOutputModule from "../src/lib/audioOutput.js";
 const originalWindow = globalThis.window;
 
 afterEach(() => {
+  const release = (audioOutputModule as Record<string, unknown>).releaseUnusedSharedAudioOutput as (() => boolean) | undefined;
+  release?.();
   Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
 });
 
 describe("shared audio output device", () => {
+  it("unlocks one shared audio context before a remote stream arrives", () => {
+    let contexts = 0;
+    let resumes = 0;
+    class FakeAudioContext {
+      destination = {};
+      constructor() { contexts += 1; }
+      createMediaStreamSource() {
+        return { connect() {}, disconnect() {} };
+      }
+      createGain() {
+        return { connect() {}, disconnect() {}, gain: { value: 1 } };
+      }
+      resume() { resumes += 1; return Promise.resolve(); }
+      close() { return Promise.resolve(); }
+    }
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        AudioContext: FakeAudioContext,
+        addEventListener() {},
+        removeEventListener() {}
+      }
+    });
+    const unlockSharedAudioOutput = (audioOutputModule as Record<string, unknown>).unlockSharedAudioOutput;
+
+    assert.equal(typeof unlockSharedAudioOutput, "function");
+    (unlockSharedAudioOutput as () => void)();
+    assert.equal(contexts, 1);
+    assert.equal(resumes, 1);
+
+    const output = connectAudioOutput({} as MediaStream);
+    assert.equal(contexts, 1);
+    output?.dispose();
+  });
+
+  it("keeps an unlocked context across temporary periods without remote outputs", () => {
+    let contexts = 0;
+    let closes = 0;
+    class FakeAudioContext {
+      destination = {};
+      constructor() { contexts += 1; }
+      createMediaStreamSource() {
+        return { connect() {}, disconnect() {} };
+      }
+      createGain() {
+        return { connect() {}, disconnect() {}, gain: { value: 1 } };
+      }
+      resume() { return Promise.resolve(); }
+      close() { closes += 1; return Promise.resolve(); }
+    }
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        AudioContext: FakeAudioContext,
+        addEventListener() {},
+        removeEventListener() {}
+      }
+    });
+    const unlock = (audioOutputModule as Record<string, unknown>).unlockSharedAudioOutput as () => void;
+    const release = (audioOutputModule as Record<string, unknown>).releaseUnusedSharedAudioOutput as () => boolean;
+
+    unlock();
+    const firstOutput = connectAudioOutput({} as MediaStream);
+    firstOutput?.dispose();
+    assert.equal(closes, 0);
+
+    const secondOutput = connectAudioOutput({} as MediaStream);
+    assert.equal(contexts, 1);
+    secondOutput?.dispose();
+    assert.equal(release(), true);
+    assert.equal(closes, 1);
+  });
+
+  it("releases a pre-unlocked context when no remote output was attached", () => {
+    let contexts = 0;
+    let closes = 0;
+    class FakeAudioContext {
+      destination = {};
+      constructor() { contexts += 1; }
+      createMediaStreamSource() {
+        return { connect() {}, disconnect() {} };
+      }
+      createGain() {
+        return { connect() {}, disconnect() {}, gain: { value: 1 } };
+      }
+      resume() { return Promise.resolve(); }
+      close() { closes += 1; return Promise.resolve(); }
+    }
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        AudioContext: FakeAudioContext,
+        addEventListener() {},
+        removeEventListener() {}
+      }
+    });
+    const unlock = (audioOutputModule as Record<string, unknown>).unlockSharedAudioOutput as (() => void) | undefined;
+    const release = (audioOutputModule as Record<string, unknown>).releaseUnusedSharedAudioOutput as (() => boolean) | undefined;
+
+    assert.equal(typeof unlock, "function");
+    assert.equal(typeof release, "function");
+    unlock?.();
+    assert.equal(release?.(), true);
+    assert.equal(closes, 1);
+
+    const output = connectAudioOutput({} as MediaStream);
+    assert.equal(contexts, 2);
+    output?.dispose();
+  });
+
   it("remembers a selection before playback and applies it when the shared context is created", async () => {
     const sinks: string[] = [];
     class FakeAudioContext {

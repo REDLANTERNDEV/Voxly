@@ -6,6 +6,49 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as appModule from "../src/App.js";
 
 describe("voice snapshot reconciliation", () => {
+  it("unlocks audio playback synchronously before starting voice join", async () => {
+    const joinVoiceWithAudioUnlock = (appModule as Record<string, unknown>).joinVoiceWithAudioUnlock;
+    const events: string[] = [];
+
+    assert.equal(typeof joinVoiceWithAudioUnlock, "function");
+    await (joinVoiceWithAudioUnlock as (
+      roomId: string,
+      unlock: () => void,
+      release: () => void,
+      join: (roomId: string) => Promise<boolean>
+    ) => Promise<void>)("voice-room", () => events.push("unlock"), () => events.push("release"), async (roomId) => {
+      events.push(`join:${roomId}`);
+      return true;
+    });
+
+    assert.deepEqual(events, ["unlock", "join:voice-room"]);
+  });
+
+  it("releases unused audio playback after a failed voice join", async () => {
+    const joinVoiceWithAudioUnlock = (appModule as Record<string, unknown>).joinVoiceWithAudioUnlock;
+    const events: string[] = [];
+
+    assert.equal(typeof joinVoiceWithAudioUnlock, "function");
+    await (joinVoiceWithAudioUnlock as (
+      roomId: string,
+      unlock: () => void,
+      release: () => void,
+      join: (roomId: string) => Promise<boolean>
+    ) => Promise<void>)("voice-room", () => events.push("unlock"), () => events.push("release"), async () => {
+      events.push("join");
+      return false;
+    });
+
+    assert.deepEqual(events, ["unlock", "join", "release"]);
+  });
+
+  it("releases unused audio playback in the canonical voice leave path", () => {
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const leave = source.match(/const leave = useCallback\(\(\) => \{[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+
+    assert.match(leave, /releaseUnusedSharedAudioOutput\(\)/);
+  });
+
   it("keeps one voice-audio sibling mounted for every authenticated surface", () => {
     type SurfaceProps = { audio: ReactNode; children: ReactNode };
     const Surface = (appModule as unknown as { AuthenticatedAppSurface?: ComponentType<SurfaceProps> }).AuthenticatedAppSurface;
