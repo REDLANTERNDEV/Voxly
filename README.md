@@ -102,6 +102,8 @@ Docker Compose reads `.env` from the repository root. Start from
 | `VOXLY_TURN_MEMORY_RESERVATION` | Soft Coturn memory reservation |
 
 The complete TURN variable reference is in [docs/turn.md](docs/turn.md).
+Owner and member session recovery procedures are documented in
+[the self-hosting guide](docs/self-hosting.md#7-recover-owner-and-member-access).
 
 ## Security model
 

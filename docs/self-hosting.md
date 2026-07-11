@@ -97,7 +97,61 @@ Open the one-use HTTPS link printed by the command. Voxly stores only the token
 hash, and the link cannot be displayed again. Generate another claim from the
 CLI if it expires or is lost.
 
-## 7. Add reliable TURN connectivity
+## 7. Recover owner and member access
+
+Voxly does not store recoverable passwords or raw session tokens. Browser
+sessions last 180 days and are automatically extended when an active session
+enters its final 30 days. Clearing browser storage, explicitly signing out, or
+losing a device removes that device's local access; it does not delete the
+global user account, server memberships, roles, or message history.
+
+### Owner lost browser access
+
+Do not run `owner:create` again. Create a short-lived, one-use login claim for
+the existing owner:
+
+```sh
+cd /opt/voxly
+docker compose exec app npm run owner:claim -w @voxly/server -- --nickname "Owner"
+```
+
+Open the printed URL on the browser that should receive the new owner session.
+The claim expires after 10 minutes by default and cannot be reused. A different
+lifetime can be requested when necessary:
+
+```sh
+docker compose exec app npm run owner:claim -w @voxly/server -- \
+  --nickname "Owner" --expires-in-minutes 30
+```
+
+Anyone holding this URL can become the existing owner, so transfer it through a
+trusted channel and do not paste it into logs, tickets, or public chat.
+
+### Member lost browser access
+
+The owner should open **Owner controls → Users**, find the existing member, and
+select **Access link**. Send the generated URL to that member through a trusted
+channel. It expires after 15 minutes, works once, and creates a new browser
+session for the same global account. It does not create a duplicate user and it
+preserves every existing server membership.
+
+The 15-minute lifetime applies only to this account-recovery access link. It
+does not change server invite expiry. Server invites are used to add or re-add a
+member to one selected server, and the owner can choose their lifetime up to 72
+hours in the invite form.
+
+An access link is not an invitation:
+
+- An active member who only lost their cookie should receive an access link.
+- A kicked member must rejoin the intended server with a new server invite.
+- A banned member cannot use an access link or invite until an owner unbans them.
+- If a link expires or is consumed on the wrong browser, generate a new link;
+  the old raw token cannot be recovered from the database.
+
+Verify the person's identity before issuing a recovery link. A recovery link
+restores the whole global account, including its memberships in other servers.
+
+## 8. Add reliable TURN connectivity
 
 Voice can connect peer-to-peer without Coturn, but some mobile, corporate, and
 carrier networks block direct WebRTC paths. Production operators should follow
