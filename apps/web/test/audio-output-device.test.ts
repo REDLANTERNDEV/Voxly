@@ -101,25 +101,36 @@ describe("hybrid voice audio output", () => {
     assert.equal(plays, 1);
   });
 
-  it("starts fail-open at 100 percent before switching one element to boosted audio", async () => {
+  it("boosts directly to the context destination while the native stream stays current", async () => {
     const originalStream = { id: "remote" } as MediaStream;
-    const processedStream = { id: "processed" } as MediaStream;
     const gains: Array<{ value: number }> = [];
     const events: string[] = [];
+    const hardwareDestination = { id: "hardware" };
+    const connections: string[] = [];
     class FakeAudioContext {
       state: AudioContextState = "suspended";
-      destination = {};
+      destination = hardwareDestination;
       createMediaStreamSource(stream: MediaStream) {
         assert.equal(stream, originalStream);
-        return { connect() {}, disconnect() {} };
+        return {
+          connect(target: unknown) {
+            assert.equal(target, gainNode);
+            connections.push("source:gain");
+          },
+          disconnect() {}
+        };
       }
       createGain() {
         const gain = { value: 1 };
         gains.push(gain);
-        return { connect() {}, disconnect() {}, gain };
-      }
-      createMediaStreamDestination() {
-        return { stream: processedStream, disconnect() {} };
+        return gainNode = {
+          connect(target: unknown) {
+            assert.equal(target, hardwareDestination);
+            connections.push("gain:destination");
+          },
+          disconnect() {},
+          gain
+        };
       }
       async resume() {
         events.push("resume");
@@ -127,6 +138,7 @@ describe("hybrid voice audio output", () => {
       }
       async close() {}
     }
+    let gainNode: { connect(target: unknown): void; disconnect(): void; gain: { value: number } };
     installWindow(FakeAudioContext as unknown as new () => AudioContext);
     const element = createElement({ play: async () => { events.push(`play:${(element.srcObject as MediaStream)?.id}`); } });
 
@@ -135,9 +147,11 @@ describe("hybrid voice audio output", () => {
     assert.equal(element.volume, 1);
     await output.ready;
 
-    assert.deepEqual(events, ["play:remote", "resume", "play:processed"]);
-    assert.equal(element.srcObject, processedStream);
+    assert.deepEqual(events, ["play:remote", "resume"]);
+    assert.deepEqual(connections, ["source:gain", "gain:destination"]);
+    assert.equal(element.srcObject, originalStream);
     assert.equal(element.volume, 1);
+    assert.equal(element.muted, true);
     assert.equal(gains[0]?.value, 1.5);
   });
 
@@ -160,33 +174,125 @@ describe("hybrid voice audio output", () => {
     assert.equal(plays, 1);
   });
 
-  it("returns to direct playback when the processed stream cannot play", async () => {
-    const originalStream = { id: "remote" } as MediaStream;
-    const processedStream = { id: "processed" } as MediaStream;
+  it("returns from boost without replacing or restarting the live native stream", async () => {
+    const stream = { id: "remote" } as MediaStream;
+    let sourceDisconnects = 0;
+    let gainDisconnects = 0;
     class FakeAudioContext {
       state: AudioContextState = "running";
-      createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
-      createGain() { return { connect() {}, disconnect() {}, gain: { value: 1 } }; }
-      createMediaStreamDestination() { return { stream: processedStream, disconnect() {} }; }
+      destination = {};
+      createMediaStreamSource() {
+        return { connect() {}, disconnect() { sourceDisconnects += 1; } };
+      }
+      createGain() {
+        return { connect() {}, disconnect() { gainDisconnects += 1; }, gain: { value: 1 } };
+      }
       async resume() {}
       async close() {}
     }
     installWindow(FakeAudioContext as unknown as new () => AudioContext);
-    const attempts: string[] = [];
-    const element = createElement({
-      play: async () => {
-        const streamId = (element.srcObject as MediaStream)?.id;
-        attempts.push(streamId);
-        if (streamId === "processed") throw { name: "NotAllowedError" };
-      }
-    });
+    let plays = 0;
+    const element = createElement({ play: async () => { plays += 1; } });
 
-    const output = connect(element, originalStream, false, 150);
+    const output = connect(element, stream, false, 150);
+    await output.ready;
+    assert.equal(element.muted, true);
+
+    output.setVolume(false, 100);
+    await Promise.resolve();
+
+    assert.equal(element.srcObject, stream);
+    assert.equal(element.volume, 1);
+    assert.equal(element.muted, false);
+    assert.equal(plays, 1);
+    assert.equal(sourceDisconnects, 1);
+    assert.equal(gainDisconnects, 1);
+  });
+
+  it("fails open to current native playback when the boost context is suspended", async () => {
+    const stream = { id: "remote" } as MediaStream;
+    let context: FakeAudioContext;
+    let stateListener: (() => void) | undefined;
+    let sourceDisconnects = 0;
+    class FakeAudioContext {
+      state: AudioContextState = "running";
+      destination = {};
+      constructor() { context = this; }
+      addEventListener(type: string, listener: () => void) {
+        if (type === "statechange") stateListener = listener;
+      }
+      createMediaStreamSource() {
+        return { connect() {}, disconnect() { sourceDisconnects += 1; } };
+      }
+      createGain() { return { connect() {}, disconnect() {}, gain: { value: 1 } }; }
+      async resume() {}
+      async close() {}
+    }
+    installWindow(FakeAudioContext as unknown as new () => AudioContext);
+    const element = createElement();
+    const output = connect(element, stream, false, 150);
+    await output.ready;
+    assert.equal(element.muted, true);
+
+    context!.state = "suspended";
+    stateListener?.();
+    await Promise.resolve();
+
+    assert.equal(element.srcObject, stream);
+    assert.equal(element.volume, 1);
+    assert.equal(element.muted, false);
+    assert.equal(sourceDisconnects, 1);
+  });
+
+  it("routes boost to the selected speaker before muting native playback", async () => {
+    const contextSinks: string[] = [];
+    class FakeAudioContext {
+      state: AudioContextState = "running";
+      destination = {};
+      async setSinkId(sinkId: string) { contextSinks.push(sinkId); }
+      createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
+      createGain() { return { connect() {}, disconnect() {}, gain: { value: 1 } }; }
+      async resume() {}
+      async close() {}
+    }
+    installWindow(FakeAudioContext as unknown as new () => AudioContext);
+    await selectSharedAudioOutputDevice("speaker-c");
+    const elementSinks: string[] = [];
+    const element = createElement({ setSinkId: async (sinkId) => { elementSinks.push(sinkId); } });
+
+    const output = connect(element, { id: "remote" } as MediaStream, false, 150);
     await output.ready;
 
-    assert.deepEqual(attempts, ["remote", "processed", "remote"]);
-    assert.equal(element.srcObject, originalStream);
+    assert.deepEqual(elementSinks, ["speaker-c"]);
+    assert.deepEqual(contextSinks, ["speaker-c"]);
+    assert.equal(element.muted, true);
+  });
+
+  it("keeps native 100 percent audible when a selected speaker cannot route boost", async () => {
+    let sources = 0;
+    class FakeAudioContext {
+      state: AudioContextState = "running";
+      destination = {};
+      createMediaStreamSource() {
+        sources += 1;
+        return { connect() {}, disconnect() {} };
+      }
+      createGain() { return { connect() {}, disconnect() {}, gain: { value: 1 } }; }
+      async resume() {}
+      async close() {}
+    }
+    installWindow(FakeAudioContext as unknown as new () => AudioContext);
+    await selectSharedAudioOutputDevice("speaker-d");
+    const stream = { id: "remote" } as MediaStream;
+    const element = createElement();
+
+    const output = connect(element, stream, false, 180);
+    await output.ready;
+
+    assert.equal(element.srcObject, stream);
     assert.equal(element.volume, 1);
+    assert.equal(element.muted, false);
+    assert.equal(sources, 0);
   });
 
   it("reports autoplay denial and clears it after a user retry", async () => {

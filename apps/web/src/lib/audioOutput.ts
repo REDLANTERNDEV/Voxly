@@ -16,12 +16,14 @@ let outputSelectionQueue: Promise<AudioOutputApplication> = Promise.resolve("uns
 type BoostGraph = {
   source: MediaStreamAudioSourceNode;
   gain: GainNode;
-  destination: MediaStreamAudioDestinationNode;
 };
 
 type ManagedAudioOutput = AudioOutput & {
   element: HTMLAudioElement;
+  refreshBoost: (forceRebuild?: boolean) => void;
 };
+
+type SinkAudioContext = AudioContext & { setSinkId?: (sinkId: string) => Promise<unknown> };
 
 const managedOutputs = new Set<ManagedAudioOutput>();
 const blockedOutputs = new Set<ManagedAudioOutput>();
@@ -32,6 +34,10 @@ function resumeSharedContext() {
   void sharedContext?.resume().catch(() => undefined);
 }
 
+function refreshManagedBoosts() {
+  for (const output of managedOutputs) output.refreshBoost();
+}
+
 function getContext() {
   if (sharedContext) return sharedContext;
   const AudioContextClass = window.AudioContext
@@ -39,6 +45,7 @@ function getContext() {
   if (!AudioContextClass) return null;
   try {
     sharedContext = new AudioContextClass();
+    sharedContext.addEventListener?.("statechange", refreshManagedBoosts);
     return sharedContext;
   } catch {
     return null;
@@ -59,6 +66,7 @@ export function releaseUnusedSharedAudioOutput() {
   if (activeOutputs > 0 || !sharedContext) return false;
   const context = sharedContext;
   sharedContext = null;
+  context.removeEventListener?.("statechange", refreshManagedBoosts);
   detachResumeListeners();
   void context.close().catch(() => undefined);
   return true;
@@ -118,7 +126,10 @@ export async function selectSharedAudioOutputDevice(
       return "media-elements";
     }
     const result = await applyAudioOutputDevice(deviceId, { mediaElements: elements });
-    if (generation === outputSelectionGeneration) selectedOutputDeviceId = deviceId;
+    if (generation === outputSelectionGeneration) {
+      selectedOutputDeviceId = deviceId;
+      for (const output of managedOutputs) output.refreshBoost(true);
+    }
     return result;
   });
   return outputSelectionQueue;
@@ -150,6 +161,23 @@ function setOutputBlocked(output: ManagedAudioOutput, blocked: boolean) {
   publishBlockedState();
 }
 
+async function applySharedAudioOutputToContext(context: AudioContext) {
+  const sinkContext = context as SinkAudioContext;
+  if (!selectedOutputDeviceId) {
+    if (typeof sinkContext.setSinkId === "function") {
+      await sinkContext.setSinkId("").catch(() => undefined);
+    }
+    return true;
+  }
+  if (typeof sinkContext.setSinkId !== "function") return false;
+  try {
+    await sinkContext.setSinkId(selectedOutputDeviceId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function connectAudioOutput(
   element: HTMLAudioElement,
   stream: MediaStream,
@@ -171,7 +199,6 @@ export function connectAudioOutput(
   const disposeBoost = () => {
     boostGraph?.source.disconnect();
     boostGraph?.gain.disconnect();
-    boostGraph?.destination.disconnect();
     boostGraph = null;
   };
 
@@ -194,27 +221,29 @@ export function connectAudioOutput(
       if (context.state !== "running" || disposed || generation !== expectedGeneration || state.muted || state.volume <= 100) {
         return false;
       }
+      if (!await applySharedAudioOutputToContext(context)) {
+        disposeBoost();
+        applyDirectState();
+        return false;
+      }
+      if (disposed || generation !== expectedGeneration || state.muted || state.volume <= 100) return false;
       if (!boostGraph) {
         const source = context.createMediaStreamSource(stream);
         const gain = context.createGain();
-        const destination = context.createMediaStreamDestination();
         source.connect(gain);
-        gain.connect(destination);
-        boostGraph = { source, gain, destination };
+        gain.connect(context.destination);
+        boostGraph = { source, gain };
       }
       boostGraph.gain.gain.value = volumeGain(state.volume);
-      element.srcObject = boostGraph.destination.stream;
+      element.srcObject = stream;
       element.volume = 1;
-      element.muted = false;
-      const played = await attemptPlay();
-      if (played.ok) return true;
+      element.muted = true;
+      return true;
     } catch {
-      if (element.srcObject === stream) return false;
+      disposeBoost();
+      applyDirectState();
+      return false;
     }
-    disposeBoost();
-    applyDirectState();
-    await attemptPlay();
-    return false;
   };
 
   const applyRememberedSink = async () => {
@@ -237,27 +266,35 @@ export function connectAudioOutput(
     return played.ok;
   };
 
+  const refreshBoost = (forceRebuild = false) => {
+    if (disposed) return;
+    generation += 1;
+    const expectedGeneration = generation;
+    if (state.muted || state.volume <= 100 || sharedContext?.state !== "running") {
+      disposeBoost();
+      applyDirectState();
+      return;
+    }
+    if (boostGraph && !forceRebuild) {
+      boostGraph.gain.gain.value = volumeGain(state.volume);
+      element.srcObject = stream;
+      element.volume = 1;
+      element.muted = true;
+      return;
+    }
+    disposeBoost();
+    applyDirectState();
+    void activateBoost(expectedGeneration);
+  };
+
   const output: ManagedAudioOutput = {
     element,
     ready: Promise.resolve(),
+    refreshBoost,
     setVolume(muted, volume) {
       if (disposed) return;
       state = { muted, volume };
-      generation += 1;
-      if (muted || volume <= 100) {
-        disposeBoost();
-        if (applyDirectState()) void retry();
-        return;
-      }
-      if (boostGraph && sharedContext?.state === "running") {
-        boostGraph.gain.gain.value = volumeGain(volume);
-        element.srcObject = boostGraph.destination.stream;
-        element.volume = 1;
-        element.muted = false;
-        return;
-      }
-      applyDirectState();
-      void activateBoost(generation);
+      refreshBoost();
     },
     retry,
     dispose() {

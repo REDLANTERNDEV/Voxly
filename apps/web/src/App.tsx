@@ -1354,8 +1354,10 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
           voiceSnapshots={props.voiceSnapshots}
           currentUser={props.user}
           canModerate={canModerate}
+          memberVolumes={props.memberVolumes}
           onModerate={props.onModerateMember}
           onDisconnect={props.onDisconnectMember}
+          onMemberVolumeChange={props.onMemberVolumeChange}
           t={props.t}
         />
       </div>
@@ -1523,8 +1525,10 @@ function MemberPanel({
   voiceSnapshots,
   currentUser,
   canModerate,
+  memberVolumes,
   onModerate,
   onDisconnect,
+  onMemberVolumeChange,
   t
 }: {
   users: PresenceUser[];
@@ -1532,8 +1536,10 @@ function MemberPanel({
   voiceSnapshots: Record<string, VoiceSnapshot>;
   currentUser: PublicUser;
   canModerate: boolean;
+  memberVolumes: Record<string, number>;
   onModerate: (userId: string, action: "ban" | "unban" | "kick") => Promise<void>;
   onDisconnect: (roomId: string, userId: string) => Promise<void>;
+  onMemberVolumeChange: (userId: string, volume: number) => void;
   t: Translate;
 }) {
   const roomByMemberId = new Map<string, RoomSummary>();
@@ -1558,12 +1564,19 @@ function MemberPanel({
               <span className="member-copy"><strong>{user.nickname}</strong><span>{voiceRoom ? `${t("room.inLobby")}, ${voiceRoom.name}` : t("common.online")}</span></span>
               {user.userId !== currentUser.id && (voiceRoom || canModerate) ? (
                 <details className="member-action-menu">
-                  <summary aria-label={`Actions for ${user.nickname}`}><MoreIcon /></summary>
+                  <summary aria-label={t("member.actionsFor", { nickname: user.nickname })}><MoreIcon /></summary>
                   <div className="member-action-panel">
-                    {voiceRoom && canModerate ? <button className="btn btn-ghost" type="button" onClick={() => setPendingAction({ user, roomId: voiceRoom.id, action: "disconnect" })}>Disconnect from voice</button> : null}
+                    {voiceRoom ? (
+                      <VolumeControl
+                        label={t("voice.memberVolume", { nickname: user.nickname })}
+                        value={memberVolumes[user.userId] ?? DEFAULT_VOLUME_PERCENT}
+                        onChange={(volume) => onMemberVolumeChange(user.userId, volume)}
+                      />
+                    ) : null}
+                    {voiceRoom && canModerate ? <button className="btn btn-ghost" type="button" onClick={() => setPendingAction({ user, roomId: voiceRoom.id, action: "disconnect" })}>{t("member.disconnectVoice")}</button> : null}
                     {canModerate ? <>
-                      <button className="btn btn-danger" type="button" onClick={() => setPendingAction({ user, action: "kick" })}>Kick from server</button>
-                      <button className="btn btn-danger" type="button" onClick={() => setPendingAction({ user, action: "ban" })}>Ban from server</button>
+                      <button className="btn btn-danger" type="button" onClick={() => setPendingAction({ user, action: "kick" })}>{t("member.kick")}</button>
+                      <button className="btn btn-danger" type="button" onClick={() => setPendingAction({ user, action: "ban" })}>{t("member.ban")}</button>
                     </> : null}
                   </div>
                 </details>

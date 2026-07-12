@@ -878,6 +878,11 @@ h3 {
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
+.member-row:has(.member-action-menu[open]) {
+  position: relative;
+  z-index: var(--layer-popover);
+}
+
 .member-action-menu {
   position: relative;
 }
@@ -915,6 +920,12 @@ h3 {
 
 .member-action-panel .btn {
   justify-content: flex-start;
+}
+
+.member-action-panel .volume-control {
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 2px;
+  padding: 4px 2px 10px;
 }
 
 .member-copy {
@@ -1245,6 +1256,12 @@ h3 {
   overflow: hidden;
 }
 
+.voice-participants:has(.volume-popover[open]) {
+  overflow: visible;
+  position: relative;
+  z-index: var(--layer-popover);
+}
+
 .compact-section-head {
   align-items: start;
   background: color-mix(in oklab, var(--surface-2), transparent 38%);
@@ -1379,6 +1396,11 @@ h3 {
   grid-template-columns: auto minmax(0, 1fr) auto;
   min-height: 52px;
   padding: 8px 12px;
+}
+
+.participant-row:has(.volume-popover[open]) {
+  position: relative;
+  z-index: var(--layer-popover);
 }
 
 .participant-row.is-speaking {
