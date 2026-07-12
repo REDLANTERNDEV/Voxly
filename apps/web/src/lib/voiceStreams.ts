@@ -1,4 +1,4 @@
-import type { VoiceSnapshot } from "@voxly/shared";
+import type { PresenceUser, VoiceSnapshot } from "@voxly/shared";
 
 export type RemoteMediaKind = "audio" | "camera" | "screen";
 
@@ -10,6 +10,16 @@ export interface RemoteStreamState {
 
 export function remoteStreamKey(userId: string, kind: RemoteMediaKind) {
   return `${userId}:${kind}`;
+}
+
+export function participantsForViewedRoom(
+  snapshot: VoiceSnapshot | undefined,
+  viewedRoomId: string | null,
+  activeRoomId: string | null,
+  localUser: PresenceUser
+) {
+  if (snapshot) return snapshot.members.map((member) => member.user);
+  return viewedRoomId && viewedRoomId === activeRoomId ? [localUser] : [];
 }
 
 export function upsertRemoteStream(

@@ -1,3 +1,5 @@
+import type { RoomSummary } from "@voxly/shared";
+
 export interface InitialRouteInput {
   isAuthenticated: boolean;
   inviteToken: string | null;
@@ -13,6 +15,13 @@ export type PathRoute =
   | { name: "owner"; serverId: string };
 
 export const defaultServerId = "the-basement";
+
+export function firstServerRoomPath(serverId: string, rooms: RoomSummary[]) {
+  const target = rooms.find((room) => room.kind === "text") ?? rooms[0];
+  return target
+    ? `/app/server/${encodeURIComponent(serverId)}/${target.kind}/${encodeURIComponent(target.id)}`
+    : "/";
+}
 
 export function resolveInitialRoute(input: InitialRouteInput) {
   if (input.isAuthenticated) {

@@ -6,6 +6,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as appModule from "../src/App.js";
 
 describe("voice snapshot reconciliation", () => {
+  it("navigates away from the access claim route after authentication", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+
+    assert.match(source, /const handleAccessClaimed = useCallback\([\s\S]*?setUser\(claimedUser\)[\s\S]*?firstServerRoomPath\(serverId, roomResponse\.rooms\)[\s\S]*?\}, \[navigate\]\)/);
+    assert.match(source, /<AccessClaimScreen[\s\S]*?onClaimed=\{handleAccessClaimed\}/);
+  });
+
   it("unlocks audio playback synchronously before starting voice join", async () => {
     const joinVoiceWithAudioUnlock = (appModule as Record<string, unknown>).joinVoiceWithAudioUnlock;
     const events: string[] = [];

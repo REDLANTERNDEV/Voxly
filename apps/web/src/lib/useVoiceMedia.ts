@@ -11,7 +11,7 @@ import type {
 } from "@voxly/shared";
 import type { VoxlySocket } from "../socket.js";
 import { createInitialVoiceControls, toggleVoiceControl, type VoiceControlKey, type VoiceControls } from "./voiceControls.js";
-import { mediaConstraintsFor, replaceMicrophoneTrack } from "./voiceMedia.js";
+import { configureScreenTrack, mediaConstraintsFor, preferScreenSenderFrameRate, replaceMicrophoneTrack } from "./voiceMedia.js";
 import { buildMicrophoneConstraints } from "./audioDevices.js";
 import { releaseUnusedSharedAudioOutput } from "./audioOutput.js";
 import {
@@ -286,8 +286,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       if (!stream || (kind !== "mic" && !subscribedKinds.has(kind))) continue;
       for (const track of stream.getTracks()) {
         currentTracks.add(track);
-        if (!peer.getSenders().some((sender) => sender.track === track)) {
-          peer.addTrack(track, stream);
+        const existingSender = peer.getSenders().find((sender) => sender.track === track);
+        const sender = existingSender ?? peer.addTrack(track, stream);
+        if (kind === "screen" && track.kind === "video") {
+          void preferScreenSenderFrameRate(sender, track);
         }
       }
     }
@@ -672,8 +674,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     setError("");
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia(mediaConstraintsFor("screen"));
+      const screenTrack = stream.getVideoTracks()[0];
+      if (screenTrack) configureScreenTrack(screenTrack);
       localStreamsRef.current.screen = stream;
-      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+      screenTrack?.addEventListener("ended", () => {
         stopStream("screen");
         setControls((current) => ({ ...current, screenShare: { ...current.screenShare, on: false } }));
         void emitMediaState({ screen: false });

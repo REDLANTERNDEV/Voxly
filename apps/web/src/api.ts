@@ -16,6 +16,7 @@ import type {
 } from "./types.js";
 
 type JsonBody = Record<string, unknown>;
+type AccessClaimResponse = CurrentUserResponse & { serverId: string };
 
 export class ApiError extends Error {
   constructor(
@@ -28,7 +29,7 @@ export class ApiError extends Error {
 }
 
 const ownerClaimRequests = new Map<string, Promise<CurrentUserResponse>>();
-const accessClaimRequests = new Map<string, Promise<CurrentUserResponse>>();
+const accessClaimRequests = new Map<string, Promise<AccessClaimResponse>>();
 
 export async function apiGet<T>(path: string): Promise<T> {
   return request<T>(path);
@@ -108,7 +109,7 @@ export function claimAccessLink(token: string) {
     return existingRequest;
   }
 
-  const requestPromise = apiPost<CurrentUserResponse>("/api/access/claim", { token }).catch((error: unknown) => {
+  const requestPromise = apiPost<AccessClaimResponse>("/api/access/claim", { token }).catch((error: unknown) => {
     accessClaimRequests.delete(token);
     throw error;
   });

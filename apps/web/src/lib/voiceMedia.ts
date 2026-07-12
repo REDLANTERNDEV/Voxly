@@ -24,7 +24,7 @@ export function mediaConstraintsFor(kind: Exclude<MediaKind, "mic">): MediaStrea
       video: {
         width: { ideal: 1280, max: 1280 },
         height: { ideal: 720, max: 720 },
-        frameRate: { ideal: 15, max: 15 }
+        frameRate: { ideal: 30, max: 30 }
       },
       audio: true
     };
@@ -44,6 +44,24 @@ export const micConstraints: MediaStreamConstraints = {
   audio: true,
   video: false
 };
+
+export function configureScreenTrack(track: MediaStreamTrack) {
+  if (track.kind === "video") track.contentHint = "motion";
+}
+
+export async function preferScreenSenderFrameRate(sender: RTCRtpSender, screenTrack: MediaStreamTrack) {
+  if (screenTrack.kind !== "video" || sender.track !== screenTrack) return false;
+  const parameters = sender.getParameters() as RTCRtpSendParameters & {
+    degradationPreference?: "maintain-framerate";
+  };
+  parameters.degradationPreference = "maintain-framerate";
+  try {
+    await sender.setParameters(parameters);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 interface PeerWithSenders {
   getSenders(): Array<{ track: MediaStreamTrack | null; replaceTrack(track: MediaStreamTrack | null): Promise<void> }>;

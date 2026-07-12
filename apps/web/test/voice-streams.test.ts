@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   mediaStreamForTrack,
+  participantsForViewedRoom,
   pruneRemoteStreamsForSnapshot,
   remoteStreamKey,
   removeRemoteStream,
@@ -9,6 +10,20 @@ import {
 } from "../src/lib/voiceStreams.js";
 
 describe("voice remote stream state", () => {
+  it("scopes participant fallback to the viewed active room", () => {
+    const local = { userId: "local", nickname: "Local", role: "member" as const };
+
+    assert.deepEqual(
+      participantsForViewedRoom({ roomId: "empty", members: [] }, "empty", "active", local),
+      []
+    );
+    assert.deepEqual(participantsForViewedRoom(undefined, "active", "active", local), [local]);
+    assert.deepEqual(
+      participantsForViewedRoom({ roomId: "active", members: [] }, "active", "active", local),
+      []
+    );
+  });
+
   it("keys remote streams by user and media kind so camera and screen do not overwrite each other", () => {
     const camera = { id: "camera-stream" } as MediaStream;
     const screen = { id: "screen-stream" } as MediaStream;

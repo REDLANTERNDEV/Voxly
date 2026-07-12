@@ -48,12 +48,12 @@ import {
 } from "./lib/audioOutput.js";
 import { controlPresentation, type VoiceControls } from "./lib/voiceControls.js";
 import { connectionStatusFor, type PeerConnectionState } from "./lib/voiceNegotiation.js";
-import { defaultServerId, getAccessClaimTokenFromHash, getInviteTokenFromPath, getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "./lib/navigation.js";
+import { defaultServerId, firstServerRoomPath, getAccessClaimTokenFromHash, getInviteTokenFromPath, getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "./lib/navigation.js";
 import { buildInviteUrl, inviteReference, resolveInviteOrigin } from "./lib/invites.js";
 import { messageDeleteFailureCopy, messagePermissions } from "./lib/messages.js";
 import { useVoiceMedia } from "./lib/useVoiceMedia.js";
 import { replaceVisualTarget, toggleVisualTarget, visualTargetKey } from "./lib/voiceResume.js";
-import { remoteStreamKey, type RemoteStreamState } from "./lib/voiceStreams.js";
+import { participantsForViewedRoom, remoteStreamKey, type RemoteStreamState } from "./lib/voiceStreams.js";
 import {
   DEFAULT_VOLUME_PERCENT,
   pruneVolumes,
@@ -213,6 +213,18 @@ export function App() {
     setRtcConfigReady(false);
     setUser(claimedUser);
     navigate(`/app/server/${defaultServerId}/owner`);
+  }, [navigate]);
+
+  const handleAccessClaimed = useCallback((claimedUser: PublicUser, serverId: string) => {
+    setRtcConfigReady(false);
+    setUser(claimedUser);
+    void Promise.all([fetchServers(), fetchServerRooms(serverId)])
+      .then(([serverResponse, roomResponse]) => {
+        setServers(serverResponse.servers);
+        setRooms(roomResponse.rooms);
+        navigate(firstServerRoomPath(serverId, roomResponse.rooms));
+      })
+      .catch(() => navigate("/"));
   }, [navigate]);
 
   useEffect(() => {
@@ -526,7 +538,7 @@ export function App() {
   }
 
   if (route.name === "access-claim") {
-    return renderSurface(<AccessClaimScreen token={route.token} t={t} onNavigate={navigate} onClaimed={(claimedUser) => setUser(claimedUser)} />);
+    return renderSurface(<AccessClaimScreen token={route.token} t={t} onNavigate={navigate} onClaimed={handleAccessClaimed} />);
   }
 
   if (!user && route.name === "landing") {
@@ -922,12 +934,14 @@ function VoiceRoomScreen(props: ShellProps) {
   const [focusedSourceKey, setFocusedSourceKey] = useState<string | null>(null);
   const [stageStatus, setStageStatus] = useState("");
   const viewedRoomId = props.currentRoom?.id ?? (props.route.name === "voice" ? props.route.roomId : props.activeVoiceRoomId);
-  const snapshotMembers = viewedRoomId ? props.voiceSnapshots[viewedRoomId]?.members ?? [] : [];
-  const participants = snapshotMembers.length > 0
-    ? snapshotMembers.map((member) => member.user)
-    : props.activeVoiceRoomId
-      ? [presenceFromUser(props.user)]
-      : [];
+  const viewedSnapshot = viewedRoomId ? props.voiceSnapshots[viewedRoomId] : undefined;
+  const snapshotMembers = viewedSnapshot?.members ?? [];
+  const participants = participantsForViewedRoom(
+    viewedSnapshot,
+    viewedRoomId,
+    props.activeVoiceRoomId,
+    presenceFromUser(props.user)
+  );
   const connectedCount = participants.length;
   const streamByKey = new Map(props.remoteStreams.map((item) => [remoteStreamKey(item.userId, item.kind), item.stream]));
   for (const preview of props.localPreviews) {
@@ -1874,7 +1888,7 @@ function OwnerClaimScreen({ token, language, t, onLanguageChange, onClaimed }: {
   );
 }
 
-function AccessClaimScreen({ token, t, onNavigate, onClaimed }: { token: string; t: Translate; onNavigate: (path: string) => void; onClaimed: (user: PublicUser) => void }) {
+function AccessClaimScreen({ token, t, onNavigate, onClaimed }: { token: string; t: Translate; onNavigate: (path: string) => void; onClaimed: (user: PublicUser, serverId: string) => void }) {
   const [status, setStatus] = useState<"loading" | "danger">("loading");
 
   useEffect(() => {
@@ -1885,7 +1899,7 @@ function AccessClaimScreen({ token, t, onNavigate, onClaimed }: { token: string;
     }
     claimAccessLink(token)
       .then((response) => {
-        if (isMounted) onClaimed(response.user);
+        if (isMounted) onClaimed(response.user, response.serverId);
       })
       .catch(() => {
         if (isMounted) setStatus("danger");

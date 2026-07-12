@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "../src/lib/navigation.js";
+import { firstServerRoomPath, getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "../src/lib/navigation.js";
 
 describe("frontend navigation", () => {
   it("routes authenticated users to text chat by default", () => {
@@ -37,5 +37,14 @@ describe("frontend navigation", () => {
       serverId: "the-basement",
       roomId: "lobby"
     });
+  });
+
+  it("selects a text-first destination after an access claim", () => {
+    const voice = { id: "voice", serverId: "s1", name: "Voice", kind: "voice" as const, position: 1 };
+    const text = { id: "text", serverId: "s1", name: "Text", kind: "text" as const, position: 2 };
+
+    assert.equal(firstServerRoomPath("s1", [voice, text]), "/app/server/s1/text/text");
+    assert.equal(firstServerRoomPath("s1", [voice]), "/app/server/s1/voice/voice");
+    assert.equal(firstServerRoomPath("s1", []), "/");
   });
 });

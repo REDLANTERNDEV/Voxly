@@ -890,6 +890,7 @@ describe("Voxly HTTP MVP", () => {
     const secondClaim = await claim(secondToken);
     assert.equal(secondClaim.statusCode, 201);
     assert.equal(secondClaim.json().user.id, member.user.id);
+    assert.equal(secondClaim.json().serverId, defaultServer.id);
 
     const reused = await claim(secondToken);
     assert.equal(reused.statusCode, 404);

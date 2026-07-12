@@ -518,9 +518,9 @@ function registerRoutes(
 
   server.post("/api/access/claim", async (request, reply) => {
     const { token } = z.object({ token: z.string().min(24) }).parse(request.body);
-    const claim = one<{ id: string; user_id: string; expires_at: string; consumed_at: string | null; revoked_at: string | null }>(
+    const claim = one<{ id: string; user_id: string; server_id: string; expires_at: string; consumed_at: string | null; revoked_at: string | null }>(
       database.sqlite,
-      "select id, user_id, expires_at, consumed_at, revoked_at from access_claims where token_hash = ?",
+      "select id, user_id, server_id, expires_at, consumed_at, revoked_at from access_claims where token_hash = ?",
       [hashToken(token)]
     );
     if (!claim || claim.consumed_at || claim.revoked_at || isExpired(claim.expires_at)) return reply.code(404).send({ error: "access_claim_invalid" });
@@ -530,7 +530,10 @@ function registerRoutes(
     audit(database, user.id, "access_link.consumed", user.id);
     const sessionToken = createSession(database, user.id);
     setSessionCookie(reply, sessionToken, options.secureCookies);
-    return reply.code(201).send({ user: publicUser({ ...user, bannedAt: user.banned_at }) });
+    return reply.code(201).send({
+      user: publicUser({ ...user, bannedAt: user.banned_at }),
+      serverId: claim.server_id
+    });
   });
 
   server.post("/api/owner/invites", async (request, reply) => {

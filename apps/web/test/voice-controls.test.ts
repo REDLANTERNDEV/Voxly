@@ -7,7 +7,13 @@ import {
   voiceDockStatus,
   voiceStatusLabels
 } from "../src/lib/voiceControls.js";
-import { createInitialMediaState, mediaConstraintsFor, replaceMicrophoneTrack } from "../src/lib/voiceMedia.js";
+import {
+  configureScreenTrack,
+  createInitialMediaState,
+  mediaConstraintsFor,
+  preferScreenSenderFrameRate,
+  replaceMicrophoneTrack
+} from "../src/lib/voiceMedia.js";
 
 describe("voice control view state", () => {
   it("keeps camera and screen share off by default but available after joining", () => {
@@ -80,10 +86,43 @@ describe("voice control view state", () => {
       video: {
         width: { ideal: 1280, max: 1280 },
         height: { ideal: 720, max: 720 },
-        frameRate: { ideal: 15, max: 15 }
+        frameRate: { ideal: 30, max: 30 }
       },
       audio: true
     });
+  });
+
+  it("configures screen video for smooth motion without affecting other tracks", async () => {
+    const screenTrack = { kind: "video", contentHint: "" } as MediaStreamTrack;
+    const cameraTrack = { kind: "video", contentHint: "" } as MediaStreamTrack;
+    let appliedPreference: string | undefined;
+    const sender = {
+      track: screenTrack,
+      getParameters: () => ({}),
+      setParameters: async (parameters: RTCRtpSendParameters) => {
+        appliedPreference = (parameters as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference;
+      }
+    } as unknown as RTCRtpSender;
+
+    configureScreenTrack(screenTrack);
+
+    assert.equal(screenTrack.contentHint, "motion");
+    assert.equal(await preferScreenSenderFrameRate(sender, screenTrack), true);
+    assert.equal(appliedPreference, "maintain-framerate");
+    assert.equal(await preferScreenSenderFrameRate(sender, cameraTrack), false);
+  });
+
+  it("keeps screen sharing alive when sender preference is rejected", async () => {
+    const screenTrack = { kind: "video", contentHint: "" } as MediaStreamTrack;
+    const sender = {
+      track: screenTrack,
+      getParameters: () => ({}),
+      setParameters: async () => {
+        throw new Error("unsupported");
+      }
+    } as unknown as RTCRtpSender;
+
+    assert.equal(await preferScreenSenderFrameRate(sender, screenTrack), false);
   });
 
   it("replaces only the previous microphone sender and leaves screen audio untouched", async () => {
