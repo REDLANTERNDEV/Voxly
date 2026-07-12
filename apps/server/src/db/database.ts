@@ -90,7 +90,8 @@ function migrate(sqlite: DatabaseSync) {
       user_id text not null,
       created_at text not null,
       expires_at text not null,
-      consumed_at text
+      consumed_at text,
+      revoked_at text
     );
 
     create table if not exists rooms (
@@ -158,6 +159,7 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "rooms", "server_id", "text");
   addColumnIfMissing(sqlite, "invites", "server_id", "text");
   addColumnIfMissing(sqlite, "audit_events", "server_id", "text");
+  addColumnIfMissing(sqlite, "access_claims", "revoked_at", "text");
 
   sqlite.exec(`
     create index if not exists idx_server_members_user

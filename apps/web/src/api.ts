@@ -28,6 +28,7 @@ export class ApiError extends Error {
 }
 
 const ownerClaimRequests = new Map<string, Promise<CurrentUserResponse>>();
+const accessClaimRequests = new Map<string, Promise<CurrentUserResponse>>();
 
 export async function apiGet<T>(path: string): Promise<T> {
   return request<T>(path);
@@ -101,8 +102,18 @@ export async function acceptInvite(inviteToken: string, nickname: string, turnst
   return apiPost<CurrentUserResponse & { serverId: string }>("/api/invites/accept", { inviteToken, nickname: nickname || undefined, turnstileToken });
 }
 
-export async function claimAccessLink(token: string) {
-  return apiPost<CurrentUserResponse>("/api/access/claim", { token });
+export function claimAccessLink(token: string) {
+  const existingRequest = accessClaimRequests.get(token);
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const requestPromise = apiPost<CurrentUserResponse>("/api/access/claim", { token }).catch((error: unknown) => {
+    accessClaimRequests.delete(token);
+    throw error;
+  });
+  accessClaimRequests.set(token, requestPromise);
+  return requestPromise;
 }
 
 export async function claimOwnerSession(claimToken: string) {

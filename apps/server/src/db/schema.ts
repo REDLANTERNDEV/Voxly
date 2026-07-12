@@ -69,7 +69,8 @@ export const accessClaims = sqliteTable("access_claims", {
   createdByUserId: text("created_by_user_id").notNull(),
   createdAt: text("created_at").notNull(),
   expiresAt: text("expires_at").notNull(),
-  consumedAt: text("consumed_at")
+  consumedAt: text("consumed_at"),
+  revokedAt: text("revoked_at")
 });
 
 export const messages = sqliteTable("messages", {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { acceptInvite, ApiError, claimOwnerSession, deleteMessage, fetchRtcConfig, revokeInvite } from "../src/api.js";
+import { acceptInvite, ApiError, claimAccessLink, claimOwnerSession, deleteMessage, fetchRtcConfig, revokeInvite } from "../src/api.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -27,6 +27,55 @@ describe("frontend api", () => {
 
     assert.equal(requests, 1);
     assert.deepEqual(first, second);
+  });
+
+  it("shares concurrent access claim requests for the same token", async () => {
+    let requests = 0;
+    let releaseFetch!: () => void;
+    const fetchGate = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    globalThis.fetch = async () => {
+      requests += 1;
+      await fetchGate;
+      return new Response(JSON.stringify({ user: { id: "u2", nickname: "Ece", role: "member", bannedAt: null } }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" }
+      });
+    };
+
+    const first = claimAccessLink("access-token-concurrent");
+    const second = claimAccessLink("access-token-concurrent");
+    const sameRequest = first === second;
+    releaseFetch();
+    const results = await Promise.all([first, second]);
+
+    assert.equal(sameRequest, true);
+    assert.equal(requests, 1);
+    assert.deepEqual(results[0], results[1]);
+  });
+
+  it("allows an access claim retry after a failed request", async () => {
+    let requests = 0;
+    globalThis.fetch = async () => {
+      requests += 1;
+      if (requests === 1) {
+        return new Response(JSON.stringify({ error: "temporary_failure" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+      return new Response(JSON.stringify({ user: { id: "u3", nickname: "Mert", role: "member", bannedAt: null } }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" }
+      });
+    };
+
+    await assert.rejects(() => claimAccessLink("access-token-retry"), ApiError);
+    const retried = await claimAccessLink("access-token-retry");
+
+    assert.equal(requests, 2);
+    assert.equal(retried.user.id, "u3");
   });
 
   it("preserves Turnstile rejection codes for the invite form", async () => {

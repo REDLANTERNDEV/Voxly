@@ -38,6 +38,7 @@ describe("Voxly HTTP MVP", () => {
       create table messages (id text primary key, room_id text not null, user_id text not null, body text not null, created_at text not null, edited_at text, deleted_at text, deleted_by_user_id text);
       create table sessions (id text primary key, token_hash text not null unique, user_id text not null, created_at text not null, expires_at text not null, revoked_at text);
       create table owner_claims (id text primary key, token_hash text not null unique, user_id text not null, created_at text not null, expires_at text not null, consumed_at text);
+      create table access_claims (id text primary key, token_hash text not null unique, user_id text not null, server_id text not null, created_by_user_id text not null, created_at text not null, expires_at text not null, consumed_at text);
       create table audit_events (id text primary key, actor_user_id text, action text not null, target_user_id text, created_at text not null);
     `);
     legacy.prepare("insert into users values (?, ?, ?, ?)").run("owner", "Red Lantern", "owner", null);
@@ -62,6 +63,9 @@ describe("Voxly HTTP MVP", () => {
       for (const indexName of ["idx_server_members_user", "idx_rooms_server_position", "idx_invites_server_created", "idx_messages_room_created"]) {
         assert.ok(indexNames.includes(indexName));
       }
+      const accessClaimColumns = tables.prepare("pragma table_info(access_claims)").all()
+        .map((column) => (column as { name: string }).name);
+      assert.ok(accessClaimColumns.includes("revoked_at"));
     } finally {
       migrated.close();
       await rm(databaseDir, { force: true, recursive: true });
@@ -803,11 +807,19 @@ describe("Voxly HTTP MVP", () => {
       cookies: member.cookies,
       payload: { inviteToken: initialInvite.json().invite.token }
     });
-    await app.server.inject({
+    const kicked = await app.server.inject({
       method: "POST",
       url: `/api/servers/${serverId}/members/${member.user.id}/kick`,
       cookies: owner.cookies
     });
+    assert.equal(kicked.statusCode, 204);
+    const afterKick = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${serverId}/members`,
+      cookies: owner.cookies
+    });
+    assert.equal(afterKick.statusCode, 200);
+    assert.equal(afterKick.json().members.some((entry: { id: string }) => entry.id === member.user.id), false);
 
     const rejoinInvite = await createInvite("Rejoin after kick");
     const rejoin = await app.server.inject({
@@ -818,11 +830,19 @@ describe("Voxly HTTP MVP", () => {
     });
     assert.equal(rejoin.statusCode, 200);
 
-    await app.server.inject({
+    const banned = await app.server.inject({
       method: "POST",
       url: `/api/servers/${serverId}/members/${member.user.id}/ban`,
       cookies: owner.cookies
     });
+    assert.equal(banned.statusCode, 204);
+    const afterBan = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${serverId}/members`,
+      cookies: owner.cookies
+    });
+    assert.equal(afterBan.statusCode, 200);
+    assert.equal(afterBan.json().members.some((entry: { id: string }) => entry.id === member.user.id), true);
     const bannedInvite = await createInvite("Must remain unused");
     const bannedJoin = await app.server.inject({
       method: "POST",
@@ -836,7 +856,7 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(storedInvites.find((invite) => invite.id === bannedInvite.json().invite.id)?.used_at, null);
   });
 
-  it("issues one-time member access links without exposing their token", async () => {
+  it("replaces one-time member access links without exposing their tokens", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Mehmet");
     const defaultServer = (await app.server.inject({
@@ -845,29 +865,43 @@ describe("Voxly HTTP MVP", () => {
       cookies: owner.cookies
     })).json().servers[0] as { id: string };
 
-    const link = await app.server.inject({
+    const createAccessLink = () => app.server.inject({
       method: "POST",
       url: `/api/servers/${defaultServer.id}/members/${member.user.id}/access-links`,
       cookies: owner.cookies
     });
-    assert.equal(link.statusCode, 201);
-    const token = link.json().token as string;
-    assert.equal(JSON.stringify(app.dumpTables()).includes(token), false);
-
-    const claimed = await app.server.inject({
+    const claim = (token: string) => app.server.inject({
       method: "POST",
       url: "/api/access/claim",
       payload: { token }
     });
-    assert.equal(claimed.statusCode, 201);
-    assert.equal(claimed.json().user.id, member.user.id);
 
-    const reused = await app.server.inject({
-      method: "POST",
-      url: "/api/access/claim",
-      payload: { token }
-    });
+    const first = await createAccessLink();
+    const second = await createAccessLink();
+    assert.equal(first.statusCode, 201);
+    assert.equal(second.statusCode, 201);
+    const firstToken = first.json().token as string;
+    const secondToken = second.json().token as string;
+
+    const firstClaim = await claim(firstToken);
+    assert.equal(firstClaim.statusCode, 404);
+    assert.deepEqual(firstClaim.json(), { error: "access_claim_invalid" });
+
+    const secondClaim = await claim(secondToken);
+    assert.equal(secondClaim.statusCode, 201);
+    assert.equal(secondClaim.json().user.id, member.user.id);
+
+    const reused = await claim(secondToken);
     assert.equal(reused.statusCode, 404);
+
+    const claims = app.dumpTables().accessClaims as Array<{
+      revoked_at: string | null;
+      consumed_at: string | null;
+    }>;
+    assert.equal(claims.filter((entry) => entry.revoked_at).length, 1);
+    assert.equal(claims.filter((entry) => entry.consumed_at).length, 1);
+    assert.equal(JSON.stringify(claims).includes(firstToken), false);
+    assert.equal(JSON.stringify(claims).includes(secondToken), false);
   });
 });
 

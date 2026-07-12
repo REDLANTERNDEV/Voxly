@@ -402,6 +402,7 @@ function registerRoutes(
          from server_members
          join users on users.id = server_members.user_id
          where server_members.server_id = ?
+           and server_members.removed_at is null
          order by users.nickname asc`,
         [serverId]
       )
@@ -492,11 +493,23 @@ function registerRoutes(
     if (!member || member.removed_at || member.banned_at) return reply.code(404).send({ error: "member_not_found" });
     const token = createOpaqueToken();
     const now = new Date();
+    const nowIso = now.toISOString();
     const expiresAt = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
     run(
       database.sqlite,
+      `update access_claims
+       set revoked_at = ?
+       where server_id = ?
+         and user_id = ?
+         and consumed_at is null
+         and revoked_at is null
+         and expires_at > ?`,
+      [nowIso, serverId, userId, nowIso]
+    );
+    run(
+      database.sqlite,
       "insert into access_claims (id, token_hash, user_id, server_id, created_by_user_id, created_at, expires_at) values (?, ?, ?, ?, ?, ?, ?)",
-      [crypto.randomUUID(), hashToken(token), userId, serverId, owner.id, now.toISOString(), expiresAt]
+      [crypto.randomUUID(), hashToken(token), userId, serverId, owner.id, nowIso, expiresAt]
     );
     audit(database, owner.id, "access_link.created", userId, serverId);
     database.save();
@@ -505,12 +518,12 @@ function registerRoutes(
 
   server.post("/api/access/claim", async (request, reply) => {
     const { token } = z.object({ token: z.string().min(24) }).parse(request.body);
-    const claim = one<{ id: string; user_id: string; expires_at: string; consumed_at: string | null }>(
+    const claim = one<{ id: string; user_id: string; expires_at: string; consumed_at: string | null; revoked_at: string | null }>(
       database.sqlite,
-      "select id, user_id, expires_at, consumed_at from access_claims where token_hash = ?",
+      "select id, user_id, expires_at, consumed_at, revoked_at from access_claims where token_hash = ?",
       [hashToken(token)]
     );
-    if (!claim || claim.consumed_at || isExpired(claim.expires_at)) return reply.code(404).send({ error: "access_claim_invalid" });
+    if (!claim || claim.consumed_at || claim.revoked_at || isExpired(claim.expires_at)) return reply.code(404).send({ error: "access_claim_invalid" });
     const user = one<UserRow>(database.sqlite, "select id, nickname, role, banned_at from users where id = ?", [claim.user_id]);
     if (!user) return reply.code(404).send({ error: "access_claim_invalid" });
     run(database.sqlite, "update access_claims set consumed_at = ? where id = ?", [new Date().toISOString(), claim.id]);
