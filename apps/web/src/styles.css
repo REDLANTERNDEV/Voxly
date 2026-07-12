@@ -1092,6 +1092,23 @@ h3 {
   display: none;
 }
 
+.audio-playback-recovery {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  display: flex;
+  gap: 12px;
+  left: 50%;
+  max-width: min(92vw, 520px);
+  padding: 10px 12px;
+  position: fixed;
+  top: 14px;
+  transform: translateX(-50%);
+  z-index: var(--layer-modal);
+}
+
 .volume-control {
   display: grid;
   gap: 5px;

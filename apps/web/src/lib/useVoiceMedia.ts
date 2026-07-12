@@ -22,7 +22,9 @@ import {
 } from "./voiceNegotiation.js";
 import { clearVoiceResume, readVoiceResume, voiceResumeWindowMs, writeVoiceResume } from "./voiceResume.js";
 import {
+  mediaStreamForTrack,
   pruneRemoteStreamsForSnapshot,
+  removeRemoteStream,
   upsertRemoteStream,
   type RemoteMediaKind,
   type RemoteStreamState
@@ -358,15 +360,14 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       });
     };
     peer.ontrack = (event) => {
-      const [stream] = event.streams;
-      if (!stream) return;
+      const stream = mediaStreamForTrack(event.track, event.streams);
       const kind = remoteStreamKindsRef.current.get(peerUserId)?.get(stream.id) ?? (event.track.kind === "audio" ? "audio" : "camera");
       setRemoteStreams((current) => {
         return upsertRemoteStream(current, peerUserId, kind, stream);
       });
       event.track.addEventListener("ended", () => {
         if (kind === "screen" && event.track.kind === "audio") return;
-        setRemoteStreams((current) => current.filter((item) => item.userId !== peerUserId || item.kind !== kind));
+        setRemoteStreams((current) => removeRemoteStream(current, peerUserId, kind, stream));
       }, { once: true });
     };
     peer.onconnectionstatechange = () => {

@@ -40,8 +40,9 @@ import { createVoxlySocket, type VoxlySocket } from "./socket.js";
 import type { AppConfigResponse, OwnerInvite, RtcConfigResponse, ServerMember, ServerSummary } from "./types.js";
 import {
   connectAudioOutput,
-  initializeFallbackAudioElement,
   releaseUnusedSharedAudioOutput,
+  retryBlockedAudioOutputs,
+  subscribeBlockedAudioOutputs,
   unlockSharedAudioOutput,
   type AudioOutput
 } from "./lib/audioOutput.js";
@@ -58,7 +59,6 @@ import {
   pruneVolumes,
   readUserVolumes,
   setVolume,
-  volumeGain,
   writeUserVolumes
 } from "./lib/voiceVolume.js";
 import { loadTurnstile } from "./lib/turnstile.js";
@@ -153,9 +153,15 @@ export function App() {
   const leaveVoiceRef = useRef<() => void>(voice.leave);
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
   const [screenVolumes, setScreenVolumes] = useState<Record<string, number>>({});
+  const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
   const renderSurface = (surface: ReactNode) => user ? (
     <AuthenticatedAppSurface
-      audio={<GlobalVoiceAudio streams={voice.remoteStreams} muted={voice.controls.deafen.on} memberVolumes={memberVolumes} />}
+      audio={(
+        <>
+          <GlobalVoiceAudio streams={voice.remoteStreams} muted={voice.controls.deafen.on} memberVolumes={memberVolumes} />
+          {audioPlaybackBlocked ? <AudioPlaybackRecovery t={t} /> : null}
+        </>
+      )}
     >
       {surface}
     </AuthenticatedAppSurface>
@@ -165,6 +171,8 @@ export function App() {
     if (!voice.activeRoomId) return;
     void audioDevices.refresh(false).catch(() => undefined);
   }, [audioDevices.refresh, voice.activeRoomId]);
+
+  useEffect(() => subscribeBlockedAudioOutputs(setAudioPlaybackBlocked), []);
 
   useEffect(() => {
     activeVoiceRoomRef.current = voice.activeRoomId;
@@ -2091,42 +2099,34 @@ function VolumeControl({ label, value, onChange }: { label: string; value: numbe
 function RemoteAudio({ stream, muted, volume }: { stream: MediaStream; muted: boolean; volume: number }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const outputRef = useRef<AudioOutput | null>(null);
-  const [useFallback, setUseFallback] = useState(false);
 
   useEffect(() => {
-    if (stream.getAudioTracks().length === 0) {
-      setUseFallback(false);
-      return;
-    }
-
-    const output = connectAudioOutput(stream, { muted, volume });
+    const audio = audioRef.current;
+    if (!audio || stream.getAudioTracks().length === 0) return;
+    const output = connectAudioOutput(audio, stream, { muted, volume });
     outputRef.current = output;
-    setUseFallback(!output);
     return () => {
-      output?.dispose();
+      output.dispose();
       outputRef.current = null;
     };
   }, [stream]);
 
   useEffect(() => {
     outputRef.current?.setVolume(muted, volume);
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.volume = Math.min(1, volumeGain(volume));
-    audio.muted = muted;
   }, [muted, volume]);
 
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !useFallback) return;
-    void initializeFallbackAudioElement(audio, stream, { muted, volume }).catch(() => undefined);
-    return () => {
-      audio.srcObject = null;
-    };
-  }, [stream, useFallback]);
-
-  if (!useFallback) return null;
   return <audio className="remote-audio" ref={audioRef} autoPlay muted={muted} />;
+}
+
+function AudioPlaybackRecovery({ t }: { t: Translate }) {
+  return (
+    <div className="audio-playback-recovery" role="status">
+      <span>{t("audio.playbackBlocked")}</span>
+      <button className="btn btn-primary" type="button" onClick={() => void retryBlockedAudioOutputs()}>
+        {t("audio.enablePlayback")}
+      </button>
+    </div>
+  );
 }
 
 function GlobalVoiceAudio({

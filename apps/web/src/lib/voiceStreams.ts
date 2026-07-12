@@ -24,6 +24,25 @@ export function upsertRemoteStream(
   ];
 }
 
+export function removeRemoteStream(
+  streams: RemoteStreamState[],
+  userId: string,
+  kind: RemoteMediaKind,
+  expectedStream: MediaStream
+) {
+  return streams.filter((item) => (
+    item.userId !== userId || item.kind !== kind || item.stream !== expectedStream
+  ));
+}
+
+export function mediaStreamForTrack(
+  track: MediaStreamTrack,
+  associatedStreams: readonly MediaStream[],
+  createStream: (tracks: MediaStreamTrack[]) => MediaStream = (tracks) => new MediaStream(tracks)
+) {
+  return associatedStreams[0] ?? createStream([track]);
+}
+
 export function pruneRemoteStreamsForSnapshot(
   streams: RemoteStreamState[],
   members: Array<{ userId: string; camera: boolean; screen: boolean }> | VoiceSnapshot["members"]

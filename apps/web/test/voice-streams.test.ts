@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { pruneRemoteStreamsForSnapshot, remoteStreamKey, upsertRemoteStream } from "../src/lib/voiceStreams.js";
+import {
+  mediaStreamForTrack,
+  pruneRemoteStreamsForSnapshot,
+  remoteStreamKey,
+  removeRemoteStream,
+  upsertRemoteStream
+} from "../src/lib/voiceStreams.js";
 
 describe("voice remote stream state", () => {
   it("keys remote streams by user and media kind so camera and screen do not overwrite each other", () => {
@@ -36,5 +42,34 @@ describe("voice remote stream state", () => {
     );
 
     assert.deepEqual(streams, [{ userId: "u1", kind: "audio", stream: audio }]);
+  });
+
+  it("does not let an ended track remove its replacement stream", () => {
+    const oldStream = { id: "old-audio" } as MediaStream;
+    const replacementStream = { id: "replacement-audio" } as MediaStream;
+    const current = upsertRemoteStream(
+      upsertRemoteStream([], "u1", "audio", oldStream),
+      "u1",
+      "audio",
+      replacementStream
+    );
+
+    assert.deepEqual(removeRemoteStream(current, "u1", "audio", oldStream), [
+      { userId: "u1", kind: "audio", stream: replacementStream }
+    ]);
+    assert.deepEqual(removeRemoteStream(current, "u1", "audio", replacementStream), []);
+  });
+
+  it("wraps a streamless remote track in a consumable media stream", () => {
+    const track = { id: "remote-track", kind: "audio" } as MediaStreamTrack;
+    const createdStream = { id: "created-stream" } as MediaStream;
+    const associatedStream = { id: "associated-stream" } as MediaStream;
+    const createStream = (tracks: MediaStreamTrack[]) => {
+      assert.deepEqual(tracks, [track]);
+      return createdStream;
+    };
+
+    assert.equal(mediaStreamForTrack(track, [associatedStream], createStream), associatedStream);
+    assert.equal(mediaStreamForTrack(track, [], createStream), createdStream);
   });
 });

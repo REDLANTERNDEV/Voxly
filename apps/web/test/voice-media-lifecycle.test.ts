@@ -64,6 +64,23 @@ describe("voice snapshot reconciliation", () => {
     }
   });
 
+  it("keeps the native remote audio element mounted as the only hardware sink", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+    const remoteAudio = source.match(/function RemoteAudio[\s\S]*?\n}\n\nfunction GlobalVoiceAudio/)?.[0] ?? "";
+
+    assert.match(remoteAudio, /connectAudioOutput\(audio, stream, \{ muted, volume \}\)/);
+    assert.doesNotMatch(remoteAudio, /if \(!useFallback\) return null/);
+    assert.match(remoteAudio, /return <audio[^>]*ref=\{audioRef\}/);
+  });
+
+  it("exposes a retry action only when native audio playback is blocked", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+
+    assert.match(source, /subscribeBlockedAudioOutputs/);
+    assert.match(source, /retryBlockedAudioOutputs/);
+    assert.match(source, /audioPlaybackBlocked/);
+  });
+
   it("runs peer reconciliation for acknowledged and pushed snapshots", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
     const acknowledgedSnapshots = source.match(/socket\.emit\("voice:snapshot"[\s\S]{0,240}applyVoiceSnapshot\(nextSnapshot\)/g) ?? [];

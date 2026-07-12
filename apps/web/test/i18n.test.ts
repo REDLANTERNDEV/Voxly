@@ -27,6 +27,12 @@ describe("frontend localization", () => {
     assert.equal(translate("tr", "voice.noScreenAudio"), "Bu paylaşımda ses yok");
   });
 
+  it("translates blocked audio recovery copy", () => {
+    assert.equal(translate("en", "audio.enablePlayback"), "Enable audio");
+    assert.equal(translate("tr", "audio.enablePlayback"), "Sesi etkinleştir");
+    assert.equal(translate("tr", "audio.playbackBlocked"), "Tarayıcı gelen sesi duraklattı.");
+  });
+
   it("keeps the landing invitation concise in both languages", () => {
     assert.equal(translate("en", "landing.title"), "A room for your people");
     assert.equal(translate("tr", "landing.title"), "Kendi grubun için bir oda");
