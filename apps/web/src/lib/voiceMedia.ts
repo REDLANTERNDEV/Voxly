@@ -46,15 +46,15 @@ export const micConstraints: MediaStreamConstraints = {
 };
 
 export function configureScreenTrack(track: MediaStreamTrack) {
-  if (track.kind === "video") track.contentHint = "motion";
+  if (track.kind === "video") track.contentHint = "detail";
 }
 
-export async function preferScreenSenderFrameRate(sender: RTCRtpSender, screenTrack: MediaStreamTrack) {
+export async function preferScreenSenderResolution(sender: RTCRtpSender, screenTrack: MediaStreamTrack) {
   if (screenTrack.kind !== "video" || sender.track !== screenTrack) return false;
   const parameters = sender.getParameters() as RTCRtpSendParameters & {
-    degradationPreference?: "maintain-framerate";
+    degradationPreference?: "maintain-resolution";
   };
-  parameters.degradationPreference = "maintain-framerate";
+  parameters.degradationPreference = "maintain-resolution";
   try {
     await sender.setParameters(parameters);
     return true;

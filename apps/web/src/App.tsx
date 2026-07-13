@@ -27,6 +27,7 @@ import {
   fetchMe,
   fetchRtcConfig,
   fetchMessages,
+  fetchServerDirectory,
   fetchServerOwnerData,
   fetchServerRooms,
   fetchServers,
@@ -63,6 +64,17 @@ import {
 } from "./lib/voiceVolume.js";
 import { loadTurnstile } from "./lib/turnstile.js";
 import { startupSurface } from "./lib/startupSurface.js";
+import { createAuthRequestGate } from "./lib/authRequestGate.js";
+import { groupDirectoryMembers } from "./lib/memberDirectory.js";
+import {
+  clearUnread,
+  readRoomHistory,
+  rememberRoom,
+  resolveRememberedRoom,
+  unreadAfterMessage,
+  writeRoomHistory,
+  type RoomHistory
+} from "./lib/channelState.js";
 import { AppShellSkeleton } from "./components/AppShellSkeleton.js";
 import { AudioDeviceSettings } from "./components/AudioDeviceSettings.js";
 import { InviteTargetSelector } from "./components/InviteTargetSelector.js";
@@ -130,7 +142,10 @@ export function App() {
   const [serverListReady, setServerListReady] = useState(false);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [messagesByRoom, setMessagesByRoom] = useState<Record<string, ChatMessage[]>>({});
+  const [unreadByRoom, setUnreadByRoom] = useState<Record<string, number>>({});
+  const [roomHistory, setRoomHistory] = useState<RoomHistory>(() => readRoomHistory(window.localStorage));
   const [onlineUsersByServer, setOnlineUsersByServer] = useState<Record<string, PresenceUser[]>>({});
+  const [serverMembersByServer, setServerMembersByServer] = useState<Record<string, PresenceUser[]>>({});
   const [socketState, setSocketState] = useState<"connecting" | "live" | "reconnecting" | "offline">("connecting");
   const [socketInstance, setSocketInstance] = useState<VoxlySocket | null>(null);
   const [appConfig, setAppConfig] = useState<AppConfigResponse>({ publicUrl: null, turnstile: null });
@@ -141,11 +156,15 @@ export function App() {
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
   const [language, setLanguage] = useState<LanguageCode>(() => readLanguageChoice());
   const socketRef = useRef<VoxlySocket | null>(null);
+  const authRequestGateRef = useRef(createAuthRequestGate());
+  const authenticatedUserIdRef = useRef<string | null>(null);
+  const activeTextRoomIdRef = useRef<string | null>(route.name === "text" ? route.roomId : null);
   const t = useCallback<Translate>((key, values) => translate(language, key, values), [language]);
   const activeServerId = route.name === "text" || route.name === "voice" || route.name === "owner"
     ? route.serverId
     : servers[0]?.id ?? defaultServerId;
   const onlineUsers = onlineUsersByServer[activeServerId] ?? (user ? [presenceFromUser(user)] : []);
+  const serverMembers = serverMembersByServer[activeServerId] ?? [];
   const voiceRoomIds = useMemo(() => rooms.filter((room) => room.kind === "voice").map((room) => room.id), [rooms]);
   const audioDevices = useAudioDevices({ userId: user?.id });
   const voice = useVoiceMedia({ socket: socketInstance, user, iceServers: rtcConfig.iceServers, voiceRoomIds, microphoneDeviceId: audioDevices.selectedInputId });
@@ -203,21 +222,33 @@ export function App() {
     setScreenVolumes((current) => setVolume(current, streamId, volume));
   }, []);
 
+  const refreshServerDirectory = useCallback((serverId: string) => {
+    return fetchServerDirectory(serverId).then((response) => {
+      setServerMembersByServer((current) => ({ ...current, [serverId]: response.members }));
+    });
+  }, []);
+
   const navigate = useCallback((path: string) => {
     window.history.pushState(null, "", path);
     setRoute(parseRoute(path));
     setDrawer(null);
   }, []);
 
+  const completeAuthentication = useCallback((nextUser: PublicUser) => {
+    authRequestGateRef.current.invalidate();
+    if (authenticatedUserIdRef.current !== nextUser.id) setRtcConfigReady(false);
+    authenticatedUserIdRef.current = nextUser.id;
+    setUser(nextUser);
+    setAuthState("ready");
+  }, []);
+
   const handleOwnerClaimed = useCallback((claimedUser: PublicUser) => {
-    setRtcConfigReady(false);
-    setUser(claimedUser);
+    completeAuthentication(claimedUser);
     navigate(`/app/server/${defaultServerId}/owner`);
-  }, [navigate]);
+  }, [completeAuthentication, navigate]);
 
   const handleAccessClaimed = useCallback((claimedUser: PublicUser, serverId: string) => {
-    setRtcConfigReady(false);
-    setUser(claimedUser);
+    completeAuthentication(claimedUser);
     void Promise.all([fetchServers(), fetchServerRooms(serverId)])
       .then(([serverResponse, roomResponse]) => {
         setServers(serverResponse.servers);
@@ -225,13 +256,27 @@ export function App() {
         navigate(firstServerRoomPath(serverId, roomResponse.rooms));
       })
       .catch(() => navigate("/"));
-  }, [navigate]);
+  }, [completeAuthentication, navigate]);
 
   useEffect(() => {
     const handlePop = () => setRoute(parseRoute(window.location.pathname));
     window.addEventListener("popstate", handlePop);
     return () => window.removeEventListener("popstate", handlePop);
   }, []);
+
+  useEffect(() => {
+    activeTextRoomIdRef.current = route.name === "text" ? route.roomId : null;
+    if (route.name !== "text" && route.name !== "voice") return;
+
+    if (route.name === "text") {
+      setUnreadByRoom((current) => clearUnread(current, route.roomId));
+    }
+    setRoomHistory((current) => {
+      const next = rememberRoom(current, route.serverId, route.name, route.roomId);
+      writeRoomHistory(window.localStorage, next);
+      return next;
+    });
+  }, [route]);
 
   useEffect(() => {
     applyThemeChoice(theme);
@@ -298,17 +343,20 @@ export function App() {
 
   useEffect(() => {
     let isMounted = true;
+    const requestGeneration = authRequestGateRef.current.begin();
     setAuthState("loading");
     fetchMe()
       .then((response) => {
-        if (!isMounted) return;
+        if (!isMounted || !authRequestGateRef.current.isCurrent(requestGeneration)) return;
         setRtcConfigReady(false);
+        authenticatedUserIdRef.current = response.user.id;
         setUser(response.user);
         setAuthState("ready");
       })
       .catch((error: unknown) => {
-        if (!isMounted) return;
+        if (!isMounted || !authRequestGateRef.current.isCurrent(requestGeneration)) return;
         if (error instanceof ApiError && error.status === 401) {
+          authenticatedUserIdRef.current = null;
           setUser(null);
           setAuthState("ready");
           if (route.name !== "landing" && route.name !== "invite" && route.name !== "owner-claim" && route.name !== "access-claim") {
@@ -366,6 +414,13 @@ export function App() {
       .catch(() => {
         if (isMounted) setRooms([]);
       });
+    fetchServerDirectory(activeServerId)
+      .then((response) => {
+        if (isMounted) setServerMembersByServer((current) => ({ ...current, [activeServerId]: response.members }));
+      })
+      .catch(() => {
+        if (isMounted) setServerMembersByServer((current) => ({ ...current, [activeServerId]: [] }));
+      });
     return () => {
       isMounted = false;
     };
@@ -420,6 +475,7 @@ export function App() {
       socketRef.current = null;
       setSocketInstance(null);
       setOnlineUsersByServer({});
+      setServerMembersByServer({});
       return;
     }
 
@@ -446,11 +502,15 @@ export function App() {
         [serverId]: (current[serverId] ?? []).filter((item) => item.userId !== userId)
       }));
     });
+    socket.on("server:directoryChanged", ({ serverId }) => {
+      void refreshServerDirectory(serverId).catch(() => undefined);
+    });
     socket.on("message:new", (message) => {
       setMessagesByRoom((current) => ({
         ...current,
         [message.roomId]: upsertMessage(current[message.roomId] ?? [], message)
       }));
+      setUnreadByRoom((current) => unreadAfterMessage(current, message, activeTextRoomIdRef.current, user.id));
     });
     socket.on("message:updated", (message) => {
       setMessagesByRoom((current) => ({
@@ -473,6 +533,11 @@ export function App() {
         delete next[serverId];
         return next;
       });
+      setServerMembersByServer((current) => {
+        const next = { ...current };
+        delete next[serverId];
+        return next;
+      });
     });
 
     return () => {
@@ -480,7 +545,7 @@ export function App() {
       socketRef.current = null;
       setSocketInstance(null);
     };
-  }, [user]);
+  }, [refreshServerDirectory, user]);
 
   useEffect(() => {
     if (!socketInstance || route.name !== "text") return;
@@ -582,8 +647,7 @@ export function App() {
           setLanguage(nextLanguage);
         }}
         onAccepted={(acceptedUser, serverId) => {
-          if (acceptedUser.id !== user?.id) setRtcConfigReady(false);
-          setUser(acceptedUser);
+          completeAuthentication(acceptedUser);
           void Promise.all([fetchServers(), fetchServerRooms(serverId)]).then(([serverResponse, roomResponse]) => {
             setServers(serverResponse.servers);
             const target = roomResponse.rooms.find((room) => room.kind === "text") ?? roomResponse.rooms[0];
@@ -601,6 +665,7 @@ export function App() {
     activeServerId,
     rooms: roomGroups,
     onlineUsers,
+    serverMembers,
     socketState,
     activeVoiceRoomId: voice.activeRoomId,
     controls: voice.controls,
@@ -618,11 +683,14 @@ export function App() {
     localPreviews: voice.localPreviews,
     memberVolumes,
     screenVolumes,
+    unreadByRoom,
+    roomHistory,
     audioDevices,
     onNavigate: navigate,
     onSelectServer: async (serverId: string) => {
       const response = await fetchServerRooms(serverId);
-      const target = response.rooms.find((room) => room.kind === "text") ?? response.rooms[0];
+      const textRooms = response.rooms.filter((room) => room.kind === "text");
+      const target = resolveRememberedRoom(textRooms, roomHistory[serverId]?.text) ?? response.rooms[0];
       if (target) navigate(serverPath(serverId, target.kind, target.id));
     },
     onCreateServer: async (name: string) => {
@@ -639,6 +707,7 @@ export function App() {
     },
     onModerateMember: async (userId: string, action: "ban" | "unban" | "kick") => {
       await moderateServerMember(activeServerId, userId, action);
+      await refreshServerDirectory(activeServerId);
     },
     onDisconnectMember: async (roomId: string, userId: string) => {
       await disconnectVoiceMember(activeServerId, roomId, userId);
@@ -667,7 +736,10 @@ export function App() {
     onLogout: async () => {
       voice.leave();
       await logout();
+      authRequestGateRef.current.invalidate();
+      authenticatedUserIdRef.current = null;
       setUser(null);
+      setAuthState("ready");
       navigate("/invite");
     }
   };
@@ -792,6 +864,7 @@ interface ShellProps {
   activeServerId: string;
   rooms: { text: RoomSummary[]; voice: RoomSummary[] };
   onlineUsers: PresenceUser[];
+  serverMembers: PresenceUser[];
   socketState: "connecting" | "live" | "reconnecting" | "offline";
   activeVoiceRoomId: string | null;
   controls: VoiceControls;
@@ -804,6 +877,8 @@ interface ShellProps {
   localPreviews: Array<{ kind: "camera" | "screen"; stream: MediaStream }>;
   memberVolumes: Record<string, number>;
   screenVolumes: Record<string, number>;
+  unreadByRoom: Record<string, number>;
+  roomHistory: RoomHistory;
   audioDevices: UseAudioDevicesResult;
   drawer: Drawer;
   theme: ThemeChoice;
@@ -839,6 +914,10 @@ function TextRoomScreen(props: ShellProps & {
   const [error, setError] = useState("");
   const [isSending, setIsSending] = useState(false);
   const listRef = useRef<HTMLElement | null>(null);
+  const targetVoiceRoom = resolveRememberedRoom(
+    props.rooms.voice,
+    props.roomHistory[props.activeServerId]?.voice
+  );
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -870,9 +949,8 @@ function TextRoomScreen(props: ShellProps & {
         <RoomHeader
           title={`#${props.currentRoom?.name ?? "lobby"}`}
           subtitle={props.t("room.generalTalk")}
-          actionLabel={props.t("room.joinVoice")}
-          onAction={() => props.onNavigate(serverPath(props.activeServerId, "voice", props.rooms.voice[0]?.id ?? "lobby"))}
-          t={props.t}
+          actionLabel={targetVoiceRoom ? props.t("room.openChannel", { channel: targetVoiceRoom.name }) : undefined}
+          onAction={targetVoiceRoom ? () => props.onNavigate(serverPath(props.activeServerId, "voice", targetVoiceRoom.id)) : undefined}
         />
         <section className="message-list" ref={listRef} aria-label={props.t("room.messages")}>
           <div className="message-day">{props.t("room.today")}</div>
@@ -979,6 +1057,10 @@ function VoiceRoomScreen(props: ShellProps) {
   const stageSources = visualSources.filter((source) => selectedKeys.has(source.key));
   const focusedSource = stageSources.find((source) => source.key === focusedSourceKey) ?? stageSources[0] ?? null;
   const hasVoiceActivity = Boolean(props.activeVoiceRoomId || snapshotMembers.length > 0);
+  const targetTextRoom = resolveRememberedRoom(
+    props.rooms.text,
+    props.roomHistory[props.activeServerId]?.text
+  );
 
   const updateRemoteSelection = async (targets: VisualTarget[], focusKey: string) => {
     const response = await props.onSetVisualSubscriptions(targets);
@@ -1017,9 +1099,8 @@ function VoiceRoomScreen(props: ShellProps) {
         <RoomHeader
           title={props.currentRoom?.name ?? props.t("room.lobbyVoice")}
           subtitle={props.t("room.pushToMute", { count: connectedCount })}
-          actionLabel={props.t("room.openChat")}
-          onAction={() => props.onNavigate(serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general"))}
-          t={props.t}
+          actionLabel={targetTextRoom ? props.t("room.openChannel", { channel: targetTextRoom.name }) : undefined}
+          onAction={targetTextRoom ? () => props.onNavigate(serverPath(props.activeServerId, "text", targetTextRoom.id)) : undefined}
         />
         {hasVoiceActivity ? (
           <section className="call-surface voice-control-room" aria-label={props.t("room.voiceRooms")}>
@@ -1101,7 +1182,7 @@ function VoiceRoomScreen(props: ShellProps) {
                 })}
               </ul>
             </section>
-            <p className="voice-stage-status" aria-live="polite">{stageStatus}</p>
+            {stageStatus ? <p className="voice-stage-status" aria-live="polite">{stageStatus}</p> : null}
           </section>
         ) : (
           <section className="call-surface">
@@ -1258,15 +1339,15 @@ function OwnerPanel(props: ShellProps) {
             ))}
           </section>
         </section>
-        <section className="owner-grid" id="users">
+        <section className="owner-grid members-grid" id="users">
           <section className="table-card">
             <div className="table-head"><span>{props.t("common.user")}</span><span>{props.t("common.role")}</span><span>{props.t("common.status")}</span><span>{props.t("common.actions")}</span></div>
             {users.map((item) => (
               <div className="table-row" key={item.id}>
                 <span><MemberRow user={item.nickname} detail={item.role === "owner" ? props.t("shell.ownerSession") : props.t("shell.memberSession")} owner={item.role === "owner"} /></span>
-                <span>{item.role === "owner" ? props.t("common.owner") : props.t("common.member")}</span>
-                <span><StatusPill tone={item.bannedAt ? "danger" : "online"}>{item.bannedAt ? props.t("common.banned") : props.t("common.online")}</StatusPill></span>
-                <span>
+                <span>{item.role === "owner" ? props.t("common.owner") : props.t("common.user")}</span>
+                <span><StatusPill tone={item.bannedAt ? "danger" : "online"}>{item.bannedAt ? props.t("common.banned") : props.t("common.active")}</StatusPill></span>
+                <span className="table-actions">
                   {item.role !== "owner" ? <>
                     <button className="btn btn-ghost" type="button" onClick={async () => {
                       try {
@@ -1283,7 +1364,7 @@ function OwnerPanel(props: ShellProps) {
                         copy: action === "ban" ? props.t("owner.banConfirm", { nickname: item.nickname }) : "This restores the member's access to this server.",
                         confirmLabel: action === "ban" ? props.t("common.ban") : "Unban",
                         perform: async () => {
-                          await moderateServerMember(props.activeServerId, item.id, action);
+                          await props.onModerateMember(item.id, action);
                           await reload();
                         }
                       });
@@ -1296,7 +1377,7 @@ function OwnerPanel(props: ShellProps) {
                       copy: "The member can return only with a new invite.",
                       confirmLabel: "Kick",
                       perform: async () => {
-                        await moderateServerMember(props.activeServerId, item.id, "kick");
+                        await props.onModerateMember(item.id, "kick");
                         await reload();
                       }
                     })}><LeaveIcon /><span>Kick</span></button> : null}
@@ -1363,7 +1444,8 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
         <ChannelRail {...props} />
         {props.children}
         <MemberPanel
-          users={props.onlineUsers}
+          members={props.serverMembers}
+          onlineUsers={props.onlineUsers}
           voiceRooms={props.rooms.voice}
           voiceSnapshots={props.voiceSnapshots}
           currentUser={props.user}
@@ -1407,7 +1489,7 @@ function ChannelRail(props: ShellProps) {
         <div className="rail-section-head"><span className="label">{props.t("room.textRooms")}</span><span className="badge">{props.rooms.text.length}</span>{canManageServer ? <ChannelCreateControl kind="text" onCreate={props.onCreateRoom} /> : null}</div>
         {props.rooms.text.map((room) => (
             <NavLink className={`channel-item ${props.route.name === "text" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "text", room.id)} key={room.id} onNavigate={props.onNavigate}>
-            <span className="channel-prefix">#</span><span>{room.name}</span><span className="badge">0</span>
+            <span className="channel-prefix">#</span><span>{room.name}</span>{props.unreadByRoom[room.id] ? <span className="badge unread-badge">{props.unreadByRoom[room.id]}</span> : <span />}
           </NavLink>
         ))}
       </section>
@@ -1534,7 +1616,8 @@ function ChannelCreateControl({ kind, onCreate }: { kind: "text" | "voice"; onCr
 }
 
 function MemberPanel({
-  users,
+  members,
+  onlineUsers,
   voiceRooms,
   voiceSnapshots,
   currentUser,
@@ -1545,7 +1628,8 @@ function MemberPanel({
   onMemberVolumeChange,
   t
 }: {
-  users: PresenceUser[];
+  members: PresenceUser[];
+  onlineUsers: PresenceUser[];
   voiceRooms: RoomSummary[];
   voiceSnapshots: Record<string, VoiceSnapshot>;
   currentUser: PublicUser;
@@ -1563,43 +1647,49 @@ function MemberPanel({
       roomByMemberId.set(member.user.userId, room);
     }
   }
+  const groupedMembers = groupDirectoryMembers(members, onlineUsers, presenceFromUser(currentUser));
+  const renderMembers = (users: PresenceUser[], online: boolean) => users.map((user) => {
+    const voiceRoom = roomByMemberId.get(user.userId);
+    const roleLabel = user.role === "owner" ? t("common.owner") : t("common.user");
+    const detail = voiceRoom ? `${roleLabel} · ${voiceRoom.name}` : roleLabel;
+    return (
+      <div className={`member-row ${online ? "is-online" : "is-offline"}`} key={user.userId}>
+        <span className={`avatar ${user.role === "owner" ? "owner" : ""}`}>{initial(user.nickname)}</span>
+        <span className="member-copy"><strong>{user.nickname}</strong><span>{detail}</span></span>
+        {user.userId !== currentUser.id && (voiceRoom || canModerate) ? (
+          <details className="member-action-menu">
+            <summary aria-label={t("member.actionsFor", { nickname: user.nickname })}><MoreIcon /></summary>
+            <div className="member-action-panel">
+              {voiceRoom ? (
+                <VolumeControl
+                  label={t("voice.memberVolume", { nickname: user.nickname })}
+                  value={memberVolumes[user.userId] ?? DEFAULT_VOLUME_PERCENT}
+                  onChange={(volume) => onMemberVolumeChange(user.userId, volume)}
+                />
+              ) : null}
+              {voiceRoom && canModerate ? <button className="btn btn-ghost" type="button" onClick={() => setPendingAction({ user, roomId: voiceRoom.id, action: "disconnect" })}>{t("member.disconnectVoice")}</button> : null}
+              {canModerate ? <>
+                <button className="btn btn-danger" type="button" onClick={() => setPendingAction({ user, action: "kick" })}>{t("member.kick")}</button>
+                <button className="btn btn-danger" type="button" onClick={() => setPendingAction({ user, action: "ban" })}>{t("member.ban")}</button>
+              </> : null}
+            </div>
+          </details>
+        ) : null}
+      </div>
+    );
+  });
   return (
     <aside className="member-panel">
       <section className="member-section">
-        <div className="member-section-head"><span className="label">{t("common.online")}</span><span className="badge">{users.length}</span></div>
-        {users.length === 0 ? (
+        <div className="member-section-head"><span className="label">{t("common.online")}</span><span className="badge">{groupedMembers.online.length}</span></div>
+        {groupedMembers.online.length === 0 ? (
           <p className="muted small">{t("room.presenceWaiting")}</p>
-        ) : (
-          users.map((user) => {
-            const voiceRoom = roomByMemberId.get(user.userId);
-            return (
-            <div className="member-row" key={user.userId}>
-              <span className={`avatar ${user.role === "owner" ? "owner" : ""}`}>{initial(user.nickname)}</span>
-              <span className="member-copy"><strong>{user.nickname}</strong><span>{voiceRoom ? `${t("room.inLobby")}, ${voiceRoom.name}` : t("common.online")}</span></span>
-              {user.userId !== currentUser.id && (voiceRoom || canModerate) ? (
-                <details className="member-action-menu">
-                  <summary aria-label={t("member.actionsFor", { nickname: user.nickname })}><MoreIcon /></summary>
-                  <div className="member-action-panel">
-                    {voiceRoom ? (
-                      <VolumeControl
-                        label={t("voice.memberVolume", { nickname: user.nickname })}
-                        value={memberVolumes[user.userId] ?? DEFAULT_VOLUME_PERCENT}
-                        onChange={(volume) => onMemberVolumeChange(user.userId, volume)}
-                      />
-                    ) : null}
-                    {voiceRoom && canModerate ? <button className="btn btn-ghost" type="button" onClick={() => setPendingAction({ user, roomId: voiceRoom.id, action: "disconnect" })}>{t("member.disconnectVoice")}</button> : null}
-                    {canModerate ? <>
-                      <button className="btn btn-danger" type="button" onClick={() => setPendingAction({ user, action: "kick" })}>{t("member.kick")}</button>
-                      <button className="btn btn-danger" type="button" onClick={() => setPendingAction({ user, action: "ban" })}>{t("member.ban")}</button>
-                    </> : null}
-                  </div>
-                </details>
-              ) : null}
-            </div>
-            );
-          })
-        )}
+        ) : renderMembers(groupedMembers.online, true)}
       </section>
+      {groupedMembers.offline.length > 0 ? <section className="member-section member-section-offline">
+        <div className="member-section-head"><span className="label">{t("common.offline")}</span><span className="badge">{groupedMembers.offline.length}</span></div>
+        {renderMembers(groupedMembers.offline, false)}
+      </section> : null}
       {pendingAction ? <ConfirmDialog
         title={pendingAction.action === "disconnect" ? `Disconnect ${pendingAction.user.nickname}?` : `${pendingAction.action === "kick" ? "Kick" : "Ban"} ${pendingAction.user.nickname}?`}
         copy={pendingAction.action === "disconnect" ? "This removes the member from voice without changing server membership." : pendingAction.action === "kick" ? "The member can return only with a new invite." : "The member loses access to this server until unbanned."}
@@ -1616,12 +1706,12 @@ function MemberPanel({
   );
 }
 
-function RoomHeader({ title, subtitle, actionLabel, onAction }: { title: string; subtitle: string; actionLabel: string; onAction: () => void; t: Translate }) {
+function RoomHeader({ title, subtitle, actionLabel, onAction }: { title: string; subtitle: string; actionLabel?: string; onAction?: () => void }) {
   return (
     <header className="room-header">
       <div className="room-title"><strong>{title}</strong><span className="muted small">{subtitle}</span></div>
       <div className="room-actions">
-        <button className="btn btn-ghost" type="button" onClick={onAction}><ChatIcon /><span>{actionLabel}</span></button>
+        {actionLabel && onAction ? <button className="btn btn-ghost" type="button" onClick={onAction}><ChatIcon /><span>{actionLabel}</span></button> : null}
       </div>
     </header>
   );
@@ -2081,7 +2171,7 @@ function Toast({ message }: { message: string }) {
 function VoiceStatusBadges({ media, t, compact = false }: { media: VoiceMediaState | undefined; t: Translate; compact?: boolean }) {
   const items = voiceStatusItems(media, t);
   if (items.length === 0) {
-    return <span className="small muted">{mediaLabel(media, t)}</span>;
+    return null;
   }
 
   return (
@@ -2418,16 +2508,6 @@ function voiceDockStatusLabel(controls: VoiceControls, connectedCount: number, t
   }
 
   return t("common.connected", { count: connectedCount });
-}
-
-function mediaLabel(media: VoiceMediaState | undefined, t: Translate) {
-  if (!media) return t("common.connected", { count: 1 });
-  if (media.deafened) return t("common.deafened");
-  if (media.speaking && media.mic) return t("status.speaking");
-  if (media.screen) return t("status.screenSharing");
-  if (media.camera) return t("status.cameraOn");
-  if (!media.mic) return t("common.muted");
-  return t("room.desktopMic");
 }
 
 function voiceStatusItems(media: VoiceMediaState | undefined, t: Translate) {

@@ -737,6 +737,65 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(defaultRoomsRemainAvailable.statusCode, 200);
   });
 
+  it("exposes an active member directory without owner moderation fields", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ada");
+    const outsider = await acceptInvite(app, owner.cookies, "Ece");
+    const createdServer = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Friday Games" }
+    });
+    const serverId = createdServer.json().server.id as string;
+    const invite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Ada directory test", expiresInHours: 24 }
+    });
+    await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: invite.json().invite.token }
+    });
+
+    const visibleToMember = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${serverId}/directory`,
+      cookies: member.cookies
+    });
+    assert.equal(visibleToMember.statusCode, 200);
+    assert.deepEqual(
+      visibleToMember.json().members.map((entry: Record<string, unknown>) => Object.keys(entry).sort()),
+      [["nickname", "role", "userId"], ["nickname", "role", "userId"]]
+    );
+    assert.deepEqual(
+      visibleToMember.json().members.map((entry: { nickname: string }) => entry.nickname),
+      ["Ada", owner.user.nickname]
+    );
+
+    const hiddenFromOutsider = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${serverId}/directory`,
+      cookies: outsider.cookies
+    });
+    assert.equal(hiddenFromOutsider.statusCode, 403);
+
+    await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/members/${member.user.id}/ban`,
+      cookies: owner.cookies
+    });
+    const afterBan = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${serverId}/directory`,
+      cookies: owner.cookies
+    });
+    assert.deepEqual(afterBan.json().members.map((entry: { nickname: string }) => entry.nickname), [owner.user.nickname]);
+  });
+
   it("keeps a server invite unused when the current user is already an active member", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");

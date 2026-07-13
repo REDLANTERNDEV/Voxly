@@ -11,7 +11,7 @@ import {
   configureScreenTrack,
   createInitialMediaState,
   mediaConstraintsFor,
-  preferScreenSenderFrameRate,
+  preferScreenSenderResolution,
   replaceMicrophoneTrack
 } from "../src/lib/voiceMedia.js";
 
@@ -92,7 +92,7 @@ describe("voice control view state", () => {
     });
   });
 
-  it("configures screen video for smooth motion without affecting other tracks", async () => {
+  it("preserves screen detail while bandwidth ramps without affecting other tracks", async () => {
     const screenTrack = { kind: "video", contentHint: "" } as MediaStreamTrack;
     const cameraTrack = { kind: "video", contentHint: "" } as MediaStreamTrack;
     let appliedPreference: string | undefined;
@@ -106,10 +106,10 @@ describe("voice control view state", () => {
 
     configureScreenTrack(screenTrack);
 
-    assert.equal(screenTrack.contentHint, "motion");
-    assert.equal(await preferScreenSenderFrameRate(sender, screenTrack), true);
-    assert.equal(appliedPreference, "maintain-framerate");
-    assert.equal(await preferScreenSenderFrameRate(sender, cameraTrack), false);
+    assert.equal(screenTrack.contentHint, "detail");
+    assert.equal(await preferScreenSenderResolution(sender, screenTrack), true);
+    assert.equal(appliedPreference, "maintain-resolution");
+    assert.equal(await preferScreenSenderResolution(sender, cameraTrack), false);
   });
 
   it("keeps screen sharing alive when sender preference is rejected", async () => {
@@ -122,7 +122,7 @@ describe("voice control view state", () => {
       }
     } as unknown as RTCRtpSender;
 
-    assert.equal(await preferScreenSenderFrameRate(sender, screenTrack), false);
+    assert.equal(await preferScreenSenderResolution(sender, screenTrack), false);
   });
 
   it("replaces only the previous microphone sender and leaves screen audio untouched", async () => {

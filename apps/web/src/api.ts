@@ -6,6 +6,7 @@ import type {
   MessagesResponse,
   OwnerInvite,
   OwnerSession,
+  PresenceUser,
   PublicUser,
   RoomSummary,
   RoomsResponse,
@@ -68,6 +69,10 @@ export async function createServer(name: string) {
 
 export async function fetchServerRooms(serverId: string) {
   return apiGet<RoomsResponse>(`/api/servers/${encodeURIComponent(serverId)}/rooms`);
+}
+
+export async function fetchServerDirectory(serverId: string) {
+  return apiGet<{ members: PresenceUser[] }>(`/api/servers/${encodeURIComponent(serverId)}/directory`);
 }
 
 export async function createServerRoom(serverId: string, name: string, kind: "text" | "voice") {

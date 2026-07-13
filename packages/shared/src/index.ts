@@ -102,6 +102,7 @@ export interface ServerToClientEvents {
   }) => void;
   "voice:forceLeave": (payload: { roomId: string; reason: VoiceForceLeaveReason }) => void;
   "server:accessRevoked": (payload: { serverId: string; reason: "banned" | "kicked" }) => void;
+  "server:directoryChanged": (payload: { serverId: string }) => void;
   "rtc:signal": (payload: { roomId: string; fromUserId: string; signal: RtcSignal }) => void;
 }
 

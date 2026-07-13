@@ -436,12 +436,15 @@ describe("Voxly realtime MVP", () => {
 
     memberSocket.emit("voice:join", "lobby");
     await emitWithAck(memberSocket, "voice:snapshot", "lobby");
+    const offlinePromise = onceEvent<{ serverId: string; userId: string }>(ownerSocket, "presence:serverOffline");
     const banned = await app.server.inject({
       method: "POST",
       url: `/api/servers/the-basement/members/${member.user.id}/ban`,
       cookies: owner.cookies
     });
+    const offline = await offlinePromise;
     assert.equal(banned.statusCode, 204);
+    assert.deepEqual(offline, { serverId: "the-basement", userId: member.user.id });
     const afterBan = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(ownerSocket, "voice:snapshot", "lobby");
     assert.equal(afterBan.members.some((entry) => entry.user.userId === member.user.id), false);
   });
@@ -480,6 +483,53 @@ describe("Voxly realtime MVP", () => {
       assert.equal((await ownerMessage).body, `${action} must not receive this`);
       await removedMemberMessage;
     }
+  });
+
+  it("notifies server members about messages in rooms they have not opened", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Unread listener");
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(memberSocket);
+
+    const messagePromise = onceEvent<{ roomId: string; body: string }>(memberSocket, "message:new");
+    const messageResponse = await app.server.inject({
+      method: "POST",
+      url: "/api/rooms/general/messages",
+      cookies: owner.cookies,
+      payload: { body: "Count this while another channel is open" }
+    });
+
+    assert.equal(messageResponse.statusCode, 201);
+    assert.deepEqual(await messagePromise, {
+      ...messageResponse.json().message,
+      roomId: "general",
+      body: "Count this while another channel is open"
+    });
+  });
+
+  it("invalidates member directories after an offline member is unbanned", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Offline unban");
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+
+    const bannedChanged = onceEvent<{ serverId: string }>(ownerSocket, "server:directoryChanged");
+    const banned = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/the-basement/members/${member.user.id}/ban`,
+      cookies: owner.cookies
+    });
+    assert.equal(banned.statusCode, 204);
+    assert.deepEqual(await bannedChanged, { serverId: "the-basement" });
+
+    const unbannedChanged = onceEvent<{ serverId: string }>(ownerSocket, "server:directoryChanged");
+    const unbanned = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/the-basement/members/${member.user.id}/unban`,
+      cookies: owner.cookies
+    });
+    assert.equal(unbanned.statusCode, 204);
+    assert.deepEqual(await unbannedChanged, { serverId: "the-basement" });
   });
 });
 

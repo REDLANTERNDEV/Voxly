@@ -9,8 +9,19 @@ describe("voice snapshot reconciliation", () => {
   it("navigates away from the access claim route after authentication", () => {
     const source = readFileSync("src/App.tsx", "utf8");
 
-    assert.match(source, /const handleAccessClaimed = useCallback\([\s\S]*?setUser\(claimedUser\)[\s\S]*?firstServerRoomPath\(serverId, roomResponse\.rooms\)[\s\S]*?\}, \[navigate\]\)/);
+    assert.match(source, /const completeAuthentication = useCallback\([\s\S]*?authRequestGateRef\.current\.invalidate\(\)[\s\S]*?setUser\(nextUser\)[\s\S]*?setAuthState\("ready"\)/);
+    assert.match(source, /const authenticatedUserIdRef = useRef<string \| null>\(null\)/);
+    assert.match(source, /if \(authenticatedUserIdRef\.current !== nextUser\.id\) setRtcConfigReady\(false\)[\s\S]*?authenticatedUserIdRef\.current = nextUser\.id[\s\S]*?\}, \[\]\)/);
+    assert.match(source, /fetchMe\(\)[\s\S]*?authenticatedUserIdRef\.current = response\.user\.id[\s\S]*?setUser\(response\.user\)/);
+    assert.match(source, /const requestGeneration = authRequestGateRef\.current\.begin\(\)[\s\S]*?authRequestGateRef\.current\.isCurrent\(requestGeneration\)/);
+    assert.match(source, /const handleAccessClaimed = useCallback\([\s\S]*?completeAuthentication\(claimedUser\)[\s\S]*?firstServerRoomPath\(serverId, roomResponse\.rooms\)/);
     assert.match(source, /<AccessClaimScreen[\s\S]*?onClaimed=\{handleAccessClaimed\}/);
+  });
+
+  it("does not reserve a blank stage status row", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+
+    assert.match(source, /\{stageStatus \? <p className="voice-stage-status" aria-live="polite">\{stageStatus\}<\/p> : null\}/);
   });
 
   it("unlocks audio playback synchronously before starting voice join", async () => {

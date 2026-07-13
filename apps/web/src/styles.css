@@ -31,6 +31,9 @@
   --speaking-soft: color-mix(in oklab, var(--accent), var(--bg) 84%);
   --warn-soft: color-mix(in oklab, var(--warn), var(--bg) 74%);
   --danger-soft: color-mix(in oklab, var(--danger), var(--bg) 88%);
+  --status-live-fg: var(--black);
+  --status-online-fg: var(--fg);
+  --status-warn-fg: var(--black);
   --shadow: 0 16px 44px rgba(3, 3, 1, 0.1);
   --font-display: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-body: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -69,6 +72,8 @@
   --speaking-soft: color-mix(in oklab, var(--accent), var(--bg) 78%);
   --warn-soft: color-mix(in oklab, var(--warn), var(--bg) 82%);
   --danger-soft: color-mix(in oklab, var(--danger), var(--bg) 86%);
+  --status-live-fg: var(--fg);
+  --status-warn-fg: var(--fg);
   --shadow: 0 18px 52px rgba(0, 0, 0, 0.38);
 }
 
@@ -90,6 +95,8 @@
     --graphite-a: color-mix(in oklab, var(--black), var(--khaki-beige) 13%);
     --graphite-b: color-mix(in oklab, var(--black), var(--khaki-beige) 19%);
     --graphite-c: color-mix(in oklab, var(--black), var(--khaki-beige) 27%);
+    --status-live-fg: var(--fg);
+    --status-warn-fg: var(--fg);
     --shadow: 0 18px 52px rgba(0, 0, 0, 0.38);
   }
 }
@@ -531,6 +538,15 @@ h3 {
   text-align: center;
 }
 
+.unread-badge {
+  background: var(--accent);
+  border-radius: 999px;
+  color: var(--accent-on);
+  font-weight: 700;
+  min-width: 18px;
+  padding: 2px 5px;
+}
+
 .session-card,
 .theme-card,
 .voice-room-block,
@@ -876,6 +892,12 @@ h3 {
 
 .member-row {
   grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.member-row.is-offline > .avatar,
+.member-row.is-offline > .member-copy {
+  filter: saturate(0.35);
+  opacity: 0.52;
 }
 
 .member-row:has(.member-action-menu[open]) {
@@ -1521,14 +1543,18 @@ h3 {
 .voice-status-chip.live {
   background: color-mix(in oklab, var(--accent), var(--bg) 90%);
   border-color: color-mix(in oklab, var(--accent), var(--border) 34%);
+  color: var(--status-live-fg);
 }
 
 .voice-status-chip.online {
+  background: var(--success-soft);
   border-color: color-mix(in oklab, var(--success), var(--border) 50%);
+  color: var(--status-online-fg);
 }
 
 .voice-status-chip.warn {
   background: var(--warn-soft);
+  color: var(--status-warn-fg);
 }
 
 .voice-status-chip.danger {
@@ -2092,6 +2118,26 @@ h3 {
   grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
 }
 
+.owner-grid.members-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.35fr);
+}
+
+.members-grid .table-head,
+.members-grid .table-row {
+  grid-template-columns: minmax(160px, 1.2fr) 0.55fr 0.65fr minmax(250px, auto);
+}
+
+.table-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.table-actions .btn {
+  white-space: nowrap;
+}
+
 .table-card {
   overflow: hidden;
 }
@@ -2367,6 +2413,11 @@ h3 {
   .owner-shell,
   .owner-grid,
   .owner-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-grid.members-grid,
+  .members-grid .table-row {
     grid-template-columns: minmax(0, 1fr);
   }
 

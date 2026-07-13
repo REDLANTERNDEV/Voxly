@@ -11,7 +11,7 @@ import type {
 } from "@voxly/shared";
 import type { VoxlySocket } from "../socket.js";
 import { createInitialVoiceControls, toggleVoiceControl, type VoiceControlKey, type VoiceControls } from "./voiceControls.js";
-import { configureScreenTrack, mediaConstraintsFor, preferScreenSenderFrameRate, replaceMicrophoneTrack } from "./voiceMedia.js";
+import { configureScreenTrack, mediaConstraintsFor, preferScreenSenderResolution, replaceMicrophoneTrack } from "./voiceMedia.js";
 import { buildMicrophoneConstraints } from "./audioDevices.js";
 import { releaseUnusedSharedAudioOutput } from "./audioOutput.js";
 import {
@@ -289,7 +289,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         const existingSender = peer.getSenders().find((sender) => sender.track === track);
         const sender = existingSender ?? peer.addTrack(track, stream);
         if (kind === "screen" && track.kind === "video") {
-          void preferScreenSenderFrameRate(sender, track);
+          void preferScreenSenderResolution(sender, track);
         }
       }
     }

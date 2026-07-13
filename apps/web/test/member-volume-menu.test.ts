@@ -21,4 +21,20 @@ describe("member volume menus", () => {
     assert.match(panel, /onChange=\{\(volume\) => onMemberVolumeChange\(user\.userId, volume\)\}/);
     assert.match(panel, /\{canModerate\s*\?\s*<>[\s\S]*?member\.kick[\s\S]*?member\.ban/);
   });
+
+  it("keeps voice status chips readable and separates owner member actions", () => {
+    const app = readFileSync("src/App.tsx", "utf8");
+    const styles = readFileSync("src/styles.css", "utf8");
+
+    assert.doesNotMatch(app, /return t\("room\.desktopMic"\)/);
+    assert.match(app, /if \(items\.length === 0\) \{\s*return null;\s*\}/);
+    assert.match(app, /className="owner-grid members-grid"/);
+    assert.match(app, /className="table-actions"/);
+    assert.match(app, /item\.role === "owner" \? props\.t\("common\.owner"\) : props\.t\("common\.user"\)/);
+    assert.match(app, /item\.bannedAt \? props\.t\("common\.banned"\) : props\.t\("common\.active"\)/);
+    assert.match(styles, /\.voice-status-chip\.live\s*\{[^}]*background:[^}]*color:\s*var\(--status-live-fg\)/s);
+    assert.match(styles, /\.voice-status-chip\.online\s*\{[^}]*background:[^}]*color:\s*var\(--status-online-fg\)/s);
+    assert.match(styles, /\.voice-status-chip\.warn\s*\{[^}]*background:[^}]*color:\s*var\(--status-warn-fg\)/s);
+    assert.match(styles, /\.table-actions\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap[^}]*gap:/s);
+  });
 });

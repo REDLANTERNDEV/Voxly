@@ -388,6 +388,26 @@ function registerRoutes(
     return reply.code(201).send({ room });
   });
 
+  server.get("/api/servers/:serverId/directory", async (request, reply) => {
+    const user = requireUser(database, request, reply, options.secureCookies);
+    if (!user) return;
+    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    if (!requireServerMember(database, serverId, user.id, reply)) return;
+    return {
+      members: all(
+        database.sqlite,
+        `select users.id as userId, users.nickname, server_members.role
+         from server_members
+         join users on users.id = server_members.user_id
+         where server_members.server_id = ?
+           and server_members.banned_at is null
+           and server_members.removed_at is null
+         order by users.nickname asc`,
+        [serverId]
+      )
+    };
+  });
+
   server.get("/api/servers/:serverId/members", async (request, reply) => {
     const owner = requireOwner(database, request, reply, options.secureCookies);
     if (!owner) return;
@@ -464,6 +484,7 @@ function registerRoutes(
     if (action === "ban" || action === "kick") {
       realtime.revokeServerAccess(serverId, userId, action === "ban" ? "banned" : "kicked");
     }
+    io.to(`server:${serverId}`).emit("server:directoryChanged", { serverId });
     return reply.code(204).send();
   });
 
@@ -686,7 +707,9 @@ function registerRoutes(
       [message.id, message.roomId, message.userId, message.body, message.createdAt]
     );
     database.save();
-    io.to(`room:${roomId}`).emit("message:new", message);
+    // Every active server member needs the lightweight notification so clients
+    // can maintain unread counts for text rooms they have not opened yet.
+    io.to(`server:${room.serverId}`).emit("message:new", message);
 
     return reply.code(201).send({ message });
   });
@@ -1013,6 +1036,7 @@ function registerRealtime(
         }
         socket.emit("server:accessRevoked", { serverId, reason });
       }
+      io.to(`server:${serverId}`).emit("presence:serverOffline", { serverId, userId });
     }
   };
 }
