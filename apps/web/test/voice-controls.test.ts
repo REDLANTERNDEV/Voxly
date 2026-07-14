@@ -34,26 +34,44 @@ describe("voice control view state", () => {
     assert.equal(voiceDockStatus(deafened, 3), "Deafened - voice output off");
   });
 
-  it("mutes when deafen is enabled and restores the mic when deafen is disabled", () => {
-    const deafened = toggleVoiceControl(createInitialVoiceControls(), "deafen");
+  it("restores an open mic after undeafening when a microphone remains available", () => {
+    const beforeDeafen = createInitialVoiceControls();
+    const deafened = toggleVoiceControl(beforeDeafen, "deafen");
 
     assert.equal(deafened.deafen.on, true);
     assert.equal(deafened.mic.on, false);
 
-    const undeafened = toggleVoiceControl(deafened, "deafen");
+    const restoreOptions = {
+      restoreMicrophoneOn: beforeDeafen.mic.on,
+      microphoneAvailable: true
+    };
+    const undeafened = toggleVoiceControl(deafened, "deafen", restoreOptions);
 
     assert.equal(undeafened.deafen.on, false);
     assert.equal(undeafened.mic.on, true);
   });
 
-  it("keeps the mic off after undeafening a receive-only connection", () => {
-    const receiveOnly = {
-      ...createInitialVoiceControls(),
-      mic: { on: false, enabled: true },
-      deafen: { on: true, enabled: true }
+  it("keeps a previously muted mic off after undeafening", () => {
+    const beforeDeafen = toggleVoiceControl(createInitialVoiceControls(), "mic");
+    const deafened = toggleVoiceControl(beforeDeafen, "deafen");
+    const restoreOptions = {
+      restoreMicrophoneOn: beforeDeafen.mic.on,
+      microphoneAvailable: true
     };
+    const undeafened = toggleVoiceControl(deafened, "deafen", restoreOptions);
 
-    const undeafened = toggleVoiceControl(receiveOnly, "deafen", { microphoneAvailable: false });
+    assert.equal(undeafened.deafen.on, false);
+    assert.equal(undeafened.mic.on, false);
+  });
+
+  it("keeps the mic off when the previous open mic is no longer available", () => {
+    const beforeDeafen = createInitialVoiceControls();
+    const deafened = toggleVoiceControl(beforeDeafen, "deafen");
+    const restoreOptions = {
+      restoreMicrophoneOn: beforeDeafen.mic.on,
+      microphoneAvailable: false
+    };
+    const undeafened = toggleVoiceControl(deafened, "deafen", restoreOptions);
 
     assert.equal(undeafened.deafen.on, false);
     assert.equal(undeafened.mic.on, false);

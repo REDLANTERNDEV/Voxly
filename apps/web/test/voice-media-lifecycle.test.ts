@@ -192,6 +192,31 @@ describe("voice snapshot reconciliation", () => {
     assert.doesNotMatch(toggleDeafen, /Boolean\(localStreamsRef\.current\.mic\)/);
   });
 
+  it("preserves only the pre-deafen microphone preference through undeafen", () => {
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const toggleMic = source.match(/const toggleMic = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+    const toggleDeafen = source.match(/const toggleDeafen = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+
+    assert.match(source, /const microphoneOnBeforeDeafenRef = useRef\(true\)/);
+    assert.match(source, /const deafenTransitionRef = useRef\(0\)/);
+    assert.match(toggleDeafen, /microphoneOnBeforeDeafenRef\.current = controlsRef\.current\.mic\.on/);
+    assert.match(toggleDeafen, /const restoreMicrophoneOn = microphoneOnBeforeDeafenRef\.current/);
+    assert.match(toggleDeafen, /track\.enabled = restoreMicrophoneOn && track\.readyState === "live"/);
+    assert.match(toggleDeafen, /restoreMicrophoneOn/);
+    assert.match(toggleDeafen, /effectiveVoiceMediaState\(nextControls, localStreamsRef\.current\)/);
+    assert.match(toggleDeafen, /const response = await emitMediaState/);
+    assert.match(toggleDeafen, /transition !== deafenTransitionRef\.current/);
+    assert.match(toggleDeafen, /const failedControls: VoiceControls = \{[\s\S]*?\.\.\.controlsRef\.current,[\s\S]*?deafen:[\s\S]*?on: true/);
+    assert.doesNotMatch(toggleMic, /microphoneOnBeforeDeafenRef/);
+  });
+
+  it("invalidates deafen mic restoration when the microphone track ends", () => {
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const activateMicrophoneStream = source.match(/const activateMicrophoneStream = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+
+    assert.match(activateMicrophoneStream, /microphoneOnBeforeDeafenRef\.current = false/);
+  });
+
   it("does not treat a microphone selection as a socket reconnect", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
     const join = source.match(/const join = useCallback[\s\S]*?\n  }, \[([^\]]*)\]\);/) ?? [];

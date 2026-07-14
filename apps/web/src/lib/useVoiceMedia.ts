@@ -114,6 +114,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const speakingCleanupRef = useRef<(() => void) | null>(null);
   const microphoneEndedCleanupRef = useRef<(() => void) | null>(null);
   const microphoneEnabledRef = useRef(true);
+  const microphoneOnBeforeDeafenRef = useRef(true);
+  const deafenTransitionRef = useRef(0);
   const roomRef = useRef<string | null>(null);
   const userIdRef = useRef<string | null>(null);
 
@@ -468,6 +470,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       speakingRef.current = false;
       stopStream("mic");
       microphoneEnabledRef.current = false;
+      microphoneOnBeforeDeafenRef.current = false;
+      deafenTransitionRef.current += 1;
       const nextControls: VoiceControls = {
         ...controlsRef.current,
         mic: { ...controlsRef.current.mic, on: false }
@@ -591,6 +595,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       deafen: { ...nextControls.deafen, on: response.state.media.deafened }
     };
     microphoneEnabledRef.current = response.state.media.mic;
+    microphoneOnBeforeDeafenRef.current = response.state.media.mic;
+    deafenTransitionRef.current += 1;
     controlsRef.current = acceptedControls;
     roomRef.current = roomId;
     setControls(acceptedControls);
@@ -673,6 +679,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const leave = useCallback(() => {
     joinAttemptRef.current += 1;
     microphoneSwitchRef.current += 1;
+    deafenTransitionRef.current += 1;
+    microphoneOnBeforeDeafenRef.current = true;
     if (socket && roomRef.current) {
       socket.emit("voice:leave", roomRef.current);
     }
@@ -702,6 +710,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const toggleMic = useCallback(async () => {
     let stream = localStreamsRef.current.mic;
     if (controlsRef.current.deafen.on) return;
+    deafenTransitionRef.current += 1;
     if (stream && !stream.getAudioTracks().some((track) => track.readyState === "live")) {
       speakingRef.current = false;
       stopStream("mic");
@@ -756,8 +765,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   }, [activateMicrophoneStream, emitMediaState, persistVoiceResume, renegotiatePeers, stopStream]);
 
   const toggleDeafen = useCallback(async () => {
+    const transition = ++deafenTransitionRef.current;
     const nextDeafened = !controlsRef.current.deafen.on;
     if (nextDeafened) {
+      microphoneOnBeforeDeafenRef.current = controlsRef.current.mic.on;
       localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
         track.enabled = false;
       });
@@ -766,20 +777,64 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       controlsRef.current = nextControls;
       setControls(nextControls);
       const media = effectiveVoiceMediaState(nextControls, localStreamsRef.current);
-      await emitMediaState({ deafened: media.deafened, mic: media.mic, speaking: false });
+      const response = await emitMediaState({ deafened: media.deafened, mic: media.mic, speaking: false });
+      if (transition !== deafenTransitionRef.current) return;
+      if (!response.ok) {
+        setError("Could not update deafen state.");
+        return;
+      }
+      localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
+        track.enabled = response.state.media.mic && track.readyState === "live";
+      });
+      const acceptedControls: VoiceControls = {
+        ...controlsRef.current,
+        mic: { ...controlsRef.current.mic, on: response.state.media.mic },
+        deafen: { ...controlsRef.current.deafen, on: response.state.media.deafened }
+      };
+      controlsRef.current = acceptedControls;
+      setControls(acceptedControls);
       return;
     }
 
+    const restoreMicrophoneOn = microphoneOnBeforeDeafenRef.current;
     const microphoneAvailable = localStreamsRef.current.mic?.getAudioTracks()
       .some((track) => track.readyState === "live") ?? false;
     localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
-      track.enabled = track.readyState === "live";
+      track.enabled = restoreMicrophoneOn && track.readyState === "live";
     });
-    const nextControls = toggleVoiceControl(controlsRef.current, "deafen", { microphoneAvailable });
+    const nextControls = toggleVoiceControl(controlsRef.current, "deafen", {
+      microphoneAvailable,
+      restoreMicrophoneOn
+    });
     controlsRef.current = nextControls;
     setControls(nextControls);
     const media = effectiveVoiceMediaState(nextControls, localStreamsRef.current);
-    await emitMediaState({ deafened: media.deafened, mic: media.mic, speaking: false });
+    const response = await emitMediaState({ deafened: media.deafened, mic: media.mic, speaking: false });
+    if (transition !== deafenTransitionRef.current) return;
+    if (!response.ok) {
+      localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
+        track.enabled = false;
+      });
+      const failedControls: VoiceControls = {
+        ...controlsRef.current,
+        mic: { ...controlsRef.current.mic, on: false },
+        deafen: { ...controlsRef.current.deafen, on: true }
+      };
+      controlsRef.current = failedControls;
+      setControls(failedControls);
+      setError("Could not update deafen state.");
+      return;
+    }
+    localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
+      track.enabled = response.state.media.mic && track.readyState === "live";
+    });
+    const acceptedControls: VoiceControls = {
+      ...controlsRef.current,
+      mic: { ...controlsRef.current.mic, on: response.state.media.mic },
+      deafen: { ...controlsRef.current.deafen, on: response.state.media.deafened }
+    };
+    controlsRef.current = acceptedControls;
+    setControls(acceptedControls);
   }, [emitMediaState]);
 
   const toggleCamera = useCallback(async () => {
