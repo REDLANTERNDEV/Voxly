@@ -79,7 +79,6 @@ import {
 } from "./lib/channelState.js";
 import { AppShellSkeleton } from "./components/AppShellSkeleton.js";
 import { AudioDeviceSettings } from "./components/AudioDeviceSettings.js";
-import { InviteTargetSelector } from "./components/InviteTargetSelector.js";
 import { LiveStreamPopover } from "./components/LiveStreamPopover.js";
 import { ServerSwitcher } from "./components/ServerSwitcher.js";
 import { useAudioDevices, type UseAudioDevicesResult } from "./lib/useAudioDevices.js";
@@ -1211,7 +1210,6 @@ function VoiceRoomScreen(props: ShellProps) {
               <VisualStage
                 sources={stageSources}
                 focusedSource={focusedSource}
-                muted={props.controls.deafen.on}
                 screenVolumes={props.screenVolumes}
                 onFocus={setFocusedSourceKey}
                 onScreenVolumeChange={props.onScreenVolumeChange}
@@ -1305,6 +1303,7 @@ function OwnerPanel(props: ShellProps) {
   const [newInvite, setNewInvite] = useState<{ id: string; token: string; label: string } | null>(null);
   const [accessLink, setAccessLink] = useState<{ nickname: string; token: string; expiresAt: string } | null>(null);
   const [status, setStatus] = useState("");
+  const [deletingServer, setDeletingServer] = useState(false);
   const [pendingAction, setPendingAction] = useState<{ title: string; copy: string; confirmLabel: string; perform: () => Promise<void> } | null>(null);
   const reloadRequestRef = useRef(0);
   const newInviteUrl = newInvite ? buildInviteUrl(newInvite.token, resolveInviteOrigin(props.appConfig.publicUrl, window.location.origin)) : "";
@@ -1372,13 +1371,20 @@ function OwnerPanel(props: ShellProps) {
             <span>{props.t("common.backToChat")}</span>
           </NavLink>
         </header>
+        <OwnerServerContext
+          activeServerId={props.activeServerId}
+          servers={props.servers}
+          t={props.t}
+          onSelect={(serverId) => props.onNavigate(`/app/server/${encodeURIComponent(serverId)}/owner`)}
+          onCreate={props.onCreateServer}
+          onRequestDelete={() => setDeletingServer(true)}
+        />
         <section className="owner-grid" id="invites">
           <form className="owner-card" onSubmit={createNewInvite}>
             <div>
               <h2>{props.t("owner.createInviteFor", { server: activeServer?.name ?? "Voxly" })}</h2>
               <p className="muted small">{props.t("owner.createCopy")}</p>
             </div>
-            <InviteTargetSelector activeServerId={props.activeServerId} servers={props.servers} label={props.t("owner.targetServer")} onSelect={(serverId) => props.onNavigate(`/app/server/${encodeURIComponent(serverId)}/owner`)} />
             <label className="form-field" htmlFor="inviteLabel">
               <span>{props.t("owner.inviteLabel")}</span>
               <input className="input" id="inviteLabel" name="inviteLabel" value={inviteLabel} onChange={(event) => setInviteLabel(event.target.value)} placeholder={props.t("owner.inviteLabelPlaceholder")} maxLength={80} />
@@ -1515,8 +1521,93 @@ function OwnerPanel(props: ShellProps) {
             void action.perform().catch(() => setStatus("This action could not be completed."));
           }}
         /> : null}
+        {deletingServer && activeServer ? <ConfirmDialog
+          title={props.t("server.deleteTitle", { server: activeServer.name })}
+          copy={props.t("server.deleteCopy")}
+          confirmLabel={props.t("common.delete")}
+          confirmationText={activeServer.name}
+          confirmationLabel={props.t("common.typeToConfirm")}
+          onCancel={() => setDeletingServer(false)}
+          onConfirm={() => {
+            setDeletingServer(false);
+            setStatus("");
+            void props.onDeleteServer().catch((error: unknown) => {
+              if (error instanceof ApiError && error.code === "last_owner_server") {
+                setStatus(props.t("server.lastServer"));
+                return;
+              }
+              setStatus(props.t("common.deleteFailed"));
+            });
+          }}
+        /> : null}
       </main>
     </div>
+  );
+}
+
+function OwnerServerContext({
+  activeServerId,
+  servers,
+  t,
+  onSelect,
+  onCreate,
+  onRequestDelete
+}: {
+  activeServerId: string;
+  servers: ServerSummary[];
+  t: Translate;
+  onSelect: (serverId: string) => void;
+  onCreate: (name: string) => Promise<void>;
+  onRequestDelete: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [error, setError] = useState("");
+  const ownerServers = servers.filter((server) => server.role === "owner");
+
+  return (
+    <section className="owner-server-context" aria-labelledby="ownerServerContextTitle">
+      <div className="owner-server-context-copy">
+        <p className="label">{t("owner.serverContextLabel")}</p>
+        <h2 id="ownerServerContextTitle">{t("owner.serverContextTitle")}</h2>
+        <p className="muted small">{t("owner.serverContextCopy")}</p>
+      </div>
+      <label className="form-field owner-server-select" htmlFor="ownerServerSelect">
+        <span>{t("owner.targetServer")}</span>
+        <select className="input" id="ownerServerSelect" value={activeServerId} onChange={(event) => onSelect(event.currentTarget.value)}>
+          {ownerServers.map((server) => <option key={server.id} value={server.id}>{server.name}</option>)}
+        </select>
+      </label>
+      <div className="owner-server-actions">
+        <button className="btn btn-primary" type="button" aria-expanded={showCreate} aria-controls="owner-server-create-form" onClick={() => {
+          setShowCreate((current) => !current);
+          setError("");
+        }}><PlusIcon /><span>{t("server.create")}</span></button>
+        <button className="btn btn-danger" type="button" disabled={ownerServers.length <= 1} onClick={onRequestDelete}><TrashIcon /><span>{t("server.delete")}</span></button>
+      </div>
+      {showCreate ? <form className="owner-server-create-form" id="owner-server-create-form" onSubmit={(event) => {
+        event.preventDefault();
+        const nextName = name.trim();
+        if (!nextName) {
+          setError(t("server.nameRequired"));
+          return;
+        }
+        setIsCreating(true);
+        setError("");
+        void onCreate(nextName)
+          .then(() => {
+            setName("");
+            setShowCreate(false);
+          })
+          .catch(() => setError(t("server.createFailed")))
+          .finally(() => setIsCreating(false));
+      }}>
+        <label className="form-field" htmlFor="ownerServerName"><span>{t("server.name")}</span><input className="input" id="ownerServerName" name="ownerServerName" value={name} onChange={(event) => setName(event.currentTarget.value)} autoComplete="off" maxLength={64} /></label>
+        <button className="btn btn-primary" type="submit" disabled={isCreating}><span>{isCreating ? t("server.creating") : t("server.create")}</span></button>
+        {error ? <p className="error-text" aria-live="polite">{error}</p> : null}
+      </form> : null}
+    </section>
   );
 }
 
@@ -1568,8 +1659,7 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
 
 function ChannelRail(props: ShellProps) {
   const canManageServer = activeServerRole(props) === "owner";
-  const activeServer = props.servers.find((server) => server.id === props.activeServerId);
-  const [deleteTarget, setDeleteTarget] = useState<{ kind: "room"; room: RoomSummary } | { kind: "server"; server: ServerSummary } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RoomSummary | null>(null);
   const [deleteError, setDeleteError] = useState("");
   return (
     <aside className="rail">
@@ -1577,25 +1667,11 @@ function ChannelRail(props: ShellProps) {
       <ServerSwitcher
         activeServerId={props.activeServerId}
         servers={props.servers}
-        canCreate={props.user.role === "owner"}
-        createIcon={<PlusIcon />}
         labels={{
           switcher: props.t("server.switcher"),
-          server: props.t("server.label"),
-          create: props.t("server.create"),
-          creating: props.t("server.creating"),
-          serverName: props.t("server.name"),
-          nameRequired: props.t("server.nameRequired"),
-          createFailed: props.t("server.createFailed")
+          server: props.t("server.label")
         }}
         onSelect={props.onSelectServer}
-        onCreate={props.onCreateServer}
-        canDelete={canManageServer}
-        deleteDisabled={props.servers.length <= 1}
-        onRequestDelete={() => {
-          if (activeServer) setDeleteTarget({ kind: "server", server: activeServer });
-        }}
-        deleteLabel={props.t("server.delete")}
       />
       <section className="rail-section">
         <div className="rail-section-head"><span className="label">{props.t("room.textRooms")}</span><span className="badge">{props.rooms.text.length}</span>{canManageServer ? <ChannelCreateControl kind="text" onCreate={props.onCreateRoom} /> : null}</div>
@@ -1604,7 +1680,7 @@ function ChannelRail(props: ShellProps) {
             <NavLink className={`channel-item ${props.route.name === "text" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "text", room.id)} onNavigate={props.onNavigate}>
               <span className="channel-prefix">#</span><span>{room.name}</span>{props.unreadByRoom[room.id] ? <span className="badge unread-badge">{props.unreadByRoom[room.id]}</span> : <span />}
             </NavLink>
-            {canManageServer ? <ChannelDeleteControl room={room} disabled={props.rooms.text.length + props.rooms.voice.length <= 1} onRequest={() => setDeleteTarget({ kind: "room", room })} t={props.t} /> : null}
+            {canManageServer ? <ChannelDeleteControl room={room} disabled={props.rooms.text.length + props.rooms.voice.length <= 1} onRequest={() => setDeleteTarget(room)} t={props.t} /> : null}
           </div>
         ))}
       </section>
@@ -1618,7 +1694,7 @@ function ChannelRail(props: ShellProps) {
                 <NavLink className={`channel-item ${props.route.name === "voice" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "voice", room.id)} onNavigate={props.onNavigate}>
                   <span className="channel-prefix">vc</span><span>{room.name}</span><span className="badge">{members.length}</span>
                 </NavLink>
-                {canManageServer ? <ChannelDeleteControl room={room} disabled={props.rooms.text.length + props.rooms.voice.length <= 1} onRequest={() => setDeleteTarget({ kind: "room", room })} t={props.t} /> : null}
+                {canManageServer ? <ChannelDeleteControl room={room} disabled={props.rooms.text.length + props.rooms.voice.length <= 1} onRequest={() => setDeleteTarget(room)} t={props.t} /> : null}
               </div>
               {members.length > 0 ? (
                 <div className="voice-channel-users">
@@ -1696,20 +1772,19 @@ function ChannelRail(props: ShellProps) {
       />
       {deleteError ? <p className="error-text" aria-live="polite">{deleteError}</p> : null}
       {deleteTarget ? <ConfirmDialog
-        title={deleteTarget.kind === "room" ? props.t("room.deleteTitle", { channel: deleteTarget.room.name }) : props.t("server.deleteTitle", { server: deleteTarget.server.name })}
-        copy={deleteTarget.kind === "room" ? props.t("room.deleteCopy") : props.t("server.deleteCopy")}
+        title={props.t("room.deleteTitle", { channel: deleteTarget.name })}
+        copy={props.t("room.deleteCopy")}
         confirmLabel={props.t("common.delete")}
-        confirmationText={deleteTarget.kind === "room" ? deleteTarget.room.name : deleteTarget.server.name}
+        confirmationText={deleteTarget.name}
         confirmationLabel={props.t("common.typeToConfirm")}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => {
-          const target = deleteTarget;
+          const room = deleteTarget;
           setDeleteTarget(null);
           setDeleteError("");
-          const request = target.kind === "room" ? props.onDeleteRoom(target.room.id) : props.onDeleteServer();
-          void request.catch((error: unknown) => {
-            if (error instanceof ApiError && (error.code === "last_room" || error.code === "last_owner_server")) {
-              setDeleteError(error.code === "last_room" ? props.t("room.lastRoom") : props.t("server.lastServer"));
+          void props.onDeleteRoom(room.id).catch((error: unknown) => {
+            if (error instanceof ApiError && error.code === "last_room") {
+              setDeleteError(props.t("room.lastRoom"));
             } else {
               setDeleteError(props.t("common.deleteFailed"));
             }
@@ -2465,7 +2540,6 @@ function GlobalVoiceAudio({
 function VisualStage({
   sources,
   focusedSource,
-  muted,
   screenVolumes,
   onFocus,
   onScreenVolumeChange,
@@ -2473,7 +2547,6 @@ function VisualStage({
 }: {
   sources: StageSource[];
   focusedSource: StageSource | null;
-  muted: boolean;
   screenVolumes: Record<string, number>;
   onFocus: (key: string) => void;
   onScreenVolumeChange: (streamId: string, volume: number) => void;
@@ -2519,7 +2592,7 @@ function VisualStage({
           </button>
         ))}
       </div>
-      {!focusedSource?.ownerIsLocal && focusedSource?.kind === "screen" && focusedStream && focusedHasAudio ? <RemoteAudio stream={focusedStream} muted={muted} volume={focusedVolume} /> : null}
+      {!focusedSource?.ownerIsLocal && focusedSource?.kind === "screen" && focusedStream && focusedHasAudio ? <RemoteAudio stream={focusedStream} muted={false} volume={focusedVolume} /> : null}
       <div className="screen-stage-bar">
         <span><strong>{focusedSource?.ownerName}</strong><span className="muted small">{focusedSource?.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}</span></span>
         {!focusedSource?.ownerIsLocal && focusedSource?.kind === "screen" ? (

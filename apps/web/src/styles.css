@@ -675,21 +675,26 @@ h3 {
 }
 
 .voice-live-trigger {
-  background: transparent;
+  background: var(--danger);
   border: 0;
-  color: var(--danger);
+  border-radius: 6px;
+  color: white;
   cursor: pointer;
   flex: 0 0 auto;
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 720;
   letter-spacing: 0.04em;
-  padding: 2px 0;
+  padding: 3px 6px;
 }
 
 .voice-live-trigger:hover,
 .voice-live-trigger:focus-visible {
-  text-decoration: underline;
+  background: color-mix(in oklab, var(--danger), black 12%);
+}
+
+.voice-live-trigger:active {
+  transform: translateY(1px);
 }
 
 .voice-live-card {
@@ -2263,6 +2268,52 @@ h3 {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.owner-server-context {
+  align-items: end;
+  background: color-mix(in oklab, var(--surface), var(--accent) 4%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(220px, 0.8fr) auto;
+  padding: 18px;
+}
+
+.owner-server-context-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.owner-server-context-copy h2,
+.owner-server-context-copy p {
+  margin: 0;
+}
+
+.owner-server-select {
+  min-width: 0;
+}
+
+.owner-server-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.owner-server-create-form {
+  align-items: end;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  padding-top: 14px;
+}
+
+.owner-server-create-form .error-text {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
 .owner-card {
   align-content: start;
   align-self: start;
@@ -2574,7 +2625,15 @@ h3 {
   .voice-dock,
   .owner-shell,
   .owner-grid,
-  .owner-hero {
+  .owner-hero,
+  .owner-server-context,
+  .owner-server-create-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-server-actions {
+    align-items: stretch;
+    display: grid;
     grid-template-columns: minmax(0, 1fr);
   }
 

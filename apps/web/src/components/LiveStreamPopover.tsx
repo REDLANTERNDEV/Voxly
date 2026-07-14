@@ -32,18 +32,39 @@ export function LiveStreamPopover(props: LiveStreamPopoverProps) {
   const [position, setPosition] = useState({ left: 0, top: 0 });
   const rootRef = useRef<HTMLSpanElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
   const cardId = useId();
 
+  const cancelScheduledClose = useCallback(() => {
+    if (closeTimerRef.current === null) return;
+    window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  }, []);
+
   const openCard = useCallback(() => {
+    cancelScheduledClose();
     const trigger = triggerRef.current;
     if (trigger) {
       const rect = trigger.getBoundingClientRect();
       setPosition(liveStreamCardPosition(rect, { width: window.innerWidth, height: window.innerHeight }));
     }
     setOpen(true);
-  }, []);
+  }, [cancelScheduledClose]);
 
-  const closeCard = useCallback(() => setOpen(false), []);
+  const closeCard = useCallback(() => {
+    cancelScheduledClose();
+    setOpen(false);
+  }, [cancelScheduledClose]);
+
+  const scheduleClose = useCallback(() => {
+    cancelScheduledClose();
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      setOpen(false);
+    }, 180);
+  }, [cancelScheduledClose]);
+
+  useEffect(() => cancelScheduledClose, [cancelScheduledClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -73,7 +94,7 @@ export function LiveStreamPopover(props: LiveStreamPopoverProps) {
       onFocus={openCard}
       onKeyDown={onKeyDown}
       onMouseEnter={openCard}
-      onMouseLeave={closeCard}
+      onMouseLeave={scheduleClose}
     >
       <span className="voice-live-publisher">{props.nickname}</span>
       <button
@@ -90,6 +111,8 @@ export function LiveStreamPopover(props: LiveStreamPopoverProps) {
         role="group"
         aria-hidden={!open}
         style={{ left: position.left, top: position.top }}
+        onMouseEnter={cancelScheduledClose}
+        onMouseLeave={scheduleClose}
       >
         <button
           className="voice-live-preview"

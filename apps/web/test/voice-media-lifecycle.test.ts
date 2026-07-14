@@ -108,6 +108,18 @@ describe("voice snapshot reconciliation", () => {
     assert.match(remoteAudio, /return <audio[^>]*ref=\{audioRef\}/);
   });
 
+  it("keeps focused screen-share audio audible while participant audio is deafened", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+    const globalVoiceAudio = source.match(/function GlobalVoiceAudio[\s\S]*?\n}\n\nfunction VisualStage/)?.[0] ?? "";
+    const visualStage = source.match(/function VisualStage[\s\S]*?\n}\n\nfunction StatusPill/)?.[0] ?? "";
+    const voiceRoom = source.match(/function VoiceRoomScreen[\s\S]*?\n}\n\nfunction OwnerPanel/)?.[0] ?? "";
+
+    assert.match(globalVoiceAudio, /<RemoteAudio[\s\S]*?muted=\{muted\}/);
+    assert.match(visualStage, /<RemoteAudio stream=\{focusedStream\} muted=\{false\}/);
+    assert.doesNotMatch(visualStage, /^\s*muted:\s*boolean;/m);
+    assert.doesNotMatch(voiceRoom, /<VisualStage[\s\S]*?muted=\{props\.controls\.deafen\.on\}/);
+  });
+
   it("exposes a retry action only when native audio playback is blocked", () => {
     const source = readFileSync("src/App.tsx", "utf8");
 
