@@ -1213,6 +1213,20 @@ function VoiceRoomScreen(props: ShellProps) {
   };
 
   const watchSource = (source: StageSource) => {
+    if (
+      !source.ownerIsLocal &&
+      source.kind === "screen" &&
+      viewedRoomId &&
+      props.activeVoiceRoomId !== viewedRoomId
+    ) {
+      props.onWatchLive({
+        serverId: props.activeServerId,
+        roomId: viewedRoomId,
+        publisherUserId: source.ownerId,
+        nickname: source.ownerName
+      });
+      return;
+    }
     if (source.ownerIsLocal) {
       setLocalStageKeys([source.key]);
       setFocusedSourceKey(source.key);
@@ -1306,7 +1320,6 @@ function VoiceRoomScreen(props: ShellProps) {
                             {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span>{source.connectionStatus === "failed" ? props.t("voice.retry") : props.t("voice.connecting")}</span>}
                           </span>
                           <span className="source-copy"><strong>{source.ownerName}</strong><span>{source.kind === "screen" ? props.t("status.screenSharing") : props.t("status.cameraOn")}</span></span>
-                          <span className="source-watch">{props.t("voice.watch")}</span>
                         </button>
                         <button
                           className={`icon-btn source-multi-toggle ${selected ? "is-active" : ""}`}
@@ -2237,7 +2250,7 @@ function VoiceDock(props: ShellProps & { connectedCount: number }) {
             <ControlButton label={props.t(`common.${micControl.action}` as TranslationKey)} active={props.controls.mic.on} tone={micControl.tone} enabled={props.controls.mic.enabled} onClick={() => props.onToggleControl("mic")}><MicIcon off={!props.controls.mic.on} /></ControlButton>
             <ControlButton label={props.t(`common.${deafenControl.action}` as TranslationKey)} active={props.controls.deafen.on} tone={deafenControl.tone} enabled={props.controls.deafen.enabled} onClick={() => props.onToggleControl("deafen")}><HeadsetIcon off={props.controls.deafen.on} /></ControlButton>
             <ControlButton label={props.t(`common.${cameraControl.action}` as TranslationKey)} active={props.controls.camera.on} tone={cameraControl.tone} enabled={props.controls.camera.enabled} onClick={() => props.onToggleControl("camera")}><CameraIcon off={!props.controls.camera.on} /></ControlButton>
-            <ControlButton label={props.t(`common.${screenControl.action}` as TranslationKey)} active={props.controls.screenShare.on} tone={screenControl.tone} enabled={props.controls.screenShare.enabled} onClick={() => props.onToggleControl("screenShare")}><ScreenIcon off={!props.controls.screenShare.on} /></ControlButton>
+            <ControlButton label={props.t(`common.${screenControl.action}` as TranslationKey)} active={props.controls.screenShare.on} tone={screenControl.tone} enabled={props.controls.screenShare.enabled} onClick={() => props.onToggleControl("screenShare")}><ScreenIcon off={props.controls.screenShare.on} /></ControlButton>
             <button className="btn btn-danger" type="button" onClick={props.onLeaveVoice}><LeaveIcon /><span>{props.t("common.leave")}</span></button>
           </>
         ) : null}

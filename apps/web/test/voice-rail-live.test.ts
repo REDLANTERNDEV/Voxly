@@ -44,4 +44,19 @@ describe("voice rail live controls", () => {
     assert.doesNotMatch(voiceRoom, /joinAndWatchLive/);
     assert.doesNotMatch(voiceRoom, /voice\.joinAndWatch/);
   });
+
+  it("uses the whole middle LIVE source row to reuse the sidebar watch flow", () => {
+    const app = readFileSync("src/App.tsx", "utf8");
+    const styles = readFileSync("src/styles.css", "utf8");
+    const voiceRoom = app.match(/function VoiceRoomScreen[\s\S]*?\n}\n\nfunction OwnerPanel/)?.[0] ?? "";
+    const watchSource = voiceRoom.match(/const watchSource = \(source: StageSource\) => \{[\s\S]*?\n  };/)?.[0] ?? "";
+
+    assert.match(voiceRoom, /className="visual-source-main"[\s\S]*?onClick=\{\(\) => watchSource\(source\)\}/);
+    assert.doesNotMatch(voiceRoom, /source-watch/);
+    assert.doesNotMatch(voiceRoom, /props\.t\("voice\.watch"\)/);
+    assert.match(watchSource, /source\.kind === "screen"/);
+    assert.match(watchSource, /props\.activeVoiceRoomId !== viewedRoomId/);
+    assert.match(watchSource, /props\.onWatchLive\(\{[\s\S]*?serverId: props\.activeServerId[\s\S]*?roomId: viewedRoomId[\s\S]*?publisherUserId: source\.ownerId[\s\S]*?nickname: source\.ownerName/);
+    assert.doesNotMatch(styles, /\.source-watch/);
+  });
 });

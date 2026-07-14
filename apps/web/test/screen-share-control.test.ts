@@ -22,4 +22,12 @@ describe("screen share control", () => {
     assert.match(styles, /\.dock-controls \.control-icon \.ui-icon\s*\{[^}]*height:\s*24px[^}]*width:\s*24px/s);
     assert.doesNotMatch(styles, /\.dock-controls \.screen-share-control/);
   });
+
+  it("shows the cancellation stroke only while the local share is active", () => {
+    const app = readFileSync("src/App.tsx", "utf8");
+    const dock = app.match(/function VoiceDock[\s\S]*?\n}\n\nfunction ConfirmDialog/)?.[0] ?? "";
+
+    assert.match(dock, /<ScreenIcon off=\{props\.controls\.screenShare\.on\} \/>/);
+    assert.doesNotMatch(dock, /<ScreenIcon off=\{!props\.controls\.screenShare\.on\} \/>/);
+  });
 });

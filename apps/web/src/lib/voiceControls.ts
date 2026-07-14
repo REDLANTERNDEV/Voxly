@@ -82,7 +82,7 @@ export function controlPresentation(key: VoiceControlKey, controls: VoiceControl
     return controls.camera.on ? { action: "stopCamera", tone: "neutral" } : { action: "startCamera", tone: "neutral" };
   }
   return controls.screenShare.on
-    ? { action: "stopScreenShare", tone: "neutral" }
+    ? { action: "stopScreenShare", tone: "danger" }
     : { action: "startScreenShare", tone: "neutral" };
 }
 

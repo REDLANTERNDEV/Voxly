@@ -113,6 +113,14 @@ describe("voice control view state", () => {
     assert.deepEqual(controlPresentation("mic", createInitialVoiceControls()), { action: "muteMic", tone: "neutral" });
   });
 
+  it("presents only an active screen share as a danger stop action", () => {
+    const inactive = createInitialVoiceControls();
+    const active = toggleVoiceControl(inactive, "screenShare");
+
+    assert.deepEqual(controlPresentation("screenShare", inactive), { action: "startScreenShare", tone: "neutral" });
+    assert.deepEqual(controlPresentation("screenShare", active), { action: "stopScreenShare", tone: "danger" });
+  });
+
   it("uses low-cost media defaults for small VPS rooms", () => {
     assert.deepEqual(createInitialMediaState(), {
       joined: false,

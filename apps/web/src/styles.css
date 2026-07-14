@@ -1698,7 +1698,7 @@ h3 {
   cursor: pointer;
   display: grid;
   gap: 10px;
-  grid-template-columns: 48px minmax(0, 1fr) auto;
+  grid-template-columns: 48px minmax(0, 1fr);
   min-width: 0;
   padding: 2px;
   text-align: left;
@@ -1741,16 +1741,9 @@ h3 {
   white-space: nowrap;
 }
 
-.source-copy span,
-.source-watch {
+.source-copy span {
   color: var(--muted);
   font-size: 11px;
-}
-
-.source-watch {
-  color: var(--accent-on);
-  font-family: var(--font-mono);
-  font-weight: 650;
 }
 
 .source-multi-toggle {
