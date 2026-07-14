@@ -173,18 +173,25 @@ function migrate(sqlite: DatabaseSync) {
   `);
 
   const now = new Date().toISOString();
-  run(sqlite, "insert or ignore into servers (id, name, created_at) values (?, ?, ?)", [
-    defaultServerId,
-    defaultServerName,
-    now
-  ]);
-  run(sqlite, "update rooms set server_id = ? where server_id is null", [defaultServerId]);
-  run(sqlite, "update invites set server_id = ? where server_id is null", [defaultServerId]);
-  run(sqlite, "update audit_events set server_id = ? where server_id is null", [defaultServerId]);
-  sqlite.exec(`
-    insert or ignore into server_members (server_id, user_id, role, banned_at, joined_at)
-    select '${defaultServerId}', id, role, banned_at, '${now}' from users;
-  `);
+  const serverCount = one<{ count: number }>(sqlite, "select count(*) as count from servers")?.count ?? 0;
+  if (serverCount === 0) {
+    run(sqlite, "insert into servers (id, name, created_at) values (?, ?, ?)", [
+      defaultServerId,
+      defaultServerName,
+      now
+    ]);
+  }
+
+  const hasDefaultServer = (one<{ count: number }>(sqlite, "select count(*) as count from servers where id = ?", [defaultServerId])?.count ?? 0) > 0;
+  if (hasDefaultServer) {
+    run(sqlite, "update rooms set server_id = ? where server_id is null", [defaultServerId]);
+    run(sqlite, "update invites set server_id = ? where server_id is null", [defaultServerId]);
+    run(sqlite, "update audit_events set server_id = ? where server_id is null", [defaultServerId]);
+    sqlite.exec(`
+      insert or ignore into server_members (server_id, user_id, role, banned_at, joined_at)
+      select '${defaultServerId}', id, role, banned_at, '${now}' from users;
+    `);
+  }
 }
 
 function seedRooms(sqlite: DatabaseSync) {

@@ -22,7 +22,7 @@ export function createInitialVoiceControls(): VoiceControls {
   };
 }
 
-export function toggleVoiceControl(controls: VoiceControls, key: VoiceControlKey): VoiceControls {
+export function toggleVoiceControl(controls: VoiceControls, key: VoiceControlKey, options: { microphoneAvailable?: boolean } = {}): VoiceControls {
   const current = controls[key];
   if (!current.enabled) {
     return controls;
@@ -34,7 +34,7 @@ export function toggleVoiceControl(controls: VoiceControls, key: VoiceControlKey
       ...controls,
       mic: {
         ...controls.mic,
-        on: !nextDeafen
+        on: !nextDeafen && options.microphoneAvailable !== false
       },
       deafen: {
         ...current,

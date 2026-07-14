@@ -22,6 +22,8 @@ import {
   createAccessLink,
   createServerInvite,
   deleteMessage,
+  deleteServer,
+  deleteServerRoom,
   disconnectVoiceMember,
   fetchConfig,
   fetchMe,
@@ -52,7 +54,7 @@ import { connectionStatusFor, type PeerConnectionState } from "./lib/voiceNegoti
 import { defaultServerId, firstServerRoomPath, getAccessClaimTokenFromHash, getInviteTokenFromPath, getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "./lib/navigation.js";
 import { buildInviteUrl, inviteReference, resolveInviteOrigin } from "./lib/invites.js";
 import { messageDeleteFailureCopy, messagePermissions } from "./lib/messages.js";
-import { useVoiceMedia } from "./lib/useVoiceMedia.js";
+import { useVoiceMedia, type VoiceJoinOptions } from "./lib/useVoiceMedia.js";
 import { replaceVisualTarget, toggleVisualTarget, visualTargetKey } from "./lib/voiceResume.js";
 import { participantsForViewedRoom, remoteStreamKey, type RemoteStreamState } from "./lib/voiceStreams.js";
 import {
@@ -78,6 +80,7 @@ import {
 import { AppShellSkeleton } from "./components/AppShellSkeleton.js";
 import { AudioDeviceSettings } from "./components/AudioDeviceSettings.js";
 import { InviteTargetSelector } from "./components/InviteTargetSelector.js";
+import { LiveStreamPopover } from "./components/LiveStreamPopover.js";
 import { ServerSwitcher } from "./components/ServerSwitcher.js";
 import { useAudioDevices, type UseAudioDevicesResult } from "./lib/useAudioDevices.js";
 import {
@@ -102,6 +105,13 @@ type LoadState = "loading" | "ready" | "error";
 type ThemeChoice = "auto" | "light" | "dark";
 type Drawer = "channels" | "members" | null;
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
+type LiveWatchRequest = {
+  serverId: string;
+  roomId: string;
+  publisherUserId: string;
+  nickname: string;
+};
+type VoiceJoinRequest = VoiceJoinOptions & { visualTargets?: VisualTarget[] };
 
 const themeKey = "voxly:theme";
 const landingPrincipleKeys = ["privateAccess", "selfHosted", "lowFootprint"] as const;
@@ -158,6 +168,7 @@ export function App() {
   const socketRef = useRef<VoxlySocket | null>(null);
   const authRequestGateRef = useRef(createAuthRequestGate());
   const authenticatedUserIdRef = useRef<string | null>(null);
+  const routeRef = useRef(route);
   const activeTextRoomIdRef = useRef<string | null>(route.name === "text" ? route.roomId : null);
   const t = useCallback<Translate>((key, values) => translate(language, key, values), [language]);
   const activeServerId = route.name === "text" || route.name === "voice" || route.name === "owner"
@@ -173,6 +184,7 @@ export function App() {
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
   const [screenVolumes, setScreenVolumes] = useState<Record<string, number>>({});
   const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
+  const [pendingLiveWatch, setPendingLiveWatch] = useState<LiveWatchRequest | null>(null);
   const renderSurface = (surface: ReactNode) => user ? (
     <AuthenticatedAppSurface
       audio={(
@@ -230,9 +242,38 @@ export function App() {
 
   const navigate = useCallback((path: string) => {
     window.history.pushState(null, "", path);
-    setRoute(parseRoute(path));
+    const nextRoute = parseRoute(path);
+    routeRef.current = nextRoute;
+    setRoute(nextRoute);
     setDrawer(null);
   }, []);
+
+  const refreshRoomsAfterDeletion = useCallback(async (serverId: string, deletedRoomId: string) => {
+    const response = await fetchServerRooms(serverId);
+    const currentRoute = routeRef.current;
+    if ((currentRoute.name !== "text" && currentRoute.name !== "voice" && currentRoute.name !== "owner") || currentRoute.serverId !== serverId) return;
+    setRooms(response.rooms);
+    if ((currentRoute.name === "text" || currentRoute.name === "voice") && currentRoute.roomId === deletedRoomId) {
+      const target = response.rooms.find((room) => room.kind === currentRoute.name) ?? response.rooms[0];
+      if (target) navigate(serverPath(serverId, target.kind, target.id));
+    }
+  }, [navigate]);
+
+  const refreshServersAfterDeletion = useCallback(async (deletedServerId: string) => {
+    const response = await fetchServers();
+    setServers(response.servers);
+    const currentRoute = routeRef.current;
+    if ((currentRoute.name !== "text" && currentRoute.name !== "voice" && currentRoute.name !== "owner") || currentRoute.serverId !== deletedServerId) return;
+    const targetServer = response.servers[0];
+    if (!targetServer) {
+      setRooms([]);
+      navigate("/invite");
+      return;
+    }
+    const roomResponse = await fetchServerRooms(targetServer.id);
+    setRooms(roomResponse.rooms);
+    navigate(firstServerRoomPath(targetServer.id, roomResponse.rooms));
+  }, [navigate]);
 
   const completeAuthentication = useCallback((nextUser: PublicUser) => {
     authRequestGateRef.current.invalidate();
@@ -265,6 +306,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    routeRef.current = route;
     activeTextRoomIdRef.current = route.name === "text" ? route.roomId : null;
     if (route.name !== "text" && route.name !== "voice") return;
 
@@ -505,6 +547,12 @@ export function App() {
     socket.on("server:directoryChanged", ({ serverId }) => {
       void refreshServerDirectory(serverId).catch(() => undefined);
     });
+    socket.on("server:roomsChanged", ({ serverId, deletedRoomId }) => {
+      void refreshRoomsAfterDeletion(serverId, deletedRoomId).catch(() => undefined);
+    });
+    socket.on("server:deleted", ({ serverId }) => {
+      void refreshServersAfterDeletion(serverId).catch(() => undefined);
+    });
     socket.on("message:new", (message) => {
       setMessagesByRoom((current) => ({
         ...current,
@@ -545,7 +593,7 @@ export function App() {
       socketRef.current = null;
       setSocketInstance(null);
     };
-  }, [refreshServerDirectory, user]);
+  }, [refreshRoomsAfterDeletion, refreshServerDirectory, refreshServersAfterDeletion, user]);
 
   useEffect(() => {
     if (!socketInstance || route.name !== "text") return;
@@ -685,6 +733,7 @@ export function App() {
     screenVolumes,
     unreadByRoom,
     roomHistory,
+    pendingLiveWatch,
     audioDevices,
     onNavigate: navigate,
     onSelectServer: async (serverId: string) => {
@@ -705,6 +754,15 @@ export function App() {
       setRooms((current) => [...current, response.room].sort((left, right) => left.position - right.position));
       navigate(serverPath(activeServerId, response.room.kind, response.room.id));
     },
+    onDeleteRoom: async (roomId: string) => {
+      await deleteServerRoom(activeServerId, roomId);
+      await refreshRoomsAfterDeletion(activeServerId, roomId);
+    },
+    onDeleteServer: async () => {
+      const deletedServerId = activeServerId;
+      await deleteServer(deletedServerId);
+      await refreshServersAfterDeletion(deletedServerId);
+    },
     onModerateMember: async (userId: string, action: "ban" | "unban" | "kick") => {
       await moderateServerMember(activeServerId, userId, action);
       await refreshServerDirectory(activeServerId);
@@ -721,12 +779,17 @@ export function App() {
       saveLanguageChoice(nextLanguage);
       setLanguage(nextLanguage);
     },
-    onJoinVoice: (roomId: string) => joinVoiceWithAudioUnlock(
+    onJoinVoice: (roomId: string, options: VoiceJoinRequest = {}) => joinVoiceWithAudioUnlock(
       roomId,
       unlockSharedAudioOutput,
       releaseUnusedSharedAudioOutput,
-      voice.join
+      (nextRoomId) => voice.join(nextRoomId, options.visualTargets ?? [], options)
     ),
+    onWatchLive: (request: LiveWatchRequest) => {
+      setPendingLiveWatch(request);
+      navigate(serverPath(request.serverId, "voice", request.roomId));
+    },
+    onLiveWatchHandled: () => setPendingLiveWatch(null),
     onRequestVoiceSnapshot: voice.requestSnapshot,
     onSetVisualSubscriptions: voice.setVisualSubscriptions,
     onMemberVolumeChange: changeMemberVolume,
@@ -879,6 +942,7 @@ interface ShellProps {
   screenVolumes: Record<string, number>;
   unreadByRoom: Record<string, number>;
   roomHistory: RoomHistory;
+  pendingLiveWatch: LiveWatchRequest | null;
   audioDevices: UseAudioDevicesResult;
   drawer: Drawer;
   theme: ThemeChoice;
@@ -889,12 +953,16 @@ interface ShellProps {
   onSelectServer: (serverId: string) => Promise<void>;
   onCreateServer: (name: string) => Promise<void>;
   onCreateRoom: (name: string, kind: "text" | "voice") => Promise<void>;
+  onDeleteRoom: (roomId: string) => Promise<void>;
+  onDeleteServer: () => Promise<void>;
   onModerateMember: (userId: string, action: "ban" | "unban" | "kick") => Promise<void>;
   onDisconnectMember: (roomId: string, userId: string) => Promise<void>;
   onDrawerChange: (drawer: Drawer) => void;
   onThemeChange: (theme: ThemeChoice) => void;
   onLanguageChange: (language: LanguageCode) => void;
-  onJoinVoice: (roomId: string) => Promise<void>;
+  onJoinVoice: (roomId: string, options?: VoiceJoinRequest) => Promise<void>;
+  onWatchLive: (request: LiveWatchRequest) => void;
+  onLiveWatchHandled: () => void;
   onRequestVoiceSnapshot: (roomId: string) => void;
   onSetVisualSubscriptions: (targets: VisualTarget[]) => Promise<VoiceSetVisualSubscriptionsAck>;
   onMemberVolumeChange: (userId: string, volume: number) => void;
@@ -1011,6 +1079,7 @@ function VoiceRoomScreen(props: ShellProps) {
   const [localStageKeys, setLocalStageKeys] = useState<string[]>([]);
   const [focusedSourceKey, setFocusedSourceKey] = useState<string | null>(null);
   const [stageStatus, setStageStatus] = useState("");
+  const liveWatchAttemptRef = useRef<LiveWatchRequest | null>(null);
   const viewedRoomId = props.currentRoom?.id ?? (props.route.name === "voice" ? props.route.roomId : props.activeVoiceRoomId);
   const viewedSnapshot = viewedRoomId ? props.voiceSnapshots[viewedRoomId] : undefined;
   const snapshotMembers = viewedSnapshot?.members ?? [];
@@ -1052,6 +1121,10 @@ function VoiceRoomScreen(props: ShellProps) {
           : connectionStatusFor(props.peerConnectionStates[participant.userId] ?? "new", Boolean(streamByKey.get(remoteStreamKey(participant.userId, kind))))
       }));
   });
+  const pendingLiveWatch = props.pendingLiveWatch?.roomId === viewedRoomId ? props.pendingLiveWatch : null;
+  const requestedLiveSource = pendingLiveWatch
+    ? visualSources.find((source) => source.ownerId === pendingLiveWatch.publisherUserId && source.kind === "screen") ?? null
+    : null;
   const selectedRemoteKeys = new Set(props.visualTargets.map(visualTargetKey));
   const selectedKeys = new Set([...selectedRemoteKeys, ...localStageKeys]);
   const stageSources = visualSources.filter((source) => selectedKeys.has(source.key));
@@ -1093,6 +1166,36 @@ function VoiceRoomScreen(props: ShellProps) {
     if (source.target) void updateRemoteSelection(toggleVisualTarget(props.visualTargets, source.target), source.key);
   };
 
+  useEffect(() => {
+    if (!pendingLiveWatch) {
+      liveWatchAttemptRef.current = null;
+      return;
+    }
+    if (!viewedRoomId || props.activeVoiceRoomId === viewedRoomId || !requestedLiveSource) return;
+    if (liveWatchAttemptRef.current === pendingLiveWatch) return;
+    liveWatchAttemptRef.current = pendingLiveWatch;
+    setStageStatus("");
+    void props.onJoinVoice(viewedRoomId, {
+      microphoneEnabled: true,
+      visualTargets: [{ publisherUserId: pendingLiveWatch.publisherUserId, kind: "screen" }]
+    }).catch(() => {
+      if (liveWatchAttemptRef.current === pendingLiveWatch) liveWatchAttemptRef.current = null;
+      setStageStatus(props.t("voice.sourceUnavailable"));
+    });
+  }, [pendingLiveWatch, props.activeVoiceRoomId, requestedLiveSource?.key, viewedRoomId]);
+
+  useEffect(() => {
+    if (!pendingLiveWatch || props.activeVoiceRoomId !== viewedRoomId || !requestedLiveSource) return;
+    if (requestedLiveSource.ownerIsLocal) {
+      setLocalStageKeys([requestedLiveSource.key]);
+      setFocusedSourceKey(requestedLiveSource.key);
+      props.onLiveWatchHandled();
+      return;
+    }
+    if (!requestedLiveSource.target) return;
+    void updateRemoteSelection([requestedLiveSource.target], requestedLiveSource.key).finally(props.onLiveWatchHandled);
+  }, [pendingLiveWatch?.publisherUserId, props.activeVoiceRoomId, requestedLiveSource?.key, viewedRoomId]);
+
   return (
     <AppChrome {...props} mobileTitle={props.currentRoom?.name ?? props.t("room.lobbyVoice")}>
       <main className="main-panel" id="main-content">
@@ -1117,8 +1220,8 @@ function VoiceRoomScreen(props: ShellProps) {
             ) : (
               <section className="stage-empty" aria-live="polite">
                 <p className="label">{props.t("voice.stage")}</p>
-                <strong>{props.t("voice.chooseSource")}</strong>
-                <span>{props.t("voice.chooseSourceCopy")}</span>
+                <strong>{pendingLiveWatch ? props.t("voice.liveReady", { nickname: pendingLiveWatch.nickname }) : props.t("voice.chooseSource")}</strong>
+                <span>{pendingLiveWatch ? props.t("voice.liveReadyCopy") : props.t("voice.chooseSourceCopy")}</span>
               </section>
             )}
 
@@ -1465,6 +1568,9 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
 
 function ChannelRail(props: ShellProps) {
   const canManageServer = activeServerRole(props) === "owner";
+  const activeServer = props.servers.find((server) => server.id === props.activeServerId);
+  const [deleteTarget, setDeleteTarget] = useState<{ kind: "room"; room: RoomSummary } | { kind: "server"; server: ServerSummary } | null>(null);
+  const [deleteError, setDeleteError] = useState("");
   return (
     <aside className="rail">
       <BrandLockup href={serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general")} onNavigate={props.onNavigate} />
@@ -1484,13 +1590,22 @@ function ChannelRail(props: ShellProps) {
         }}
         onSelect={props.onSelectServer}
         onCreate={props.onCreateServer}
+        canDelete={canManageServer}
+        deleteDisabled={props.servers.length <= 1}
+        onRequestDelete={() => {
+          if (activeServer) setDeleteTarget({ kind: "server", server: activeServer });
+        }}
+        deleteLabel={props.t("server.delete")}
       />
       <section className="rail-section">
         <div className="rail-section-head"><span className="label">{props.t("room.textRooms")}</span><span className="badge">{props.rooms.text.length}</span>{canManageServer ? <ChannelCreateControl kind="text" onCreate={props.onCreateRoom} /> : null}</div>
         {props.rooms.text.map((room) => (
-            <NavLink className={`channel-item ${props.route.name === "text" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "text", room.id)} key={room.id} onNavigate={props.onNavigate}>
-            <span className="channel-prefix">#</span><span>{room.name}</span>{props.unreadByRoom[room.id] ? <span className="badge unread-badge">{props.unreadByRoom[room.id]}</span> : <span />}
-          </NavLink>
+          <div className="channel-row" key={room.id}>
+            <NavLink className={`channel-item ${props.route.name === "text" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "text", room.id)} onNavigate={props.onNavigate}>
+              <span className="channel-prefix">#</span><span>{room.name}</span>{props.unreadByRoom[room.id] ? <span className="badge unread-badge">{props.unreadByRoom[room.id]}</span> : <span />}
+            </NavLink>
+            {canManageServer ? <ChannelDeleteControl room={room} disabled={props.rooms.text.length + props.rooms.voice.length <= 1} onRequest={() => setDeleteTarget({ kind: "room", room })} t={props.t} /> : null}
+          </div>
         ))}
       </section>
       <section className="rail-section">
@@ -1499,19 +1614,49 @@ function ChannelRail(props: ShellProps) {
           const members = voiceMembersForRoom(props, room.id);
           return (
             <div className="voice-channel-block" key={room.id}>
-              <NavLink className={`channel-item ${props.route.name === "voice" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "voice", room.id)} onNavigate={props.onNavigate}>
-                <span className="channel-prefix">vc</span><span>{room.name}</span><span className="badge">{members.length}</span>
-              </NavLink>
+              <div className="channel-row">
+                <NavLink className={`channel-item ${props.route.name === "voice" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "voice", room.id)} onNavigate={props.onNavigate}>
+                  <span className="channel-prefix">vc</span><span>{room.name}</span><span className="badge">{members.length}</span>
+                </NavLink>
+                {canManageServer ? <ChannelDeleteControl room={room} disabled={props.rooms.text.length + props.rooms.voice.length <= 1} onRequest={() => setDeleteTarget({ kind: "room", room })} t={props.t} /> : null}
+              </div>
               {members.length > 0 ? (
                 <div className="voice-channel-users">
                   {members.map((member) => (
-                    <span className={`voice-channel-user ${member.media.speaking && member.media.mic && !member.media.deafened ? "is-speaking" : ""}`} key={member.user.userId}>
+                    <div className={`voice-channel-user ${member.media.speaking && member.media.mic && !member.media.deafened ? "is-speaking" : ""}`} key={member.user.userId}>
                       <span className="avatar">{initial(member.user.nickname)}</span>
                       <span className="voice-channel-user-copy">
-                        <span>{member.user.nickname}</span>
-                        <VoiceStatusBadges media={member.media} t={props.t} compact />
+                        <span className="voice-channel-user-name">
+                          {member.media.screen ? (
+                            <LiveStreamPopover
+                              icon={<ScreenIcon off={false} />}
+                              liveLabel={props.t("common.live")}
+                              nickname={member.user.nickname}
+                              watchLabel={props.t("voice.watchStream")}
+                              watchAriaLabel={props.t("voice.watchUserStream", { nickname: member.user.nickname })}
+                              onWatch={() => props.onWatchLive({
+                                serverId: props.activeServerId,
+                                roomId: room.id,
+                                publisherUserId: member.user.userId,
+                                nickname: member.user.nickname
+                              })}
+                            />
+                          ) : <span>{member.user.nickname}</span>}
+                        </span>
                       </span>
-                    </span>
+                      {member.user.userId !== props.user.id ? (
+                        <details className="rail-member-menu member-action-menu">
+                          <summary aria-label={props.t("member.actionsFor", { nickname: member.user.nickname })}><MoreIcon /></summary>
+                          <div className="member-action-panel">
+                            <VolumeControl
+                              label={props.t("voice.memberVolume", { nickname: member.user.nickname })}
+                              value={props.memberVolumes[member.user.userId] ?? DEFAULT_VOLUME_PERCENT}
+                              onChange={(volume) => props.onMemberVolumeChange(member.user.userId, volume)}
+                            />
+                          </div>
+                        </details>
+                      ) : null}
+                    </div>
                   ))}
                 </div>
               ) : null}
@@ -1549,7 +1694,40 @@ function ChannelRail(props: ShellProps) {
         onSelectInput={props.audioDevices.selectInput}
         onSelectOutput={props.audioDevices.selectOutput}
       />
+      {deleteError ? <p className="error-text" aria-live="polite">{deleteError}</p> : null}
+      {deleteTarget ? <ConfirmDialog
+        title={deleteTarget.kind === "room" ? props.t("room.deleteTitle", { channel: deleteTarget.room.name }) : props.t("server.deleteTitle", { server: deleteTarget.server.name })}
+        copy={deleteTarget.kind === "room" ? props.t("room.deleteCopy") : props.t("server.deleteCopy")}
+        confirmLabel={props.t("common.delete")}
+        confirmationText={deleteTarget.kind === "room" ? deleteTarget.room.name : deleteTarget.server.name}
+        confirmationLabel={props.t("common.typeToConfirm")}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          setDeleteError("");
+          const request = target.kind === "room" ? props.onDeleteRoom(target.room.id) : props.onDeleteServer();
+          void request.catch((error: unknown) => {
+            if (error instanceof ApiError && (error.code === "last_room" || error.code === "last_owner_server")) {
+              setDeleteError(error.code === "last_room" ? props.t("room.lastRoom") : props.t("server.lastServer"));
+            } else {
+              setDeleteError(props.t("common.deleteFailed"));
+            }
+          });
+        }}
+      /> : null}
     </aside>
+  );
+}
+
+function ChannelDeleteControl({ room, disabled, onRequest, t }: { room: RoomSummary; disabled: boolean; onRequest: () => void; t: Translate }) {
+  return (
+    <details className="channel-action-menu member-action-menu">
+      <summary aria-label={t("room.actionsFor", { channel: room.name })}><MoreIcon /></summary>
+      <div className="member-action-panel">
+        <button className="btn btn-danger" type="button" disabled={disabled} onClick={onRequest}>{t("room.deleteChannel")}</button>
+      </div>
+    </details>
   );
 }
 
@@ -1765,8 +1943,10 @@ function VoiceDock(props: ShellProps & { connectedCount: number }) {
   );
 }
 
-function ConfirmDialog({ title, copy, confirmLabel, onCancel, onConfirm }: { title: string; copy: string; confirmLabel: string; onCancel: () => void; onConfirm: () => void }) {
+function ConfirmDialog({ title, copy, confirmLabel, confirmationText, confirmationLabel, onCancel, onConfirm }: { title: string; copy: string; confirmLabel: string; confirmationText?: string; confirmationLabel?: string; onCancel: () => void; onConfirm: () => void }) {
   const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const [confirmationValue, setConfirmationValue] = useState("");
+  const isConfirmationValid = !confirmationText || confirmationValue === confirmationText;
 
   useEffect(() => {
     cancelRef.current?.focus();
@@ -1782,9 +1962,22 @@ function ConfirmDialog({ title, copy, confirmLabel, onCancel, onConfirm }: { tit
       <section className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmDialogTitle" onMouseDown={(event) => event.stopPropagation()}>
         <h2 id="confirmDialogTitle">{title}</h2>
         <p>{copy}</p>
+        {confirmationText ? (
+          <label className="form-field" htmlFor="confirmDialogValue">
+            <span className="label">{confirmationLabel}</span>
+            <input
+              className="input"
+              id="confirmDialogValue"
+              value={confirmationValue}
+              onChange={(event) => setConfirmationValue(event.currentTarget.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+        ) : null}
         <div className="confirm-actions">
           <button className="btn btn-ghost" type="button" ref={cancelRef} onClick={onCancel}>Cancel</button>
-          <button className="btn btn-danger" type="button" onClick={onConfirm}>{confirmLabel}</button>
+          <button className="btn btn-danger" type="button" disabled={!isConfirmationValid} onClick={onConfirm}>{confirmLabel}</button>
         </div>
       </section>
     </div>

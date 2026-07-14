@@ -51,6 +51,15 @@ export interface VoiceMemberState {
   media: VoiceMediaState;
 }
 
+export interface VoiceJoinRequest {
+  roomId: string;
+  media: VoiceMediaState;
+}
+
+export type VoiceJoinAck =
+  | { ok: true; state: VoiceMemberState }
+  | { ok: false; error: "room_not_found" | "forbidden" | "visual_limit_reached" };
+
 export type VoiceSetMediaAck =
   | { ok: true; state: VoiceMemberState }
   | { ok: false; error: "not_in_voice_room" | "visual_limit_reached" | "room_not_found" };
@@ -60,7 +69,7 @@ export interface VoiceSnapshot {
   members: VoiceMemberState[];
 }
 
-export type VoiceForceLeaveReason = "joined_another_room" | "owner_disconnect" | "server_access_revoked";
+export type VoiceForceLeaveReason = "joined_another_room" | "owner_disconnect" | "server_access_revoked" | "room_deleted" | "server_deleted";
 
 export type VisualMediaKind = "camera" | "screen";
 
@@ -103,13 +112,15 @@ export interface ServerToClientEvents {
   "voice:forceLeave": (payload: { roomId: string; reason: VoiceForceLeaveReason }) => void;
   "server:accessRevoked": (payload: { serverId: string; reason: "banned" | "kicked" }) => void;
   "server:directoryChanged": (payload: { serverId: string }) => void;
+  "server:roomsChanged": (payload: { serverId: string; deletedRoomId: string }) => void;
+  "server:deleted": (payload: { serverId: string }) => void;
   "rtc:signal": (payload: { roomId: string; fromUserId: string; signal: RtcSignal }) => void;
 }
 
 export interface ClientToServerEvents {
   "room:join": (roomId: string) => void;
   "room:leave": (roomId: string) => void;
-  "voice:join": (roomId: string) => void;
+  "voice:join": (payload: VoiceJoinRequest, ack: (response: VoiceJoinAck) => void) => void;
   "voice:leave": (roomId: string) => void;
   "voice:snapshot": (roomId: string, ack: (snapshot: VoiceSnapshot) => void) => void;
   "voice:setMediaState": (payload: { roomId: string; media: Partial<VoiceMediaState> }, ack: (response: VoiceSetMediaAck) => void) => void;

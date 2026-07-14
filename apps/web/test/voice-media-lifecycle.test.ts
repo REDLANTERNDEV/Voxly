@@ -6,6 +6,23 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as appModule from "../src/App.js";
 
 describe("voice snapshot reconciliation", () => {
+  it("moves a LIVE card selection into voice without a second confirmation", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+    const voiceRoom = source.match(/function VoiceRoomScreen[\s\S]*?\n}\n\nfunction OwnerPanel/)?.[0] ?? "";
+
+    assert.match(voiceRoom, /liveWatchAttemptRef/);
+    assert.match(voiceRoom, /microphoneEnabled:\s*true/);
+    assert.doesNotMatch(voiceRoom, /onClick=\{joinAndWatchLive\}/);
+  });
+
+  it("supports receive-only joins and lazily opens the microphone", () => {
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+
+    assert.match(source, /interface VoiceJoinOptions[\s\S]*?microphoneEnabled\?: boolean/);
+    assert.match(source, /options\.microphoneEnabled\s*\?\?\s*true/);
+    assert.match(source, /if \(!stream\)[\s\S]*?getUserMedia[\s\S]*?renegotiatePeers\(\)/);
+    assert.match(source, /record\.microphoneEnabled/);
+  });
   it("navigates away from the access claim route after authentication", () => {
     const source = readFileSync("src/App.tsx", "utf8");
 
@@ -127,15 +144,40 @@ describe("voice snapshot reconciliation", () => {
     assert.match(source, /removePeer\(peerUserId, \{ expectedPeer: peer, preserveVisualSubscriptions: true \}\)/);
   });
 
-  it("rejoins the active voice room before requesting reconnect snapshots", () => {
+  it("rejoins with effective media before requesting reconnect snapshots", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
     const onConnect = source.match(/const onConnect = \(\) => \{([\s\S]*?)\n    \};\n    const onDisconnect/)?.[1] ?? "";
 
-    const joinIndex = onConnect.indexOf('socket.emit("voice:join", activeRoomId)');
+    const effectiveStateIndex = onConnect.indexOf("effectiveVoiceMediaState(");
+    const joinIndex = onConnect.indexOf("requestVoiceJoin(");
     const snapshotIndex = onConnect.indexOf("requestKnownSnapshots()");
+    assert.notEqual(effectiveStateIndex, -1);
     assert.notEqual(joinIndex, -1);
     assert.notEqual(snapshotIndex, -1);
+    assert.ok(effectiveStateIndex < joinIndex);
     assert.ok(joinIndex < snapshotIndex);
+    assert.doesNotMatch(onConnect, /Boolean\(localStreamsRef\.current\.mic\)/);
+    assert.doesNotMatch(onConnect, /emitMediaState\(/);
+  });
+
+  it("uses the acknowledged atomic join for explicit room entry", () => {
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const join = source.match(/const join = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+
+    assert.match(join, /effectiveVoiceMediaState\(/);
+    assert.match(join, /await requestVoiceJoin\(/);
+    assert.match(join, /response\.state\.media\.mic/);
+    assert.doesNotMatch(join, /socket\.emit\("voice:join"/);
+    assert.doesNotMatch(join, /await emitMediaState\(/);
+  });
+
+  it("derives undeafen and ended microphone state from live tracks", () => {
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const toggleDeafen = source.match(/const toggleDeafen = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+
+    assert.match(source, /watchMicrophoneStreamEnd\(/);
+    assert.match(toggleDeafen, /effectiveVoiceMediaState\(/);
+    assert.doesNotMatch(toggleDeafen, /Boolean\(localStreamsRef\.current\.mic\)/);
   });
 
   it("does not treat a microphone selection as a socket reconnect", () => {

@@ -37,4 +37,12 @@ describe("member volume menus", () => {
     assert.match(styles, /\.voice-status-chip\.warn\s*\{[^}]*background:[^}]*color:\s*var\(--status-warn-fg\)/s);
     assert.match(styles, /\.table-actions\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap[^}]*gap:/s);
   });
+
+  it("uses one explicit column contract for owner and member rows", () => {
+    const styles = readFileSync("src/styles.css", "utf8");
+
+    assert.match(styles, /\.owner-grid\.members-grid\s*\{[^}]*--member-table-columns:/s);
+    assert.match(styles, /\.members-grid \.table-head,\s*\.members-grid \.table-row\s*\{[^}]*grid-template-columns:\s*var\(--member-table-columns\)/s);
+    assert.doesNotMatch(styles, /\.members-grid \.table-head,[\s\S]*?minmax\([^)]*,\s*auto\)/);
+  });
 });

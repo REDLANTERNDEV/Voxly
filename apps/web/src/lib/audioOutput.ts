@@ -25,6 +25,8 @@ type ManagedAudioOutput = AudioOutput & {
 
 type SinkAudioContext = AudioContext & { setSinkId?: (sinkId: string) => Promise<unknown> };
 
+const boostGainRampSeconds = 0.025;
+
 const managedOutputs = new Set<ManagedAudioOutput>();
 const blockedOutputs = new Set<ManagedAudioOutput>();
 const blockedListeners = new Set<(blocked: boolean) => void>();
@@ -178,6 +180,24 @@ async function applySharedAudioOutputToContext(context: AudioContext) {
   }
 }
 
+function applyBoostGain(context: AudioContext, gain: AudioParam, volume: number) {
+  const target = volumeGain(volume);
+  const now = context.currentTime;
+  if (
+    Number.isFinite(now) &&
+    typeof gain.cancelScheduledValues === "function" &&
+    typeof gain.setValueAtTime === "function" &&
+    typeof gain.linearRampToValueAtTime === "function"
+  ) {
+    const current = gain.value;
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(current, now);
+    gain.linearRampToValueAtTime(target, now + boostGainRampSeconds);
+    return;
+  }
+  gain.value = target;
+}
+
 export function connectAudioOutput(
   element: HTMLAudioElement,
   stream: MediaStream,
@@ -234,8 +254,8 @@ export function connectAudioOutput(
         gain.connect(context.destination);
         boostGraph = { source, gain };
       }
-      boostGraph.gain.gain.value = volumeGain(state.volume);
-      element.srcObject = stream;
+      applyBoostGain(context, boostGraph.gain.gain, state.volume);
+      if (element.srcObject !== stream) element.srcObject = stream;
       element.volume = 1;
       element.muted = true;
       return true;
@@ -276,8 +296,8 @@ export function connectAudioOutput(
       return;
     }
     if (boostGraph && !forceRebuild) {
-      boostGraph.gain.gain.value = volumeGain(state.volume);
-      element.srcObject = stream;
+      if (sharedContext) applyBoostGain(sharedContext, boostGraph.gain.gain, state.volume);
+      if (element.srcObject !== stream) element.srcObject = stream;
       element.volume = 1;
       element.muted = true;
       return;

@@ -5,7 +5,10 @@ interface ServerSwitcherProps {
   activeServerId: string;
   servers: ServerSummary[];
   canCreate: boolean;
+  canDelete: boolean;
   createIcon: ReactNode;
+  deleteDisabled: boolean;
+  deleteLabel: string;
   labels: {
     switcher: string;
     server: string;
@@ -17,6 +20,7 @@ interface ServerSwitcherProps {
   };
   onSelect(serverId: string): Promise<void>;
   onCreate(name: string): Promise<void>;
+  onRequestDelete(): void;
 }
 
 export function ServerSwitcher(props: ServerSwitcherProps) {
@@ -60,6 +64,9 @@ export function ServerSwitcher(props: ServerSwitcherProps) {
             <button className="btn btn-primary" type="submit" disabled={isCreating}><span>{isCreating ? props.labels.creating : props.labels.create}</span></button>
           </form> : null}
         </div>
+      ) : null}
+      {props.canDelete ? (
+        <button className="btn btn-danger full-width" type="button" disabled={props.deleteDisabled} onClick={props.onRequestDelete}>{props.deleteLabel}</button>
       ) : null}
     </section>
   );

@@ -155,6 +155,67 @@ describe("hybrid voice audio output", () => {
     assert.equal(gains[0]?.value, 1.5);
   });
 
+  it("smooths rapid boosted volume updates without rebuilding playback", async () => {
+    const stream = { id: "remote" } as MediaStream;
+    const ramps: Array<{ from: number; to: number; at: number }> = [];
+    let sourceCreates = 0;
+    let plays = 0;
+    let currentTime = 4;
+    class FakeAudioContext {
+      state: AudioContextState = "running";
+      destination = {};
+      get currentTime() { return currentTime; }
+      createMediaStreamSource() {
+        sourceCreates += 1;
+        return { connect() {}, disconnect() {} };
+      }
+      createGain() {
+        const gain = {
+          value: 1,
+          cancelScheduledValues() {},
+          setValueAtTime(value: number) { gain.value = value; },
+          linearRampToValueAtTime(value: number, at: number) {
+            ramps.push({ from: gain.value, to: value, at });
+            gain.value = value;
+          }
+        };
+        return { connect() {}, disconnect() {}, gain };
+      }
+      async resume() {}
+      async close() {}
+    }
+    installWindow(FakeAudioContext as unknown as new () => AudioContext);
+    const element = createElement({ play: async () => { plays += 1; } });
+    let srcObject = element.srcObject;
+    let srcObjectWrites = 0;
+    Object.defineProperty(element, "srcObject", {
+      configurable: true,
+      get: () => srcObject,
+      set: (value) => {
+        srcObject = value;
+        srcObjectWrites += 1;
+      }
+    });
+    const output = connect(element, stream, false, 125);
+    await output.ready;
+    srcObjectWrites = 0;
+
+    currentTime = 5;
+    output.setVolume(false, 150);
+    currentTime = 6;
+    output.setVolume(false, 180);
+
+    assert.equal(sourceCreates, 1);
+    assert.equal(plays, 1);
+    assert.equal(srcObjectWrites, 0);
+    assert.equal(element.srcObject, stream);
+    assert.equal(element.muted, true);
+    assert.deepEqual(ramps.slice(-2).map(({ to, at }) => ({ to, at })), [
+      { to: 1.5, at: 5.025 },
+      { to: 1.8, at: 6.025 }
+    ]);
+  });
+
   it("keeps direct 100 percent playback when boost setup fails", async () => {
     const stream = { id: "remote" } as MediaStream;
     class FailingAudioContext {

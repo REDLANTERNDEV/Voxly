@@ -33,9 +33,24 @@ describe("voice resume state", () => {
 
     assert.deepEqual(readVoiceResume(storage, now + 10 * 60 * 1000 - 1), {
       expiresAt: now + 10 * 60 * 1000,
+      microphoneEnabled: true,
       roomId: "lobby",
       targets
     });
+  });
+
+  it("preserves receive-only joins and defaults legacy records to microphone on", () => {
+    const storage = new MemoryStorage();
+    writeVoiceResume(storage, "quiet-room", [], 1_000, 2_000, false);
+
+    assert.equal(readVoiceResume(storage, 1_500)?.microphoneEnabled, false);
+
+    storage.setItem("voxly:voice-resume", JSON.stringify({
+      expiresAt: 2_000,
+      roomId: "legacy-room",
+      targets: []
+    }));
+    assert.equal(readVoiceResume(storage, 1_500)?.microphoneEnabled, true);
   });
 
   it("removes an expired resume record", () => {

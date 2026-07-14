@@ -10,6 +10,7 @@ import type {
   ServerToClientEvents,
   VisualMediaKind,
   VisualTarget,
+  VoiceJoinRequest,
   VoiceSetVisualSubscriptionsAck,
   VoiceMediaState,
   VoiceMemberState,
@@ -106,6 +107,8 @@ type VisualSubscriptions = Map<string, Map<string, Set<VisualMediaKind>>>;
 
 interface RealtimeModeration {
   disconnectVoice: (serverId: string, roomId: string, userId: string) => boolean;
+  deleteRoom: (serverId: string, roomId: string) => void;
+  deleteServer: (serverId: string, roomIds: string[], affectedUserIds: string[]) => void;
   grantServerAccess: (serverId: string, userId: string) => Promise<void>;
   revokeServerAccess: (serverId: string, userId: string, reason: "banned" | "kicked") => void;
 }
@@ -386,6 +389,70 @@ function registerRoutes(
     audit(database, owner.id, "room.created", null, serverId);
     database.save();
     return reply.code(201).send({ room });
+  });
+
+  server.delete("/api/servers/:serverId/rooms/:roomId", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId, roomId } = z.object({
+      serverId: z.string().min(1),
+      roomId: z.string().min(1)
+    }).parse(request.params);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const room = roomById(database.sqlite, roomId);
+    if (!room || room.serverId !== serverId) return reply.code(404).send({ error: "room_not_found" });
+    const roomCount = one<{ count: number }>(database.sqlite, "select count(*) as count from rooms where server_id = ?", [serverId])?.count ?? 0;
+    if (roomCount <= 1) return reply.code(409).send({ error: "last_room" });
+
+    database.sqlite.exec("begin immediate");
+    try {
+      run(database.sqlite, "delete from messages where room_id = ?", [roomId]);
+      run(database.sqlite, "delete from rooms where id = ? and server_id = ?", [roomId, serverId]);
+      audit(database, owner.id, "room.deleted", null, serverId);
+      database.sqlite.exec("commit");
+    } catch (cause) {
+      database.sqlite.exec("rollback");
+      throw cause;
+    }
+    database.save();
+    realtime.deleteRoom(serverId, roomId);
+    io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId, deletedRoomId: roomId });
+    return reply.code(204).send();
+  });
+
+  server.delete("/api/servers/:serverId", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const otherAccessibleServers = one<{ count: number }>(
+      database.sqlite,
+      `select count(*) as count from server_members
+       where user_id = ? and server_id != ?
+         and banned_at is null and removed_at is null`,
+      [owner.id, serverId]
+    )?.count ?? 0;
+    if (otherAccessibleServers === 0) return reply.code(409).send({ error: "last_owner_server" });
+
+    const roomIds = all<{ id: string }>(database.sqlite, "select id from rooms where server_id = ?", [serverId]).map((room) => room.id);
+    const affectedUserIds = all<{ user_id: string }>(database.sqlite, "select user_id from server_members where server_id = ?", [serverId]).map((membership) => membership.user_id);
+    database.sqlite.exec("begin immediate");
+    try {
+      run(database.sqlite, "delete from messages where room_id in (select id from rooms where server_id = ?)", [serverId]);
+      run(database.sqlite, "delete from invites where server_id = ?", [serverId]);
+      run(database.sqlite, "delete from access_claims where server_id = ?", [serverId]);
+      run(database.sqlite, "delete from server_members where server_id = ?", [serverId]);
+      run(database.sqlite, "delete from rooms where server_id = ?", [serverId]);
+      audit(database, owner.id, "server.deleted", null, serverId);
+      run(database.sqlite, "delete from servers where id = ?", [serverId]);
+      database.sqlite.exec("commit");
+    } catch (cause) {
+      database.sqlite.exec("rollback");
+      throw cause;
+    }
+    database.save();
+    realtime.deleteServer(serverId, roomIds, affectedUserIds);
+    return reply.code(204).send();
   });
 
   server.get("/api/servers/:serverId/directory", async (request, reply) => {
@@ -872,22 +939,44 @@ function registerRealtime(
       socket.leave(`room:${roomId}`);
     });
 
-    socket.on("voice:join", (roomId) => {
+    socket.on("voice:join", (payload, ack) => {
+      if (typeof ack !== "function") return;
+
+      const candidate = payload as Partial<VoiceJoinRequest> | null;
+      const roomId = typeof candidate?.roomId === "string" ? candidate.roomId : "";
       const room = roomById(database.sqlite, roomId);
-      if (!room || room.kind !== "voice" || !requireActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
+      if (!room || room.kind !== "voice") {
+        ack({ ok: false, error: "room_not_found" });
         return;
       }
+      if (!requireActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
+        ack({ ok: false, error: "forbidden" });
+        return;
+      }
+
+      const requested = candidate?.media as Partial<VoiceMediaState> | undefined;
+      const media = normalizeVoiceMedia({
+        mic: requested?.mic === true,
+        camera: requested?.camera === true,
+        screen: requested?.screen === true,
+        deafened: requested?.deafened === true,
+        speaking: false
+      });
+      const members = ensureVoiceRoom(voiceMembership, roomId);
+      if (visualPublisherCount(members, user.userId, media) > visualPublisherLimit) {
+        ack({ ok: false, error: "visual_limit_reached" });
+        return;
+      }
+
       for (const [activeRoomId, members] of voiceMembership) {
         if (activeRoomId !== roomId && members.has(user.userId)) {
           leaveVoiceMember(io, database, activeRoomId, user.userId, voiceMembership, visualSubscriptions);
         }
       }
       socket.join(`voice:${roomId}`);
-      const members = ensureVoiceRoom(voiceMembership, roomId);
-      members.set(user.userId, {
-        user,
-        media: defaultVoiceMediaState()
-      });
+      const state: VoiceMemberState = { user, media };
+      members.set(user.userId, state);
+      ack({ ok: true, state });
       emitVoiceSnapshot(io, database, roomId, members);
       socket.to(`server:${room.serverId}`).emit("voice:joined", { roomId, user });
     });
@@ -993,6 +1082,23 @@ function registerRealtime(
       emitVoiceForceLeave(io, userId, roomId, "owner_disconnect");
       return true;
     },
+    deleteRoom(_serverId, roomId) {
+      deleteRealtimeVoiceRoom(io, roomId, voiceMembership, visualSubscriptions, "room_deleted");
+      for (const socket of io.sockets.sockets.values()) socket.leave(`room:${roomId}`);
+    },
+    deleteServer(serverId, roomIds, affectedUserIds) {
+      for (const roomId of roomIds) {
+        deleteRealtimeVoiceRoom(io, roomId, voiceMembership, visualSubscriptions, "server_deleted");
+      }
+      const affected = new Set(affectedUserIds);
+      for (const socket of io.sockets.sockets.values()) {
+        const socketUser = socket.data.user as PresenceUser | undefined;
+        if (!socketUser || !affected.has(socketUser.userId)) continue;
+        socket.leave(`server:${serverId}`);
+        for (const roomId of roomIds) socket.leave(`room:${roomId}`);
+        socket.emit("server:deleted", { serverId });
+      }
+    },
     async grantServerAccess(serverId, userId) {
       const entry = online.get(userId);
       if (!entry) return;
@@ -1045,11 +1151,30 @@ function emitVoiceForceLeave(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
   userId: string,
   roomId: string,
-  reason: "joined_another_room" | "owner_disconnect" | "server_access_revoked"
+  reason: "joined_another_room" | "owner_disconnect" | "server_access_revoked" | "room_deleted" | "server_deleted"
 ) {
   for (const socket of io.sockets.sockets.values()) {
     const socketUser = socket.data.user as PresenceUser | undefined;
     if (socketUser?.userId === userId) socket.emit("voice:forceLeave", { roomId, reason });
+  }
+}
+
+function deleteRealtimeVoiceRoom(
+  io: Server<ClientToServerEvents, ServerToClientEvents>,
+  roomId: string,
+  voiceMembership: Map<string, VoiceRoomMembership>,
+  visualSubscriptions: Map<string, VisualSubscriptions>,
+  reason: "room_deleted" | "server_deleted"
+) {
+  const memberUserIds = new Set(voiceMembership.get(roomId)?.keys() ?? []);
+  voiceMembership.delete(roomId);
+  visualSubscriptions.delete(roomId);
+  for (const socket of io.sockets.sockets.values()) {
+    const socketUser = socket.data.user as PresenceUser | undefined;
+    socket.leave(`voice:${roomId}`);
+    if (socketUser && memberUserIds.has(socketUser.userId)) {
+      socket.emit("voice:forceLeave", { roomId, reason });
+    }
   }
 }
 
@@ -1577,16 +1702,6 @@ function voiceSnapshot(roomId: string, members: VoiceRoomMembership | undefined)
   return {
     roomId,
     members: members ? [...members.values()] : []
-  };
-}
-
-function defaultVoiceMediaState(): VoiceMediaState {
-  return {
-    mic: true,
-    camera: false,
-    screen: false,
-    deafened: false,
-    speaking: false
   };
 }
 

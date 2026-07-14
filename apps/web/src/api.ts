@@ -79,6 +79,16 @@ export async function createServerRoom(serverId: string, name: string, kind: "te
   return apiPost<{ room: RoomSummary }>(`/api/servers/${encodeURIComponent(serverId)}/rooms`, { name, kind });
 }
 
+export async function deleteServerRoom(serverId: string, roomId: string) {
+  await request<void>(`/api/servers/${encodeURIComponent(serverId)}/rooms/${encodeURIComponent(roomId)}`, {
+    method: "DELETE"
+  });
+}
+
+export async function deleteServer(serverId: string) {
+  await request<void>(`/api/servers/${encodeURIComponent(serverId)}`, { method: "DELETE" });
+}
+
 export async function fetchServerMembers(serverId: string) {
   return apiGet<{ members: ServerMember[] }>(`/api/servers/${encodeURIComponent(serverId)}/members`);
 }

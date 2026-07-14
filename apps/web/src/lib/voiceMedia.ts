@@ -1,4 +1,48 @@
+import type { VoiceMediaState } from "@voxly/shared";
+import type { VoiceControls } from "./voiceControls.js";
+
 export type MediaKind = "mic" | "camera" | "screen";
+
+export type LocalVoiceMediaStreams = Partial<Record<MediaKind, MediaStream>>;
+
+export function effectiveVoiceMediaState(
+  controls: VoiceControls,
+  streams: LocalVoiceMediaStreams
+): VoiceMediaState {
+  const mic = controls.mic.on
+    && !controls.deafen.on
+    && hasEnabledLiveTrack(streams.mic?.getAudioTracks());
+
+  return {
+    mic,
+    camera: controls.camera.on && hasEnabledLiveTrack(streams.camera?.getVideoTracks()),
+    screen: controls.screenShare.on && hasEnabledLiveTrack(streams.screen?.getVideoTracks()),
+    deafened: controls.deafen.on,
+    speaking: false
+  };
+}
+
+export function watchMicrophoneStreamEnd(stream: MediaStream, onEnded: () => void) {
+  const tracks = stream.getAudioTracks();
+  let active = true;
+  let reported = false;
+  const handleEnded = () => {
+    if (!active || reported || tracks.some((track) => track.readyState === "live")) return;
+    reported = true;
+    onEnded();
+  };
+
+  tracks.forEach((track) => track.addEventListener("ended", handleEnded));
+  handleEnded();
+  return () => {
+    active = false;
+    tracks.forEach((track) => track.removeEventListener("ended", handleEnded));
+  };
+}
+
+function hasEnabledLiveTrack(tracks: MediaStreamTrack[] | undefined) {
+  return tracks?.some((track) => track.enabled && track.readyState === "live") ?? false;
+}
 
 export interface VoiceMediaUiState {
   joined: boolean;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { acceptInvite, ApiError, claimAccessLink, claimOwnerSession, deleteMessage, fetchRtcConfig, revokeInvite } from "../src/api.js";
+import { acceptInvite, ApiError, claimAccessLink, claimOwnerSession, deleteMessage, deleteServer, deleteServerRoom, fetchRtcConfig, revokeInvite } from "../src/api.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -112,6 +112,22 @@ describe("frontend api", () => {
     await deleteMessage("general", "message-id");
 
     assert.equal(new Headers(headers).has("Content-Type"), false);
+  });
+
+  it("uses scoped DELETE requests for channels and servers", async () => {
+    const requests: Array<{ method: string | undefined; path: string }> = [];
+    globalThis.fetch = async (input, init) => {
+      requests.push({ method: init?.method, path: String(input) });
+      return new Response(null, { status: 204 });
+    };
+
+    await deleteServerRoom("server id", "room/id");
+    await deleteServer("server id");
+
+    assert.deepEqual(requests, [
+      { method: "DELETE", path: "/api/servers/server%20id/rooms/room%2Fid" },
+      { method: "DELETE", path: "/api/servers/server%20id" }
+    ]);
   });
 
   it("loads user-scoped RTC credentials from the authenticated endpoint", async () => {

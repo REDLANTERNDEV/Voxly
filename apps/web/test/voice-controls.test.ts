@@ -46,6 +46,19 @@ describe("voice control view state", () => {
     assert.equal(undeafened.mic.on, true);
   });
 
+  it("keeps the mic off after undeafening a receive-only connection", () => {
+    const receiveOnly = {
+      ...createInitialVoiceControls(),
+      mic: { on: false, enabled: true },
+      deafen: { on: true, enabled: true }
+    };
+
+    const undeafened = toggleVoiceControl(receiveOnly, "deafen", { microphoneAvailable: false });
+
+    assert.equal(undeafened.deafen.on, false);
+    assert.equal(undeafened.mic.on, false);
+  });
+
   it("labels combined mute, deafen, speaking, and screen state", () => {
     assert.deepEqual(
       voiceStatusLabels({ mic: false, camera: true, screen: true, deafened: true, speaking: true }),

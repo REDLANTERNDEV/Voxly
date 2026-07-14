@@ -72,6 +72,34 @@ describe("Voxly HTTP MVP", () => {
     }
   });
 
+  it("does not recreate a deleted default server when another server remains", async () => {
+    const databaseDir = await mkdtemp(join(tmpdir(), "voxly-deleted-default-"));
+    const databasePath = join(databaseDir, "voxly.sqlite");
+    const initial = await openDatabase(databasePath);
+    let initialClosed = false;
+
+    try {
+      run(initial.sqlite, "insert into servers (id, name, created_at) values (?, ?, ?)", ["remaining", "Remaining", new Date().toISOString()]);
+      run(initial.sqlite, "insert into rooms (id, server_id, name, kind, position) values (?, ?, ?, ?, ?)", ["remaining-general", "remaining", "general", "text", 10]);
+      run(initial.sqlite, "delete from rooms where server_id = ?", [defaultServerId]);
+      run(initial.sqlite, "delete from server_members where server_id = ?", [defaultServerId]);
+      run(initial.sqlite, "delete from servers where id = ?", [defaultServerId]);
+      initial.close();
+      initialClosed = true;
+
+      const reopened = await openDatabase(databasePath);
+      try {
+        assert.equal(one<{ count: number }>(reopened.sqlite, "select count(*) as count from servers where id = ?", [defaultServerId])?.count, 0);
+        assert.equal(one<{ count: number }>(reopened.sqlite, "select count(*) as count from servers where id = 'remaining'")?.count, 1);
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      if (!initialClosed) initial.close();
+      await rm(databaseDir, { force: true, recursive: true });
+    }
+  });
+
   it("bootstraps the first owner and sets a session cookie", async () => {
     const response = await app.server.inject({
       method: "POST",
@@ -962,6 +990,150 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(claims.filter((entry) => entry.consumed_at).length, 1);
     assert.equal(JSON.stringify(claims).includes(firstToken), false);
     assert.equal(JSON.stringify(claims).includes(secondToken), false);
+  });
+
+  it("lets only owners delete non-final channels and removes their messages", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ada");
+    const created = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServerId}/rooms`,
+      cookies: owner.cookies,
+      payload: { name: "temporary", kind: "text" }
+    });
+    const roomId = created.json().room.id as string;
+    await app.server.inject({
+      method: "POST",
+      url: `/api/rooms/${roomId}/messages`,
+      cookies: owner.cookies,
+      payload: { body: "delete with channel" }
+    });
+
+    const forbidden = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/${defaultServerId}/rooms/${roomId}`,
+      cookies: member.cookies
+    });
+    assert.equal(forbidden.statusCode, 403);
+
+    const deleted = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/${defaultServerId}/rooms/${roomId}`,
+      cookies: owner.cookies
+    });
+    assert.equal(deleted.statusCode, 204);
+    assert.equal((app.dumpTables().rooms as Array<{ id: string }>).some((room) => room.id === roomId), false);
+    assert.equal((app.dumpTables().messages as Array<{ room_id: string }>).some((message) => message.room_id === roomId), false);
+
+    const lobbyDelete = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/${defaultServerId}/rooms/lobby`,
+      cookies: owner.cookies
+    });
+    assert.equal(lobbyDelete.statusCode, 204);
+    const lastRoom = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/${defaultServerId}/rooms/general`,
+      cookies: owner.cookies
+    });
+    assert.equal(lastRoom.statusCode, 409);
+    assert.deepEqual(lastRoom.json(), { error: "last_room" });
+  });
+
+  it("deletes a server atomically while preserving global identities and audit history", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ada");
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Disposable server" }
+    });
+    const serverId = created.json().server.id as string;
+    const invite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Ada disposable", expiresInHours: 2 }
+    });
+    await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: invite.json().invite.token }
+    });
+    await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/members/${member.user.id}/access-links`,
+      cookies: owner.cookies
+    });
+    const rooms = (await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${serverId}/rooms`,
+      cookies: owner.cookies
+    })).json().rooms as Array<{ id: string; kind: string }>;
+    const textRoom = rooms.find((room) => room.kind === "text");
+    assert.ok(textRoom);
+    await app.server.inject({
+      method: "POST",
+      url: `/api/rooms/${textRoom.id}/messages`,
+      cookies: owner.cookies,
+      payload: { body: "cascade me" }
+    });
+    const usersBefore = (app.dumpTables().users as unknown[]).length;
+    const sessionsBefore = (app.dumpTables().sessions as unknown[]).length;
+
+    const forbidden = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/${serverId}`,
+      cookies: member.cookies
+    });
+    assert.equal(forbidden.statusCode, 403);
+
+    const deleted = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/${serverId}`,
+      cookies: owner.cookies
+    });
+    assert.equal(deleted.statusCode, 204);
+    const tables = app.dumpTables();
+    assert.equal((tables.servers as Array<{ id: string }>).some((server) => server.id === serverId), false);
+    assert.equal((tables.rooms as Array<{ server_id: string }>).some((room) => room.server_id === serverId), false);
+    assert.equal((tables.serverMembers as Array<{ server_id: string }>).some((membership) => membership.server_id === serverId), false);
+    assert.equal((tables.invites as Array<{ server_id: string }>).some((entry) => entry.server_id === serverId), false);
+    assert.equal((tables.accessClaims as Array<{ server_id: string }>).some((entry) => entry.server_id === serverId), false);
+    assert.equal((tables.messages as Array<{ room_id: string }>).some((message) => rooms.some((room) => room.id === message.room_id)), false);
+    assert.equal((tables.users as unknown[]).length, usersBefore);
+    assert.equal((tables.sessions as unknown[]).length, sessionsBefore);
+    assert.ok((tables.auditEvents as Array<{ action: string; server_id: string }>).some((event) => event.action === "server.deleted" && event.server_id === serverId));
+
+    const lastServer = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/${defaultServerId}`,
+      cookies: owner.cookies
+    });
+    assert.equal(lastServer.statusCode, 409);
+    assert.deepEqual(lastServer.json(), { error: "last_owner_server" });
+  });
+
+  it("allows deletion when the owner still has active member access elsewhere", async () => {
+    const owner = await bootstrapOwner(app);
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Owned server" }
+    });
+    const ownedServerId = created.json().server.id as string;
+    run(app.sqlite, "update server_members set role = 'member' where server_id = ? and user_id = ?", [defaultServerId, owner.user.id]);
+
+    const deleted = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/${ownedServerId}`,
+      cookies: owner.cookies
+    });
+
+    assert.equal(deleted.statusCode, 204);
   });
 });
 

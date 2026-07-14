@@ -11,6 +11,7 @@ interface StorageLike {
 
 interface StoredVoiceResume {
   expiresAt: number;
+  microphoneEnabled: boolean;
   roomId: string;
   targets: VisualTarget[];
 }
@@ -20,10 +21,12 @@ export function writeVoiceResume(
   roomId: string,
   targets: VisualTarget[],
   now = Date.now(),
-  expiresAt = now + voiceResumeWindowMs
+  expiresAt = now + voiceResumeWindowMs,
+  microphoneEnabled = true
 ) {
   const value: StoredVoiceResume = {
     expiresAt,
+    microphoneEnabled,
     roomId,
     targets: uniqueVisualTargets(targets)
   };
@@ -47,7 +50,12 @@ export function readVoiceResume(storage: StorageLike, now = Date.now()) {
       storage.removeItem(voiceResumeStorageKey);
       return null;
     }
-    return { expiresAt: value.expiresAt, roomId: value.roomId, targets: uniqueVisualTargets(value.targets) };
+    return {
+      expiresAt: value.expiresAt,
+      microphoneEnabled: value.microphoneEnabled !== false,
+      roomId: value.roomId,
+      targets: uniqueVisualTargets(value.targets)
+    };
   } catch {
     storage.removeItem(voiceResumeStorageKey);
     return null;

@@ -515,6 +515,29 @@ h3 {
   width: 100%;
 }
 
+.channel-row {
+  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+}
+
+.channel-action-menu > summary {
+  border-color: transparent;
+  color: color-mix(in oklab, var(--on-scene), transparent 35%);
+  height: 28px;
+  width: 28px;
+}
+
+.channel-action-menu .member-action-panel {
+  color: var(--fg);
+  min-width: 160px;
+}
+
+.channel-action-menu .btn {
+  width: 100%;
+}
+
 .channel-item:hover,
 .channel-item.is-active {
   background: color-mix(in oklab, var(--accent), var(--scene) 88%);
@@ -595,8 +618,9 @@ h3 {
   color: color-mix(in oklab, var(--on-scene), transparent 20%);
   display: grid;
   gap: 7px;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   min-width: 0;
+  position: relative;
 }
 
 .voice-channel-user.is-speaking .avatar {
@@ -622,6 +646,142 @@ h3 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.voice-channel-user-name {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.voice-channel-user-name > span:first-child:not(.voice-live-popover),
+.voice-live-publisher {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-live-popover {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  position: relative;
+}
+
+.voice-live-publisher {
+  min-width: 0;
+}
+
+.voice-live-trigger {
+  background: transparent;
+  border: 0;
+  color: var(--danger);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  padding: 2px 0;
+}
+
+.voice-live-trigger:hover,
+.voice-live-trigger:focus-visible {
+  text-decoration: underline;
+}
+
+.voice-live-card {
+  background: var(--graphite-a);
+  border: 1px solid var(--graphite-c);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  color: var(--on-scene);
+  opacity: 0;
+  padding: 4px;
+  pointer-events: none;
+  position: fixed;
+  transform: translateX(-3px) scale(0.98);
+  transition: opacity 120ms ease, transform 120ms ease;
+  visibility: hidden;
+  width: 184px;
+  z-index: var(--layer-popover);
+}
+
+.voice-live-popover.is-open .voice-live-card {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0) scale(1);
+  visibility: visible;
+}
+
+.voice-live-preview {
+  align-content: center;
+  background: color-mix(in oklab, var(--graphite-b), var(--accent) 4%);
+  border: 0;
+  border-radius: 9px;
+  color: var(--on-scene);
+  cursor: pointer;
+  display: grid;
+  gap: 7px;
+  height: 100px;
+  justify-items: center;
+  overflow: hidden;
+  padding: 12px;
+  position: relative;
+  width: 100%;
+}
+
+.voice-live-preview-icon {
+  align-items: center;
+  background: color-mix(in oklab, var(--graphite-c), var(--accent) 12%);
+  border: 1px solid color-mix(in oklab, var(--accent), transparent 68%);
+  border-radius: 999px;
+  display: flex;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.voice-live-preview-name {
+  font-size: 12px;
+  font-weight: 620;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-live-preview-overlay {
+  align-items: center;
+  background: rgb(3 3 1 / 0.62);
+  display: flex;
+  font-size: 12px;
+  font-weight: 650;
+  inset: 0;
+  justify-content: center;
+  opacity: 0;
+  position: absolute;
+  transition: opacity 120ms ease;
+}
+
+.voice-live-preview:hover .voice-live-preview-overlay,
+.voice-live-preview:focus-visible .voice-live-preview-overlay {
+  opacity: 1;
+}
+
+.rail-member-menu > summary {
+  border-color: transparent;
+  color: color-mix(in oklab, var(--on-scene), transparent 28%);
+  height: 26px;
+  width: 26px;
+}
+
+.rail-member-menu .member-action-panel {
+  color: var(--fg);
+  min-width: 210px;
+  right: 0;
 }
 
 .theme-options {
@@ -2119,12 +2279,14 @@ h3 {
 }
 
 .owner-grid.members-grid {
+  --member-table-columns: minmax(160px, 1fr) 88px 104px 300px;
+
   grid-template-columns: minmax(0, 1fr) minmax(240px, 0.35fr);
 }
 
 .members-grid .table-head,
 .members-grid .table-row {
-  grid-template-columns: minmax(160px, 1.2fr) 0.55fr 0.65fr minmax(250px, auto);
+  grid-template-columns: var(--member-table-columns);
 }
 
 .table-actions {

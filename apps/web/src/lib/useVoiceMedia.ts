@@ -11,7 +11,15 @@ import type {
 } from "@voxly/shared";
 import type { VoxlySocket } from "../socket.js";
 import { createInitialVoiceControls, toggleVoiceControl, type VoiceControlKey, type VoiceControls } from "./voiceControls.js";
-import { configureScreenTrack, mediaConstraintsFor, preferScreenSenderResolution, replaceMicrophoneTrack } from "./voiceMedia.js";
+import {
+  configureScreenTrack,
+  effectiveVoiceMediaState,
+  mediaConstraintsFor,
+  preferScreenSenderResolution,
+  replaceMicrophoneTrack,
+  watchMicrophoneStreamEnd
+} from "./voiceMedia.js";
+import { requestVoiceJoin } from "./voiceJoin.js";
 import { buildMicrophoneConstraints } from "./audioDevices.js";
 import { releaseUnusedSharedAudioOutput } from "./audioOutput.js";
 import {
@@ -29,6 +37,11 @@ import {
   type RemoteMediaKind,
   type RemoteStreamState
 } from "./voiceStreams.js";
+import {
+  createVoiceActivityState,
+  updateVoiceActivity,
+  voiceActivitySampleMs
+} from "./voiceActivity.js";
 
 interface LocalPreviewState {
   kind: "camera" | "screen";
@@ -41,6 +54,10 @@ interface UseVoiceMediaInput {
   iceServers: RTCIceServer[];
   voiceRoomIds: string[];
   microphoneDeviceId?: string;
+}
+
+export interface VoiceJoinOptions {
+  microphoneEnabled?: boolean;
 }
 
 type PeerSignal =
@@ -88,12 +105,15 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const recoverPeerRef = useRef<(peerUserId: string) => void>(() => undefined);
   const resumeAttemptRef = useRef(false);
   const recoveryInProgressRef = useRef(false);
+  const joinAttemptRef = useRef(0);
   const resumeDeadlineRef = useRef<number | null>(null);
   const resumeDeadlineTimerRef = useRef<number | null>(null);
   const controlsRef = useRef(controls);
   const voiceRoomIdsRef = useRef(voiceRoomIds);
   const speakingRef = useRef(false);
   const speakingCleanupRef = useRef<(() => void) | null>(null);
+  const microphoneEndedCleanupRef = useRef<(() => void) | null>(null);
+  const microphoneEnabledRef = useRef(true);
   const roomRef = useRef<string | null>(null);
   const userIdRef = useRef<string | null>(null);
 
@@ -121,7 +141,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       ? now + voiceResumeWindowMs
       : resumeDeadlineRef.current;
     resumeDeadlineRef.current = expiresAt;
-    if (storage) writeVoiceResume(storage, roomRef.current, targets, now, expiresAt);
+    if (storage) writeVoiceResume(storage, roomRef.current, targets, now, expiresAt, microphoneEnabledRef.current);
   }, []);
 
   const emitMediaState = useCallback((media: Partial<VoiceMediaState>) => {
@@ -161,6 +181,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       const analyser = context.createAnalyser();
       analyser.fftSize = 512;
       const samples = new Uint8Array(analyser.fftSize);
+      let activity = createVoiceActivityState();
       source.connect(analyser);
 
       const interval = window.setInterval(() => {
@@ -176,8 +197,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           const normalized = (value - 128) / 128;
           sum += normalized * normalized;
         }
-        setLocalSpeaking(Math.sqrt(sum / samples.length) > 0.045);
-      }, 220);
+        activity = updateVoiceActivity(activity, Math.sqrt(sum / samples.length), Date.now());
+        setLocalSpeaking(activity.speaking);
+      }, voiceActivitySampleMs);
 
       speakingCleanupRef.current = () => {
         window.clearInterval(interval);
@@ -191,6 +213,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
 
   const stopStream = useCallback((kind: LocalStreamKind) => {
     const stream = localStreamsRef.current[kind];
+    if (kind === "mic") {
+      microphoneEndedCleanupRef.current?.();
+      microphoneEndedCleanupRef.current = null;
+    }
     stream?.getTracks().forEach((track) => track.stop());
     delete localStreamsRef.current[kind];
     if (kind === "mic") {
@@ -434,6 +460,28 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     }
   }, [sendOffer, syncLocalTracks]);
 
+  const activateMicrophoneStream = useCallback((stream: MediaStream) => {
+    microphoneEndedCleanupRef.current?.();
+    localStreamsRef.current.mic = stream;
+    microphoneEndedCleanupRef.current = watchMicrophoneStreamEnd(stream, () => {
+      if (localStreamsRef.current.mic !== stream) return;
+      speakingRef.current = false;
+      stopStream("mic");
+      microphoneEnabledRef.current = false;
+      const nextControls: VoiceControls = {
+        ...controlsRef.current,
+        mic: { ...controlsRef.current.mic, on: false }
+      };
+      controlsRef.current = nextControls;
+      setControls(nextControls);
+      setError("Microphone disconnected.");
+      void emitMediaState({ mic: false, speaking: false });
+      persistVoiceResume();
+      renegotiatePeers();
+    });
+    startSpeakingMonitor(stream);
+  }, [emitMediaState, persistVoiceResume, renegotiatePeers, startSpeakingMonitor, stopStream]);
+
   const setVisualSubscriptions = useCallback((targets: VisualTarget[]) => {
     if (!socket || !roomRef.current) {
       return Promise.resolve<VoiceSetVisualSubscriptionsAck>({ ok: false, error: "not_in_voice_room" });
@@ -482,40 +530,89 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     }
   }, [ensurePeer, persistVoiceResume, removePeer, sendOffer]);
 
-  const join = useCallback(async (roomId: string, restoredTargets: VisualTarget[] = []) => {
+  const join = useCallback(async (roomId: string, restoredTargets: VisualTarget[] = [], options: VoiceJoinOptions = {}) => {
     if (!socket || !user) {
       setError("Socket is not connected.");
       return false;
     }
     setError("");
-    try {
-      const mic = localStreamsRef.current.mic ?? await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceIdRef.current));
-      localStreamsRef.current.mic = mic;
-      startSpeakingMonitor(mic);
-      roomRef.current = roomId;
-      setActiveRoomId(roomId);
-      setControls((current) => ({
-        ...current,
-        mic: { ...current.mic, on: true },
-        deafen: { ...current.deafen, on: false }
-      }));
-      socket.emit("voice:join", roomId);
-      await emitMediaState({ mic: true, deafened: false, speaking: false });
-      socket.emit("voice:snapshot", roomId, (nextSnapshot) => {
-        applyVoiceSnapshot(nextSnapshot);
-      });
-      if (restoredTargets.length > 0) {
-        await setVisualSubscriptions(restoredTargets);
-      } else {
-        persistVoiceResume([]);
+    const previousControls = controlsRef.current;
+    const previousMic = localStreamsRef.current.mic;
+    const previousTrackStates = previousMic?.getAudioTracks().map((track) => [track, track.enabled] as const) ?? [];
+    const attempt = ++joinAttemptRef.current;
+    const microphoneEnabled = options.microphoneEnabled ?? true;
+    let mic = previousMic;
+    let acquiredMic = false;
+
+    if (microphoneEnabled) {
+      if (!mic) {
+        try {
+          mic = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceIdRef.current));
+          acquiredMic = true;
+        } catch {
+          if (attempt === joinAttemptRef.current) {
+            setError("Microphone permission is required to join voice.");
+          }
+          return false;
+        }
       }
-      return true;
-    } catch {
-      setError("Microphone permission is required to join voice.");
-      stopStream("mic");
+      mic.getAudioTracks().forEach((track) => { track.enabled = true; });
+    }
+
+    const nextControls: VoiceControls = {
+      ...previousControls,
+      mic: { ...previousControls.mic, on: microphoneEnabled },
+      deafen: { ...previousControls.deafen, on: false }
+    };
+    const candidateStreams = {
+      ...localStreamsRef.current,
+      mic: microphoneEnabled ? mic : undefined
+    };
+    const response = await requestVoiceJoin(socket, {
+      roomId,
+      media: effectiveVoiceMediaState(nextControls, candidateStreams)
+    });
+
+    if (attempt !== joinAttemptRef.current || !response.ok) {
+      if (acquiredMic) {
+        mic?.getTracks().forEach((track) => track.stop());
+      } else {
+        previousTrackStates.forEach(([track, enabled]) => { track.enabled = enabled; });
+      }
+      if (attempt === joinAttemptRef.current && !response.ok) {
+        setError("Could not join voice.");
+      }
       return false;
     }
-  }, [applyVoiceSnapshot, emitMediaState, persistVoiceResume, setVisualSubscriptions, socket, startSpeakingMonitor, stopStream, user]);
+
+    const acceptedControls: VoiceControls = {
+      ...nextControls,
+      mic: { ...nextControls.mic, on: response.state.media.mic },
+      deafen: { ...nextControls.deafen, on: response.state.media.deafened }
+    };
+    microphoneEnabledRef.current = response.state.media.mic;
+    controlsRef.current = acceptedControls;
+    roomRef.current = roomId;
+    setControls(acceptedControls);
+    setActiveRoomId(roomId);
+    if (!microphoneEnabled) {
+      stopStream("mic");
+    } else if (mic) {
+      mic.getAudioTracks().forEach((track) => {
+        track.enabled = response.state.media.mic && track.readyState === "live";
+      });
+      activateMicrophoneStream(mic);
+    }
+    socket.emit("voice:snapshot", roomId, (nextSnapshot) => {
+      applyVoiceSnapshot(nextSnapshot);
+    });
+    if (restoredTargets.length > 0) {
+      await setVisualSubscriptions(restoredTargets);
+    } else {
+      persistVoiceResume([]);
+    }
+    return true;
+  }, [activateMicrophoneStream, applyVoiceSnapshot, persistVoiceResume, setVisualSubscriptions, socket, stopStream, user]);
 
   useEffect(() => {
     const previousStream = localStreamsRef.current.mic;
@@ -554,9 +651,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
             nextStream.getTracks().forEach((track) => track.stop());
             return;
           }
-          activeStream.getTracks().forEach((track) => track.stop());
-          localStreamsRef.current.mic = nextStream;
-          startSpeakingMonitor(nextStream);
+          stopStream("mic");
+          activateMicrophoneStream(nextStream);
           setError("");
         }).catch(() => {
           nextStream.getTracks().forEach((track) => track.stop());
@@ -572,9 +668,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     return () => {
       cancelled = true;
     };
-  }, [microphoneDeviceId, startSpeakingMonitor]);
+  }, [activateMicrophoneStream, microphoneDeviceId, stopStream]);
 
   const leave = useCallback(() => {
+    joinAttemptRef.current += 1;
     microphoneSwitchRef.current += 1;
     if (socket && roomRef.current) {
       socket.emit("voice:leave", roomRef.current);
@@ -603,37 +700,87 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   }, [closePeers, socket, stopStream]);
 
   const toggleMic = useCallback(async () => {
-    const stream = localStreamsRef.current.mic;
-    if (!stream || controls.deafen.on) return;
-    const next = !controls.mic.on;
-    stream.getAudioTracks().forEach((track) => {
-      track.enabled = next;
-    });
-    if (!next) {
-      setLocalSpeaking(false);
+    let stream = localStreamsRef.current.mic;
+    if (controlsRef.current.deafen.on) return;
+    if (stream && !stream.getAudioTracks().some((track) => track.readyState === "live")) {
+      speakingRef.current = false;
+      stopStream("mic");
+      stream = undefined;
+      await emitMediaState({ mic: false, speaking: false });
     }
-    setControls((current) => ({ ...current, mic: { ...current.mic, on: next } }));
-    await emitMediaState({ mic: next, speaking: next ? speakingRef.current : false });
-  }, [controls.deafen.on, controls.mic.on, emitMediaState, setLocalSpeaking]);
-
-  const toggleDeafen = useCallback(async () => {
-    const next = !controls.deafen.on;
-    if (next) {
-      localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
-        track.enabled = false;
-      });
-      setLocalSpeaking(false);
-      setControls((current) => toggleVoiceControl(current, "deafen"));
-      await emitMediaState({ deafened: true, mic: false, speaking: false });
+    if (!stream) {
+      setError("");
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceIdRef.current));
+        activateMicrophoneStream(stream);
+        const requestedControls: VoiceControls = {
+          ...controlsRef.current,
+          mic: { ...controlsRef.current.mic, on: true }
+        };
+        const media = effectiveVoiceMediaState(requestedControls, localStreamsRef.current);
+        const nextControls: VoiceControls = {
+          ...requestedControls,
+          mic: { ...requestedControls.mic, on: media.mic }
+        };
+        microphoneEnabledRef.current = media.mic;
+        controlsRef.current = nextControls;
+        setControls(nextControls);
+        await emitMediaState({ mic: media.mic, speaking: false });
+        persistVoiceResume();
+        renegotiatePeers();
+      } catch {
+        setError("Microphone permission was denied.");
+      }
       return;
     }
 
-    localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
-      track.enabled = true;
+    const requestedOn = !controlsRef.current.mic.on;
+    stream.getAudioTracks().forEach((track) => {
+      track.enabled = requestedOn && track.readyState === "live";
     });
-    setControls((current) => toggleVoiceControl(current, "deafen"));
-    await emitMediaState({ deafened: false, mic: true, speaking: false });
-  }, [controls.deafen.on, emitMediaState, setLocalSpeaking]);
+    const requestedControls: VoiceControls = {
+      ...controlsRef.current,
+      mic: { ...controlsRef.current.mic, on: requestedOn }
+    };
+    const media = effectiveVoiceMediaState(requestedControls, localStreamsRef.current);
+    const nextControls: VoiceControls = {
+      ...requestedControls,
+      mic: { ...requestedControls.mic, on: media.mic }
+    };
+    if (!media.mic) {
+      speakingRef.current = false;
+    }
+    controlsRef.current = nextControls;
+    setControls(nextControls);
+    await emitMediaState({ mic: media.mic, speaking: media.mic ? speakingRef.current : false });
+  }, [activateMicrophoneStream, emitMediaState, persistVoiceResume, renegotiatePeers, stopStream]);
+
+  const toggleDeafen = useCallback(async () => {
+    const nextDeafened = !controlsRef.current.deafen.on;
+    if (nextDeafened) {
+      localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
+        track.enabled = false;
+      });
+      speakingRef.current = false;
+      const nextControls = toggleVoiceControl(controlsRef.current, "deafen");
+      controlsRef.current = nextControls;
+      setControls(nextControls);
+      const media = effectiveVoiceMediaState(nextControls, localStreamsRef.current);
+      await emitMediaState({ deafened: media.deafened, mic: media.mic, speaking: false });
+      return;
+    }
+
+    const microphoneAvailable = localStreamsRef.current.mic?.getAudioTracks()
+      .some((track) => track.readyState === "live") ?? false;
+    localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
+      track.enabled = track.readyState === "live";
+    });
+    const nextControls = toggleVoiceControl(controlsRef.current, "deafen", { microphoneAvailable });
+    controlsRef.current = nextControls;
+    setControls(nextControls);
+    const media = effectiveVoiceMediaState(nextControls, localStreamsRef.current);
+    await emitMediaState({ deafened: media.deafened, mic: media.mic, speaking: false });
+  }, [emitMediaState]);
 
   const toggleCamera = useCallback(async () => {
     if (!activeRoomId) return;
@@ -809,18 +956,29 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           window.clearTimeout(resumeDeadlineTimerRef.current);
           resumeDeadlineTimerRef.current = null;
         }
-        socket.emit("voice:join", activeRoomId);
-        requestKnownSnapshots();
-        void emitMediaState({
-          mic: Boolean(localStreamsRef.current.mic),
-          camera: false,
-          screen: false,
-          deafened: controlsRef.current.deafen.on,
-          speaking: false
-        });
-        void setVisualSubscriptions(visualTargetsRef.current);
-        recoveryInProgressRef.current = false;
-        resumeDeadlineRef.current = null;
+        const attempt = ++joinAttemptRef.current;
+        const reconnect = async () => {
+          const media = effectiveVoiceMediaState(controlsRef.current, localStreamsRef.current);
+          const response = await requestVoiceJoin(socket, {
+            roomId: activeRoomId,
+            media
+          });
+          if (attempt !== joinAttemptRef.current || roomRef.current !== activeRoomId || !socket.connected) {
+            return;
+          }
+          if (!response.ok) {
+            setError("Could not restore voice connection.");
+            return;
+          }
+          requestKnownSnapshots();
+          await setVisualSubscriptions(visualTargetsRef.current);
+          if (attempt !== joinAttemptRef.current || roomRef.current !== activeRoomId || !socket.connected) {
+            return;
+          }
+          recoveryInProgressRef.current = false;
+          resumeDeadlineRef.current = null;
+        };
+        void reconnect();
         return;
       }
 
@@ -831,7 +989,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       resumeDeadlineRef.current = record.expiresAt;
       recoveryInProgressRef.current = true;
       resumeAttemptRef.current = true;
-      void join(record.roomId, record.targets).finally(() => {
+      void join(record.roomId, record.targets, { microphoneEnabled: record.microphoneEnabled }).finally(() => {
         if (roomRef.current === record.roomId) {
           recoveryInProgressRef.current = false;
           resumeDeadlineRef.current = null;
@@ -841,6 +999,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     };
     const onDisconnect = () => {
       if (!roomRef.current) return;
+      joinAttemptRef.current += 1;
       persistVoiceResume(visualTargetsRef.current, !recoveryInProgressRef.current);
       recoveryInProgressRef.current = true;
       if (resumeDeadlineTimerRef.current) window.clearTimeout(resumeDeadlineTimerRef.current);
@@ -865,7 +1024,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
     };
-  }, [closePeers, emitMediaState, join, leave, persistVoiceResume, requestSnapshot, setVisualSubscriptions, socket, stopStream]);
+  }, [closePeers, join, leave, persistVoiceResume, requestSnapshot, setVisualSubscriptions, socket, stopStream]);
 
   useEffect(() => {
     if (!socket) return;

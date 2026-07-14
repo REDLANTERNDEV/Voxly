@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
+import type { VoiceJoinAck, VoiceMediaState } from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 
 describe("Voxly realtime MVP", () => {
@@ -49,11 +50,69 @@ describe("Voxly realtime MVP", () => {
     });
     const voiceRoom = roomsResponse.json().rooms.find((room: { kind: string }) => room.kind === "voice");
 
-    const joined = await onceEvent<{ roomId: string; user: { nickname: string } }>(ownerSocket, "voice:joined", () => {
-      memberSocket.emit("voice:join", voiceRoom.id);
-    });
+    const joinedPromise = onceEvent<{ roomId: string; user: { nickname: string } }>(ownerSocket, "voice:joined");
+    await joinVoice(memberSocket, voiceRoom.id);
+    const joined = await joinedPromise;
     assert.equal(joined.roomId, voiceRoom.id);
     assert.equal(joined.user.nickname, "Ece");
+  });
+
+  it("joins with the requested muted media in one authoritative snapshot", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Muted member");
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(ownerSocket, memberSocket);
+
+    const snapshotPromise = onceEvent<{
+      roomId: string;
+      members: Array<{ user: { userId: string }; media: VoiceMediaState }>;
+    }>(ownerSocket, "voice:snapshot");
+    const response = await joinVoice(memberSocket, "lobby", {
+      ...defaultJoinMedia,
+      mic: false,
+      speaking: true
+    });
+    const snapshot = await snapshotPromise;
+
+    assert.equal(response.ok, true);
+    assert.equal(response.ok && response.state.media.mic, false);
+    assert.equal(response.ok && response.state.media.speaking, false);
+    const memberMedia = snapshot.members.find((entry) => entry.user.userId === member.user.id)?.media;
+    assert.equal(memberMedia?.mic, false);
+    assert.equal(memberMedia?.speaking, false);
+    await expectNoEvent(ownerSocket, "voice:snapshot");
+  });
+
+  it("acknowledges missing and forbidden voice rooms without publishing membership", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Restricted member");
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Private voice server" }
+    });
+    const privateServerId = created.json().server.id as string;
+    const rooms = (await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${privateServerId}/rooms`,
+      cookies: owner.cookies
+    })).json().rooms as Array<{ id: string; kind: string }>;
+    const privateVoiceRoom = rooms.find((room) => room.kind === "voice");
+    assert.ok(privateVoiceRoom);
+
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(memberSocket);
+
+    assert.deepEqual(await joinVoice(memberSocket, "missing-room"), {
+      ok: false,
+      error: "room_not_found"
+    });
+    assert.deepEqual(await joinVoice(memberSocket, privateVoiceRoom.id), {
+      ok: false,
+      error: "forbidden"
+    });
   });
 
   it("tracks voice media state and enforces the visual publisher limit", async () => {
@@ -69,9 +128,7 @@ describe("Voxly realtime MVP", () => {
     );
     sockets.push(...socketsForMembers);
 
-    for (const socket of socketsForMembers) {
-      socket.emit("voice:join", "lobby");
-    }
+    await Promise.all(socketsForMembers.map((socket) => joinVoice(socket, "lobby")));
 
     const firstThree = await Promise.all(
       socketsForMembers.slice(0, 3).map((socket) =>
@@ -109,8 +166,10 @@ describe("Voxly realtime MVP", () => {
     const outsiderSocket = await connectSocket(baseUrl, outsider.cookies.voxly_session);
     sockets.push(publisherSocket, viewerSocket, outsiderSocket);
 
-    publisherSocket.emit("voice:join", "lobby");
-    viewerSocket.emit("voice:join", "lobby");
+    await Promise.all([
+      joinVoice(publisherSocket, "lobby"),
+      joinVoice(viewerSocket, "lobby")
+    ]);
     await emitWithAck(viewerSocket, "voice:snapshot", "lobby");
     await emitWithAck(publisherSocket, "voice:setMediaState", {
       roomId: "lobby",
@@ -163,8 +222,10 @@ describe("Voxly realtime MVP", () => {
     const publisherSocket = await connectSocket(baseUrl, publisher.cookies.voxly_session);
     const viewerSocket = await connectSocket(baseUrl, viewer.cookies.voxly_session);
     sockets.push(publisherSocket, viewerSocket);
-    publisherSocket.emit("voice:join", "lobby");
-    viewerSocket.emit("voice:join", "lobby");
+    await Promise.all([
+      joinVoice(publisherSocket, "lobby"),
+      joinVoice(viewerSocket, "lobby")
+    ]);
     await emitWithAck(publisherSocket, "voice:setMediaState", { roomId: "lobby", media: { screen: true } });
 
     await onceEvent(publisherSocket, "voice:visualSubscriberState", () => {
@@ -198,7 +259,11 @@ describe("Voxly realtime MVP", () => {
     const secondViewerSocket = await connectSocket(baseUrl, secondViewer.cookies.voxly_session);
     sockets.push(publisherSocket, firstViewerSocket, secondViewerSocket);
 
-    for (const socket of [publisherSocket, firstViewerSocket, secondViewerSocket]) socket.emit("voice:join", "lobby");
+    await Promise.all([
+      joinVoice(publisherSocket, "lobby"),
+      joinVoice(firstViewerSocket, "lobby"),
+      joinVoice(secondViewerSocket, "lobby")
+    ]);
     await emitWithAck(publisherSocket, "voice:setMediaState", { roomId: "lobby", media: { screen: true } });
     const target = [{ publisherUserId: publisher.user.id, kind: "screen" }];
 
@@ -224,7 +289,7 @@ describe("Voxly realtime MVP", () => {
 
     const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
     sockets.push(memberSocket);
-    memberSocket.emit("voice:join", "lobby");
+    await joinVoice(memberSocket, "lobby");
     await emitWithAck(memberSocket, "voice:snapshot", "lobby");
 
     const speaking = await emitWithAck<{
@@ -282,13 +347,12 @@ describe("Voxly realtime MVP", () => {
     const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
     sockets.push(observerSocket, memberSocket);
 
-    const snapshot = await onceEvent<{ roomId: string; members: Array<{ user: { nickname: string } }> }>(
+    const snapshotPromise = onceEvent<{ roomId: string; members: Array<{ user: { nickname: string } }> }>(
       observerSocket,
-      "voice:snapshot",
-      () => {
-        memberSocket.emit("voice:join", "lobby");
-      }
+      "voice:snapshot"
     );
+    await joinVoice(memberSocket, "lobby");
+    const snapshot = await snapshotPromise;
 
     assert.equal(snapshot.roomId, "lobby");
     assert.equal(snapshot.members.some((item) => item.user.nickname === "Viewer"), true);
@@ -305,8 +369,10 @@ describe("Voxly realtime MVP", () => {
     const outsiderSocket = await connectSocket(baseUrl, outsider.cookies.voxly_session);
     sockets.push(senderSocket, receiverSocket, outsiderSocket);
 
-    senderSocket.emit("voice:join", "lobby");
-    receiverSocket.emit("voice:join", "lobby");
+    await Promise.all([
+      joinVoice(senderSocket, "lobby"),
+      joinVoice(receiverSocket, "lobby")
+    ]);
     await emitWithAck(receiverSocket, "voice:snapshot", "lobby");
     await emitWithAck(senderSocket, "voice:snapshot", "lobby");
 
@@ -367,13 +433,16 @@ describe("Voxly realtime MVP", () => {
     const outsiderSocket = await connectSocket(baseUrl, outsider.cookies.voxly_session);
     sockets.push(memberSocket, outsiderSocket);
 
-    memberSocket.emit("voice:join", "lobby");
+    await joinVoice(memberSocket, "lobby");
     await emitWithAck(memberSocket, "voice:snapshot", "lobby");
-    memberSocket.emit("voice:join", secondLobbyId);
+    await joinVoice(memberSocket, secondLobbyId);
     const defaultLobby = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(memberSocket, "voice:snapshot", "lobby");
     assert.equal(defaultLobby.members.some((entry) => entry.user.userId === member.user.id), false);
 
-    outsiderSocket.emit("voice:join", secondLobbyId);
+    assert.deepEqual(await joinVoice(outsiderSocket, secondLobbyId), {
+      ok: false,
+      error: "forbidden"
+    });
     const protectedLobby = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(outsiderSocket, "voice:snapshot", secondLobbyId);
     assert.equal(protectedLobby.members.some((entry) => entry.user.userId === outsider.user.id), false);
   });
@@ -421,8 +490,10 @@ describe("Voxly realtime MVP", () => {
     const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
     sockets.push(ownerSocket, memberSocket);
 
-    ownerSocket.emit("voice:join", "lobby");
-    memberSocket.emit("voice:join", "lobby");
+    await Promise.all([
+      joinVoice(ownerSocket, "lobby"),
+      joinVoice(memberSocket, "lobby")
+    ]);
     await emitWithAck(memberSocket, "voice:snapshot", "lobby");
 
     const disconnected = await app.server.inject({
@@ -434,7 +505,7 @@ describe("Voxly realtime MVP", () => {
     const afterDisconnect = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(ownerSocket, "voice:snapshot", "lobby");
     assert.equal(afterDisconnect.members.some((entry) => entry.user.userId === member.user.id), false);
 
-    memberSocket.emit("voice:join", "lobby");
+    await joinVoice(memberSocket, "lobby");
     await emitWithAck(memberSocket, "voice:snapshot", "lobby");
     const offlinePromise = onceEvent<{ serverId: string; userId: string }>(ownerSocket, "presence:serverOffline");
     const banned = await app.server.inject({
@@ -531,6 +602,81 @@ describe("Voxly realtime MVP", () => {
     assert.equal(unbanned.statusCode, 204);
     assert.deepEqual(await unbannedChanged, { serverId: "the-basement" });
   });
+
+  it("forces members out and invalidates room lists when an active voice channel is deleted", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ada");
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(ownerSocket, memberSocket);
+    await joinVoice(memberSocket, "lobby");
+    await waitForSocketRoom(app, memberSocket, "voice:lobby");
+
+    const forced = onceEvent<{ roomId: string; reason: string }>(memberSocket, "voice:forceLeave");
+    const changed = onceEvent<{ serverId: string; deletedRoomId: string }>(ownerSocket, "server:roomsChanged");
+    const response = await app.server.inject({
+      method: "DELETE",
+      url: "/api/servers/the-basement/rooms/lobby",
+      cookies: owner.cookies
+    });
+
+    assert.equal(response.statusCode, 204);
+    assert.deepEqual(await forced, { roomId: "lobby", reason: "room_deleted" });
+    assert.deepEqual(await changed, { serverId: "the-basement", deletedRoomId: "lobby" });
+    assert.equal(app.io.sockets.sockets.get(memberSocket.id ?? "")?.rooms.has("voice:lobby"), false);
+  });
+
+  it("forces voice cleanup and notifies every affected client when a server is deleted", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ada");
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Temporary" }
+    });
+    const serverId = created.json().server.id as string;
+    const invite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Temporary access" }
+    });
+    await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: invite.json().invite.token }
+    });
+    const rooms = (await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${serverId}/rooms`,
+      cookies: member.cookies
+    })).json().rooms as Array<{ id: string; kind: string }>;
+    const voiceRoom = rooms.find((room) => room.kind === "voice");
+    assert.ok(voiceRoom);
+
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(ownerSocket, memberSocket);
+    await joinVoice(memberSocket, voiceRoom.id);
+    await waitForSocketRoom(app, memberSocket, `voice:${voiceRoom.id}`);
+
+    const ownerDeleted = onceEvent<{ serverId: string }>(ownerSocket, "server:deleted");
+    const memberDeleted = onceEvent<{ serverId: string }>(memberSocket, "server:deleted");
+    const forced = onceEvent<{ roomId: string; reason: string }>(memberSocket, "voice:forceLeave");
+    const response = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/${serverId}`,
+      cookies: owner.cookies
+    });
+
+    assert.equal(response.statusCode, 204);
+    assert.deepEqual(await forced, { roomId: voiceRoom.id, reason: "server_deleted" });
+    assert.deepEqual(await ownerDeleted, { serverId });
+    assert.deepEqual(await memberDeleted, { serverId });
+    assert.equal(app.io.sockets.sockets.get(memberSocket.id ?? "")?.rooms.has(`voice:${voiceRoom.id}`), false);
+  });
 });
 
 async function bootstrapOwner(app: VoxlyApp) {
@@ -564,6 +710,22 @@ function emitWithAck<T>(socket: Socket, event: string, payload: unknown): Promis
   return new Promise((resolve) => {
     socket.emit(event, payload, (response: T) => resolve(response));
   });
+}
+
+const defaultJoinMedia: VoiceMediaState = {
+  mic: true,
+  camera: false,
+  screen: false,
+  deafened: false,
+  speaking: false
+};
+
+function joinVoice(
+  socket: Socket,
+  roomId: string,
+  media: VoiceMediaState = defaultJoinMedia
+): Promise<VoiceJoinAck> {
+  return emitWithAck<VoiceJoinAck>(socket, "voice:join", { roomId, media });
 }
 
 function cookieJar(response: { cookies: Array<{ name: string; value: string }> }) {
