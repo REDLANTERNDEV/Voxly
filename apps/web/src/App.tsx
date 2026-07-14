@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { FormEvent, MouseEvent, ReactNode } from "react";
 import type {
@@ -53,7 +53,15 @@ import { controlPresentation, type VoiceControls } from "./lib/voiceControls.js"
 import { connectionStatusFor, type PeerConnectionState } from "./lib/voiceNegotiation.js";
 import { defaultServerId, firstServerRoomPath, getAccessClaimTokenFromHash, getInviteTokenFromPath, getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "./lib/navigation.js";
 import { buildInviteUrl, inviteReference, resolveInviteOrigin } from "./lib/invites.js";
-import { messageDeleteFailureCopy, messagePermissions } from "./lib/messages.js";
+import {
+  clampMenuPosition,
+  formatMessageDateTime,
+  isMessageListNearBottom,
+  messageListUpdateAction,
+  messageDeleteFailureCopy,
+  messagePermissions,
+  shouldSubmitComposer
+} from "./lib/messages.js";
 import { useVoiceMedia, type VoiceJoinOptions } from "./lib/useVoiceMedia.js";
 import { replaceVisualTarget, toggleVisualTarget, visualTargetKey } from "./lib/voiceResume.js";
 import { participantsForViewedRoom, remoteStreamKey, type RemoteStreamState } from "./lib/voiceStreams.js";
@@ -980,15 +988,50 @@ function TextRoomScreen(props: ShellProps & {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [hasNewMessages, setHasNewMessages] = useState(false);
   const listRef = useRef<HTMLElement | null>(null);
+  const wasNearBottomRef = useRef(true);
+  const previousMessageIdsRef = useRef<string[]>([]);
+  const roomId = props.currentRoom?.id;
   const targetVoiceRoom = resolveRememberedRoom(
     props.rooms.voice,
     props.roomHistory[props.activeServerId]?.voice
   );
 
-  useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [props.messages.length]);
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const list = listRef.current;
+    if (!list) return;
+    list.scrollTo({ top: list.scrollHeight, behavior });
+    wasNearBottomRef.current = true;
+    setHasNewMessages(false);
+  }, []);
+
+  useLayoutEffect(() => {
+    previousMessageIdsRef.current = props.messages.map((message) => message.id);
+    wasNearBottomRef.current = true;
+    setHasNewMessages(false);
+    scrollToLatest("auto");
+  }, [roomId, scrollToLatest]);
+
+  useLayoutEffect(() => {
+    const currentIds = props.messages.map((message) => message.id);
+    const action = messageListUpdateAction(
+      previousMessageIdsRef.current,
+      currentIds,
+      wasNearBottomRef.current
+    );
+    previousMessageIdsRef.current = currentIds;
+    if (action === "scroll") scrollToLatest("auto");
+    if (action === "notify") setHasNewMessages(true);
+  }, [props.messages, scrollToLatest]);
+
+  function handleListScroll() {
+    const list = listRef.current;
+    if (!list) return;
+    const isNearBottom = isMessageListNearBottom(list);
+    wasNearBottomRef.current = isNearBottom;
+    if (isNearBottom) setHasNewMessages(false);
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1019,24 +1062,32 @@ function TextRoomScreen(props: ShellProps & {
           actionLabel={targetVoiceRoom ? props.t("room.openChannel", { channel: targetVoiceRoom.name }) : undefined}
           onAction={targetVoiceRoom ? () => props.onNavigate(serverPath(props.activeServerId, "voice", targetVoiceRoom.id)) : undefined}
         />
-        <section className="message-list" ref={listRef} aria-label={props.t("room.messages")}>
-          <div className="message-day">{props.t("room.today")}</div>
-          {props.messages.length === 0 ? (
-            <EmptyState title={props.t("room.noMessages")} copy={props.t("room.noMessagesCopy")} />
-          ) : (
-            props.messages.map((message) => (
-              <MessageItem
-                key={message.id}
-                message={message}
-                user={props.user}
-                language={props.language}
-                t={props.t}
-                onUpdate={props.onUpdateMessage}
-                onDelete={props.onDeleteMessage}
-              />
-            ))
-          )}
-        </section>
+        <div className="message-viewport">
+          <section className="message-list" ref={listRef} aria-label={props.t("room.messages")} onScroll={handleListScroll}>
+            <div className="message-day">{props.t("room.today")}</div>
+            {props.messages.length === 0 ? (
+              <EmptyState title={props.t("room.noMessages")} copy={props.t("room.noMessagesCopy")} />
+            ) : (
+              props.messages.map((message) => (
+                <MessageItem
+                  key={message.id}
+                  message={message}
+                  user={props.user}
+                  language={props.language}
+                  t={props.t}
+                  onUpdate={props.onUpdateMessage}
+                  onDelete={props.onDeleteMessage}
+                />
+              ))
+            )}
+          </section>
+          {hasNewMessages ? (
+            <button className="new-messages-indicator" type="button" onClick={() => scrollToLatest()}>
+              {props.t("room.newMessages")}
+              <span aria-hidden="true">↓</span>
+            </button>
+          ) : null}
+        </div>
         <footer className="composer">
           <form onSubmit={submit}>
             <label className="form-field" htmlFor="messageInput">
@@ -1049,6 +1100,16 @@ function TextRoomScreen(props: ShellProps & {
                 placeholder={props.t("room.chatPlaceholder")}
                 rows={1}
                 onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (!shouldSubmitComposer({
+                    key: event.key,
+                    shiftKey: event.shiftKey,
+                    isComposing: event.nativeEvent.isComposing,
+                    isSending
+                  })) return;
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }}
               />
             </label>
             <button className="btn btn-primary" type="submit" disabled={isSending}>
@@ -2301,12 +2362,47 @@ function MessageItem({
   const [draft, setDraft] = useState(message.body);
   const [isBusy, setIsBusy] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const permissions = messagePermissions({
     currentUserId: user.id,
     currentUserRole: user.role,
     messageUserId: message.userId
   });
   const isOwn = message.userId === user.id;
+  const hasActions = permissions.canEdit || permissions.canDelete;
+
+  useEffect(() => {
+    if (!menuPosition) return;
+
+    menuRef.current?.querySelector<HTMLButtonElement>("[role='menuitem']")?.focus();
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuPosition(null);
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setMenuPosition(null);
+      menuTriggerRef.current?.focus();
+    }
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [menuPosition]);
+
+  function openMenu(x: number, y: number) {
+    setMenuPosition(clampMenuPosition({
+      x,
+      y,
+      menuWidth: 160,
+      menuHeight: permissions.canEdit && permissions.canDelete ? 92 : 50,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight
+    }));
+  }
 
   async function saveEdit() {
     const body = draft.trim();
@@ -2336,12 +2432,26 @@ function MessageItem({
   }
 
   return (
-    <article className={`message ${isOwn ? "message-own" : ""}`}>
+    <article
+      className={`message ${isOwn ? "message-own" : ""}`}
+      onContextMenu={hasActions ? (event) => {
+        event.preventDefault();
+        openMenu(event.clientX, event.clientY);
+      } : undefined}
+    >
       <span className={`avatar ${isOwn ? "owner" : ""}`}>{initial(message.nickname)}</span>
       <div className="message-content">
         <div className="message-meta">
           <span className="message-author">{message.nickname}</span>
-          <span className="message-time mono">{formatTime(message.createdAt, language)}{message.editedAt ? ` - ${t("status.edited")}` : ""}</span>
+          <span className="message-time mono">
+            <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
+            {message.editedAt ? (
+              <span
+                className="message-edited"
+                title={t("room.editedAt", { time: formatMessageDateTime(message.editedAt, language) })}
+              >({t("status.edited")})</span>
+            ) : null}
+          </span>
         </div>
         {isEditing ? (
           <div className="message-edit">
@@ -2354,14 +2464,49 @@ function MessageItem({
         ) : (
           <div className="message-body">{message.body}</div>
         )}
-        {!isEditing && (permissions.canEdit || permissions.canDelete) ? (
-          <div className="message-actions">
-            {permissions.canEdit ? <button className="btn btn-ghost" type="button" disabled={isBusy} onClick={() => setIsEditing(true)}>{t("common.edit")}</button> : null}
-            {permissions.canDelete ? <button className="btn btn-danger" type="button" disabled={isBusy} onClick={() => setConfirmingDelete(true)}>{t("common.delete")}</button> : null}
-          </div>
-        ) : null}
         {actionError ? <p className="error-text" aria-live="polite">{actionError}</p> : null}
       </div>
+      {!isEditing && hasActions ? (
+        <button
+          ref={menuTriggerRef}
+          className="message-menu-trigger"
+          type="button"
+          aria-label={t("room.messageActions")}
+          aria-haspopup="menu"
+          aria-expanded={menuPosition ? "true" : "false"}
+          disabled={isBusy}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            openMenu(rect.right - 160, rect.bottom + 4);
+          }}
+        >
+          <MoreIcon />
+        </button>
+      ) : null}
+      {menuPosition ? createPortal(
+        <div
+          ref={menuRef}
+          className="message-context-menu"
+          role="menu"
+          aria-label={t("room.messageActions")}
+          style={{ left: menuPosition.x, top: menuPosition.y }}
+        >
+          {permissions.canEdit ? (
+            <button role="menuitem" type="button" onClick={() => {
+              setMenuPosition(null);
+              setDraft(message.body);
+              setIsEditing(true);
+            }}>{t("common.edit")}</button>
+          ) : null}
+          {permissions.canDelete ? (
+            <button className="is-danger" role="menuitem" type="button" onClick={() => {
+              setMenuPosition(null);
+              setConfirmingDelete(true);
+            }}>{t("common.delete")}</button>
+          ) : null}
+        </div>,
+        document.body
+      ) : null}
       {confirmingDelete ? <ConfirmDialog
         title={t("room.deleteMessageConfirm")}
         copy="This message will be permanently removed."

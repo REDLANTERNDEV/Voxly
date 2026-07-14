@@ -21,6 +21,11 @@ describe("frontend localization", () => {
     assert.equal(languageLabel("tr"), "Türkçe");
   });
 
+  it("localizes edited message timestamps", () => {
+    assert.equal(translate("en", "room.editedAt", { time: "Jul 14, 2026, 3:34 PM" }), "Edited Jul 14, 2026, 3:34 PM");
+    assert.equal(translate("tr", "room.editedAt", { time: "14 Tem 2026 15:34" }), "Düzenlendi: 14 Tem 2026 15:34");
+  });
+
   it("translates personal and screen-share volume labels", () => {
     assert.equal(translate("en", "voice.memberVolume", { nickname: "Ada" }), "Ada volume");
     assert.equal(translate("tr", "voice.screenVolume"), "Yayın sesi");

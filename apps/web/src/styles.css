@@ -443,7 +443,9 @@ h3 {
   display: grid;
   gap: 8px;
   grid-template-columns: var(--sidebar) minmax(0, 1fr) var(--memberbar);
-  min-height: 100dvh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
   padding: 8px 8px calc(var(--dock) + 8px);
 }
 
@@ -838,7 +840,8 @@ h3 {
   border-radius: var(--radius-lg);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  min-height: calc(100dvh - var(--dock) - 24px);
+  height: 100%;
+  min-height: 0;
   min-width: 0;
   overflow: hidden;
 }
@@ -878,12 +881,46 @@ h3 {
   gap: 8px;
 }
 
+.message-viewport {
+  min-height: 0;
+  position: relative;
+}
+
 .message-list {
   align-content: start;
   display: grid;
-  gap: 6px;
+  gap: 3px;
+  height: 100%;
+  min-height: 0;
   overflow: auto;
   padding: 18px;
+}
+
+.new-messages-indicator {
+  align-items: center;
+  background: var(--scene);
+  border: 1px solid color-mix(in oklab, var(--accent), var(--border) 45%);
+  border-radius: 999px;
+  bottom: 12px;
+  box-shadow: var(--shadow);
+  color: var(--on-scene);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  gap: 7px;
+  left: 50%;
+  min-height: 34px;
+  padding: 6px 12px;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.new-messages-indicator:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .message-day {
@@ -902,7 +939,79 @@ h3 {
   display: grid;
   gap: 8px;
   grid-template-columns: 34px minmax(0, 1fr);
-  padding: 4px 8px;
+  padding: 3px 36px 3px 6px;
+  position: relative;
+}
+
+.message-menu-trigger {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  opacity: 0;
+  padding: 0;
+  position: absolute;
+  right: 5px;
+  top: 3px;
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+  width: 28px;
+}
+
+.message:hover .message-menu-trigger,
+.message:focus-within .message-menu-trigger,
+.message-menu-trigger:focus-visible,
+.message-menu-trigger[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.message-menu-trigger:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.message-menu-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.message-context-menu {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 3px;
+  min-width: 160px;
+  padding: 5px;
+  position: fixed;
+  z-index: var(--layer-popover);
+}
+
+.message-context-menu button {
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+  min-height: 36px;
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.message-context-menu button:hover,
+.message-context-menu button:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+.message-context-menu button.is-danger {
+  color: var(--danger);
 }
 
 .message:hover {
@@ -949,7 +1058,16 @@ h3 {
 
 .message-time {
   color: var(--muted);
+  display: inline-flex;
   font-size: 11px;
+  gap: 5px;
+}
+
+.message-edited {
+  color: color-mix(in oklab, var(--muted), transparent 18%);
+  cursor: help;
+  font-size: 10px;
+  font-style: normal;
 }
 
 .message-body {
@@ -2541,6 +2659,7 @@ h3 {
   }
   .app-shell {
     display: block;
+    height: calc(100dvh - 54px);
     padding: 8px 8px 126px;
   }
 
@@ -2604,7 +2723,8 @@ h3 {
   }
 
   .main-panel {
-    min-height: calc(100dvh - 126px);
+    height: 100%;
+    min-height: 0;
   }
 
   .room-header {
@@ -2761,7 +2881,7 @@ h3 {
 
   .message {
     grid-template-columns: 28px minmax(0, 1fr);
-    padding: 7px 4px;
+    padding: 4px 34px 4px 3px;
   }
 
   .avatar {
@@ -2776,6 +2896,12 @@ h3 {
   .room-actions .status-pill,
   .dock-self {
     display: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .message-menu-trigger {
+    opacity: 1;
   }
 }
 
