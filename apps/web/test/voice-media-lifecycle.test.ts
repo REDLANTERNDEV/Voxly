@@ -158,18 +158,30 @@ describe("voice snapshot reconciliation", () => {
 
   it("rejoins with effective media before requesting reconnect snapshots", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
-    const onConnect = source.match(/const onConnect = \(\) => \{([\s\S]*?)\n    \};\n    const onDisconnect/)?.[1] ?? "";
+    const recovery = source.match(/const attemptRecovery = async \(\) => \{([\s\S]*?)\n    \};\n    const onConnect/)?.[1] ?? "";
 
-    const effectiveStateIndex = onConnect.indexOf("effectiveVoiceMediaState(");
-    const joinIndex = onConnect.indexOf("requestVoiceJoin(");
-    const snapshotIndex = onConnect.indexOf("requestKnownSnapshots()");
+    const effectiveStateIndex = recovery.indexOf("effectiveVoiceMediaState(");
+    const joinIndex = recovery.indexOf("requestVoiceJoin(");
+    const snapshotIndex = recovery.indexOf("requestKnownSnapshots()");
     assert.notEqual(effectiveStateIndex, -1);
     assert.notEqual(joinIndex, -1);
     assert.notEqual(snapshotIndex, -1);
     assert.ok(effectiveStateIndex < joinIndex);
     assert.ok(joinIndex < snapshotIndex);
-    assert.doesNotMatch(onConnect, /Boolean\(localStreamsRef\.current\.mic\)/);
-    assert.doesNotMatch(onConnect, /emitMediaState\(/);
+    assert.doesNotMatch(recovery, /Boolean\(localStreamsRef\.current\.mic\)/);
+    assert.doesNotMatch(recovery, /emitMediaState\(/);
+  });
+
+  it("retries connected recovery until join and visual subscriptions are acknowledged", () => {
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+
+    assert.match(source, /const recoveryRetryTimerRef = useRef<number \| null>\(null\)/);
+    assert.match(source, /const recoveryAttemptInFlightRef = useRef\(false\)/);
+    assert.match(source, /voiceRecoveryRetryDelayMs/);
+    assert.match(source, /const subscription = await setVisualSubscriptions\(visualTargetsRef\.current\)/);
+    assert.match(source, /if \(!subscription\.ok\)[\s\S]*?retry = true/);
+    assert.match(source, /scheduleRecovery\(voiceRecoveryRetryDelayMs\)/);
+    assert.match(source, /window\.clearTimeout\(recoveryRetryTimerRef\.current\)/);
   });
 
   it("uses the acknowledged atomic join for explicit room entry", () => {

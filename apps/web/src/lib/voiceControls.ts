@@ -13,6 +13,8 @@ export type VoiceControlAction = "muteMic" | "unmuteMic" | "deafen" | "undeafen"
 
 export type VoiceControlTone = "neutral" | "danger";
 
+export type SidebarVoiceStatusKey = "deafened" | "muted";
+
 export function createInitialVoiceControls(): VoiceControls {
   return {
     mic: { on: true, enabled: true },
@@ -92,4 +94,11 @@ export function voiceStatusLabels(media: VoiceMediaState) {
   else if (media.camera) labels.push("Camera");
   if (media.speaking && media.mic && !media.deafened) labels.push("Speaking");
   return labels;
+}
+
+export function sidebarVoiceStatusKeys(media: VoiceMediaState): SidebarVoiceStatusKey[] {
+  const statuses: SidebarVoiceStatusKey[] = [];
+  if (media.deafened) statuses.push("deafened");
+  if (!media.mic || media.deafened) statuses.push("muted");
+  return statuses;
 }

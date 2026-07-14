@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { clampContextMenuPosition } from "../src/lib/contextMenu.js";
 import {
-  clampMenuPosition,
   formatMessageDateTime,
   isMessageListNearBottom,
   messageListUpdateAction,
@@ -66,11 +66,11 @@ describe("message list scrolling", () => {
 describe("message menu position", () => {
   it("keeps the menu within the viewport margin", () => {
     assert.deepEqual(
-      clampMenuPosition({ x: 990, y: 790, menuWidth: 160, menuHeight: 96, viewportWidth: 1000, viewportHeight: 800 }),
+      clampContextMenuPosition({ x: 990, y: 790, menuWidth: 160, menuHeight: 96, viewportWidth: 1000, viewportHeight: 800 }),
       { x: 832, y: 696 }
     );
     assert.deepEqual(
-      clampMenuPosition({ x: -5, y: -4, menuWidth: 160, menuHeight: 96, viewportWidth: 1000, viewportHeight: 800 }),
+      clampContextMenuPosition({ x: -5, y: -4, menuWidth: 160, menuHeight: 96, viewportWidth: 1000, viewportHeight: 800 }),
       { x: 8, y: 8 }
     );
   });

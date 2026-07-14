@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { FormEvent, MouseEvent, ReactNode } from "react";
 import type {
@@ -9,7 +9,6 @@ import type {
   VisualMediaKind,
   VisualTarget,
   VoiceMediaState,
-  VoiceSetVisualSubscriptionsAck,
   VoiceSnapshot
 } from "@voxly/shared";
 import {
@@ -49,12 +48,11 @@ import {
   unlockSharedAudioOutput,
   type AudioOutput
 } from "./lib/audioOutput.js";
-import { controlPresentation, type VoiceControls } from "./lib/voiceControls.js";
+import { controlPresentation, sidebarVoiceStatusKeys, type VoiceControls } from "./lib/voiceControls.js";
 import { connectionStatusFor, type PeerConnectionState } from "./lib/voiceNegotiation.js";
 import { defaultServerId, firstServerRoomPath, getAccessClaimTokenFromHash, getInviteTokenFromPath, getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "./lib/navigation.js";
 import { buildInviteUrl, inviteReference, resolveInviteOrigin } from "./lib/invites.js";
 import {
-  clampMenuPosition,
   formatMessageDateTime,
   isMessageListNearBottom,
   messageListUpdateAction,
@@ -62,7 +60,14 @@ import {
   messagePermissions,
   shouldSubmitComposer
 } from "./lib/messages.js";
+import {
+  clampContextMenuPosition,
+  contextMenuReducer,
+  createContextMenuDescriptor,
+  type ContextMenuDescriptor
+} from "./lib/contextMenu.js";
 import { useVoiceMedia, type VoiceJoinOptions } from "./lib/useVoiceMedia.js";
+import type { VisualSubscriptionResult } from "./lib/voiceRecovery.js";
 import { replaceVisualTarget, toggleVisualTarget, visualTargetKey } from "./lib/voiceResume.js";
 import { participantsForViewedRoom, remoteStreamKey, type RemoteStreamState } from "./lib/voiceStreams.js";
 import {
@@ -88,6 +93,7 @@ import {
 import { AppShellSkeleton } from "./components/AppShellSkeleton.js";
 import { AudioDeviceSettings } from "./components/AudioDeviceSettings.js";
 import { LiveStreamPopover } from "./components/LiveStreamPopover.js";
+import { ContextMenu } from "./components/ContextMenu.js";
 import { ServerSwitcher } from "./components/ServerSwitcher.js";
 import { useAudioDevices, type UseAudioDevicesResult } from "./lib/useAudioDevices.js";
 import {
@@ -971,7 +977,7 @@ interface ShellProps {
   onWatchLive: (request: LiveWatchRequest) => void;
   onLiveWatchHandled: () => void;
   onRequestVoiceSnapshot: (roomId: string) => void;
-  onSetVisualSubscriptions: (targets: VisualTarget[]) => Promise<VoiceSetVisualSubscriptionsAck>;
+  onSetVisualSubscriptions: (targets: VisualTarget[]) => Promise<VisualSubscriptionResult>;
   onMemberVolumeChange: (userId: string, volume: number) => void;
   onScreenVolumeChange: (streamId: string, volume: number) => void;
   onToggleControl: (key: keyof VoiceControls) => void;
@@ -1672,14 +1678,107 @@ function OwnerServerContext({
   );
 }
 
+interface SidebarActionMenuController {
+  active: ContextMenuDescriptor | null;
+  close: () => void;
+  open: (input: {
+    key: string;
+    x: number;
+    y: number;
+    menuWidth: number;
+    menuHeight: number;
+    trigger: HTMLButtonElement | null;
+  }) => void;
+}
+
+function SidebarMenuTrigger({
+  actionMenu,
+  menuKey,
+  label,
+  menuWidth,
+  menuHeight
+}: {
+  actionMenu: SidebarActionMenuController;
+  menuKey: string;
+  label: string;
+  menuWidth: number;
+  menuHeight: number;
+}) {
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  return (
+    <button
+      ref={triggerRef}
+      className="sidebar-menu-trigger"
+      type="button"
+      aria-label={label}
+      aria-haspopup="dialog"
+      aria-expanded={actionMenu.active?.key === menuKey}
+      onClick={() => {
+        const rect = triggerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        actionMenu.open({
+          key: menuKey,
+          x: rect.right - menuWidth,
+          y: rect.bottom + 4,
+          menuWidth,
+          menuHeight,
+          trigger: triggerRef.current
+        });
+      }}
+    >
+      <MoreIcon />
+    </button>
+  );
+}
+
+function openSidebarMenuFromPointer(
+  event: MouseEvent<HTMLElement>,
+  actionMenu: SidebarActionMenuController,
+  key: string,
+  menuWidth: number,
+  menuHeight: number
+) {
+  event.preventDefault();
+  actionMenu.open({
+    key,
+    x: event.clientX,
+    y: event.clientY,
+    menuWidth,
+    menuHeight,
+    trigger: null
+  });
+}
+
 function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: string }) {
   const canModerate = activeServerRole(props) === "owner";
+  const [activeActionMenu, dispatchActionMenu] = useReducer(contextMenuReducer, null);
+  const closeActionMenu = useCallback(() => dispatchActionMenu({ type: "close" }), []);
+  const openActionMenu = useCallback((input: Parameters<SidebarActionMenuController["open"]>[0]) => {
+    dispatchActionMenu({
+      type: "open",
+      menu: createContextMenuDescriptor({
+        ...input,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight
+      })
+    });
+  }, []);
+  const actionMenu = useMemo<SidebarActionMenuController>(() => ({
+    active: activeActionMenu,
+    close: closeActionMenu,
+    open: openActionMenu
+  }), [activeActionMenu, closeActionMenu, openActionMenu]);
   const onlineCount = props.onlineUsers.length || 1;
   const voiceConnectedCount = props.activeVoiceRoomId && props.voiceSnapshots[props.activeVoiceRoomId]
     ? props.voiceSnapshots[props.activeVoiceRoomId].members.length
     : props.activeVoiceRoomId
       ? 1
       : 0;
+
+  useEffect(() => {
+    closeActionMenu();
+  }, [closeActionMenu, props.activeServerId, props.currentRoom?.id, props.drawer, props.route.name]);
+
   return (
     <>
       <a className="skip-link" href="#main-content">{props.t("shell.skip")}</a>
@@ -1696,7 +1795,7 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
         </button>
       </div>
       <div className={`app-shell drawer-${props.drawer ?? "none"}`}>
-        <ChannelRail {...props} />
+        <ChannelRail {...props} actionMenu={actionMenu} />
         {props.children}
         <MemberPanel
           members={props.serverMembers}
@@ -1709,6 +1808,7 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
           onModerate={props.onModerateMember}
           onDisconnect={props.onDisconnectMember}
           onMemberVolumeChange={props.onMemberVolumeChange}
+          actionMenu={actionMenu}
           t={props.t}
         />
       </div>
@@ -1718,7 +1818,7 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
   );
 }
 
-function ChannelRail(props: ShellProps) {
+function ChannelRail(props: ShellProps & { actionMenu: SidebarActionMenuController }) {
   const canManageServer = activeServerRole(props) === "owner";
   const [deleteTarget, setDeleteTarget] = useState<RoomSummary | null>(null);
   const [deleteError, setDeleteError] = useState("");
@@ -1737,11 +1837,15 @@ function ChannelRail(props: ShellProps) {
       <section className="rail-section">
         <div className="rail-section-head"><span className="label">{props.t("room.textRooms")}</span><span className="badge">{props.rooms.text.length}</span>{canManageServer ? <ChannelCreateControl kind="text" onCreate={props.onCreateRoom} /> : null}</div>
         {props.rooms.text.map((room) => (
-          <div className="channel-row" key={room.id}>
+          <div
+            className="channel-row"
+            key={room.id}
+            onContextMenu={canManageServer ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, `channel:${room.id}`, 176, 48) : undefined}
+          >
             <NavLink className={`channel-item ${props.route.name === "text" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "text", room.id)} onNavigate={props.onNavigate}>
               <span className="channel-prefix">#</span><span>{room.name}</span>{props.unreadByRoom[room.id] ? <span className="badge unread-badge">{props.unreadByRoom[room.id]}</span> : <span />}
             </NavLink>
-            {canManageServer ? <ChannelDeleteControl room={room} disabled={props.rooms.text.length + props.rooms.voice.length <= 1} onRequest={() => setDeleteTarget(room)} t={props.t} /> : null}
+            {canManageServer ? <ChannelDeleteControl actionMenu={props.actionMenu} room={room} disabled={props.rooms.text.length + props.rooms.voice.length <= 1} onRequest={() => setDeleteTarget(room)} t={props.t} /> : null}
           </div>
         ))}
       </section>
@@ -1751,16 +1855,25 @@ function ChannelRail(props: ShellProps) {
           const members = voiceMembersForRoom(props, room.id);
           return (
             <div className="voice-channel-block" key={room.id}>
-              <div className="channel-row">
+              <div
+                className="channel-row"
+                onContextMenu={canManageServer ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, `channel:${room.id}`, 176, 48) : undefined}
+              >
                 <NavLink className={`channel-item ${props.route.name === "voice" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "voice", room.id)} onNavigate={props.onNavigate}>
                   <span className="channel-prefix">vc</span><span>{room.name}</span><span className="badge">{members.length}</span>
                 </NavLink>
-                {canManageServer ? <ChannelDeleteControl room={room} disabled={props.rooms.text.length + props.rooms.voice.length <= 1} onRequest={() => setDeleteTarget(room)} t={props.t} /> : null}
+                {canManageServer ? <ChannelDeleteControl actionMenu={props.actionMenu} room={room} disabled={props.rooms.text.length + props.rooms.voice.length <= 1} onRequest={() => setDeleteTarget(room)} t={props.t} /> : null}
               </div>
               {members.length > 0 ? (
                 <div className="voice-channel-users">
                   {members.map((member) => (
-                    <div className={`voice-channel-user ${member.media.speaking && member.media.mic && !member.media.deafened ? "is-speaking" : ""}`} key={member.user.userId}>
+                    <div
+                      className={`voice-channel-user ${member.media.speaking && member.media.mic && !member.media.deafened ? "is-speaking" : ""}`}
+                      key={member.user.userId}
+                      onContextMenu={member.user.userId !== props.user.id
+                        ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, `rail-member:${member.user.userId}`, 220, 84)
+                        : undefined}
+                    >
                       <span className="avatar">{initial(member.user.nickname)}</span>
                       <span className="voice-channel-user-copy">
                         <span className="voice-channel-user-name">
@@ -1781,17 +1894,21 @@ function ChannelRail(props: ShellProps) {
                           ) : <span>{member.user.nickname}</span>}
                         </span>
                       </span>
+                      <span className="voice-channel-statuses">
+                        {sidebarVoiceStatusKeys(member.media).map((status) => (
+                          <span className={`voice-channel-status is-${status}`} aria-label={props.t(`common.${status}` as TranslationKey)} key={status}>
+                            {status === "deafened" ? <HeadsetIcon off /> : <MicIcon off />}
+                          </span>
+                        ))}
+                      </span>
                       {member.user.userId !== props.user.id ? (
-                        <details className="rail-member-menu member-action-menu">
-                          <summary aria-label={props.t("member.actionsFor", { nickname: member.user.nickname })}><MoreIcon /></summary>
-                          <div className="member-action-panel">
-                            <VolumeControl
-                              label={props.t("voice.memberVolume", { nickname: member.user.nickname })}
-                              value={props.memberVolumes[member.user.userId] ?? DEFAULT_VOLUME_PERCENT}
-                              onChange={(volume) => props.onMemberVolumeChange(member.user.userId, volume)}
-                            />
-                          </div>
-                        </details>
+                        <RailMemberActionControl
+                          actionMenu={props.actionMenu}
+                          member={member.user}
+                          volume={props.memberVolumes[member.user.userId] ?? DEFAULT_VOLUME_PERCENT}
+                          onVolumeChange={(volume) => props.onMemberVolumeChange(member.user.userId, volume)}
+                          t={props.t}
+                        />
                       ) : null}
                     </div>
                   ))}
@@ -1856,14 +1973,64 @@ function ChannelRail(props: ShellProps) {
   );
 }
 
-function ChannelDeleteControl({ room, disabled, onRequest, t }: { room: RoomSummary; disabled: boolean; onRequest: () => void; t: Translate }) {
+function ChannelDeleteControl({
+  actionMenu,
+  room,
+  disabled,
+  onRequest,
+  t
+}: {
+  actionMenu: SidebarActionMenuController;
+  room: RoomSummary;
+  disabled: boolean;
+  onRequest: () => void;
+  t: Translate;
+}) {
+  const menuKey = `channel:${room.id}`;
+  const label = t("room.actionsFor", { channel: room.name });
   return (
-    <details className="channel-action-menu member-action-menu">
-      <summary aria-label={t("room.actionsFor", { channel: room.name })}><MoreIcon /></summary>
-      <div className="member-action-panel">
-        <button className="btn btn-danger" type="button" disabled={disabled} onClick={onRequest}>{t("room.deleteChannel")}</button>
-      </div>
-    </details>
+    <>
+      <SidebarMenuTrigger actionMenu={actionMenu} menuKey={menuKey} label={label} menuWidth={176} menuHeight={48} />
+      {actionMenu.active?.key === menuKey ? (
+        <ContextMenu descriptor={actionMenu.active} label={label} onClose={actionMenu.close}>
+          <button className="is-danger" type="button" disabled={disabled} onClick={() => {
+            actionMenu.close();
+            onRequest();
+          }}>{t("room.deleteChannel")}</button>
+        </ContextMenu>
+      ) : null}
+    </>
+  );
+}
+
+function RailMemberActionControl({
+  actionMenu,
+  member,
+  volume,
+  onVolumeChange,
+  t
+}: {
+  actionMenu: SidebarActionMenuController;
+  member: PresenceUser;
+  volume: number;
+  onVolumeChange: (volume: number) => void;
+  t: Translate;
+}) {
+  const menuKey = `rail-member:${member.userId}`;
+  const label = t("member.actionsFor", { nickname: member.nickname });
+  return (
+    <>
+      <SidebarMenuTrigger actionMenu={actionMenu} menuKey={menuKey} label={label} menuWidth={220} menuHeight={84} />
+      {actionMenu.active?.key === menuKey ? (
+        <ContextMenu descriptor={actionMenu.active} label={label} onClose={actionMenu.close}>
+          <VolumeControl
+            label={t("voice.memberVolume", { nickname: member.nickname })}
+            value={volume}
+            onChange={onVolumeChange}
+          />
+        </ContextMenu>
+      ) : null}
+    </>
   );
 }
 
@@ -1940,6 +2107,7 @@ function MemberPanel({
   onModerate,
   onDisconnect,
   onMemberVolumeChange,
+  actionMenu,
   t
 }: {
   members: PresenceUser[];
@@ -1952,6 +2120,7 @@ function MemberPanel({
   onModerate: (userId: string, action: "ban" | "unban" | "kick") => Promise<void>;
   onDisconnect: (roomId: string, userId: string) => Promise<void>;
   onMemberVolumeChange: (userId: string, volume: number) => void;
+  actionMenu: SidebarActionMenuController;
   t: Translate;
 }) {
   const roomByMemberId = new Map<string, RoomSummary>();
@@ -1966,14 +2135,26 @@ function MemberPanel({
     const voiceRoom = roomByMemberId.get(user.userId);
     const roleLabel = user.role === "owner" ? t("common.owner") : t("common.user");
     const detail = voiceRoom ? `${roleLabel} · ${voiceRoom.name}` : roleLabel;
+    const hasActions = user.userId !== currentUser.id && Boolean(voiceRoom || canModerate);
+    const menuKey = `directory-member:${user.userId}`;
+    const menuLabel = t("member.actionsFor", { nickname: user.nickname });
+    const openPendingAction = (action: "disconnect" | "ban" | "kick") => {
+      actionMenu.close();
+      setPendingAction({ user, roomId: action === "disconnect" ? voiceRoom?.id : undefined, action });
+    };
     return (
-      <div className={`member-row ${online ? "is-online" : "is-offline"}`} key={user.userId}>
+      <div
+        className={`member-row ${online ? "is-online" : "is-offline"}`}
+        key={user.userId}
+        onContextMenu={hasActions ? (event) => openSidebarMenuFromPointer(event, actionMenu, menuKey, 220, canModerate ? 224 : 84) : undefined}
+      >
         <span className={`avatar ${user.role === "owner" ? "owner" : ""}`}>{initial(user.nickname)}</span>
         <span className="member-copy"><strong>{user.nickname}</strong><span>{detail}</span></span>
-        {user.userId !== currentUser.id && (voiceRoom || canModerate) ? (
-          <details className="member-action-menu">
-            <summary aria-label={t("member.actionsFor", { nickname: user.nickname })}><MoreIcon /></summary>
-            <div className="member-action-panel">
+        {hasActions ? (
+          <>
+            <SidebarMenuTrigger actionMenu={actionMenu} menuKey={menuKey} label={menuLabel} menuWidth={220} menuHeight={canModerate ? 224 : 84} />
+            {actionMenu.active?.key === menuKey ? (
+              <ContextMenu descriptor={actionMenu.active} label={menuLabel} onClose={actionMenu.close}>
               {voiceRoom ? (
                 <VolumeControl
                   label={t("voice.memberVolume", { nickname: user.nickname })}
@@ -1981,13 +2162,14 @@ function MemberPanel({
                   onChange={(volume) => onMemberVolumeChange(user.userId, volume)}
                 />
               ) : null}
-              {voiceRoom && canModerate ? <button className="btn btn-ghost" type="button" onClick={() => setPendingAction({ user, roomId: voiceRoom.id, action: "disconnect" })}>{t("member.disconnectVoice")}</button> : null}
+              {voiceRoom && canModerate ? <button type="button" onClick={() => openPendingAction("disconnect")}>{t("member.disconnectVoice")}</button> : null}
               {canModerate ? <>
-                <button className="btn btn-danger" type="button" onClick={() => setPendingAction({ user, action: "kick" })}>{t("member.kick")}</button>
-                <button className="btn btn-danger" type="button" onClick={() => setPendingAction({ user, action: "ban" })}>{t("member.ban")}</button>
+                <button className="is-danger" type="button" onClick={() => openPendingAction("kick")}>{t("member.kick")}</button>
+                <button className="is-danger" type="button" onClick={() => openPendingAction("ban")}>{t("member.ban")}</button>
               </> : null}
-            </div>
-          </details>
+              </ContextMenu>
+            ) : null}
+          </>
         ) : null}
       </div>
     );
@@ -2055,7 +2237,7 @@ function VoiceDock(props: ShellProps & { connectedCount: number }) {
             <ControlButton label={props.t(`common.${micControl.action}` as TranslationKey)} active={props.controls.mic.on} tone={micControl.tone} enabled={props.controls.mic.enabled} onClick={() => props.onToggleControl("mic")}><MicIcon off={!props.controls.mic.on} /></ControlButton>
             <ControlButton label={props.t(`common.${deafenControl.action}` as TranslationKey)} active={props.controls.deafen.on} tone={deafenControl.tone} enabled={props.controls.deafen.enabled} onClick={() => props.onToggleControl("deafen")}><HeadsetIcon off={props.controls.deafen.on} /></ControlButton>
             <ControlButton label={props.t(`common.${cameraControl.action}` as TranslationKey)} active={props.controls.camera.on} tone={cameraControl.tone} enabled={props.controls.camera.enabled} onClick={() => props.onToggleControl("camera")}><CameraIcon off={!props.controls.camera.on} /></ControlButton>
-            <ControlButton label={props.t(`common.${screenControl.action}` as TranslationKey)} active={props.controls.screenShare.on} tone={screenControl.tone} enabled={props.controls.screenShare.enabled} onClick={() => props.onToggleControl("screenShare")}><ScreenIcon off={props.controls.screenShare.on} /></ControlButton>
+            <ControlButton label={props.t(`common.${screenControl.action}` as TranslationKey)} active={props.controls.screenShare.on} tone={screenControl.tone} enabled={props.controls.screenShare.enabled} onClick={() => props.onToggleControl("screenShare")}><ScreenIcon off={!props.controls.screenShare.on} /></ControlButton>
             <button className="btn btn-danger" type="button" onClick={props.onLeaveVoice}><LeaveIcon /><span>{props.t("common.leave")}</span></button>
           </>
         ) : null}
@@ -2394,7 +2576,7 @@ function MessageItem({
   }, [menuPosition]);
 
   function openMenu(x: number, y: number) {
-    setMenuPosition(clampMenuPosition({
+    setMenuPosition(clampContextMenuPosition({
       x,
       y,
       menuWidth: 160,
@@ -2986,4 +3168,14 @@ function VolumeIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria
 function MicIcon({ off }: { off: boolean }) { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" /><path d="M6 11a6 6 0 0 0 12 0" /><path d="M12 17v3" />{off ? <path d="M4 4l16 16" /> : null}</svg>; }
 function HeadsetIcon({ off }: { off: boolean }) { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 14v-2a7 7 0 0 1 14 0v2" /><path d="M5 14h3v5H6a1 1 0 0 1-1-1z" /><path d="M16 14h3v4a1 1 0 0 1-1 1h-2z" />{off ? <path d="M4 4l16 16" /> : null}</svg>; }
 function CameraIcon({ off }: { off: boolean }) { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h11a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4z" /><path d="m17 11 3-2v6l-3-2z" />{off ? <path d="M4 4l16 16" /> : null}</svg>; }
-function ScreenIcon({ off }: { off: boolean }) { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h8v8H8z" /><path d="M12 4v4" /><path d="m9 6 3-3 3 3" /><path d="M5 12v7h14v-7" />{off ? <path d="M4 4l16 16" /> : null}</svg>; }
+function ScreenIcon({ off }: { off: boolean }) {
+  return (
+    <svg className="ui-icon" viewBox="0 0 256 256" aria-hidden="true">
+      <rect x="32" y="48" width="192" height="144" rx="16" transform="translate(256 240) rotate(180)" />
+      <line x1="160" y1="224" x2="96" y2="224" />
+      <polyline points="104 112 128 88 152 112" />
+      <line x1="128" y1="88" x2="128" y2="152" />
+      {off ? <line x1="32" y1="32" x2="224" y2="224" /> : null}
+    </svg>
+  );
+}

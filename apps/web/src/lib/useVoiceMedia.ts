@@ -6,7 +6,6 @@ import type {
   VisualTarget,
   VoiceMediaState,
   VoiceSetMediaAck,
-  VoiceSetVisualSubscriptionsAck,
   VoiceSnapshot
 } from "@voxly/shared";
 import type { VoxlySocket } from "../socket.js";
@@ -20,6 +19,7 @@ import {
   watchMicrophoneStreamEnd
 } from "./voiceMedia.js";
 import { requestVoiceJoin } from "./voiceJoin.js";
+import { requestVisualSubscriptions, voiceRecoveryRetryDelayMs } from "./voiceRecovery.js";
 import { buildMicrophoneConstraints } from "./audioDevices.js";
 import { releaseUnusedSharedAudioOutput } from "./audioOutput.js";
 import {
@@ -108,6 +108,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const joinAttemptRef = useRef(0);
   const resumeDeadlineRef = useRef<number | null>(null);
   const resumeDeadlineTimerRef = useRef<number | null>(null);
+  const recoveryRetryTimerRef = useRef<number | null>(null);
+  const recoveryAttemptInFlightRef = useRef(false);
   const controlsRef = useRef(controls);
   const voiceRoomIdsRef = useRef(voiceRoomIds);
   const speakingRef = useRef(false);
@@ -486,20 +488,18 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     startSpeakingMonitor(stream);
   }, [emitMediaState, persistVoiceResume, renegotiatePeers, startSpeakingMonitor, stopStream]);
 
-  const setVisualSubscriptions = useCallback((targets: VisualTarget[]) => {
+  const setVisualSubscriptions = useCallback(async (targets: VisualTarget[]) => {
     if (!socket || !roomRef.current) {
-      return Promise.resolve<VoiceSetVisualSubscriptionsAck>({ ok: false, error: "not_in_voice_room" });
+      return { ok: false, error: "not_in_voice_room" } as const;
     }
-    return new Promise<VoiceSetVisualSubscriptionsAck>((resolve) => {
-      socket.emit("voice:setVisualSubscriptions", { roomId: roomRef.current as string, targets }, (response) => {
-        if (response.ok) {
-          visualTargetsRef.current = response.targets;
-          setVisualTargets(response.targets);
-          persistVoiceResume(response.targets);
-        }
-        resolve(response);
-      });
-    });
+    const roomId = roomRef.current;
+    const response = await requestVisualSubscriptions(socket, { roomId, targets });
+    if (response.ok && roomRef.current === roomId) {
+      visualTargetsRef.current = response.targets;
+      setVisualTargets(response.targets);
+      persistVoiceResume(response.targets);
+    }
+    return response;
   }, [persistVoiceResume, socket]);
 
   const applyVoiceSnapshot = useCallback((nextSnapshot: VoiceSnapshot) => {
@@ -678,6 +678,11 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
 
   const leave = useCallback(() => {
     joinAttemptRef.current += 1;
+    recoveryAttemptInFlightRef.current = false;
+    if (recoveryRetryTimerRef.current !== null) {
+      window.clearTimeout(recoveryRetryTimerRef.current);
+      recoveryRetryTimerRef.current = null;
+    }
     microphoneSwitchRef.current += 1;
     deafenTransitionRef.current += 1;
     microphoneOnBeforeDeafenRef.current = true;
@@ -997,8 +1002,73 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
 
   useEffect(() => {
     if (!socket) return;
+    let disposed = false;
     const requestKnownSnapshots = () => {
       for (const roomId of voiceRoomIdsRef.current) requestSnapshot(roomId);
+    };
+    const clearRecoveryRetry = () => {
+      if (recoveryRetryTimerRef.current === null) return;
+      window.clearTimeout(recoveryRetryTimerRef.current);
+      recoveryRetryTimerRef.current = null;
+    };
+    const scheduleRecovery = (delay: number) => {
+      if (
+        disposed ||
+        recoveryAttemptInFlightRef.current ||
+        recoveryRetryTimerRef.current !== null ||
+        !roomRef.current ||
+        !socket.connected
+      ) return;
+      if (resumeDeadlineRef.current && Date.now() >= resumeDeadlineRef.current) {
+        leave();
+        return;
+      }
+      recoveryRetryTimerRef.current = window.setTimeout(() => {
+        recoveryRetryTimerRef.current = null;
+        void attemptRecovery();
+      }, delay);
+    };
+    const attemptRecovery = async () => {
+      const activeRoomId = roomRef.current;
+      if (disposed || recoveryAttemptInFlightRef.current || !activeRoomId || !socket.connected) return;
+      if (resumeDeadlineRef.current && Date.now() >= resumeDeadlineRef.current) {
+        leave();
+        return;
+      }
+
+      recoveryAttemptInFlightRef.current = true;
+      const attempt = ++joinAttemptRef.current;
+      let retry = false;
+      try {
+        const media = effectiveVoiceMediaState(controlsRef.current, localStreamsRef.current);
+        const response = await requestVoiceJoin(socket, { roomId: activeRoomId, media });
+        if (disposed || attempt !== joinAttemptRef.current || roomRef.current !== activeRoomId || !socket.connected) return;
+        if (!response.ok) {
+          setError("Could not restore voice connection.");
+          retry = true;
+          return;
+        }
+
+        requestKnownSnapshots();
+        const subscription = await setVisualSubscriptions(visualTargetsRef.current);
+        if (disposed || attempt !== joinAttemptRef.current || roomRef.current !== activeRoomId || !socket.connected) return;
+        if (!subscription.ok) {
+          setError("Could not restore stream connection.");
+          retry = true;
+          return;
+        }
+
+        setError("");
+        recoveryInProgressRef.current = false;
+        resumeDeadlineRef.current = null;
+      } finally {
+        if (attempt === joinAttemptRef.current) {
+          recoveryAttemptInFlightRef.current = false;
+          if (retry && !disposed && roomRef.current === activeRoomId && socket.connected) {
+            scheduleRecovery(voiceRecoveryRetryDelayMs);
+          }
+        }
+      }
     };
     const onConnect = () => {
       const activeRoomId = roomRef.current;
@@ -1011,29 +1081,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           window.clearTimeout(resumeDeadlineTimerRef.current);
           resumeDeadlineTimerRef.current = null;
         }
-        const attempt = ++joinAttemptRef.current;
-        const reconnect = async () => {
-          const media = effectiveVoiceMediaState(controlsRef.current, localStreamsRef.current);
-          const response = await requestVoiceJoin(socket, {
-            roomId: activeRoomId,
-            media
-          });
-          if (attempt !== joinAttemptRef.current || roomRef.current !== activeRoomId || !socket.connected) {
-            return;
-          }
-          if (!response.ok) {
-            setError("Could not restore voice connection.");
-            return;
-          }
-          requestKnownSnapshots();
-          await setVisualSubscriptions(visualTargetsRef.current);
-          if (attempt !== joinAttemptRef.current || roomRef.current !== activeRoomId || !socket.connected) {
-            return;
-          }
-          recoveryInProgressRef.current = false;
-          resumeDeadlineRef.current = null;
-        };
-        void reconnect();
+        clearRecoveryRetry();
+        scheduleRecovery(0);
         return;
       }
 
@@ -1055,6 +1104,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     const onDisconnect = () => {
       if (!roomRef.current) return;
       joinAttemptRef.current += 1;
+      recoveryAttemptInFlightRef.current = false;
+      clearRecoveryRetry();
       persistVoiceResume(visualTargetsRef.current, !recoveryInProgressRef.current);
       recoveryInProgressRef.current = true;
       if (resumeDeadlineTimerRef.current) window.clearTimeout(resumeDeadlineTimerRef.current);
@@ -1076,6 +1127,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     socket.on("disconnect", onDisconnect);
     if (socket.connected) onConnect();
     return () => {
+      disposed = true;
+      clearRecoveryRetry();
+      recoveryAttemptInFlightRef.current = false;
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
     };

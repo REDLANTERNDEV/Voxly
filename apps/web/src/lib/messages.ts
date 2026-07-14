@@ -47,19 +47,3 @@ export function messageListUpdateAction(
   if (!hasAppendedMessage) return "none";
   return wasNearBottom ? "scroll" : "notify";
 }
-
-export function clampMenuPosition(input: {
-  x: number;
-  y: number;
-  menuWidth: number;
-  menuHeight: number;
-  viewportWidth: number;
-  viewportHeight: number;
-  margin?: number;
-}) {
-  const margin = input.margin ?? 8;
-  return {
-    x: Math.max(margin, Math.min(input.x, input.viewportWidth - input.menuWidth - margin)),
-    y: Math.max(margin, Math.min(input.y, input.viewportHeight - input.menuHeight - margin))
-  };
-}

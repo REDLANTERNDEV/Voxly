@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   controlPresentation,
   createInitialVoiceControls,
+  sidebarVoiceStatusKeys,
   toggleVoiceControl,
   voiceDockStatus,
   voiceStatusLabels
@@ -85,6 +86,21 @@ describe("voice control view state", () => {
     assert.deepEqual(
       voiceStatusLabels({ mic: true, camera: false, screen: false, deafened: false, speaking: true }),
       ["Speaking"]
+    );
+  });
+
+  it("derives compact sidebar mute and deafen indicators", () => {
+    assert.deepEqual(
+      sidebarVoiceStatusKeys({ mic: true, camera: false, screen: false, deafened: false, speaking: false }),
+      []
+    );
+    assert.deepEqual(
+      sidebarVoiceStatusKeys({ mic: false, camera: false, screen: false, deafened: false, speaking: false }),
+      ["muted"]
+    );
+    assert.deepEqual(
+      sidebarVoiceStatusKeys({ mic: false, camera: false, screen: false, deafened: true, speaking: false }),
+      ["deafened", "muted"]
     );
   });
 

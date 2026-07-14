@@ -17,8 +17,19 @@ describe("voice rail live controls", () => {
 
     assert.match(rail, /member\.media\.screen[\s\S]*?<LiveStreamPopover[\s\S]*?common\.live/);
     assert.match(rail, /<LiveStreamPopover[\s\S]*?props\.onWatchLive/);
-    assert.match(rail, /<VolumeControl[\s\S]*?props\.memberVolumes\[member\.user\.userId\]/);
+    assert.match(rail, /<RailMemberActionControl[\s\S]*?volume=\{props\.memberVolumes\[member\.user\.userId\]/);
     assert.match(rail, /props\.onMemberVolumeChange\(member\.user\.userId, volume\)/);
+    assert.match(app, /function RailMemberActionControl[\s\S]*?<VolumeControl/);
+  });
+
+  it("renders compact accessible mute and deafen icons for each rail member", () => {
+    const app = readFileSync("src/App.tsx", "utf8");
+    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
+
+    assert.match(rail, /sidebarVoiceStatusKeys\(member\.media\)/);
+    assert.match(rail, /voice-channel-statuses/);
+    assert.match(rail, /aria-label=\{props\.t\(`common\.\$\{status\}` as TranslationKey\)\}/);
+    assert.match(rail, /status === "deafened" \? <HeadsetIcon off \/> : <MicIcon off \/>/);
   });
 
   it("automatically joins a selected broadcast with the microphone enabled", () => {
