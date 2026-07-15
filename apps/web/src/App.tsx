@@ -75,11 +75,25 @@ import { replaceVisualTarget, toggleVisualTarget, visualTargetKey } from "./lib/
 import { participantsForViewedRoom, remoteStreamKey, type RemoteStreamState } from "./lib/voiceStreams.js";
 import {
   DEFAULT_VOLUME_PERCENT,
+  clampVolumePercent,
   pruneVolumes,
   readUserVolumes,
   setVolume,
   writeUserVolumes
 } from "./lib/voiceVolume.js";
+import {
+  DEFAULT_AUDIO_LEVELS,
+  combineOutputVolume,
+  readAudioLevels,
+  writeAudioLevels,
+  type AudioLevels
+} from "./lib/audioLevels.js";
+import { useMicrophoneTest, type MicrophoneTestError } from "./lib/useMicrophoneTest.js";
+import {
+  claimMicrophoneTestDeafen,
+  shouldRestoreMicrophoneTestDeafen,
+  type MicrophoneTestDeafenLease
+} from "./lib/microphoneTestIsolation.js";
 import { loadTurnstile } from "./lib/turnstile.js";
 import { startupSurface } from "./lib/startupSurface.js";
 import { createAuthRequestGate } from "./lib/authRequestGate.js";
@@ -202,7 +216,17 @@ export function App() {
   const serverMembers = serverMembersByServer[activeServerId] ?? [];
   const voiceRoomIds = useMemo(() => rooms.filter((room) => room.kind === "voice").map((room) => room.id), [rooms]);
   const audioDevices = useAudioDevices({ userId: user?.id });
-  const voice = useVoiceMedia({ socket: socketInstance, user, iceServers: rtcConfig.iceServers, voiceRoomIds, microphoneDeviceId: audioDevices.selectedInputId });
+  const [audioLevels, setAudioLevels] = useState<AudioLevels>(DEFAULT_AUDIO_LEVELS);
+  const voice = useVoiceMedia({
+    socket: socketInstance,
+    user,
+    iceServers: rtcConfig.iceServers,
+    voiceRoomIds,
+    microphoneDeviceId: audioDevices.selectedInputId,
+    microphoneVolume: audioLevels.input
+  });
+  const microphoneTest = useMicrophoneTest(audioDevices.selectedInputId, audioLevels.input, voice.microphoneMonitorStream);
+  const microphoneTestDeafenRef = useRef<MicrophoneTestDeafenLease | null>(null);
   const activeVoiceRoomRef = useRef<string | null>(voice.activeRoomId);
   const leaveVoiceRef = useRef<() => void>(voice.leave);
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
@@ -213,7 +237,12 @@ export function App() {
     <AuthenticatedAppSurface
       audio={(
         <>
-          <GlobalVoiceAudio streams={voice.remoteStreams} muted={voice.controls.deafen.on} memberVolumes={memberVolumes} />
+          <GlobalVoiceAudio streams={voice.remoteStreams} muted={voice.controls.deafen.on} memberVolumes={memberVolumes} outputVolume={audioLevels.output} />
+          {microphoneTest.monitorStream ? <RemoteAudio
+            stream={microphoneTest.monitorStream}
+            muted={false}
+            volume={combineOutputVolume(DEFAULT_VOLUME_PERCENT, audioLevels.output)}
+          /> : null}
           {audioPlaybackBlocked ? <AudioPlaybackRecovery t={t} /> : null}
         </>
       )}
@@ -237,6 +266,63 @@ export function App() {
   useEffect(() => {
     setMemberVolumes(user ? readUserVolumes(user.id) : {});
   }, [user?.id]);
+
+  useEffect(() => {
+    setAudioLevels(user ? readAudioLevels(user.id) : { ...DEFAULT_AUDIO_LEVELS });
+  }, [user?.id]);
+
+  const changeAudioLevel = useCallback((kind: keyof AudioLevels, volume: number) => {
+    setAudioLevels((current) => {
+      const next = { ...current, [kind]: clampVolumePercent(volume) };
+      if (user) writeAudioLevels(user.id, next);
+      return next;
+    });
+  }, [user?.id]);
+
+  const isolateMicrophoneTest = useCallback(async () => {
+    const roomId = voice.activeRoomId;
+    if (!roomId) {
+      microphoneTestDeafenRef.current = null;
+      return true;
+    }
+    if (microphoneTestDeafenRef.current?.roomId === roomId) return true;
+    const claim = claimMicrophoneTestDeafen(roomId, voice.controls.deafen.on);
+    if (claim.shouldDeafen && !(await voice.setDeafened(true))) return false;
+    microphoneTestDeafenRef.current = claim.lease;
+    return true;
+  }, [voice.activeRoomId, voice.controls.deafen.on, voice.setDeafened]);
+
+  const stopMicrophoneTest = useCallback(async () => {
+    microphoneTest.stop();
+    const lease = microphoneTestDeafenRef.current;
+    microphoneTestDeafenRef.current = null;
+    if (shouldRestoreMicrophoneTestDeafen(lease, voice.activeRoomId)) {
+      await voice.setDeafened(false);
+    }
+  }, [microphoneTest.stop, voice.activeRoomId, voice.setDeafened]);
+
+  const startMicrophoneTest = useCallback(async () => {
+    if (!(await isolateMicrophoneTest())) return;
+    if (await microphoneTest.start()) return;
+    await stopMicrophoneTest();
+  }, [isolateMicrophoneTest, microphoneTest.start, stopMicrophoneTest]);
+
+  const toggleMicrophoneTest = useCallback(async () => {
+    if (microphoneTest.active) await stopMicrophoneTest();
+    else await startMicrophoneTest();
+  }, [microphoneTest.active, startMicrophoneTest, stopMicrophoneTest]);
+
+  useEffect(() => {
+    if (!microphoneTest.active) return;
+    if (!voice.activeRoomId) {
+      microphoneTestDeafenRef.current = null;
+      return;
+    }
+    if (microphoneTestDeafenRef.current?.roomId === voice.activeRoomId) return;
+    void isolateMicrophoneTest().then((isolated) => {
+      if (!isolated) microphoneTest.stop();
+    });
+  }, [isolateMicrophoneTest, microphoneTest.active, microphoneTest.stop, voice.activeRoomId]);
 
   useEffect(() => {
     const activeScreenIds = voice.remoteStreams
@@ -783,6 +869,9 @@ export function App() {
     roomHistory,
     pendingLiveWatch,
     audioDevices,
+    audioLevels,
+    microphoneTestActive: microphoneTest.active,
+    microphoneTestError: microphoneTest.error,
     onNavigate: navigate,
     onSelectServer: async (serverId: string) => {
       const response = await fetchServerRooms(serverId);
@@ -867,6 +956,10 @@ export function App() {
     onSetVisualSubscriptions: voice.setVisualSubscriptions,
     onMemberVolumeChange: changeMemberVolume,
     onScreenVolumeChange: changeScreenVolume,
+    onInputVolumeChange: (volume: number) => changeAudioLevel("input", volume),
+    onOutputVolumeChange: (volume: number) => changeAudioLevel("output", volume),
+    onToggleMicrophoneTest: toggleMicrophoneTest,
+    onCloseAudioSettings: () => { void stopMicrophoneTest(); },
     onToggleControl: voice.toggleControl,
     onLeaveVoice: voice.leave,
     onLogout: async () => {
@@ -1018,6 +1111,9 @@ interface ShellProps {
   roomHistory: RoomHistory;
   pendingLiveWatch: LiveWatchRequest | null;
   audioDevices: UseAudioDevicesResult;
+  audioLevels: AudioLevels;
+  microphoneTestActive: boolean;
+  microphoneTestError: MicrophoneTestError;
   drawer: Drawer;
   theme: ThemeChoice;
   language: LanguageCode;
@@ -1043,6 +1139,10 @@ interface ShellProps {
   onSetVisualSubscriptions: (targets: VisualTarget[]) => Promise<VisualSubscriptionResult>;
   onMemberVolumeChange: (userId: string, volume: number) => void;
   onScreenVolumeChange: (streamId: string, volume: number) => void;
+  onInputVolumeChange: (volume: number) => void;
+  onOutputVolumeChange: (volume: number) => void;
+  onToggleMicrophoneTest: () => Promise<void>;
+  onCloseAudioSettings: () => void;
   onToggleControl: (key: keyof VoiceControls) => void;
   onLeaveVoice: () => void;
   onLogout: () => Promise<void>;
@@ -1355,6 +1455,7 @@ function VoiceRoomScreen(props: ShellProps) {
                 sources={stageSources}
                 focusedSource={focusedSource}
                 screenVolumes={props.screenVolumes}
+                outputVolume={props.audioLevels.output}
                 onFocus={setFocusedSourceKey}
                 onScreenVolumeChange={props.onScreenVolumeChange}
                 t={props.t}
@@ -2024,7 +2125,7 @@ function ChannelRail(props: ShellProps & {
   };
   return (
     <aside className="rail">
-      <BrandLockup href={serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general")} onNavigate={props.onNavigate} />
+      <BrandLockup subtitle="" href={serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general")} onNavigate={props.onNavigate} />
       <ServerSwitcher
         activeServerId={props.activeServerId}
         servers={props.servers}
@@ -2158,6 +2259,10 @@ function ChannelRail(props: ShellProps & {
         outputs={props.audioDevices.outputs}
         selectedInputId={props.audioDevices.selectedInputId}
         selectedOutputId={props.audioDevices.selectedOutputId}
+        inputVolume={props.audioLevels.input}
+        outputVolume={props.audioLevels.output}
+        microphoneTestActive={props.microphoneTestActive}
+        microphoneTestError={props.microphoneTestError}
         loading={props.audioDevices.loading}
         error={props.audioDevices.error}
         unavailableSelections={props.audioDevices.unavailableSelections}
@@ -2169,12 +2274,24 @@ function ChannelRail(props: ShellProps & {
           systemDefault: props.t("audio.systemDefault"),
           browserControlled: props.t("audio.browserControlled"),
           refresh: props.t("audio.refresh"),
-          unavailable: props.t("audio.unavailable")
+          unavailable: props.t("audio.unavailable"),
+          inputVolume: props.t("audio.inputVolume"),
+          outputVolume: props.t("audio.outputVolume"),
+          startTest: props.t("audio.startTest"),
+          stopTest: props.t("audio.stopTest"),
+          testHint: props.t("audio.testHint"),
+          testPermission: props.t("audio.testPermission"),
+          testUnavailable: props.t("audio.testUnavailable"),
+          closeSettings: props.t("audio.closeSettings")
         }}
         onOpen={() => props.audioDevices.refresh(true)}
+        onClose={props.onCloseAudioSettings}
         onRefresh={() => props.audioDevices.refresh(true)}
         onSelectInput={props.audioDevices.selectInput}
         onSelectOutput={props.audioDevices.selectOutput}
+        onInputVolumeChange={props.onInputVolumeChange}
+        onOutputVolumeChange={props.onOutputVolumeChange}
+        onToggleMicrophoneTest={props.onToggleMicrophoneTest}
       />
       {deleteError ? <p className="error-text" aria-live="polite">{deleteError}</p> : null}
       {deleteTarget ? <ConfirmDialog
@@ -2503,7 +2620,7 @@ function VoiceDock(props: ShellProps & { connectedCount: number }) {
         {props.activeVoiceRoomId ? (
           <>
             <ControlButton label={props.t(`common.${micControl.action}` as TranslationKey)} active={props.controls.mic.on} tone={micControl.tone} enabled={props.controls.mic.enabled} onClick={() => props.onToggleControl("mic")}><MicIcon off={!props.controls.mic.on} /></ControlButton>
-            <ControlButton label={props.t(`common.${deafenControl.action}` as TranslationKey)} active={props.controls.deafen.on} tone={deafenControl.tone} enabled={props.controls.deafen.enabled} onClick={() => props.onToggleControl("deafen")}><HeadsetIcon off={props.controls.deafen.on} /></ControlButton>
+            <ControlButton label={props.t(`common.${deafenControl.action}` as TranslationKey)} active={props.controls.deafen.on} tone={deafenControl.tone} enabled={props.controls.deafen.enabled && !props.microphoneTestActive} onClick={() => props.onToggleControl("deafen")}><HeadsetIcon off={props.controls.deafen.on} /></ControlButton>
             <ControlButton label={props.t(`common.${cameraControl.action}` as TranslationKey)} active={props.controls.camera.on} tone={cameraControl.tone} enabled={props.controls.camera.enabled} onClick={() => props.onToggleControl("camera")}><CameraIcon off={!props.controls.camera.on} /></ControlButton>
             <ControlButton label={props.t(`common.${screenControl.action}` as TranslationKey)} active={props.controls.screenShare.on} tone={screenControl.tone} enabled={props.controls.screenShare.enabled} onClick={() => props.onToggleControl("screenShare")}><ScreenIcon off={props.controls.screenShare.on} /></ControlButton>
             <button className="btn btn-danger" type="button" onClick={props.onLeaveVoice}><LeaveIcon /><span>{props.t("common.leave")}</span></button>
@@ -3198,11 +3315,13 @@ function AudioPlaybackRecovery({ t }: { t: Translate }) {
 function GlobalVoiceAudio({
   streams,
   muted,
-  memberVolumes
+  memberVolumes,
+  outputVolume
 }: {
   streams: RemoteStreamState[];
   muted: boolean;
   memberVolumes: Record<string, number>;
+  outputVolume: number;
 }) {
   return (
     <>
@@ -3211,7 +3330,7 @@ function GlobalVoiceAudio({
           key={remoteStreamKey(item.userId, item.kind)}
           stream={item.stream}
           muted={muted}
-          volume={memberVolumes[item.userId] ?? DEFAULT_VOLUME_PERCENT}
+          volume={combineOutputVolume(memberVolumes[item.userId] ?? DEFAULT_VOLUME_PERCENT, outputVolume)}
         />
       ))}
     </>
@@ -3222,6 +3341,7 @@ function VisualStage({
   sources,
   focusedSource,
   screenVolumes,
+  outputVolume,
   onFocus,
   onScreenVolumeChange,
   t
@@ -3229,6 +3349,7 @@ function VisualStage({
   sources: StageSource[];
   focusedSource: StageSource | null;
   screenVolumes: Record<string, number>;
+  outputVolume: number;
   onFocus: (key: string) => void;
   onScreenVolumeChange: (streamId: string, volume: number) => void;
   t: Translate;
@@ -3273,7 +3394,7 @@ function VisualStage({
           </button>
         ))}
       </div>
-      {!focusedSource?.ownerIsLocal && focusedSource?.kind === "screen" && focusedStream && focusedHasAudio ? <RemoteAudio stream={focusedStream} muted={false} volume={focusedVolume} /> : null}
+      {!focusedSource?.ownerIsLocal && focusedSource?.kind === "screen" && focusedStream && focusedHasAudio ? <RemoteAudio stream={focusedStream} muted={false} volume={combineOutputVolume(focusedVolume, outputVolume)} /> : null}
       <div className="screen-stage-bar">
         <span><strong>{focusedSource?.ownerName}</strong><span className="muted small">{focusedSource?.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}</span></span>
         {!focusedSource?.ownerIsLocal && focusedSource?.kind === "screen" ? (
@@ -3318,7 +3439,7 @@ function BrandLockup({ title = "Voxly", subtitle = "The Basement", href = "/", o
   return (
     <a className="brand-lockup brand-button" href={href} onClick={handleClick}>
       <span className="brand-mark"><img src="/brand/logo-mark.svg" alt="" width="28" height="28" /></span>
-      <span className="brand-copy"><strong>{title}</strong><span>{subtitle}</span></span>
+      <span className="brand-copy"><strong>{title}</strong>{subtitle ? <span>{subtitle}</span> : null}</span>
     </a>
   );
 }

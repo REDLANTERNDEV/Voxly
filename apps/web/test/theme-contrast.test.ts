@@ -41,6 +41,7 @@ describe("theme contrast", () => {
     assert.match(styles, /\.rail \.session-card,[\s\S]*?background:\s*var\(--rail-surface\)/);
     assert.match(styles, /\.voice-channel-user\s*\{[^}]*color:\s*var\(--rail-muted\)/s);
     assert.match(styles, /\.audio-device-card\s*\{[^}]*background:\s*var\(--rail-surface\)[^}]*color:\s*var\(--rail-fg\)/s);
-    assert.match(styles, /\.audio-device-card \.input\s*\{[^}]*background:\s*var\(--rail-bg\)[^}]*color:\s*var\(--rail-fg\)/s);
+    assert.match(styles, /\.audio-device-popover\s*\{[^}]*background:\s*var\(--surface\)[^}]*color:\s*var\(--fg\)/s);
+    assert.match(styles, /\.audio-device-popover \.input\s*\{[^}]*background:\s*var\(--bg\)[^}]*color:\s*var\(--fg\)/s);
   });
 });

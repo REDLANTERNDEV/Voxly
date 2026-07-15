@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
+
+describe("general output volume integration", () => {
+  it("combines general output with participant, screen, and microphone test playback", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+
+    assert.match(source, /combineOutputVolume\(memberVolumes\[item\.userId\] \?\? DEFAULT_VOLUME_PERCENT, outputVolume\)/);
+    assert.match(source, /combineOutputVolume\(focusedVolume, outputVolume\)/);
+    assert.match(source, /microphoneTest\.monitorStream[\s\S]*combineOutputVolume\(DEFAULT_VOLUME_PERCENT, audioLevels\.output\)/);
+  });
+});

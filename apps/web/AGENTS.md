@@ -33,6 +33,14 @@ requirement.
 - Treat an authenticated `/invite/:token` route as intent to accept. Share one
   in-flight request per token, auto-accept a valid new membership, and use the
   returned `serverId` for both success and `already_server_member` navigation.
+- After an existing user accepts an invite to another server, fetch the complete
+  accessible server list and the invited server's rooms before leaving the
+  invite surface. Replace the switcher state with that response, preserve the
+  user's earlier server options, and open the invited server's first text room
+  or first available room.
+- Resolve the displayed invite target from the current server name at link-open
+  time. Do not embed or retain a stale server name in the invite URL; fall back
+  to generic invite copy when preview validation fails.
 - When an authenticated invite is generically invalid, fall back to the first
   usable accessible server; keep the recoverable invite error surface when no
   active server exists. Never infer the invite's server in the browser.
@@ -59,6 +67,13 @@ requirement.
   Do not reuse owner moderation records as a public directory response.
 - The normal server switcher is navigation for owners and members. Server
   creation and deletion belong in the selected owner-server context.
+- Reserve the top-left channel-rail lockup for the Voxly mark and application
+  name. The active server name belongs in the adjacent server switcher; do not
+  repeat it as the rail brand subtitle.
+- The selected owner-server context also owns server renaming. Trim and enforce
+  the server's 2–64 character contract, update local navigation from the HTTP
+  acknowledgement, and apply scoped realtime name updates to the matching
+  server summary without disturbing other memberships.
 - Owner invites, access links, membership actions, and history operate on that
   selected owner context; do not reintroduce a second invite target selector.
 - Server and channel deletion keep exact-name confirmation and server-side
@@ -69,6 +84,10 @@ requirement.
   rail, and right member panel.
 - Ordinary members receive personal volume controls only. Disconnect, kick,
   ban, unban, and destructive channel actions remain permission-gated.
+- Left-rail voice participants and right-panel directory members reuse the same
+  member action menu and confirmation flow. Remote volume remains available to
+  listeners; disconnect, kick, ban, and nickname actions appear only when the
+  current server role and target member permit them.
 - Kicked members disappear from the owner member list; banned members remain
   visible so owners can unban them.
 - Nicknames are server-scoped presentation. The selected server owner may
@@ -118,8 +137,15 @@ requirement.
   member volume and moderation actions. Remote volume remains available to all
   listeners; nickname changes remain owner-gated and restore focus after the
   dialog closes when an ellipsis opened the menu.
+- Owner disconnect, kick, and ban actions use this same shared menu from both
+  sidebars. Keep one pending confirmation owner in the application chrome so
+  labels, destructive copy, focus behavior, and execution cannot drift between
+  the two surfaces.
 - Account, audio-device, and stage-volume popovers are not part of the exclusive
   sidebar-menu coordinator.
+- Keep audio-device settings in a viewport-clamped portal popover rather than
+  expanding the channel rail. Opening the panel must not add another rail or
+  page scrollbar; short viewports may scroll inside the popover itself.
 
 ## LIVE Watch and Voice Presentation
 
@@ -168,11 +194,38 @@ requirement.
 - Voice-channel prefixes use the inline microphone icon rather than text such
   as `VC`. The screen-share glyph keeps `currentColor` and an explicit stroke
   weight appropriate to its 256-unit view box so it matches adjacent icons.
+- Keep the voice-channel microphone prefix vertically centered with the channel
+  name by using an inline-flex container, centered alignment, and a block-level
+  icon glyph. Do not compensate with fragile per-icon offsets.
 - Add English and Turkish strings together. Test both behavior and accessible
   labels when copy affects an interaction.
 - Menus, popovers, dialogs, sliders, and custom controls must remain keyboard
   and touch operable, correctly labeled, focus-managed, and usable with reduced
   motion.
+- General input and output levels are listener-account preferences shared across
+  that user's servers and clamped to 0–200%. Input gain affects both published
+  microphone audio and microphone monitoring. General output composes with
+  member and screen-share levels and is clamped before playback.
+- Microphone monitoring uses the selected input, follows live input-level
+  changes, and stops on panel close or cleanup. While monitoring in voice,
+  acquire an acknowledged temporary deafen state, lock the dock deafen action,
+  and restore only a state that monitoring itself changed; preserve users who
+  were already deafened and never restore across a different room.
+
+## Theme and Contrast
+
+- The neutral dark foundation is Onyx `#0A0A09`; do not restore the former
+  brown base through tokens, surfaces, borders, or control states.
+- In explicit light mode the left channel rail is white with Onyx foreground.
+  In explicit or system dark mode it uses the Onyx background with the shared
+  off-white foreground.
+- Rail cards, fields, borders, muted copy, member rows, and skeletons use the
+  dedicated rail tokens rather than assuming the rail is always dark. Preserve
+  readable foreground/background contrast for text, placeholders, icons,
+  disabled states, and native selects in both themes.
+- A theme change is incomplete if any text becomes indistinguishable from its
+  surface. Keep structural CSS tests for the token contract and inspect both
+  themes in a browser for geometry- and rendering-sensitive regressions.
 
 ## Web Verification
 

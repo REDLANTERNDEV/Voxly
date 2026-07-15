@@ -197,36 +197,36 @@ describe("voice snapshot reconciliation", () => {
 
   it("derives undeafen and ended microphone state from live tracks", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
-    const toggleDeafen = source.match(/const toggleDeafen = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+    const setDeafened = source.match(/const setDeafened = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
 
     assert.match(source, /watchMicrophoneStreamEnd\(/);
-    assert.match(toggleDeafen, /effectiveVoiceMediaState\(/);
-    assert.doesNotMatch(toggleDeafen, /Boolean\(localStreamsRef\.current\.mic\)/);
+    assert.match(setDeafened, /effectiveVoiceMediaState\(/);
+    assert.doesNotMatch(setDeafened, /Boolean\(localStreamsRef\.current\.mic\)/);
   });
 
   it("preserves only the pre-deafen microphone preference through undeafen", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
     const toggleMic = source.match(/const toggleMic = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
-    const toggleDeafen = source.match(/const toggleDeafen = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+    const setDeafened = source.match(/const setDeafened = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
 
     assert.match(source, /const microphoneOnBeforeDeafenRef = useRef\(true\)/);
     assert.match(source, /const deafenTransitionRef = useRef\(0\)/);
-    assert.match(toggleDeafen, /microphoneOnBeforeDeafenRef\.current = controlsRef\.current\.mic\.on/);
-    assert.match(toggleDeafen, /const restoreMicrophoneOn = microphoneOnBeforeDeafenRef\.current/);
-    assert.match(toggleDeafen, /track\.enabled = restoreMicrophoneOn && track\.readyState === "live"/);
-    assert.match(toggleDeafen, /restoreMicrophoneOn/);
-    assert.match(toggleDeafen, /effectiveVoiceMediaState\(nextControls, localStreamsRef\.current\)/);
-    assert.match(toggleDeafen, /const response = await emitMediaState/);
-    assert.match(toggleDeafen, /transition !== deafenTransitionRef\.current/);
-    assert.match(toggleDeafen, /const failedControls: VoiceControls = \{[\s\S]*?\.\.\.controlsRef\.current,[\s\S]*?deafen:[\s\S]*?on: true/);
+    assert.match(setDeafened, /microphoneOnBeforeDeafenRef\.current = controlsRef\.current\.mic\.on/);
+    assert.match(setDeafened, /const restoreMicrophoneOn = microphoneOnBeforeDeafenRef\.current/);
+    assert.match(setDeafened, /track\.enabled = restoreMicrophoneOn && track\.readyState === "live"/);
+    assert.match(setDeafened, /restoreMicrophoneOn/);
+    assert.match(setDeafened, /effectiveVoiceMediaState\(nextControls, localStreamsRef\.current\)/);
+    assert.match(setDeafened, /const response = await emitMediaState/);
+    assert.match(setDeafened, /transition !== deafenTransitionRef\.current/);
+    assert.match(setDeafened, /const failedControls: VoiceControls = \{[\s\S]*?\.\.\.controlsRef\.current,[\s\S]*?deafen:[\s\S]*?on: true/);
     assert.doesNotMatch(toggleMic, /microphoneOnBeforeDeafenRef/);
   });
 
   it("invalidates deafen mic restoration when the microphone track ends", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
-    const activateMicrophoneStream = source.match(/const activateMicrophoneStream = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+    const activateMicrophoneInput = source.match(/const activateMicrophoneInput = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
 
-    assert.match(activateMicrophoneStream, /microphoneOnBeforeDeafenRef\.current = false/);
+    assert.match(activateMicrophoneInput, /microphoneOnBeforeDeafenRef\.current = false/);
   });
 
   it("does not treat a microphone selection as a socket reconnect", () => {

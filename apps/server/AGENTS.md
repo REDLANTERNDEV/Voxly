@@ -29,6 +29,10 @@ queries across endpoints.
 - Do not drop or reinterpret audit-relevant rows as an incidental cleanup.
 - Keep schema metadata, runtime initialization, SQL queries, and migration tests
   synchronized.
+- Legacy user-to-default-server backfill runs only when introducing the
+  `server_members` table to an older database. Routine startups and later
+  migrations must never infer default-server membership from global `users`;
+  doing so leaks members from one server into another.
 - Operations described as atomic must complete their related validation and
   writes before publishing realtime state. Avoid partial external visibility.
 - Never commit generated `.sqlite`, `-shm`, or `-wal` files.
@@ -64,6 +68,11 @@ queries across endpoints.
 - Accepting a valid invite as an existing active member returns the target
   `serverId` and leaves that unused invite unused. Reopening a previously
   consumed invite never restores a removed or banned membership.
+- A user account is global but each membership is independent and
+  server-scoped. When an existing user accepts a valid unused invite to a
+  different server, add or reactivate only that target membership, consume the
+  invite, preserve every other active membership, and return the invited
+  `serverId`. The authenticated server list must then expose both memberships.
 - Kicking sets `removed_at`, revokes effective access, disconnects realtime
   membership, and excludes the user from owner member lists. A kicked user may
   return through the existing invite flow.
@@ -78,6 +87,14 @@ queries across endpoints.
   owner-server/channel protections on the server.
 - Server deletion remains atomic while preserving global identities and audit
   history that other servers still need.
+- Server names are owner-managed, trimmed to 2–64 characters, persisted before
+  publication, and updated only after active owner authorization in that
+  server. Record the rename in the audit log and emit the typed update only to
+  the renamed server room.
+- Invite links identify an invite, not a cached server name. Preview a valid,
+  unused, unrevoked, unexpired invite by joining its current server row so an
+  older link shows the latest name after a rename. Keep every invalid preview
+  response generic.
 - Store an optional nickname override on `server_members`; the global user
   nickname remains the fallback. Only an active owner of that server may set a
   trimmed 2–32 character override for ordinary members or themselves, never a

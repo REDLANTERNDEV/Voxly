@@ -69,6 +69,29 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   user. Normal microphone-toggle behavior remains independent.
 - Leave and a fresh join reset room-scoped restoration state so preference does
   not leak between sessions.
+- Microphone testing treats automatic deafen as a room-scoped lease. Start
+  playback only after deafen is acknowledged, restore undeafened state only
+  when the lease changed it in the same active room, and preserve an existing
+  user-selected deafen state. A failed test start must release its lease.
+
+## Microphone Gain and Monitoring
+
+- Apply the user input level through one Web Audio source and `GainNode` before
+  branching to independent voice-publication and local-monitor destinations.
+  Keep deafen free to disable the published track without silencing the monitor
+  branch.
+- Reuse the active microphone's monitor branch during a voice session. Open a
+  separate selected-device capture only when no active microphone graph exists,
+  and dispose that capture when an active graph replaces it.
+- Input levels are integer-clamped from 0% to 200%, persisted per account, and
+  applied live to both voice publication and monitoring. Resume the processing
+  context from the initiating user action and fail safely when Web Audio cannot
+  be created.
+- Stop raw capture, generated destination tracks, graph nodes, and contexts
+  exactly once across stop, device replacement, permission failure, component
+  cleanup, logout, and stale async completion. Watch the raw device stream for
+  disconnects; a generated destination track may remain live after its source
+  ends.
 
 ## Remote Streams and Audio Output
 
@@ -90,6 +113,9 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   replacing `srcObject` or calling `play()` again.
 - Volume is listener-owned, integer-clamped from 0% to 200%, and persisted per
   listener for users. Temporary screen-stream levels disappear with the stream.
+- The per-account general output level multiplies participant, screen-share,
+  and microphone-test playback levels, with the effective result clamped back
+  to 0–200% before reaching the existing native/boost output path.
 - A suspended context, setup failure, or unsupported/rejected non-default sink
   must disconnect boost and leave native playback audible at 100%.
 - Apply the selected speaker to active and future native elements and to the

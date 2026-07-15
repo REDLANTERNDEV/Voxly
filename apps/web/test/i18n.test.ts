@@ -64,6 +64,14 @@ describe("frontend localization", () => {
     assert.equal(translate("tr", "audio.playbackBlocked"), "Tarayıcı gelen sesi duraklattı.");
   });
 
+  it("translates general audio levels and microphone testing", () => {
+    assert.equal(translate("en", "audio.inputVolume"), "Input level");
+    assert.equal(translate("en", "audio.startTest"), "Listen to microphone");
+    assert.equal(translate("tr", "audio.outputVolume"), "Genel çıkış seviyesi");
+    assert.equal(translate("tr", "audio.stopTest"), "Dinlemeyi durdur");
+    assert.equal(translate("tr", "audio.testHint"), "Geri beslemeyi önlemek için kulaklık kullanın.");
+  });
+
   it("keeps the landing invitation concise in both languages", () => {
     assert.equal(translate("en", "landing.title"), "A room for your people");
     assert.equal(translate("tr", "landing.title"), "Kendi grubun için bir oda");
