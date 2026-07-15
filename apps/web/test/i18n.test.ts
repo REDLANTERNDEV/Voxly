@@ -39,6 +39,20 @@ describe("frontend localization", () => {
     assert.equal(translate("tr", "member.nicknameUpdated"), "Takma ad güncellendi.");
   });
 
+  it("translates server renaming and current invite targets in both languages", () => {
+    assert.equal(translate("en", "server.rename"), "Rename server");
+    assert.equal(translate("en", "invite.joinServerTitle", { server: "Onyx Lounge" }), "Join Onyx Lounge");
+    assert.equal(translate("tr", "server.rename"), "Sunucu adını değiştir");
+    assert.equal(translate("tr", "invite.joinServerTitle", { server: "Onyx Lounge" }), "Onyx Lounge sunucusuna katıl");
+  });
+
+  it("translates shared sidebar moderation confirmations in both languages", () => {
+    assert.equal(translate("en", "member.disconnectTitle", { nickname: "Ada" }), "Disconnect Ada?");
+    assert.equal(translate("en", "member.kickCopy"), "The member can return only with a new invite.");
+    assert.equal(translate("tr", "member.banTitle", { nickname: "Ada" }), "Ada sunucudan yasaklansın mı?");
+    assert.equal(translate("tr", "member.disconnect"), "Ses bağlantısını kes");
+  });
+
   it("translates voice room move confirmation", () => {
     assert.equal(translate("en", "voice.moveTitle"), "Switch voice rooms?");
     assert.equal(translate("tr", "voice.moveConfirm"), "Kanala geç");

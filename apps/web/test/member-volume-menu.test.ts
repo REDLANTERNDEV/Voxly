@@ -13,13 +13,19 @@ describe("member volume menus", () => {
 
   it("shares member volume state while retaining owner-only moderation", () => {
     const app = readFileSync("src/App.tsx", "utf8");
+    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelDeleteControl/)?.[0] ?? "";
     const panel = app.match(/function MemberPanel[\s\S]*?\n}\n\nfunction VoiceDock/)?.[0] ?? "";
+    const menu = app.match(/function MemberActionMenu[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
 
     assert.match(panel, /memberVolumes:\s*Record<string, number>/);
     assert.match(panel, /onMemberVolumeChange:\s*\(userId: string, volume: number\) => void/);
-    assert.match(panel, /voiceRoom\s*&&\s*user\.userId\s*!==\s*currentUser\.id\s*\?\s*\([\s\S]*?<VolumeControl[\s\S]*?value=\{memberVolumes\[user\.userId\]\s*\?\?\s*DEFAULT_VOLUME_PERCENT\}/);
-    assert.match(panel, /onChange=\{\(volume\) => onMemberVolumeChange\(user\.userId, volume\)\}/);
-    assert.match(panel, /\{canModerate\s*&&\s*user\.userId\s*!==\s*currentUser\.id\s*\?\s*<>[\s\S]*?member\.kick[\s\S]*?member\.ban/);
+    assert.match(rail, /<MemberActionMenu/);
+    assert.match(panel, /<MemberActionMenu/);
+    assert.match(menu, /<VolumeControl/);
+    assert.match(menu, /member\.disconnect/);
+    assert.match(menu, /member\.kick/);
+    assert.match(menu, /member\.ban/);
+    assert.match(app, /pendingMemberAction/);
   });
 
   it("keeps voice status chips readable and separates owner member actions", () => {

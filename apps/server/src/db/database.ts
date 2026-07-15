@@ -55,6 +55,11 @@ export function dumpTables(sqlite: DatabaseSync) {
 }
 
 function migrate(sqlite: DatabaseSync) {
+  const needsLegacyMembershipBackfill = one<{ count: number }>(
+    sqlite,
+    "select count(*) as count from sqlite_master where type = 'table' and name = 'server_members'"
+  )?.count === 0;
+
   sqlite.exec(`
     create table if not exists users (
       id text primary key,
@@ -189,10 +194,14 @@ function migrate(sqlite: DatabaseSync) {
     run(sqlite, "update rooms set server_id = ? where server_id is null", [defaultServerId]);
     run(sqlite, "update invites set server_id = ? where server_id is null", [defaultServerId]);
     run(sqlite, "update audit_events set server_id = ? where server_id is null", [defaultServerId]);
-    sqlite.exec(`
-      insert or ignore into server_members (server_id, user_id, role, banned_at, joined_at)
-      select '${defaultServerId}', id, role, banned_at, '${now}' from users;
-    `);
+    if (needsLegacyMembershipBackfill) {
+      run(
+        sqlite,
+        `insert or ignore into server_members (server_id, user_id, role, banned_at, joined_at)
+         select ?, id, role, banned_at, ? from users`,
+        [defaultServerId, now]
+      );
+    }
   }
 }
 

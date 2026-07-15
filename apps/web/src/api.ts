@@ -67,6 +67,13 @@ export async function createServer(name: string) {
   return apiPost<{ server: ServerSummary }>("/api/servers", { name });
 }
 
+export async function updateServer(serverId: string, name: string) {
+  return request<{ server: ServerSummary }>(`/api/servers/${encodeURIComponent(serverId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name })
+  });
+}
+
 export async function fetchServerRooms(serverId: string) {
   return apiGet<RoomsResponse>(`/api/servers/${encodeURIComponent(serverId)}/rooms`);
 }
@@ -116,6 +123,10 @@ export async function deleteMessage(roomId: string, messageId: string) {
 
 export async function acceptInvite(inviteToken: string, nickname: string, turnstileToken?: string) {
   return apiPost<CurrentUserResponse & { serverId: string }>("/api/invites/accept", { inviteToken, nickname: nickname || undefined, turnstileToken });
+}
+
+export async function previewInvite(inviteToken: string) {
+  return apiPost<{ serverName: string }>("/api/invites/preview", { inviteToken });
 }
 
 export function claimAccessLink(token: string) {

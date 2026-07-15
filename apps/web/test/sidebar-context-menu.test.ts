@@ -20,10 +20,9 @@ describe("exclusive sidebar context menus", () => {
     assert.match(rail, /onContextMenu=/);
     assert.match(members, /onContextMenu=/);
     assert.match(app, /function SidebarMenuTrigger[\s\S]*?aria-haspopup="dialog"/);
-    assert.match(rail, /<SidebarMenuTrigger/);
-    assert.match(members, /<SidebarMenuTrigger/);
-    assert.match(rail, /<ContextMenu/);
-    assert.match(members, /<ContextMenu/);
+    assert.match(rail, /<MemberActionMenu/);
+    assert.match(members, /<MemberActionMenu/);
+    assert.match(app, /function MemberActionMenu[\s\S]*?<SidebarMenuTrigger[\s\S]*?<ContextMenu/);
     assert.doesNotMatch(rail, /<details className="(?:channel-action-menu|rail-member-menu)/);
     assert.doesNotMatch(members, /<details className="member-action-menu/);
   });

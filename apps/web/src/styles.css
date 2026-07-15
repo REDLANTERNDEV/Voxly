@@ -1,14 +1,15 @@
 :root {
   color-scheme: light;
-  --khaki-beige: #b7ad99;
+  --neutral-gray: #9b9b95;
+  --khaki-beige: var(--neutral-gray);
   --hot-fuchsia: #ff4365;
-  --black: #030301;
+  --black: #0a0a09;
   --turquoise: #00d9c0;
-  --ivory: #fffff3;
-  --bg: var(--ivory);
-  --surface: color-mix(in oklab, var(--ivory), var(--khaki-beige) 8%);
-  --surface-warm: color-mix(in oklab, var(--ivory), var(--khaki-beige) 13%);
-  --surface-2: color-mix(in oklab, var(--ivory), var(--khaki-beige) 18%);
+  --ivory: #f7f7f4;
+  --bg: #fbfbfa;
+  --surface: color-mix(in oklab, var(--bg), var(--khaki-beige) 8%);
+  --surface-warm: color-mix(in oklab, var(--bg), var(--khaki-beige) 13%);
+  --surface-2: color-mix(in oklab, var(--bg), var(--khaki-beige) 18%);
   --fg: var(--black);
   --fg-2: color-mix(in oklab, var(--black), var(--khaki-beige) 26%);
   --muted: color-mix(in oklab, var(--black), var(--khaki-beige) 48%);
@@ -25,6 +26,11 @@
   --graphite-a: color-mix(in oklab, var(--black), var(--khaki-beige) 12%);
   --graphite-b: color-mix(in oklab, var(--black), var(--khaki-beige) 15%);
   --graphite-c: color-mix(in oklab, var(--black), var(--khaki-beige) 22%);
+  --rail-bg: #ffffff;
+  --rail-surface: #f4f4f1;
+  --rail-fg: var(--black);
+  --rail-muted: #5f5f5a;
+  --rail-border: #d7d7d2;
   --accent-soft: color-mix(in oklab, var(--accent), var(--bg) 82%);
   --success-soft: color-mix(in oklab, var(--success), var(--bg) 88%);
   --speaking: color-mix(in oklab, var(--turquoise), var(--black) 16%);
@@ -34,7 +40,7 @@
   --status-live-fg: var(--black);
   --status-online-fg: var(--fg);
   --status-warn-fg: var(--black);
-  --shadow: 0 16px 44px rgba(3, 3, 1, 0.1);
+  --shadow: 0 16px 44px rgba(10, 10, 9, 0.1);
   --font-display: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-body: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
@@ -67,6 +73,11 @@
   --graphite-a: color-mix(in oklab, var(--black), var(--khaki-beige) 13%);
   --graphite-b: color-mix(in oklab, var(--black), var(--khaki-beige) 19%);
   --graphite-c: color-mix(in oklab, var(--black), var(--khaki-beige) 27%);
+  --rail-bg: var(--black);
+  --rail-surface: #181816;
+  --rail-fg: var(--ivory);
+  --rail-muted: #b8b8b2;
+  --rail-border: #343430;
   --accent-soft: color-mix(in oklab, var(--accent), var(--bg) 86%);
   --success-soft: color-mix(in oklab, var(--success), var(--bg) 87%);
   --speaking-soft: color-mix(in oklab, var(--accent), var(--bg) 78%);
@@ -95,6 +106,11 @@
     --graphite-a: color-mix(in oklab, var(--black), var(--khaki-beige) 13%);
     --graphite-b: color-mix(in oklab, var(--black), var(--khaki-beige) 19%);
     --graphite-c: color-mix(in oklab, var(--black), var(--khaki-beige) 27%);
+    --rail-bg: var(--black);
+    --rail-surface: #181816;
+    --rail-fg: var(--ivory);
+    --rail-muted: #b8b8b2;
+    --rail-border: #343430;
     --status-live-fg: var(--fg);
     --status-warn-fg: var(--fg);
     --shadow: 0 18px 52px rgba(0, 0, 0, 0.38);
@@ -464,9 +480,9 @@ h3 {
 }
 
 .rail {
-  background: var(--scene);
-  border-color: color-mix(in oklab, var(--khaki-beige), var(--black) 58%);
-  color: var(--on-scene);
+  background: var(--rail-bg);
+  border-color: var(--rail-border);
+  color: var(--rail-fg);
 }
 
 .member-panel {
@@ -478,7 +494,7 @@ h3 {
 .rail .channel-prefix,
 .rail .muted,
 .rail .small {
-  color: color-mix(in oklab, var(--on-scene), transparent 36%);
+  color: var(--rail-muted);
 }
 
 .rail-section,
@@ -562,7 +578,7 @@ h3 {
 }
 
 .rail .sidebar-menu-trigger {
-  color: color-mix(in oklab, var(--on-scene), transparent 28%);
+  color: var(--rail-muted);
 }
 
 .sidebar-menu-trigger:focus-visible {
@@ -572,7 +588,7 @@ h3 {
 
 .channel-action-menu > summary {
   border-color: transparent;
-  color: color-mix(in oklab, var(--on-scene), transparent 35%);
+  color: var(--rail-muted);
   height: 28px;
   width: 28px;
 }
@@ -588,8 +604,8 @@ h3 {
 
 .channel-item:hover,
 .channel-item.is-active {
-  background: color-mix(in oklab, var(--accent), var(--scene) 88%);
-  border-color: color-mix(in oklab, var(--accent), var(--scene) 70%);
+  background: color-mix(in oklab, var(--accent), var(--rail-bg) 88%);
+  border-color: color-mix(in oklab, var(--accent), var(--rail-bg) 70%);
 }
 
 .channel-item.is-active {
@@ -597,12 +613,17 @@ h3 {
 }
 
 .channel-prefix {
+  align-items: center;
   color: var(--muted);
+  display: inline-flex;
   font-family: var(--font-mono);
   font-size: 13px;
+  justify-content: center;
+  line-height: 1;
 }
 
 .channel-prefix .ui-icon {
+  display: block;
   height: 15px;
   width: 15px;
 }
@@ -642,9 +663,9 @@ h3 {
 
 .rail .session-card,
 .rail .theme-card {
-  background: color-mix(in oklab, var(--graphite-b), var(--accent) 3%);
-  border-color: var(--graphite-c);
-  color: var(--on-scene);
+  background: var(--rail-surface);
+  border-color: var(--rail-border);
+  color: var(--rail-fg);
 }
 
 .rail .status-pill.live {
@@ -652,7 +673,7 @@ h3 {
 }
 
 .rail .status-pill.warn {
-  color: var(--on-scene);
+  color: var(--rail-fg);
 }
 
 .voice-channel-block {
@@ -668,7 +689,7 @@ h3 {
 
 .voice-channel-user {
   align-items: center;
-  color: color-mix(in oklab, var(--on-scene), transparent 20%);
+  color: var(--rail-muted);
   display: grid;
   gap: 7px;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
@@ -704,9 +725,9 @@ h3 {
 }
 
 .voice-channel-user .avatar {
-  background: color-mix(in oklab, var(--graphite-c), var(--accent) 5%);
-  border-color: var(--graphite-c);
-  color: var(--on-scene);
+  background: color-mix(in oklab, var(--rail-surface), var(--accent) 5%);
+  border-color: var(--rail-border);
+  color: var(--rail-fg);
   height: 20px;
   width: 20px;
 }
@@ -853,7 +874,7 @@ h3 {
 
 .rail-member-menu > summary {
   border-color: transparent;
-  color: color-mix(in oklab, var(--on-scene), transparent 28%);
+  color: var(--rail-muted);
   height: 26px;
   width: 26px;
 }
@@ -905,6 +926,21 @@ h3 {
   border-color: var(--border);
   box-shadow: inset 0 -2px 0 var(--accent);
   color: var(--fg);
+}
+
+.rail .theme-options {
+  background: var(--rail-bg);
+  border-color: var(--rail-border);
+}
+
+.rail .theme-option {
+  color: var(--rail-muted);
+}
+
+.rail .theme-option[aria-pressed="true"] {
+  background: var(--rail-surface);
+  border-color: var(--rail-border);
+  color: var(--rail-fg);
 }
 
 .main-panel {
@@ -2129,8 +2165,8 @@ h3 {
 }
 
 .skeleton-rail {
-  background: var(--scene);
-  border-color: color-mix(in oklab, var(--khaki-beige), var(--black) 58%);
+  background: var(--rail-bg);
+  border-color: var(--rail-border);
 }
 
 .skeleton-header {
@@ -2160,7 +2196,7 @@ h3 {
 }
 
 .skeleton-rail .skeleton-line {
-  background: color-mix(in oklab, var(--graphite-c), var(--on-scene) 8%);
+  background: color-mix(in oklab, var(--rail-muted), var(--rail-bg) 70%);
 }
 
 .skeleton-brand { height: 28px; width: 56%; }
@@ -2512,6 +2548,39 @@ h3 {
   padding-top: 14px;
 }
 
+.owner-server-rename-form {
+  align-items: end;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  padding-top: 14px;
+}
+
+.owner-server-rename-field {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.owner-server-rename-form > .btn {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.owner-server-rename-copy {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.owner-server-rename-status {
+  color: var(--muted);
+  grid-column: 2;
+  grid-row: 2;
+  min-height: 18px;
+  text-align: right;
+}
+
 .owner-server-create-form .error-text {
   grid-column: 1 / -1;
   margin: 0;
@@ -2565,10 +2634,10 @@ h3 {
 }
 
 .audio-device-card {
-  background: color-mix(in oklab, var(--graphite-b), var(--accent) 3%);
-  border: 1px solid var(--graphite-c);
+  background: var(--rail-surface);
+  border: 1px solid var(--rail-border);
   border-radius: var(--radius-lg);
-  color: var(--on-scene);
+  color: var(--rail-fg);
   margin-top: 12px;
   padding: 12px;
 }
@@ -2591,9 +2660,21 @@ h3 {
 }
 
 .audio-device-card .input {
-  background: var(--graphite-a);
-  border-color: var(--graphite-c);
-  color: var(--on-scene);
+  background: var(--rail-bg);
+  border-color: var(--rail-border);
+  color: var(--rail-fg);
+}
+
+.rail .input,
+.rail .textarea {
+  background: var(--rail-bg);
+  border-color: var(--rail-border);
+  color: var(--rail-fg);
+}
+
+.rail .input::placeholder,
+.rail .textarea::placeholder {
+  color: var(--rail-muted);
 }
 
 .server-switcher .input {
@@ -2606,7 +2687,7 @@ h3 {
 }
 
 .server-create-control form {
-  border-top: 1px solid var(--graphite-c);
+  border-top: 1px solid var(--rail-border);
   display: grid;
   gap: 8px;
   padding-top: 10px;
@@ -2633,8 +2714,8 @@ h3 {
 
 .channel-create-trigger:hover,
 .channel-create-trigger[aria-expanded="true"] {
-  background: color-mix(in oklab, var(--accent), var(--scene) 84%);
-  border-color: color-mix(in oklab, var(--accent), var(--scene) 64%);
+  background: color-mix(in oklab, var(--accent), var(--rail-bg) 84%);
+  border-color: color-mix(in oklab, var(--accent), var(--rail-bg) 64%);
 }
 
 .channel-create-popover {
@@ -2832,8 +2913,18 @@ h3 {
   .owner-grid,
   .owner-hero,
   .owner-server-context,
+  .owner-server-rename-form,
   .owner-server-create-form {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-server-rename-field,
+  .owner-server-rename-form > .btn,
+  .owner-server-rename-copy,
+  .owner-server-rename-status {
+    grid-column: 1;
+    grid-row: auto;
+    text-align: left;
   }
 
   .owner-server-actions {

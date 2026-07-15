@@ -38,4 +38,11 @@ describe("member directory presence", () => {
     assert.match(source, /currentNickname:/);
     assert.match(source, /onUpdateMemberNickname:/);
   });
+
+  it("applies scoped realtime server name updates to navigation state", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+
+    assert.match(source, /socket\.on\("server:updated", \(\{ serverId, name \}\) => \{/);
+    assert.match(source, /server\.id === serverId \? \{ \.\.\.server, name \} : server/);
+  });
 });

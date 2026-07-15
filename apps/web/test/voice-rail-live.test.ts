@@ -17,9 +17,9 @@ describe("voice rail live controls", () => {
 
     assert.match(rail, /member\.media\.screen[\s\S]*?<LiveStreamPopover[\s\S]*?common\.live/);
     assert.match(rail, /<LiveStreamPopover[\s\S]*?props\.onWatchLive/);
-    assert.match(rail, /<RailMemberActionControl[\s\S]*?volume=\{member\.user\.userId !== props\.user\.id \? props\.memberVolumes\[member\.user\.userId\]/);
+    assert.match(rail, /<MemberActionMenu[\s\S]*?volume=\{isRemote \? props\.memberVolumes\[member\.user\.userId\]/);
     assert.match(rail, /props\.onMemberVolumeChange\(member\.user\.userId, volume\)/);
-    assert.match(app, /function RailMemberActionControl[\s\S]*?<VolumeControl/);
+    assert.match(app, /function MemberActionMenu[\s\S]*?<VolumeControl/);
   });
 
   it("renders compact accessible mute and deafen icons for each rail member", () => {
@@ -34,10 +34,13 @@ describe("voice rail live controls", () => {
 
   it("uses a microphone icon for voice channels", () => {
     const app = readFileSync("src/App.tsx", "utf8");
+    const styles = readFileSync("src/styles.css", "utf8");
     const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
 
     assert.match(rail, /className="channel-prefix"[^>]*><MicIcon off=\{false\} \/>/);
     assert.doesNotMatch(rail, /className="channel-prefix">vc</i);
+    assert.match(styles, /\.channel-prefix\s*\{[^}]*align-items:\s*center[^}]*display:\s*inline-flex[^}]*line-height:\s*1/s);
+    assert.match(styles, /\.channel-prefix \.ui-icon\s*\{[^}]*display:\s*block/s);
   });
 
   it("automatically joins a selected broadcast with the microphone enabled", () => {

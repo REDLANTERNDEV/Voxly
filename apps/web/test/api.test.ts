@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { acceptInvite, ApiError, claimAccessLink, claimOwnerSession, deleteMessage, deleteServer, deleteServerRoom, fetchRtcConfig, revokeInvite, updateServerMemberNickname } from "../src/api.js";
+import { acceptInvite, ApiError, claimAccessLink, claimOwnerSession, deleteMessage, deleteServer, deleteServerRoom, fetchRtcConfig, previewInvite, revokeInvite, updateServer, updateServerMemberNickname } from "../src/api.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -162,5 +162,40 @@ describe("frontend api", () => {
       body: JSON.stringify({ nickname: "Basement Ece" })
     });
     assert.equal(response.user.nickname, "Basement Ece");
+  });
+
+  it("previews an invite and renames its server through scoped endpoints", async () => {
+    const requests: Array<{ path: string; method?: string; body?: string }> = [];
+    globalThis.fetch = async (input, init) => {
+      requests.push({ path: String(input), method: init?.method, body: String(init?.body) });
+      if (String(input) === "/api/invites/preview") {
+        return new Response(JSON.stringify({ serverName: "Onyx Lounge" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      return new Response(JSON.stringify({ server: { id: "server id", name: "Onyx Lounge", role: "owner" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    };
+
+    const preview = await previewInvite("invite token");
+    const renamed = await updateServer("server id", "Onyx Lounge");
+
+    assert.deepEqual(requests, [
+      {
+        path: "/api/invites/preview",
+        method: "POST",
+        body: JSON.stringify({ inviteToken: "invite token" })
+      },
+      {
+        path: "/api/servers/server%20id",
+        method: "PATCH",
+        body: JSON.stringify({ name: "Onyx Lounge" })
+      }
+    ]);
+    assert.equal(preview.serverName, "Onyx Lounge");
+    assert.equal(renamed.server.name, "Onyx Lounge");
   });
 });

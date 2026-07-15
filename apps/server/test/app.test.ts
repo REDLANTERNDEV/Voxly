@@ -107,6 +107,51 @@ describe("Voxly HTTP MVP", () => {
     }
   });
 
+  it("does not add modern server members to the default server after restart", async () => {
+    const databaseDir = await mkdtemp(join(tmpdir(), "voxly-membership-restart-"));
+    const databasePath = join(databaseDir, "voxly.sqlite");
+    const initial = await openDatabase(databasePath);
+    let initialClosed = false;
+
+    try {
+      const now = new Date().toISOString();
+      run(initial.sqlite, "insert into users (id, nickname, role) values (?, ?, ?)", ["second-member", "Second member", "member"]);
+      run(initial.sqlite, "insert into servers (id, name, created_at) values (?, ?, ?)", ["second-server", "Second server", now]);
+      run(
+        initial.sqlite,
+        "insert into server_members (server_id, user_id, role, joined_at) values (?, ?, ?, ?)",
+        ["second-server", "second-member", "member", now]
+      );
+      initial.close();
+      initialClosed = true;
+
+      const reopened = await openDatabase(databasePath);
+      try {
+        assert.equal(
+          one<{ count: number }>(
+            reopened.sqlite,
+            "select count(*) as count from server_members where server_id = ? and user_id = ?",
+            [defaultServerId, "second-member"]
+          )?.count,
+          0
+        );
+        assert.equal(
+          one<{ count: number }>(
+            reopened.sqlite,
+            "select count(*) as count from server_members where server_id = ? and user_id = ?",
+            ["second-server", "second-member"]
+          )?.count,
+          1
+        );
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      if (!initialClosed) initial.close();
+      await rm(databaseDir, { force: true, recursive: true });
+    }
+  });
+
   it("bootstraps the first owner and sets a session cookie", async () => {
     const response = await app.server.inject({
       method: "POST",
@@ -772,6 +817,87 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(defaultRoomsRemainAvailable.statusCode, 200);
   });
 
+  it("renames a server for current members and resolves valid invites with the latest name", async () => {
+    const owner = await bootstrapOwner(app);
+    const createdServer = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Friday Games" }
+    });
+    const serverId = createdServer.json().server.id as string;
+    const memberInvite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Member invite", expiresInHours: 24 }
+    });
+    const memberResponse = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      payload: { inviteToken: memberInvite.json().invite.token, nickname: "Ada" }
+    });
+    const memberCookies = cookieJar(memberResponse);
+    const previewInvite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Later invite", expiresInHours: 24 }
+    });
+    const inviteToken = previewInvite.json().invite.token as string;
+
+    const beforeRename = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/preview",
+      payload: { inviteToken }
+    });
+    assert.equal(beforeRename.statusCode, 200);
+    assert.deepEqual(beforeRename.json(), { serverName: "Friday Games" });
+
+    const forbiddenRename = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${serverId}`,
+      cookies: memberCookies,
+      payload: { name: "Member rename" }
+    });
+    assert.equal(forbiddenRename.statusCode, 403);
+
+    const renamed = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${serverId}`,
+      cookies: owner.cookies,
+      payload: { name: "Onyx Lounge" }
+    });
+    assert.equal(renamed.statusCode, 200);
+    assert.deepEqual(renamed.json(), { server: { id: serverId, name: "Onyx Lounge", role: "owner" } });
+
+    const afterRename = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/preview",
+      payload: { inviteToken }
+    });
+    assert.equal(afterRename.statusCode, 200);
+    assert.deepEqual(afterRename.json(), { serverName: "Onyx Lounge" });
+
+    const memberServers = await app.server.inject({
+      method: "GET",
+      url: "/api/servers",
+      cookies: memberCookies
+    });
+    assert.equal(
+      memberServers.json().servers.find((server: { id: string; name: string }) => server.id === serverId)?.name,
+      "Onyx Lounge"
+    );
+
+    const invalidPreview = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/preview",
+      payload: { inviteToken: "x".repeat(24) }
+    });
+    assert.equal(invalidPreview.statusCode, 404);
+    assert.deepEqual(invalidPreview.json(), { error: "invite_invalid" });
+  });
+
   it("exposes an active member directory without owner moderation fields", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");
@@ -944,6 +1070,50 @@ describe("Voxly HTTP MVP", () => {
       payload: { nickname: "Removed Ece" }
     });
     assert.equal(removed.statusCode, 404);
+  });
+
+  it("keeps the first membership when an existing user accepts a second server invite", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ada");
+    const createdServer = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Friday Games" }
+    });
+    const secondServerId = createdServer.json().server.id as string;
+    const secondServerInvite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${secondServerId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Ada second server", expiresInHours: 24 }
+    });
+
+    const joined = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: secondServerInvite.json().invite.token }
+    });
+    assert.equal(joined.statusCode, 200);
+    assert.equal(joined.json().serverId, secondServerId);
+
+    const visibleServers = await app.server.inject({
+      method: "GET",
+      url: "/api/servers",
+      cookies: member.cookies
+    });
+    assert.equal(visibleServers.statusCode, 200);
+    assert.deepEqual(
+      visibleServers.json().servers.map((server: { id: string }) => server.id).sort(),
+      [defaultServerId, secondServerId].sort()
+    );
+
+    const memberships = (app.dumpTables().serverMembers as Array<{ server_id: string; user_id: string }>)
+      .filter((membership) => membership.user_id === member.user.id)
+      .map((membership) => membership.server_id)
+      .sort();
+    assert.deepEqual(memberships, [defaultServerId, secondServerId].sort());
   });
 
   it("keeps a server invite unused when the current user is already an active member", async () => {

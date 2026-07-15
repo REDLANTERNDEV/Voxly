@@ -35,8 +35,10 @@ import {
   logout,
   revokeServerInvite,
   moderateServerMember,
+  previewInvite,
   sendMessage,
   updateMessage,
+  updateServer,
   updateServerMemberNickname
 } from "./api.js";
 import { createVoxlySocket, type VoxlySocket } from "./socket.js";
@@ -120,6 +122,7 @@ type Route =
 type LoadState = "loading" | "ready" | "error";
 type ThemeChoice = "auto" | "light" | "dark";
 type Drawer = "channels" | "members" | null;
+type MemberAction = "disconnect" | "ban" | "kick";
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 type LiveWatchRequest = {
   serverId: string;
@@ -585,6 +588,9 @@ export function App() {
       }));
       setMessagesByRoom((current) => renameMessagesForServer(current, roomServerIdsRef.current, serverId, updatedUser));
     });
+    socket.on("server:updated", ({ serverId, name }) => {
+      setServers((current) => current.map((server) => server.id === serverId ? { ...server, name } : server));
+    });
     socket.on("server:roomsChanged", ({ serverId, deletedRoomId }) => {
       void refreshRoomsAfterDeletion(serverId, deletedRoomId).catch(() => undefined);
     });
@@ -790,6 +796,11 @@ export function App() {
       const roomsResponse = await fetchServerRooms(response.server.id);
       const target = roomsResponse.rooms.find((room) => room.kind === "text") ?? roomsResponse.rooms[0];
       if (target) navigate(serverPath(response.server.id, target.kind, target.id));
+    },
+    onUpdateServerName: async (name: string) => {
+      const response = await updateServer(activeServerId, name);
+      setServers((current) => current.map((server) => server.id === activeServerId ? response.server : server));
+      return response.server;
     },
     onCreateRoom: async (name: string, kind: "text" | "voice") => {
       const response = await createServerRoom(activeServerId, name, kind);
@@ -1015,6 +1026,7 @@ interface ShellProps {
   onNavigate: (path: string) => void;
   onSelectServer: (serverId: string) => Promise<void>;
   onCreateServer: (name: string) => Promise<void>;
+  onUpdateServerName: (name: string) => Promise<ServerSummary>;
   onCreateRoom: (name: string, kind: "text" | "voice") => Promise<void>;
   onDeleteRoom: (roomId: string) => Promise<void>;
   onDeleteServer: () => Promise<void>;
@@ -1509,6 +1521,7 @@ function OwnerPanel(props: ShellProps) {
           t={props.t}
           onSelect={(serverId) => props.onNavigate(`/app/server/${encodeURIComponent(serverId)}/owner`)}
           onCreate={props.onCreateServer}
+          onRename={props.onUpdateServerName}
           onRequestDelete={() => setDeletingServer(true)}
         />
         <section className="owner-grid" id="invites">
@@ -1699,6 +1712,7 @@ function OwnerServerContext({
   t,
   onSelect,
   onCreate,
+  onRename,
   onRequestDelete
 }: {
   activeServerId: string;
@@ -1706,13 +1720,23 @@ function OwnerServerContext({
   t: Translate;
   onSelect: (serverId: string) => void;
   onCreate: (name: string) => Promise<void>;
+  onRename: (name: string) => Promise<ServerSummary>;
   onRequestDelete: () => void;
 }) {
   const [name, setName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [error, setError] = useState("");
+  const [renameName, setRenameName] = useState("");
+  const [renameStatus, setRenameStatus] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
   const ownerServers = servers.filter((server) => server.role === "owner");
+  const activeServer = ownerServers.find((server) => server.id === activeServerId);
+
+  useEffect(() => {
+    setRenameName(activeServer?.name ?? "");
+    setRenameStatus("");
+  }, [activeServer?.id, activeServer?.name]);
 
   return (
     <section className="owner-server-context" aria-labelledby="ownerServerContextTitle">
@@ -1734,6 +1758,40 @@ function OwnerServerContext({
         }}><PlusIcon /><span>{t("server.create")}</span></button>
         <button className="btn btn-danger" type="button" disabled={ownerServers.length <= 1} onClick={onRequestDelete}><TrashIcon /><span>{t("server.delete")}</span></button>
       </div>
+      <form className="owner-server-rename-form" onSubmit={(event) => {
+        event.preventDefault();
+        const nextName = renameName.trim();
+        if (nextName.length < 2 || nextName.length > 64) {
+          setRenameStatus(t("server.nameLength"));
+          return;
+        }
+        setIsRenaming(true);
+        setRenameStatus("");
+        void onRename(nextName)
+          .then(() => setRenameStatus(t("server.renamed")))
+          .catch(() => setRenameStatus(t("server.renameFailed")))
+          .finally(() => setIsRenaming(false));
+      }}>
+        <label className="form-field owner-server-rename-field" htmlFor="ownerServerRename">
+          <span>{t("server.rename")}</span>
+          <input
+            className="input"
+            id="ownerServerRename"
+            name="ownerServerRename"
+            value={renameName}
+            minLength={2}
+            maxLength={64}
+            autoComplete="off"
+            onChange={(event) => setRenameName(event.currentTarget.value)}
+          />
+        </label>
+        <button className="btn btn-primary" type="submit" disabled={isRenaming || renameName.trim() === activeServer?.name}>
+          <EditIcon />
+          <span>{t("common.save")}</span>
+        </button>
+        <p className="muted small owner-server-rename-copy">{t("server.renameCopy")}</p>
+        <p className="small owner-server-rename-status" aria-live="polite">{renameStatus}</p>
+      </form>
       {showCreate ? <form className="owner-server-create-form" id="owner-server-create-form" onSubmit={(event) => {
         event.preventDefault();
         const nextName = name.trim();
@@ -1833,6 +1891,7 @@ function openSidebarMenuFromPointer(
 function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: string }) {
   const canModerate = activeServerRole(props) === "owner";
   const [nicknameTarget, setNicknameTarget] = useState<{ user: PresenceUser; returnFocus: HTMLButtonElement | null } | null>(null);
+  const [pendingMemberAction, setPendingMemberAction] = useState<{ user: PresenceUser; roomId?: string; action: MemberAction } | null>(null);
   const [activeActionMenu, dispatchActionMenu] = useReducer(contextMenuReducer, null);
   const closeActionMenu = useCallback(() => dispatchActionMenu({ type: "close" }), []);
   const openActionMenu = useCallback((input: Parameters<SidebarActionMenuController["open"]>[0]) => {
@@ -1881,6 +1940,10 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
           {...props}
           actionMenu={actionMenu}
           onRequestNickname={(member, returnFocus) => setNicknameTarget({ user: member, returnFocus })}
+          onRequestMemberAction={(member, action, roomId) => {
+            closeActionMenu();
+            setPendingMemberAction({ user: member, action, roomId });
+          }}
         />
         {props.children}
         <MemberPanel
@@ -1891,10 +1954,12 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
           currentUser={props.user}
           canModerate={canModerate}
           memberVolumes={props.memberVolumes}
-          onModerate={props.onModerateMember}
-          onDisconnect={props.onDisconnectMember}
           onMemberVolumeChange={props.onMemberVolumeChange}
           onRequestNickname={(member, returnFocus) => setNicknameTarget({ user: member, returnFocus })}
+          onRequestMemberAction={(member, action, roomId) => {
+            closeActionMenu();
+            setPendingMemberAction({ user: member, action, roomId });
+          }}
           actionMenu={actionMenu}
           t={props.t}
         />
@@ -1911,6 +1976,21 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
           setNicknameTarget(null);
         }}
       /> : null}
+      {pendingMemberAction ? <ConfirmDialog
+        title={props.t(`member.${pendingMemberAction.action}Title` as TranslationKey, { nickname: pendingMemberAction.user.nickname })}
+        copy={props.t(`member.${pendingMemberAction.action}Copy` as TranslationKey)}
+        confirmLabel={props.t(`member.${pendingMemberAction.action}` as TranslationKey)}
+        onCancel={() => setPendingMemberAction(null)}
+        onConfirm={() => {
+          const pending = pendingMemberAction;
+          setPendingMemberAction(null);
+          if (pending.action === "disconnect" && pending.roomId) {
+            void props.onDisconnectMember(pending.roomId, pending.user.userId);
+          } else if (pending.action === "kick" || pending.action === "ban") {
+            void props.onModerateMember(pending.user.userId, pending.action);
+          }
+        }}
+      /> : null}
     </>
   );
 }
@@ -1918,6 +1998,7 @@ function AppChrome(props: ShellProps & { children: ReactNode; mobileTitle: strin
 function ChannelRail(props: ShellProps & {
   actionMenu: SidebarActionMenuController;
   onRequestNickname: (user: PresenceUser, returnFocus: HTMLButtonElement | null) => void;
+  onRequestMemberAction: (user: PresenceUser, action: MemberAction, roomId?: string) => void;
 }) {
   const canManageServer = activeServerRole(props) === "owner";
   const [deleteTarget, setDeleteTarget] = useState<RoomSummary | null>(null);
@@ -1996,9 +2077,16 @@ function ChannelRail(props: ShellProps & {
               {members.length > 0 ? (
                 <div className="voice-channel-users">
                   {members.map((member) => {
+                    const isRemote = member.user.userId !== props.user.id;
                     const canRename = canManageServer && (member.user.role === "member" || member.user.userId === props.user.id);
-                    const hasActions = member.user.userId !== props.user.id || canRename;
-                    const menuHeight = canRename ? 132 : 84;
+                    const canModerate = canManageServer && isRemote;
+                    const menuHeight = memberActionMenuHeight({
+                      hasVolume: isRemote,
+                      canRename,
+                      canDisconnect: canModerate,
+                      canModerate
+                    });
+                    const hasActions = isRemote || canRename || canModerate;
                     return (
                     <div
                       className={`voice-channel-user ${member.media.speaking && member.media.mic && !member.media.deafened ? "is-speaking" : ""}`}
@@ -2035,13 +2123,17 @@ function ChannelRail(props: ShellProps & {
                         ))}
                       </span>
                       {hasActions ? (
-                        <RailMemberActionControl
+                        <MemberActionMenu
                           actionMenu={props.actionMenu}
+                          menuKey={`rail-member:${member.user.userId}`}
                           member={member.user}
-                          volume={member.user.userId !== props.user.id ? props.memberVolumes[member.user.userId] ?? DEFAULT_VOLUME_PERCENT : undefined}
-                          onVolumeChange={member.user.userId !== props.user.id ? (volume) => props.onMemberVolumeChange(member.user.userId, volume) : undefined}
+                          volume={isRemote ? props.memberVolumes[member.user.userId] ?? DEFAULT_VOLUME_PERCENT : undefined}
+                          onVolumeChange={isRemote ? (volume) => props.onMemberVolumeChange(member.user.userId, volume) : undefined}
                           canRename={canRename}
+                          canDisconnect={canModerate}
+                          canModerate={canModerate}
                           onRename={(returnFocus) => props.onRequestNickname(member.user, returnFocus)}
+                          onRequestAction={(action) => props.onRequestMemberAction(member.user, action, room.id)}
                           t={props.t}
                         />
                       ) : null}
@@ -2158,26 +2250,47 @@ function ChannelDeleteControl({
   );
 }
 
-function RailMemberActionControl({
+function memberActionMenuHeight({ hasVolume, canRename, canDisconnect, canModerate }: {
+  hasVolume: boolean;
+  canRename: boolean;
+  canDisconnect: boolean;
+  canModerate: boolean;
+}) {
+  return 20 + (hasVolume ? 64 : 0) + (canRename ? 40 : 0) + (canDisconnect ? 40 : 0) + (canModerate ? 80 : 0);
+}
+
+function MemberActionMenu({
   actionMenu,
+  menuKey,
   member,
   volume,
   onVolumeChange,
   canRename,
+  canDisconnect,
+  canModerate,
   onRename,
+  onRequestAction,
   t
 }: {
   actionMenu: SidebarActionMenuController;
+  menuKey: string;
   member: PresenceUser;
   volume?: number;
   onVolumeChange?: (volume: number) => void;
   canRename: boolean;
+  canDisconnect: boolean;
+  canModerate: boolean;
   onRename: (returnFocus: HTMLButtonElement | null) => void;
+  onRequestAction: (action: MemberAction) => void;
   t: Translate;
 }) {
-  const menuKey = `rail-member:${member.userId}`;
   const label = t("member.actionsFor", { nickname: member.nickname });
-  const menuHeight = canRename ? 132 : 84;
+  const menuHeight = memberActionMenuHeight({
+    hasVolume: volume !== undefined && Boolean(onVolumeChange),
+    canRename,
+    canDisconnect,
+    canModerate
+  });
   return (
     <>
       <SidebarMenuTrigger actionMenu={actionMenu} menuKey={menuKey} label={label} menuWidth={220} menuHeight={menuHeight} />
@@ -2193,6 +2306,11 @@ function RailMemberActionControl({
             actionMenu.close();
             onRename(returnFocus);
           }}>{t("member.changeNickname")}</button> : null}
+          {canDisconnect ? <button type="button" onClick={() => onRequestAction("disconnect")}>{t("member.disconnect")}</button> : null}
+          {canModerate ? <>
+            <button className="is-danger" type="button" onClick={() => onRequestAction("kick")}>{t("member.kick")}</button>
+            <button className="is-danger" type="button" onClick={() => onRequestAction("ban")}>{t("member.ban")}</button>
+          </> : null}
         </ContextMenu>
       ) : null}
     </>
@@ -2269,10 +2387,9 @@ function MemberPanel({
   currentUser,
   canModerate,
   memberVolumes,
-  onModerate,
-  onDisconnect,
   onMemberVolumeChange,
   onRequestNickname,
+  onRequestMemberAction,
   actionMenu,
   t
 }: {
@@ -2283,15 +2400,13 @@ function MemberPanel({
   currentUser: PublicUser;
   canModerate: boolean;
   memberVolumes: Record<string, number>;
-  onModerate: (userId: string, action: "ban" | "unban" | "kick") => Promise<void>;
-  onDisconnect: (roomId: string, userId: string) => Promise<void>;
   onMemberVolumeChange: (userId: string, volume: number) => void;
   onRequestNickname: (user: PresenceUser, returnFocus: HTMLButtonElement | null) => void;
+  onRequestMemberAction: (user: PresenceUser, action: MemberAction, roomId?: string) => void;
   actionMenu: SidebarActionMenuController;
   t: Translate;
 }) {
   const roomByMemberId = new Map<string, RoomSummary>();
-  const [pendingAction, setPendingAction] = useState<{ user: PresenceUser; roomId?: string; action: "disconnect" | "ban" | "kick" } | null>(null);
   for (const room of voiceRooms) {
     for (const member of voiceSnapshots[room.id]?.members ?? []) {
       roomByMemberId.set(member.user.userId, room);
@@ -2305,13 +2420,14 @@ function MemberPanel({
     const canRename = canModerate && (user.role === "member" || user.userId === currentUser.id);
     const hasRemoteActions = user.userId !== currentUser.id && Boolean(voiceRoom || canModerate);
     const hasActions = hasRemoteActions || canRename;
-    const menuHeight = canModerate ? 272 : 84;
+    const canModerateRemote = canModerate && user.userId !== currentUser.id;
+    const menuHeight = memberActionMenuHeight({
+      hasVolume: Boolean(voiceRoom && user.userId !== currentUser.id),
+      canRename,
+      canDisconnect: Boolean(voiceRoom && canModerateRemote),
+      canModerate: canModerateRemote
+    });
     const menuKey = `directory-member:${user.userId}`;
-    const menuLabel = t("member.actionsFor", { nickname: user.nickname });
-    const openPendingAction = (action: "disconnect" | "ban" | "kick") => {
-      actionMenu.close();
-      setPendingAction({ user, roomId: action === "disconnect" ? voiceRoom?.id : undefined, action });
-    };
     return (
       <div
         className={`member-row ${online ? "is-online" : "is-offline"}`}
@@ -2321,30 +2437,19 @@ function MemberPanel({
         <span className={`avatar ${user.role === "owner" ? "owner" : ""}`}>{initial(user.nickname)}</span>
         <span className="member-copy"><strong>{user.nickname}</strong><span>{detail}</span></span>
         {hasActions ? (
-          <>
-            <SidebarMenuTrigger actionMenu={actionMenu} menuKey={menuKey} label={menuLabel} menuWidth={220} menuHeight={menuHeight} />
-            {actionMenu.active?.key === menuKey ? (
-              <ContextMenu descriptor={actionMenu.active} label={menuLabel} onClose={actionMenu.close}>
-              {voiceRoom && user.userId !== currentUser.id ? (
-                <VolumeControl
-                  label={t("voice.memberVolume", { nickname: user.nickname })}
-                  value={memberVolumes[user.userId] ?? DEFAULT_VOLUME_PERCENT}
-                  onChange={(volume) => onMemberVolumeChange(user.userId, volume)}
-                />
-              ) : null}
-              {canRename ? <button type="button" onClick={() => {
-                const returnFocus = actionMenu.active?.trigger ?? null;
-                actionMenu.close();
-                onRequestNickname(user, returnFocus);
-              }}>{t("member.changeNickname")}</button> : null}
-              {voiceRoom && canModerate && user.userId !== currentUser.id ? <button type="button" onClick={() => openPendingAction("disconnect")}>{t("member.disconnectVoice")}</button> : null}
-              {canModerate && user.userId !== currentUser.id ? <>
-                <button className="is-danger" type="button" onClick={() => openPendingAction("kick")}>{t("member.kick")}</button>
-                <button className="is-danger" type="button" onClick={() => openPendingAction("ban")}>{t("member.ban")}</button>
-              </> : null}
-              </ContextMenu>
-            ) : null}
-          </>
+          <MemberActionMenu
+            actionMenu={actionMenu}
+            menuKey={menuKey}
+            member={user}
+            volume={voiceRoom && user.userId !== currentUser.id ? memberVolumes[user.userId] ?? DEFAULT_VOLUME_PERCENT : undefined}
+            onVolumeChange={voiceRoom && user.userId !== currentUser.id ? (volume) => onMemberVolumeChange(user.userId, volume) : undefined}
+            canRename={canRename}
+            canDisconnect={Boolean(voiceRoom && canModerateRemote)}
+            canModerate={canModerateRemote}
+            onRename={(returnFocus) => onRequestNickname(user, returnFocus)}
+            onRequestAction={(action) => onRequestMemberAction(user, action, action === "disconnect" ? voiceRoom?.id : undefined)}
+            t={t}
+          />
         ) : null}
       </div>
     );
@@ -2361,18 +2466,6 @@ function MemberPanel({
         <div className="member-section-head"><span className="label">{t("common.offline")}</span><span className="badge">{groupedMembers.offline.length}</span></div>
         {renderMembers(groupedMembers.offline, false)}
       </section> : null}
-      {pendingAction ? <ConfirmDialog
-        title={pendingAction.action === "disconnect" ? `Disconnect ${pendingAction.user.nickname}?` : `${pendingAction.action === "kick" ? "Kick" : "Ban"} ${pendingAction.user.nickname}?`}
-        copy={pendingAction.action === "disconnect" ? "This removes the member from voice without changing server membership." : pendingAction.action === "kick" ? "The member can return only with a new invite." : "The member loses access to this server until unbanned."}
-        confirmLabel={pendingAction.action === "disconnect" ? "Disconnect" : pendingAction.action === "kick" ? "Kick" : "Ban"}
-        onCancel={() => setPendingAction(null)}
-        onConfirm={() => {
-          const action = pendingAction;
-          setPendingAction(null);
-          if (action.action === "disconnect" && action.roomId) void onDisconnect(action.roomId, action.user.userId);
-          if (action.action === "kick" || action.action === "ban") void onModerate(action.user.userId, action.action);
-        }}
-      /> : null}
     </aside>
   );
 }
@@ -2545,6 +2638,7 @@ function NicknameDialog({ user, returnFocus, t, onCancel, onSave }: {
 
 function InviteScreen({ initialToken, existingUser, turnstileSiteKey, onAccepted, language, t, onLanguageChange }: { initialToken: string; existingUser: boolean; turnstileSiteKey: string | null; onAccepted: (user: PublicUser, serverId: string) => void; language: LanguageCode; t: Translate; onLanguageChange: (language: LanguageCode) => void }) {
   const [inviteToken, setInviteToken] = useState(initialToken);
+  const [serverName, setServerName] = useState("");
   const [nickname, setNickname] = useState("");
   const [status, setStatus] = useState<"ready" | "loading" | "valid" | "danger">("ready");
   const [fieldError, setFieldError] = useState("");
@@ -2558,6 +2652,25 @@ function InviteScreen({ initialToken, existingUser, turnstileSiteKey, onAccepted
     setTurnstileToken("");
     setFieldError(t("invite.turnstileUnavailable"));
   }, [t]);
+
+  useEffect(() => {
+    const token = extractInviteToken(initialToken);
+    if (token.length < 24) {
+      setServerName("");
+      return;
+    }
+    let cancelled = false;
+    void previewInvite(extractInviteToken(initialToken))
+      .then((response) => {
+        if (!cancelled) setServerName(response.serverName);
+      })
+      .catch(() => {
+        if (!cancelled) setServerName("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialToken]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2606,7 +2719,7 @@ function InviteScreen({ initialToken, existingUser, turnstileSiteKey, onAccepted
           <LanguageSwitch language={language} t={t} onLanguageChange={onLanguageChange} />
           <div>
             <p className="label">{t("invite.privateInvite")}</p>
-            <h1>{t("invite.joinTitle")}</h1>
+            <h1>{serverName ? t("invite.joinServerTitle", { server: serverName }) : t("invite.joinTitle")}</h1>
             <p className="muted small">{existingUser ? t("invite.joinExistingCopy") : t("invite.chooseName")}</p>
           </div>
           <div className={`invite-status ${statusClass(status)}`} aria-live="polite">

@@ -314,6 +314,27 @@ function registerRoutes(
     return reply.code(existingUser ? 200 : 201).send({ user: publicUser(user), serverId: invite.server_id });
   });
 
+  server.post("/api/invites/preview", async (request, reply) => {
+    const { inviteToken } = z.object({ inviteToken: z.string().min(24) }).parse(request.body);
+    const invite = one<{
+      server_name: string;
+      used_at: string | null;
+      expires_at: string | null;
+      revoked_at: string | null;
+    }>(
+      database.sqlite,
+      `select servers.name as server_name, invites.used_at, invites.expires_at, invites.revoked_at
+       from invites
+       join servers on servers.id = invites.server_id
+       where invites.token_hash = ?`,
+      [hashToken(inviteToken)]
+    );
+    if (!invite || invite.used_at || invite.revoked_at || isExpired(invite.expires_at)) {
+      return reply.code(404).send({ error: "invite_invalid" });
+    }
+    return { serverName: invite.server_name };
+  });
+
   server.post("/api/logout", async (request, reply) => {
     const user = authenticate(database.sqlite, request.cookies[sessionCookieName]);
     if (user) {
@@ -395,6 +416,19 @@ function registerRoutes(
     audit(database, owner.id, "room.created", null, serverId);
     database.save();
     return reply.code(201).send({ room });
+  });
+
+  server.patch("/api/servers/:serverId", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    const { name } = z.object({ name: serverNameSchema }).parse(request.body);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    run(database.sqlite, "update servers set name = ? where id = ?", [name, serverId]);
+    audit(database, owner.id, "server.renamed", null, serverId);
+    database.save();
+    io.to(`server:${serverId}`).emit("server:updated", { serverId, name });
+    return { server: { id: serverId, name, role: "owner" as const } };
   });
 
   server.delete("/api/servers/:serverId/rooms/:roomId", async (request, reply) => {

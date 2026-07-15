@@ -115,6 +115,45 @@ describe("Voxly realtime MVP", () => {
     await expectNoEvent(otherSocket, "server:memberUpdated");
   });
 
+  it("publishes server name updates only to members of the renamed server", async () => {
+    const owner = await bootstrapOwner(app);
+    const outsider = await acceptInvite(app, owner.cookies, "Default member");
+    const createdServer = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Other Server" }
+    });
+    const serverId = createdServer.json().server.id as string;
+    const invite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Scoped member", expiresInHours: 24 }
+    });
+    const memberResponse = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      payload: { inviteToken: invite.json().invite.token, nickname: "Scoped member" }
+    });
+    const memberCookies = cookieJar(memberResponse);
+
+    const memberSocket = await connectSocket(baseUrl, memberCookies.voxly_session);
+    const outsiderSocket = await connectSocket(baseUrl, outsider.cookies.voxly_session);
+    sockets.push(memberSocket, outsiderSocket);
+    const updatedPromise = onceEvent<{ serverId: string; name: string }>(memberSocket, "server:updated");
+
+    const renamed = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${serverId}`,
+      cookies: owner.cookies,
+      payload: { name: "Onyx Lounge" }
+    });
+    assert.equal(renamed.statusCode, 200);
+    assert.deepEqual(await updatedPromise, { serverId, name: "Onyx Lounge" });
+    await expectNoEvent(outsiderSocket, "server:updated");
+  });
+
   it("joins with the requested muted media in one authoritative snapshot", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Muted member");
