@@ -100,7 +100,7 @@ describe("voice control view state", () => {
     );
     assert.deepEqual(
       sidebarVoiceStatusKeys({ mic: false, camera: false, screen: false, deafened: true, speaking: false }),
-      ["deafened", "muted"]
+      ["muted", "deafened"]
     );
   });
 

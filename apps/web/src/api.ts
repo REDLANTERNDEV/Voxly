@@ -188,6 +188,16 @@ export async function moderateServerMember(serverId: string, userId: string, act
   await apiPost<void>(`/api/servers/${encodeURIComponent(serverId)}/members/${encodeURIComponent(userId)}/${action}`);
 }
 
+export async function updateServerMemberNickname(serverId: string, userId: string, nickname: string) {
+  return request<{ user: PresenceUser }>(
+    `/api/servers/${encodeURIComponent(serverId)}/members/${encodeURIComponent(userId)}/nickname`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ nickname })
+    }
+  );
+}
+
 export async function createAccessLink(serverId: string, userId: string) {
   return apiPost<{ token: string; expiresAt: string }>(
     `/api/servers/${encodeURIComponent(serverId)}/members/${encodeURIComponent(userId)}/access-links`

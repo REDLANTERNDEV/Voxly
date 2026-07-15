@@ -57,6 +57,13 @@ describe("Voxly HTTP MVP", () => {
       const membership = tables.prepare("select server_id, role from server_members where user_id = 'owner'").get() as { server_id: string; role: string };
       assert.equal(membership.server_id, defaultServerId);
       assert.equal(membership.role, "owner");
+      const memberColumns = tables.prepare("pragma table_info(server_members)").all()
+        .map((column) => (column as { name: string }).name);
+      assert.ok(memberColumns.includes("nickname"));
+      assert.equal(
+        tables.prepare("select nickname from server_members where user_id = 'owner'").get()?.nickname,
+        null
+      );
       const indexNames = [
         ...tables.prepare("select name from sqlite_master where type = 'index'").all()
       ].map((index) => (index as { name: string }).name);
@@ -822,6 +829,121 @@ describe("Voxly HTTP MVP", () => {
       cookies: owner.cookies
     });
     assert.deepEqual(afterBan.json().members.map((entry: { nickname: string }) => entry.nickname), [owner.user.nickname]);
+  });
+
+  it("keeps owner-managed nicknames scoped to one server and current in messages", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ece");
+    const createdServer = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Friday Games" }
+    });
+    const secondServerId = createdServer.json().server.id as string;
+    const invite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${secondServerId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Ece Friday", expiresInHours: 24 }
+    });
+    await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: invite.json().invite.token }
+    });
+
+    const createdMessage = await app.server.inject({
+      method: "POST",
+      url: "/api/rooms/general/messages",
+      cookies: member.cookies,
+      payload: { body: "before rename" }
+    });
+    assert.equal(createdMessage.statusCode, 201);
+
+    const renamed = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${member.user.id}/nickname`,
+      cookies: owner.cookies,
+      payload: { nickname: "  Basement Ece  " }
+    });
+    assert.equal(renamed.statusCode, 200);
+    assert.equal(renamed.json().user.nickname, "Basement Ece");
+
+    const defaultDirectory = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${defaultServerId}/directory`,
+      cookies: member.cookies
+    });
+    assert.equal(
+      defaultDirectory.json().members.find((user: { userId: string }) => user.userId === member.user.id).nickname,
+      "Basement Ece"
+    );
+
+    const secondDirectory = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${secondServerId}/directory`,
+      cookies: member.cookies
+    });
+    assert.equal(
+      secondDirectory.json().members.find((user: { userId: string }) => user.userId === member.user.id).nickname,
+      "Ece"
+    );
+
+    const history = await app.server.inject({
+      method: "GET",
+      url: "/api/rooms/general/messages",
+      cookies: member.cookies
+    });
+    assert.equal(history.json().messages[0].nickname, "Basement Ece");
+
+    const edited = await app.server.inject({
+      method: "PATCH",
+      url: `/api/rooms/general/messages/${createdMessage.json().message.id}`,
+      cookies: member.cookies,
+      payload: { body: "after rename" }
+    });
+    assert.equal(edited.statusCode, 200);
+    assert.equal(edited.json().message.nickname, "Basement Ece");
+
+    const memberDenied = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${member.user.id}/nickname`,
+      cookies: member.cookies,
+      payload: { nickname: "Not allowed" }
+    });
+    assert.equal(memberDenied.statusCode, 403);
+
+    const invalid = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${member.user.id}/nickname`,
+      cookies: owner.cookies,
+      payload: { nickname: "x" }
+    });
+    assert.equal(invalid.statusCode, 400);
+
+    const ownerRenamed = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${owner.user.id}/nickname`,
+      cookies: owner.cookies,
+      payload: { nickname: "Basement Owner" }
+    });
+    assert.equal(ownerRenamed.statusCode, 200);
+    assert.equal(ownerRenamed.json().user.nickname, "Basement Owner");
+
+    await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServerId}/members/${member.user.id}/kick`,
+      cookies: owner.cookies
+    });
+    const removed = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${member.user.id}/nickname`,
+      cookies: owner.cookies,
+      payload: { nickname: "Removed Ece" }
+    });
+    assert.equal(removed.statusCode, 404);
   });
 
   it("keeps a server invite unused when the current user is already an active member", async () => {

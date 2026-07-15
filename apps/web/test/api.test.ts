@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { acceptInvite, ApiError, claimAccessLink, claimOwnerSession, deleteMessage, deleteServer, deleteServerRoom, fetchRtcConfig, revokeInvite } from "../src/api.js";
+import { acceptInvite, ApiError, claimAccessLink, claimOwnerSession, deleteMessage, deleteServer, deleteServerRoom, fetchRtcConfig, revokeInvite, updateServerMemberNickname } from "../src/api.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -143,5 +143,24 @@ describe("frontend api", () => {
     await fetchRtcConfig();
 
     assert.equal(requestedPath, "/api/rtc/config");
+  });
+
+  it("updates a nickname through the scoped member endpoint", async () => {
+    let request: { path: string; method?: string; body?: string } | null = null;
+    globalThis.fetch = async (input, init) => {
+      request = { path: String(input), method: init?.method, body: String(init?.body) };
+      return new Response(JSON.stringify({
+        user: { userId: "user/id", nickname: "Basement Ece", role: "member" }
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    };
+
+    const response = await updateServerMemberNickname("server id", "user/id", "Basement Ece");
+
+    assert.deepEqual(request, {
+      path: "/api/servers/server%20id/members/user%2Fid/nickname",
+      method: "PATCH",
+      body: JSON.stringify({ nickname: "Basement Ece" })
+    });
+    assert.equal(response.user.nickname, "Basement Ece");
   });
 });

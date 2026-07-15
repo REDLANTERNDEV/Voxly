@@ -112,6 +112,7 @@ export interface ServerToClientEvents {
   "voice:forceLeave": (payload: { roomId: string; reason: VoiceForceLeaveReason }) => void;
   "server:accessRevoked": (payload: { serverId: string; reason: "banned" | "kicked" }) => void;
   "server:directoryChanged": (payload: { serverId: string }) => void;
+  "server:memberUpdated": (payload: { serverId: string; user: PresenceUser }) => void;
   "server:roomsChanged": (payload: { serverId: string; deletedRoomId: string }) => void;
   "server:deleted": (payload: { serverId: string }) => void;
   "rtc:signal": (payload: { roomId: string; fromUserId: string; signal: RtcSignal }) => void;

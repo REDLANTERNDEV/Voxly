@@ -28,4 +28,14 @@ describe("member directory presence", () => {
 
     assert.match(source, /socket\.on\("server:directoryChanged", \(\{ serverId \}\) => \{\s*void refreshServerDirectory\(serverId\)/);
   });
+
+  it("applies scoped realtime nickname updates to active client caches", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+
+    assert.match(source, /socket\.on\("server:memberUpdated", \(\{ serverId, user: updatedUser \}\) => \{/);
+    assert.match(source, /replacePresenceUser\(current\[serverId\][^)]*updatedUser\)/s);
+    assert.match(source, /renameMessagesForServer\(current, roomServerIdsRef\.current, serverId, updatedUser\)/);
+    assert.match(source, /currentNickname:/);
+    assert.match(source, /onUpdateMemberNickname:/);
+  });
 });

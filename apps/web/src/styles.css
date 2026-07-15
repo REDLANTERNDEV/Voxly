@@ -304,6 +304,10 @@ h3 {
   width: 15px;
 }
 
+.screen-icon {
+  stroke-width: 18;
+}
+
 .brand-lockup {
   align-items: center;
   display: inline-flex;
@@ -596,6 +600,11 @@ h3 {
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 13px;
+}
+
+.channel-prefix .ui-icon {
+  height: 15px;
+  width: 15px;
 }
 
 .badge {

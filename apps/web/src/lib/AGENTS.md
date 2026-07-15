@@ -33,6 +33,10 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   timeouts and settle once even if a late ACK arrives.
 - Receive-only joins must not request microphone permission. Intentional normal
   and LIVE joins may start mic-on only after a live enabled track is ready.
+- Keep voice-channel activation as a deterministic transition: disconnected
+  targets join directly, the active target opens, and a different active room
+  requires move confirmation. The UI must navigate only after a successful
+  acknowledged join.
 
 ## Reconnect and Recovery
 
@@ -102,13 +106,24 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
 ## Screen Sharing
 
 - Capture screen video at an ideal and maximum 1280x720 and 30 FPS.
-- Set screen video `contentHint` to `detail` when supported.
-- Apply `degradationPreference = "maintain-resolution"` only to the sender that
-  carries the matching screen video track, including after renegotiation.
-- A rejected or unsupported `setParameters` call is non-fatal. Do not affect
-  microphone or camera senders.
-- Do not add a fixed maximum bitrate, 1080p/60fps mode, user quality selector,
-  thumbnail capture, or server-side media processing without a new design.
+- Set screen video `contentHint` to `motion` and apply
+  `degradationPreference = "maintain-framerate"` only to the sender carrying
+  the matching screen video track.
+- Adapt each viewer's screen-video sender independently. Start near 480p/20 FPS
+  at a 1.4 Mbps ceiling, promote healthy connections to 720p/30 FPS at 3 Mbps,
+  and reduce sustained congestion as far as 360p/15 FPS at 700 Kbps.
+- Sample sender statistics every two seconds. Promote initial quality after two
+  non-congested samples, reduce one level after hard or sustained congestion,
+  and require three healthy samples for recovery so profiles do not flap.
+- Keep adaptive controller cleanup generation-safe and idempotent across
+  unsubscribe, peer replacement, track end, share stop, leave, and hook
+  cleanup. A late async result must not mutate a replacement sender.
+- A rejected or unsupported stats or `setParameters` call is non-fatal and
+  falls back to browser-native adaptation. Never affect microphone, camera, or
+  screen-audio senders.
+- Do not add browser-specific starting-bitrate SDP, simulcast/SVC, a manual
+  quality selector, 1080p/60fps mode, thumbnail capture, or server-side media
+  processing without a new design.
 
 ## Viewed-Room State
 
@@ -116,7 +131,9 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
 - A known snapshot always wins, including an empty one.
 - Fall back to the local participant only while the viewed room snapshot is
   missing and the viewed room is the active WebRTC room.
-- Browsing a different empty voice room never moves the user or renders the
+- A direct route may still render a viewed voice room without moving media, but
+  activating a sidebar voice-channel name follows the join/move transition
+  above rather than browsing. A different empty viewed room never renders the
   local user there. Media streams and visual subscriptions remain scoped to the
   active WebRTC room.
 

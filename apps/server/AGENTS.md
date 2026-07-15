@@ -37,6 +37,12 @@ queries across endpoints.
 
 - Invite, session, access-claim, and owner-claim tokens are stored only as
   hashes. Do not log or persist raw values.
+- An authenticated active member may reopen the exact invite that they
+  previously consumed. Return `already_server_member` with that invite's
+  `serverId` without restoring or changing membership.
+- Keep every other unknown, expired, consumed, revoked, or orphaned invite
+  response generic. A token consumed by a different user must not disclose its
+  server or consumption state.
 - Access links expire after 15 minutes. Creating a replacement revokes every
   older unconsumed, unexpired, non-revoked claim for the same server and user
   before inserting the new claim.
@@ -55,6 +61,9 @@ queries across endpoints.
 
 - Every server-scoped route and event requires an active, non-banned,
   non-removed membership; owner actions additionally require active owner role.
+- Accepting a valid invite as an existing active member returns the target
+  `serverId` and leaves that unused invite unused. Reopening a previously
+  consumed invite never restores a removed or banned membership.
 - Kicking sets `removed_at`, revokes effective access, disconnects realtime
   membership, and excludes the user from owner member lists. A kicked user may
   return through the existing invite flow.
@@ -69,6 +78,13 @@ queries across endpoints.
   owner-server/channel protections on the server.
 - Server deletion remains atomic while preserving global identities and audit
   history that other servers still need.
+- Store an optional nickname override on `server_members`; the global user
+  nickname remains the fallback. Only an active owner of that server may set a
+  trimmed 2–32 character override for ordinary members or themselves, never a
+  different owner.
+- Every server-scoped directory, owner list, message, presence, and voice shape
+  uses the effective membership nickname. After an update, refresh active voice
+  snapshots and emit the typed member update only to that server room.
 
 ## Messages and Rooms
 

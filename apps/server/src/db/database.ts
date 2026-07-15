@@ -132,6 +132,7 @@ function migrate(sqlite: DatabaseSync) {
       server_id text not null,
       user_id text not null,
       role text not null check (role in ('owner', 'member')),
+      nickname text,
       banned_at text,
       removed_at text,
       joined_at text not null,
@@ -160,6 +161,7 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "invites", "server_id", "text");
   addColumnIfMissing(sqlite, "audit_events", "server_id", "text");
   addColumnIfMissing(sqlite, "access_claims", "revoked_at", "text");
+  addColumnIfMissing(sqlite, "server_members", "nickname", "text");
 
   sqlite.exec(`
     create index if not exists idx_server_members_user

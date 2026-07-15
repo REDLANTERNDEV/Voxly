@@ -30,6 +30,14 @@ requirement.
 - Route initial session lookup and successful invite/access/owner claims
   through the authentication request gate. A stale bootstrap response must not
   overwrite a newly authenticated user.
+- Treat an authenticated `/invite/:token` route as intent to accept. Share one
+  in-flight request per token, auto-accept a valid new membership, and use the
+  returned `serverId` for both success and `already_server_member` navigation.
+- When an authenticated invite is generically invalid, fall back to the first
+  usable accessible server; keep the recoverable invite error surface when no
+  active server exists. Never infer the invite's server in the browser.
+- Preserve the existing explicit nickname, Turnstile, valid, and invalid invite
+  form behavior for unauthenticated users.
 - Concurrent access-claim requests for the same token share one Promise and one
   HTTP request. Remove failed requests from the cache so a real retry is
   possible.
@@ -63,6 +71,14 @@ requirement.
   ban, unban, and destructive channel actions remain permission-gated.
 - Kicked members disappear from the owner member list; banned members remain
   visible so owners can unban them.
+- Nicknames are server-scoped presentation. The selected server owner may
+  rename ordinary members and their own owner identity, but never another
+  owner. Keep the global account nickname unchanged and update directory,
+  presence, voice, loaded messages, owner surfaces, and the local account chip
+  from the effective server nickname.
+- Nickname editing uses the shared accessible dialog, trims input to the
+  server-enforced 2–32 character contract, and applies acknowledged HTTP and
+  scoped realtime updates without duplicating cached users.
 
 ## Chat Interaction Contract
 
@@ -98,6 +114,10 @@ requirement.
   trigger. Long labels must truncate without displacing actions.
 - Keep destructive confirmation state with the calling surface. The menu
   closes before its existing dialog opens.
+- Owner nickname actions share the same secondary-click/ellipsis menus as
+  member volume and moderation actions. Remote volume remains available to all
+  listeners; nickname changes remain owner-gated and restore focus after the
+  dialog closes when an ellipsis opened the menu.
 - Account, audio-device, and stage-volume popovers are not part of the exclusive
   sidebar-menu coordinator.
 
@@ -123,7 +143,12 @@ requirement.
   localized recovery/error UI when joining or subscribing fails.
 - Sidebar voice rows show no icon for an active member, one red muted icon for
   a muted member, and both red deafen and muted icons for a deafened member.
-  Keep accessible localized names while remaining visually icon-only.
+  When both are present, muted is left and deafen is right. Keep accessible
+  localized names while remaining visually icon-only.
+- Activating a voice-channel name is an entry action, not a browse action. Join
+  immediately when disconnected, open the already-active room without a new
+  join, and require one localized confirmation before moving from another
+  voice room. Navigate only after the acknowledged join succeeds.
 - The call surface is the sole voice-room scroll owner. Keep stage, available
   sources, and participants in normal flow in that order; do not add nested
   scrollbars, sticky sections, or absolute positioning.
@@ -140,6 +165,9 @@ requirement.
   on mobile.
 - Preserve the screen-share monitor/up-arrow geometry and show its diagonal
   cancellation stroke only when the action stops an active share.
+- Voice-channel prefixes use the inline microphone icon rather than text such
+  as `VC`. The screen-share glyph keeps `currentColor` and an explicit stroke
+  weight appropriate to its 256-unit view box so it matches adjacent icons.
 - Add English and Turkish strings together. Test both behavior and accessible
   labels when copy affects an interaction.
 - Menus, popovers, dialogs, sliders, and custom controls must remain keyboard

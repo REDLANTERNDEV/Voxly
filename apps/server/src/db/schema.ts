@@ -56,6 +56,7 @@ export const serverMembers = sqliteTable("server_members", {
   serverId: text("server_id").notNull(),
   userId: text("user_id").notNull(),
   role: text("role", { enum: ["owner", "member"] }).notNull(),
+  nickname: text("nickname"),
   bannedAt: text("banned_at"),
   removedAt: text("removed_at"),
   joinedAt: text("joined_at").notNull()

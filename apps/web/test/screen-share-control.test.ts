@@ -5,9 +5,12 @@ import { describe, it } from "node:test";
 describe("screen share control", () => {
   it("uses the supplied monitor upload geometry inline", () => {
     const app = readFileSync("src/App.tsx", "utf8");
+    const styles = readFileSync("src/styles.css", "utf8");
     const icon = app.match(/function ScreenIcon[\s\S]*?\n}/)?.[0] ?? "";
 
     assert.match(icon, /viewBox="0 0 256 256"/);
+    assert.match(icon, /className="ui-icon screen-icon"/);
+    assert.match(styles, /\.screen-icon\s*\{[^}]*stroke-width:\s*18/s);
     assert.match(icon, /x="32" y="48" width="192" height="144" rx="16"/);
     assert.match(icon, /points="104 112 128 88 152 112"/);
     assert.match(icon, /x1="128" y1="88" x2="128" y2="152"/);

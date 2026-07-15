@@ -26,6 +26,10 @@ or server-only runtime modules.
 - Keep sensitive server-only fields out of public DTOs. Directory and presence
   users expose identity, nickname, and role—not token, session, moderation, or
   database internals.
+- Server nickname changes reuse `PresenceUser` and a typed event carrying both
+  `serverId` and the updated user. Producers must scope the event to that server;
+  consumers must apply it only to server-indexed presence, voice, directory,
+  and message caches.
 
 ## Voice Contract Invariants
 

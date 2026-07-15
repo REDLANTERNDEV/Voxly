@@ -32,6 +32,18 @@ describe("frontend localization", () => {
     assert.equal(translate("tr", "voice.noScreenAudio"), "Bu paylaşımda ses yok");
   });
 
+  it("translates server nickname editing in both languages", () => {
+    assert.equal(translate("en", "member.changeNickname"), "Change nickname");
+    assert.equal(translate("en", "member.nicknameLength"), "Use between 2 and 32 characters.");
+    assert.equal(translate("tr", "member.changeNickname"), "Takma adı değiştir");
+    assert.equal(translate("tr", "member.nicknameUpdated"), "Takma ad güncellendi.");
+  });
+
+  it("translates voice room move confirmation", () => {
+    assert.equal(translate("en", "voice.moveTitle"), "Switch voice rooms?");
+    assert.equal(translate("tr", "voice.moveConfirm"), "Kanala geç");
+  });
+
   it("translates blocked audio recovery copy", () => {
     assert.equal(translate("en", "audio.enablePlayback"), "Enable audio");
     assert.equal(translate("tr", "audio.enablePlayback"), "Sesi etkinleştir");

@@ -17,9 +17,9 @@ describe("member volume menus", () => {
 
     assert.match(panel, /memberVolumes:\s*Record<string, number>/);
     assert.match(panel, /onMemberVolumeChange:\s*\(userId: string, volume: number\) => void/);
-    assert.match(panel, /voiceRoom\s*\?\s*\([\s\S]*?<VolumeControl[\s\S]*?value=\{memberVolumes\[user\.userId\]\s*\?\?\s*DEFAULT_VOLUME_PERCENT\}/);
+    assert.match(panel, /voiceRoom\s*&&\s*user\.userId\s*!==\s*currentUser\.id\s*\?\s*\([\s\S]*?<VolumeControl[\s\S]*?value=\{memberVolumes\[user\.userId\]\s*\?\?\s*DEFAULT_VOLUME_PERCENT\}/);
     assert.match(panel, /onChange=\{\(volume\) => onMemberVolumeChange\(user\.userId, volume\)\}/);
-    assert.match(panel, /\{canModerate\s*\?\s*<>[\s\S]*?member\.kick[\s\S]*?member\.ban/);
+    assert.match(panel, /\{canModerate\s*&&\s*user\.userId\s*!==\s*currentUser\.id\s*\?\s*<>[\s\S]*?member\.kick[\s\S]*?member\.ban/);
   });
 
   it("keeps voice status chips readable and separates owner member actions", () => {
@@ -44,5 +44,15 @@ describe("member volume menus", () => {
     assert.match(styles, /\.owner-grid\.members-grid\s*\{[^}]*--member-table-columns:/s);
     assert.match(styles, /\.members-grid \.table-head,\s*\.members-grid \.table-row\s*\{[^}]*grid-template-columns:\s*var\(--member-table-columns\)/s);
     assert.doesNotMatch(styles, /\.members-grid \.table-head,[\s\S]*?minmax\([^)]*,\s*auto\)/);
+  });
+
+  it("lets the owner edit scoped nicknames from member surfaces", () => {
+    const app = readFileSync("src/App.tsx", "utf8");
+
+    assert.match(app, /function NicknameDialog/);
+    assert.match(app, /props\.onUpdateMemberNickname/);
+    assert.match(app, /t\("member\.changeNickname"\)/);
+    assert.match(app, /canRename/);
+    assert.match(app, /currentNickname/);
   });
 });

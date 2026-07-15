@@ -98,7 +98,7 @@ export function voiceStatusLabels(media: VoiceMediaState) {
 
 export function sidebarVoiceStatusKeys(media: VoiceMediaState): SidebarVoiceStatusKey[] {
   const statuses: SidebarVoiceStatusKey[] = [];
-  if (media.deafened) statuses.push("deafened");
   if (!media.mic || media.deafened) statuses.push("muted");
+  if (media.deafened) statuses.push("deafened");
   return statuses;
 }

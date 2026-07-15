@@ -21,6 +21,11 @@ import type { DatabaseSync } from "node:sqlite";
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import { consumeOwnerClaim } from "./auth/ownerClaims.js";
 import { all, defaultServerId, dumpTables, one, openDatabase, run, type VoxlyDatabase } from "./db/database.js";
+import {
+  serverPresenceUser,
+  serverPresenceUserIncludingBanned,
+  serverPresenceUsers as effectiveServerPresenceUsers
+} from "./serverNicknames.js";
 import type { TurnstileConfig } from "./turnstile.js";
 import type { RtcConfigProvider } from "./rtcConfig.js";
 
@@ -110,6 +115,7 @@ interface RealtimeModeration {
   deleteRoom: (serverId: string, roomId: string) => void;
   deleteServer: (serverId: string, roomIds: string[], affectedUserIds: string[]) => void;
   grantServerAccess: (serverId: string, userId: string) => Promise<void>;
+  refreshMemberIdentity: (serverId: string, userId: string) => PresenceUser | null;
   revokeServerAccess: (serverId: string, userId: string, reason: "banned" | "kicked") => void;
 }
 
@@ -463,13 +469,15 @@ function registerRoutes(
     return {
       members: all(
         database.sqlite,
-        `select users.id as userId, users.nickname, server_members.role
+        `select users.id as userId,
+          coalesce(server_members.nickname, users.nickname) as nickname,
+          server_members.role
          from server_members
          join users on users.id = server_members.user_id
          where server_members.server_id = ?
            and server_members.banned_at is null
            and server_members.removed_at is null
-         order by users.nickname asc`,
+         order by nickname asc`,
         [serverId]
       )
     };
@@ -483,14 +491,16 @@ function registerRoutes(
     return {
       members: all(
         database.sqlite,
-        `select users.id, users.nickname, server_members.role,
+        `select users.id,
+          coalesce(server_members.nickname, users.nickname) as nickname,
+          server_members.role,
           server_members.banned_at as bannedAt, server_members.removed_at as removedAt,
           server_members.joined_at as joinedAt
          from server_members
          join users on users.id = server_members.user_id
          where server_members.server_id = ?
            and server_members.removed_at is null
-         order by users.nickname asc`,
+         order by nickname asc`,
         [serverId]
       )
     };
@@ -524,6 +534,34 @@ function registerRoutes(
     if (result === "not_found") return reply.code(404).send({ error: "invite_not_found" });
     if (result === "inactive") return reply.code(409).send({ error: "invite_not_active" });
     return reply.code(204).send();
+  });
+
+  server.patch("/api/servers/:serverId/members/:userId/nickname", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId, userId } = z.object({
+      serverId: z.string().min(1),
+      userId: z.string().uuid()
+    }).parse(request.params);
+    const { nickname } = z.object({ nickname: nicknameSchema }).parse(request.body);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const target = serverMembership(database.sqlite, serverId, userId);
+    if (!target || target.removed_at) {
+      return reply.code(404).send({ error: "member_not_found" });
+    }
+    if (target.role === "owner" && userId !== owner.id) {
+      return reply.code(409).send({ error: "cannot_rename_owner" });
+    }
+    run(
+      database.sqlite,
+      "update server_members set nickname = ? where server_id = ? and user_id = ?",
+      [nickname, serverId, userId]
+    );
+    audit(database, owner.id, "member.nickname_updated", userId, serverId);
+    database.save();
+    const updated = realtime.refreshMemberIdentity(serverId, userId);
+    if (!updated) return reply.code(404).send({ error: "member_not_found" });
+    return { user: updated };
   });
 
   server.post("/api/servers/:serverId/members/:userId/:action", async (request, reply) => {
@@ -667,11 +705,13 @@ function registerRoutes(
     return {
       users: all(
         database.sqlite,
-        `select users.id, users.nickname, server_members.role,
+        `select users.id,
+          coalesce(server_members.nickname, users.nickname) as nickname,
+          server_members.role,
           server_members.banned_at as bannedAt
          from server_members join users on users.id = server_members.user_id
          where server_members.server_id = ? and server_members.removed_at is null
-         order by users.nickname asc`,
+         order by nickname asc`,
         [defaultServerId]
       )
     };
@@ -726,9 +766,14 @@ function registerRoutes(
     const messages = all<MessageRow>(
         database.sqlite,
         `select messages.id, messages.room_id as roomId, messages.user_id as userId,
-          users.nickname as nickname, messages.body, messages.created_at as createdAt,
+          coalesce(server_members.nickname, users.nickname) as nickname,
+          messages.body, messages.created_at as createdAt,
           messages.edited_at as editedAt
          from messages
+         join rooms on rooms.id = messages.room_id
+         join server_members
+           on server_members.server_id = rooms.server_id
+          and server_members.user_id = messages.user_id
          join users on users.id = messages.user_id
          where messages.room_id = ?
           and messages.deleted_at is null
@@ -758,11 +803,13 @@ function registerRoutes(
       return reply.code(400).send({ error: "messages_require_text_room" });
     }
 
+    const sender = serverPresenceUser(database.sqlite, room.serverId, user.id);
+    if (!sender) return reply.code(403).send({ error: "server_forbidden" });
     const message = {
       id: crypto.randomUUID(),
       roomId,
       userId: user.id,
-      nickname: user.nickname,
+      nickname: sender.nickname,
       body: body.body,
       createdAt: new Date().toISOString(),
       editedAt: null
@@ -920,11 +967,14 @@ function registerRealtime(
       online.set(user.userId, { user, sockets: new Set([socket.id]) });
     }
     for (const serverId of serverIds) {
+      const serverUser = serverPresenceUser(database.sqlite, serverId, user.userId);
       socket.emit("presence:serverSnapshot", {
         serverId,
         users: serverPresenceUsers(database.sqlite, online, serverId)
       });
-      if (isNewPresence) socket.to(`server:${serverId}`).emit("presence:serverOnline", { serverId, user });
+      if (isNewPresence && serverUser) {
+        socket.to(`server:${serverId}`).emit("presence:serverOnline", { serverId, user: serverUser });
+      }
     }
 
     socket.on("room:join", (roomId) => {
@@ -953,6 +1003,11 @@ function registerRealtime(
         ack({ ok: false, error: "forbidden" });
         return;
       }
+      const roomUser = serverPresenceUser(database.sqlite, room.serverId, user.userId);
+      if (!roomUser) {
+        ack({ ok: false, error: "forbidden" });
+        return;
+      }
 
       const requested = candidate?.media as Partial<VoiceMediaState> | undefined;
       const media = normalizeVoiceMedia({
@@ -974,11 +1029,11 @@ function registerRealtime(
         }
       }
       socket.join(`voice:${roomId}`);
-      const state: VoiceMemberState = { user, media };
+      const state: VoiceMemberState = { user: roomUser, media };
       members.set(user.userId, state);
       ack({ ok: true, state });
       emitVoiceSnapshot(io, database, roomId, members);
-      socket.to(`server:${room.serverId}`).emit("voice:joined", { roomId, user });
+      socket.to(`server:${room.serverId}`).emit("voice:joined", { roomId, user: roomUser });
     });
 
     socket.on("voice:leave", (roomId) => {
@@ -1110,15 +1165,29 @@ function registerRealtime(
       await Promise.all(userSockets.map((socket) => socket.join(`server:${serverId}`)));
 
       const users = serverPresenceUsers(database.sqlite, online, serverId);
+      const serverUser = serverPresenceUser(database.sqlite, serverId, userId);
       for (const socket of userSockets) {
         socket.emit("presence:serverSnapshot", { serverId, users });
       }
       for (const socket of io.sockets.sockets.values()) {
         const socketUser = socket.data.user as PresenceUser | undefined;
-        if (socketUser?.userId !== userId && socket.rooms.has(`server:${serverId}`)) {
-          socket.emit("presence:serverOnline", { serverId, user: entry.user });
+        if (serverUser && socketUser?.userId !== userId && socket.rooms.has(`server:${serverId}`)) {
+          socket.emit("presence:serverOnline", { serverId, user: serverUser });
         }
       }
+    },
+    refreshMemberIdentity(serverId, userId) {
+      const updated = serverPresenceUserIncludingBanned(database.sqlite, serverId, userId);
+      if (!updated) return null;
+      for (const [roomId, members] of voiceMembership) {
+        const room = roomById(database.sqlite, roomId);
+        const current = members.get(userId);
+        if (!room || room.serverId !== serverId || !current) continue;
+        members.set(userId, { ...current, user: updated });
+        emitVoiceSnapshot(io, database, roomId, members);
+      }
+      io.to(`server:${serverId}`).emit("server:memberUpdated", { serverId, user: updated });
+      return updated;
     },
     revokeServerAccess(serverId, userId, reason) {
       const textRoomIds = all<{ id: string }>(
@@ -1437,9 +1506,7 @@ function serverPresenceUsers(
   online: Map<string, { user: PresenceUser; sockets: Set<string> }>,
   serverId: string
 ) {
-  return [...online.values()]
-    .filter((entry) => requireActiveServerMembership(sqlite, serverId, entry.user.userId))
-    .map((entry) => entry.user);
+  return effectiveServerPresenceUsers(sqlite, serverId, online.keys());
 }
 
 function requireServerMember(database: VoxlyDatabase, serverId: string, userId: string, reply: FastifyReply) {
@@ -1670,9 +1737,14 @@ function messageById(sqlite: DatabaseSync, roomId: string, messageId: string) {
   return one<MessageRow>(
     sqlite,
     `select messages.id, messages.room_id as roomId, messages.user_id as userId,
-      users.nickname as nickname, messages.body, messages.created_at as createdAt,
+      coalesce(server_members.nickname, users.nickname) as nickname,
+      messages.body, messages.created_at as createdAt,
       messages.edited_at as editedAt
      from messages
+     join rooms on rooms.id = messages.room_id
+     join server_members
+       on server_members.server_id = rooms.server_id
+      and server_members.user_id = messages.user_id
      join users on users.id = messages.user_id
      where messages.room_id = ?
       and messages.id = ?

@@ -57,6 +57,64 @@ describe("Voxly realtime MVP", () => {
     assert.equal(joined.user.nickname, "Ece");
   });
 
+  it("publishes server nickname updates only in scope and refreshes active voice", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ece");
+    const createdServer = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Other Server" }
+    });
+    const otherServerId = createdServer.json().server.id as string;
+    const otherInvite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${otherServerId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Other member", expiresInHours: 24 }
+    });
+    const otherMemberResponse = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      payload: { inviteToken: otherInvite.json().invite.token, nickname: "Other" }
+    });
+    const otherCookies = cookieJar(otherMemberResponse);
+
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const otherSocket = await connectSocket(baseUrl, otherCookies.voxly_session);
+    sockets.push(ownerSocket, memberSocket, otherSocket);
+    const initialSnapshotPromise = onceEvent(ownerSocket, "voice:snapshot");
+    await joinVoice(memberSocket, "lobby");
+    await initialSnapshotPromise;
+
+    const updatedPromise = onceEvent<{
+      serverId: string;
+      user: { userId: string; nickname: string };
+    }>(memberSocket, "server:memberUpdated");
+    const snapshotPromise = onceEvent<{
+      roomId: string;
+      members: Array<{ user: { userId: string; nickname: string } }>;
+    }>(ownerSocket, "voice:snapshot");
+
+    const renamed = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/the-basement/members/${member.user.id}/nickname`,
+      cookies: owner.cookies,
+      payload: { nickname: "Basement Ece" }
+    });
+    assert.equal(renamed.statusCode, 200);
+
+    const [updated, snapshot] = await Promise.all([updatedPromise, snapshotPromise]);
+    assert.equal(updated.serverId, "the-basement");
+    assert.equal(updated.user.nickname, "Basement Ece");
+    assert.equal(
+      snapshot.members.find((entry) => entry.user.userId === member.user.id)?.user.nickname,
+      "Basement Ece"
+    );
+    await expectNoEvent(otherSocket, "server:memberUpdated");
+  });
+
   it("joins with the requested muted media in one authoritative snapshot", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Muted member");
