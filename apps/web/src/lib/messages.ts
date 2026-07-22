@@ -4,6 +4,17 @@ export function formatMessageDateTime(value: string, language: string) {
   return new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "medium" }).format(new Date(value));
 }
 
+export function formatMessageTimestamp(value: string, language: string, now = new Date()) {
+  const date = new Date(value);
+  const isToday = date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
+  return new Intl.DateTimeFormat(
+    language,
+    isToday ? { hour: "2-digit", minute: "2-digit" } : { dateStyle: "medium", timeStyle: "short" }
+  ).format(date);
+}
+
 export function messagePermissions(input: {
   currentUserId: string;
   currentUserRole: UserRole;

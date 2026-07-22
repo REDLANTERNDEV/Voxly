@@ -111,6 +111,14 @@ queries across endpoints.
 - Members may edit/delete their own messages; owners may delete other users'
   messages but do not gain edit ownership.
 - Keep creation time stable on edit and set `editedAt` separately.
+- Persist suppressed rich-preview keys with each message as a bounded list with
+  an additive legacy-safe default. Only the message author or an active owner
+  of that message's server may suppress one key, and the operation must still
+  require active membership in the text room's server.
+- Preview suppression keeps the message body unchanged, persists before
+  acknowledgement, and emits the updated message only to that room. The server
+  never fetches link metadata, executes webhooks, accepts arbitrary embed HTML,
+  or treats client-side preview visibility as authorization.
 - Room and server deletion must remove or invalidate dependent live state and
   notify affected clients without leaking events to unrelated servers.
 

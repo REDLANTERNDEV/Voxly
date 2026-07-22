@@ -4,6 +4,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { Server } from "socket.io";
 import { z } from "zod";
 import type {
+  ChatMessage,
   ClientToServerEvents,
   PresenceUser,
   RtcSignalAck,
@@ -89,6 +90,7 @@ type MessageRow = {
   body: string;
   createdAt: string;
   editedAt: string | null;
+  suppressedEmbedKeysJson: string | null;
 };
 
 type RoomRow = {
@@ -802,7 +804,8 @@ function registerRoutes(
         `select messages.id, messages.room_id as roomId, messages.user_id as userId,
           coalesce(server_members.nickname, users.nickname) as nickname,
           messages.body, messages.created_at as createdAt,
-          messages.edited_at as editedAt
+          messages.edited_at as editedAt,
+          messages.suppressed_embed_keys as suppressedEmbedKeysJson
          from messages
          join rooms on rooms.id = messages.room_id
          join server_members
@@ -814,7 +817,7 @@ function registerRoutes(
          order by messages.created_at desc, messages.rowid desc
          limit ?`,
         [roomId, limit]
-      ).reverse();
+      ).reverse().map(publicMessage);
 
     return {
       messages
@@ -839,14 +842,15 @@ function registerRoutes(
 
     const sender = serverPresenceUser(database.sqlite, room.serverId, user.id);
     if (!sender) return reply.code(403).send({ error: "server_forbidden" });
-    const message = {
+    const message: ChatMessage = {
       id: crypto.randomUUID(),
       roomId,
       userId: user.id,
       nickname: sender.nickname,
       body: body.body,
       createdAt: new Date().toISOString(),
-      editedAt: null
+      editedAt: null,
+      suppressedEmbedKeys: []
     };
 
     run(
@@ -896,6 +900,41 @@ function registerRoutes(
     if (!message) {
       return reply.code(404).send({ error: "message_not_found" });
     }
+    io.to(`room:${roomId}`).emit("message:updated", message);
+    return { message };
+  });
+
+  server.patch("/api/rooms/:roomId/messages/:messageId/embeds", async (request, reply) => {
+    const user = requireUser(database, request, reply, options.secureCookies);
+    if (!user) return;
+    const { roomId, messageId } = z.object({
+      roomId: z.string().min(1),
+      messageId: z.string().uuid()
+    }).parse(request.params);
+    const { embedKey } = z.object({
+      embedKey: z.string().min(3).max(160).regex(/^(youtube|x|vimeo|spotify):[A-Za-z0-9:_-]+$/u)
+    }).parse(request.body);
+    const room = roomById(database.sqlite, roomId);
+    if (!room || room.kind !== "text") return reply.code(404).send({ error: "room_not_found" });
+    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
+    const current = messageById(database.sqlite, roomId, messageId);
+    if (!current) return reply.code(404).send({ error: "message_not_found" });
+    if (current.userId !== user.id && !isServerOwner(database.sqlite, room.serverId, user.id)) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
+
+    if (!current.suppressedEmbedKeys.includes(embedKey)) {
+      if (current.suppressedEmbedKeys.length >= 16) {
+        return reply.code(409).send({ error: "embed_suppression_limit" });
+      }
+      run(database.sqlite, "update messages set suppressed_embed_keys = ? where id = ?", [
+        JSON.stringify([...current.suppressedEmbedKeys, embedKey]),
+        messageId
+      ]);
+      database.save();
+    }
+    const message = messageById(database.sqlite, roomId, messageId);
+    if (!message) return reply.code(404).send({ error: "message_not_found" });
     io.to(`room:${roomId}`).emit("message:updated", message);
     return { message };
   });
@@ -1768,12 +1807,13 @@ function publicPresence(user: AuthUser): PresenceUser {
 }
 
 function messageById(sqlite: DatabaseSync, roomId: string, messageId: string) {
-  return one<MessageRow>(
+  const row = one<MessageRow>(
     sqlite,
     `select messages.id, messages.room_id as roomId, messages.user_id as userId,
       coalesce(server_members.nickname, users.nickname) as nickname,
       messages.body, messages.created_at as createdAt,
-      messages.edited_at as editedAt
+      messages.edited_at as editedAt,
+      messages.suppressed_embed_keys as suppressedEmbedKeysJson
      from messages
      join rooms on rooms.id = messages.room_id
      join server_members
@@ -1785,6 +1825,29 @@ function messageById(sqlite: DatabaseSync, roomId: string, messageId: string) {
       and messages.deleted_at is null`,
     [roomId, messageId]
   );
+  return row ? publicMessage(row) : null;
+}
+
+function publicMessage(row: MessageRow): ChatMessage {
+  let suppressedEmbedKeys: string[] = [];
+  try {
+    const parsed = JSON.parse(row.suppressedEmbedKeysJson ?? "[]") as unknown;
+    if (Array.isArray(parsed)) {
+      suppressedEmbedKeys = parsed.filter((key): key is string => typeof key === "string").slice(0, 16);
+    }
+  } catch {
+    suppressedEmbedKeys = [];
+  }
+  return {
+    id: row.id,
+    roomId: row.roomId,
+    userId: row.userId,
+    nickname: row.nickname,
+    body: row.body,
+    createdAt: row.createdAt,
+    editedAt: row.editedAt,
+    suppressedEmbedKeys
+  };
 }
 
 function roomById(sqlite: DatabaseSync, roomId: string) {

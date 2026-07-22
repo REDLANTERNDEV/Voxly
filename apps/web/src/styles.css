@@ -692,7 +692,7 @@ h3 {
   color: var(--rail-muted);
   display: grid;
   gap: 7px;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   min-width: 0;
   position: relative;
 }
@@ -1199,6 +1199,94 @@ h3 {
   overflow-wrap: anywhere;
   padding: 7px 11px;
   white-space: pre-wrap;
+}
+
+.message-body a {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.message-rich-embeds {
+  display: grid;
+  gap: 8px;
+  margin-top: 7px;
+  max-width: min(560px, 100%);
+}
+
+.message-embed {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.message-embed-head {
+  align-items: center;
+  background: color-mix(in oklab, var(--surface-2), var(--black) 12%);
+  display: flex;
+  justify-content: space-between;
+  min-height: 32px;
+  padding: 3px 5px 3px 10px;
+}
+
+.message-embed-head a {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.message-embed-close {
+  align-items: center;
+  background: color-mix(in oklab, var(--surface), var(--black) 16%);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 26px;
+  justify-content: center;
+  padding: 0;
+  width: 26px;
+}
+
+.message-embed-close:hover,
+.message-embed-close:focus-visible {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+.message-embed-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.message-embed-close .ui-icon {
+  height: 16px;
+  width: 16px;
+}
+
+.message-embed iframe {
+  border: 0;
+  display: block;
+  width: 100%;
+}
+
+.message-embed.is-youtube iframe,
+.message-embed.is-vimeo iframe {
+  aspect-ratio: 16 / 9;
+  min-height: 200px;
+}
+
+.message-embed.is-x iframe {
+  height: 420px;
+}
+
+.message-embed.is-spotify iframe {
+  height: 152px;
 }
 
 .message-own .message-body {
@@ -2268,6 +2356,47 @@ h3 {
 
 .invite-status.is-loading {
   background: color-mix(in oklab, var(--surface-2), var(--bg) 36%);
+}
+
+.secret-link-display {
+  align-items: center;
+  background: color-mix(in oklab, var(--bg), var(--surface) 52%);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 7px 8px 7px 10px;
+}
+
+.secret-link-display > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.secret-link-toggle {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  width: 30px;
+}
+
+.secret-link-toggle:hover,
+.secret-link-toggle:focus-visible {
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.secret-link-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .landing-page {

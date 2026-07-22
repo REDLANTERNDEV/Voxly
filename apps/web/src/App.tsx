@@ -37,6 +37,7 @@ import {
   moderateServerMember,
   previewInvite,
   sendMessage,
+  suppressMessageEmbed,
   updateMessage,
   updateServer,
   updateServerMemberNickname
@@ -54,15 +55,17 @@ import {
 import { controlPresentation, sidebarVoiceStatusKeys, type VoiceControls } from "./lib/voiceControls.js";
 import { connectionStatusFor, type PeerConnectionState } from "./lib/voiceNegotiation.js";
 import { defaultServerId, firstServerRoomPath, getAccessClaimTokenFromHash, getInviteTokenFromPath, getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "./lib/navigation.js";
-import { buildInviteUrl, inviteReference, resolveInviteOrigin } from "./lib/invites.js";
+import { buildInviteUrl, inviteReference, maskSecretLink, resolveInviteOrigin } from "./lib/invites.js";
 import {
   formatMessageDateTime,
+  formatMessageTimestamp,
   isMessageListNearBottom,
   messageListUpdateAction,
   messageDeleteFailureCopy,
   messagePermissions,
   shouldSubmitComposer
 } from "./lib/messages.js";
+import { messageContentSegments, messageEmbeds, type MessageEmbed } from "./lib/messageEmbeds.js";
 import {
   clampContextMenuPosition,
   contextMenuReducer,
@@ -104,7 +107,9 @@ import {
   clearUnread,
   readRoomHistory,
   rememberRoom,
+  roomsForServer,
   resolveRememberedRoom,
+  resolveServerTextRoom,
   unreadAfterMessage,
   writeRoomHistory,
   type RoomHistory
@@ -214,7 +219,14 @@ export function App() {
     : servers[0]?.id ?? defaultServerId;
   const onlineUsers = onlineUsersByServer[activeServerId] ?? (user ? [presenceFromUser(user)] : []);
   const serverMembers = serverMembersByServer[activeServerId] ?? [];
-  const voiceRoomIds = useMemo(() => rooms.filter((room) => room.kind === "voice").map((room) => room.id), [rooms]);
+  const activeRooms = useMemo(() => roomsForServer(rooms, activeServerId), [activeServerId, rooms]);
+  const currentRoom = useMemo(() => activeRooms.find((room) => {
+    if (route.name === "text" || route.name === "voice") {
+      return room.id === route.roomId && room.serverId === route.serverId;
+    }
+    return false;
+  }), [activeRooms, route]);
+  const voiceRoomIds = useMemo(() => activeRooms.filter((room) => room.kind === "voice").map((room) => room.id), [activeRooms]);
   const audioDevices = useAudioDevices({ userId: user?.id });
   const [audioLevels, setAudioLevels] = useState<AudioLevels>(DEFAULT_AUDIO_LEVELS);
   const voice = useVoiceMedia({
@@ -608,7 +620,7 @@ export function App() {
   }, [navigate, route, serverListReady, servers]);
 
   useEffect(() => {
-    if (!user || route.name !== "text") return;
+    if (!user || route.name !== "text" || currentRoom?.kind !== "text") return;
     let isMounted = true;
     fetchMessages(route.roomId)
       .then((response) => {
@@ -625,7 +637,7 @@ export function App() {
     return () => {
       isMounted = false;
     };
-  }, [route, user]);
+  }, [currentRoom, route, user]);
 
   useEffect(() => {
     if (!user) {
@@ -741,17 +753,10 @@ export function App() {
 
   const roomGroups = useMemo(() => {
     return {
-      text: rooms.filter((room) => room.kind === "text"),
-      voice: rooms.filter((room) => room.kind === "voice")
+      text: activeRooms.filter((room) => room.kind === "text"),
+      voice: activeRooms.filter((room) => room.kind === "voice")
     };
-  }, [rooms]);
-
-  const currentRoom = rooms.find((room) => {
-    if (route.name === "text" || route.name === "voice") {
-      return room.id === route.roomId && room.serverId === route.serverId;
-    }
-    return false;
-  });
+  }, [activeRooms]);
 
   if (startupSurface(route.name, authState) === "shell-skeleton") {
     return renderSurface(<AppShellSkeleton />);
@@ -1014,6 +1019,13 @@ export function App() {
           [route.roomId]: (current[route.roomId] ?? []).filter((message) => message.id !== messageId)
         }));
       }}
+      onSuppressEmbed={async (messageId, embedKey) => {
+        const response = await suppressMessageEmbed(route.roomId, messageId, embedKey);
+        setMessagesByRoom((current) => ({
+          ...current,
+          [route.roomId]: upsertMessage(current[route.roomId] ?? [], response.message)
+        }));
+      }}
     />
   );
 }
@@ -1153,6 +1165,7 @@ function TextRoomScreen(props: ShellProps & {
   onSendMessage: (body: string) => Promise<void>;
   onUpdateMessage: (messageId: string, body: string) => Promise<void>;
   onDeleteMessage: (messageId: string) => Promise<void>;
+  onSuppressEmbed: (messageId: string, embedKey: string) => Promise<void>;
 }) {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
@@ -1246,6 +1259,7 @@ function TextRoomScreen(props: ShellProps & {
                   t={props.t}
                   onUpdate={props.onUpdateMessage}
                   onDelete={props.onDeleteMessage}
+                  onSuppressEmbed={props.onSuppressEmbed}
                 />
               ))
             )}
@@ -1552,7 +1566,18 @@ function OwnerPanel(props: ShellProps) {
   const [nicknameTarget, setNicknameTarget] = useState<PresenceUser | null>(null);
   const reloadRequestRef = useRef(0);
   const newInviteUrl = newInvite ? buildInviteUrl(newInvite.token, resolveInviteOrigin(props.appConfig.publicUrl, window.location.origin)) : "";
+  const accessLinkUrl = accessLink
+    ? `${resolveInviteOrigin(props.appConfig.publicUrl, window.location.origin)}/access/claim#token=${accessLink.token}`
+    : "";
   const activeServer = props.servers.find((server) => server.id === props.activeServerId);
+  const ownerTextRoom = resolveServerTextRoom(
+    [...props.rooms.text, ...props.rooms.voice],
+    props.activeServerId,
+    props.roomHistory[props.activeServerId]?.text
+  );
+  const ownerChatPath = ownerTextRoom
+    ? serverPath(props.activeServerId, "text", ownerTextRoom.id)
+    : `/app/server/${encodeURIComponent(props.activeServerId)}/owner`;
 
   const reload = useCallback(async () => {
     const requestId = ++reloadRequestRef.current;
@@ -1593,7 +1618,7 @@ function OwnerPanel(props: ShellProps) {
   return (
     <div className="owner-shell">
       <aside className="owner-nav">
-        <BrandLockup subtitle={props.t("owner.panel")} href={serverPath(props.activeServerId, "text", "general")} onNavigate={props.onNavigate} />
+        <BrandLockup subtitle={props.t("owner.panel")} href={ownerChatPath} onNavigate={props.onNavigate} />
         <section className="rail-section">
           <a className="channel-item is-active" href="#invites"><span>{props.t("owner.invites")}</span><span /></a>
           <a className="channel-item" href="#users"><span>{props.t("common.users")}</span><span /></a>
@@ -1611,7 +1636,7 @@ function OwnerPanel(props: ShellProps) {
             <h1>{props.t("owner.title")}</h1>
             <p className="muted">{props.t("owner.heroCopy")}</p>
           </div>
-          <NavLink className="btn" href={serverPath(props.activeServerId, "text", "general")} onNavigate={props.onNavigate}>
+          <NavLink className="btn" href={ownerChatPath} onNavigate={props.onNavigate}>
             <ChatIcon />
             <span>{props.t("common.backToChat")}</span>
           </NavLink>
@@ -1652,7 +1677,7 @@ function OwnerPanel(props: ShellProps) {
               <div className="invite-status is-valid">
                 <strong>{props.t("owner.newInviteLink")}</strong>
                 <span>{newInvite?.label}</span>
-                <span className="mono">{newInviteUrl}</span>
+                <SecretLinkDisplay key={newInviteUrl} value={newInviteUrl} t={props.t} />
                 <span className="muted small">{props.t("owner.newInviteLinkCopy")}</span>
                 <button className="btn btn-ghost" type="button" onClick={async () => {
                   try {
@@ -1755,9 +1780,9 @@ function OwnerPanel(props: ShellProps) {
         {accessLink ? (
           <section className="owner-card access-link-card" aria-live="polite">
             <h2>Access link for {accessLink.nickname}</h2>
-            <p className="mono">{`${resolveInviteOrigin(props.appConfig.publicUrl, window.location.origin)}/access/claim#token=${accessLink.token}`}</p>
+            <SecretLinkDisplay key={accessLinkUrl} value={accessLinkUrl} t={props.t} />
             <p className="muted small">Expires {formatShortDate(accessLink.expiresAt, props.language, props.t)}. It can be used once.</p>
-            <button className="btn btn-ghost" type="button" onClick={() => void navigator.clipboard?.writeText(`${resolveInviteOrigin(props.appConfig.publicUrl, window.location.origin)}/access/claim#token=${accessLink.token}`)}><CopyIcon /><span>{props.t("common.copy")}</span></button>
+            <button className="btn btn-ghost" type="button" onClick={() => void navigator.clipboard?.writeText(accessLinkUrl)}><CopyIcon /><span>{props.t("common.copy")}</span></button>
           </section>
         ) : null}
         <p className="error-text" aria-live="polite">{status}</p>
@@ -1803,6 +1828,19 @@ function OwnerPanel(props: ShellProps) {
           }}
         /> : null}
       </main>
+    </div>
+  );
+}
+
+function SecretLinkDisplay({ value, t }: { value: string; t: Translate }) {
+  const [revealed, setRevealed] = useState(false);
+  const label = revealed ? t("owner.hideLink") : t("owner.revealLink");
+  return (
+    <div className="secret-link-display">
+      <span className="mono">{revealed ? value : maskSecretLink(value)}</span>
+      <button className="secret-link-toggle" type="button" aria-label={label} title={label} aria-pressed={revealed} onClick={() => setRevealed((current) => !current)}>
+        <EyeIcon off={revealed} />
+      </button>
     </div>
   );
 }
@@ -2188,13 +2226,28 @@ function ChannelRail(props: ShellProps & {
                       canModerate
                     });
                     const hasActions = isRemote || canRename || canModerate;
+                    const menuKey = `rail-member:${member.user.userId}`;
                     return (
                     <div
                       className={`voice-channel-user ${member.media.speaking && member.media.mic && !member.media.deafened ? "is-speaking" : ""}`}
                       key={member.user.userId}
+                      tabIndex={hasActions ? 0 : undefined}
                       onContextMenu={hasActions
-                        ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, `rail-member:${member.user.userId}`, 220, menuHeight)
+                        ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, menuKey, 220, menuHeight)
                         : undefined}
+                      onKeyDown={hasActions ? (event) => {
+                        if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+                        event.preventDefault();
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        props.actionMenu.open({
+                          key: menuKey,
+                          x: rect.right - 220,
+                          y: rect.bottom + 4,
+                          menuWidth: 220,
+                          menuHeight,
+                          trigger: null
+                        });
+                      } : undefined}
                     >
                       <span className="avatar">{initial(member.user.nickname)}</span>
                       <span className="voice-channel-user-copy">
@@ -2226,7 +2279,7 @@ function ChannelRail(props: ShellProps & {
                       {hasActions ? (
                         <MemberActionMenu
                           actionMenu={props.actionMenu}
-                          menuKey={`rail-member:${member.user.userId}`}
+                          menuKey={menuKey}
                           member={member.user}
                           volume={isRemote ? props.memberVolumes[member.user.userId] ?? DEFAULT_VOLUME_PERCENT : undefined}
                           onVolumeChange={isRemote ? (volume) => props.onMemberVolumeChange(member.user.userId, volume) : undefined}
@@ -2235,6 +2288,7 @@ function ChannelRail(props: ShellProps & {
                           canModerate={canModerate}
                           onRename={(returnFocus) => props.onRequestNickname(member.user, returnFocus)}
                           onRequestAction={(action) => props.onRequestMemberAction(member.user, action, room.id)}
+                          showTrigger={false}
                           t={props.t}
                         />
                       ) : null}
@@ -2387,6 +2441,7 @@ function MemberActionMenu({
   canModerate,
   onRename,
   onRequestAction,
+  showTrigger = true,
   t
 }: {
   actionMenu: SidebarActionMenuController;
@@ -2399,6 +2454,7 @@ function MemberActionMenu({
   canModerate: boolean;
   onRename: (returnFocus: HTMLButtonElement | null) => void;
   onRequestAction: (action: MemberAction) => void;
+  showTrigger?: boolean;
   t: Translate;
 }) {
   const label = t("member.actionsFor", { nickname: member.nickname });
@@ -2410,7 +2466,7 @@ function MemberActionMenu({
   });
   return (
     <>
-      <SidebarMenuTrigger actionMenu={actionMenu} menuKey={menuKey} label={label} menuWidth={220} menuHeight={menuHeight} />
+      {showTrigger ? <SidebarMenuTrigger actionMenu={actionMenu} menuKey={menuKey} label={label} menuWidth={220} menuHeight={menuHeight} /> : null}
       {actionMenu.active?.key === menuKey ? (
         <ContextMenu descriptor={actionMenu.active} label={label} onClose={actionMenu.close}>
           {volume !== undefined && onVolumeChange ? <VolumeControl
@@ -2646,7 +2702,7 @@ function VoiceDock(props: ShellProps & { connectedCount: number }) {
   );
 }
 
-function ConfirmDialog({ title, copy, confirmLabel, confirmationText, confirmationLabel, onCancel, onConfirm }: { title: string; copy: string; confirmLabel: string; confirmationText?: string; confirmationLabel?: string; onCancel: () => void; onConfirm: () => void }) {
+function ConfirmDialog({ title, copy, confirmLabel, cancelLabel = "Cancel", confirmationText, confirmationLabel, onCancel, onConfirm }: { title: string; copy: string; confirmLabel: string; cancelLabel?: string; confirmationText?: string; confirmationLabel?: string; onCancel: () => void; onConfirm: () => void }) {
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const [confirmationValue, setConfirmationValue] = useState("");
   const isConfirmationValid = !confirmationText || confirmationValue === confirmationText;
@@ -2679,7 +2735,7 @@ function ConfirmDialog({ title, copy, confirmLabel, confirmationText, confirmati
           </label>
         ) : null}
         <div className="confirm-actions">
-          <button className="btn btn-ghost" type="button" ref={cancelRef} onClick={onCancel}>Cancel</button>
+          <button className="btn btn-ghost" type="button" ref={cancelRef} onClick={onCancel}>{cancelLabel}</button>
           <button className="btn btn-danger" type="button" disabled={!isConfirmationValid} onClick={onConfirm}>{confirmLabel}</button>
         </div>
       </section>
@@ -3001,7 +3057,8 @@ function MessageItem({
   language,
   t,
   onUpdate,
-  onDelete
+  onDelete,
+  onSuppressEmbed
 }: {
   message: ChatMessage;
   user: PublicUser;
@@ -3009,12 +3066,14 @@ function MessageItem({
   t: Translate;
   onUpdate: (messageId: string, body: string) => Promise<void>;
   onDelete: (messageId: string) => Promise<void>;
+  onSuppressEmbed: (messageId: string, embedKey: string) => Promise<void>;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [draft, setDraft] = useState(message.body);
   const [isBusy, setIsBusy] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [pendingEmbed, setPendingEmbed] = useState<MessageEmbed | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -3025,6 +3084,8 @@ function MessageItem({
   });
   const isOwn = message.userId === user.id;
   const hasActions = permissions.canEdit || permissions.canDelete;
+  const contentSegments = messageContentSegments(message.body);
+  const embeds = messageEmbeds(message.body, message.suppressedEmbedKeys);
 
   useEffect(() => {
     if (!menuPosition) return;
@@ -3084,6 +3145,18 @@ function MessageItem({
     }
   }
 
+  async function suppressCurrentEmbed(embed: MessageEmbed) {
+    setIsBusy(true);
+    setActionError("");
+    try {
+      await onSuppressEmbed(message.id, embed.key);
+    } catch {
+      setActionError(t("room.suppressEmbedError"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   return (
     <article
       className={`message ${isOwn ? "message-own" : ""}`}
@@ -3097,7 +3170,7 @@ function MessageItem({
         <div className="message-meta">
           <span className="message-author">{message.nickname}</span>
           <span className="message-time mono">
-            <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
+            <time dateTime={message.createdAt}>{formatMessageTimestamp(message.createdAt, language)}</time>
             {message.editedAt ? (
               <span
                 className="message-edited"
@@ -3115,7 +3188,38 @@ function MessageItem({
             </div>
           </div>
         ) : (
-          <div className="message-body">{message.body}</div>
+          <>
+            <div className="message-body">{contentSegments.map((segment, index) => segment.kind === "link" ? (
+              <a href={segment.href} target="_blank" rel="noopener noreferrer" key={`${segment.href}:${index}`}>{segment.text}</a>
+            ) : <span key={`text:${index}`}>{segment.text}</span>)}</div>
+            {embeds.length > 0 ? <div className="message-rich-embeds">
+              {embeds.map((embed) => {
+                const provider = embedProviderLabel(embed.provider);
+                return <section className={`message-embed is-${embed.provider}`} key={embed.key}>
+                  <header className="message-embed-head">
+                    <a href={embed.sourceUrl} target="_blank" rel="noopener noreferrer">{provider}</a>
+                    {permissions.canDelete ? <button
+                      className="message-embed-close"
+                      type="button"
+                      aria-label={t("room.suppressEmbed", { provider })}
+                      title={t("room.suppressEmbed", { provider })}
+                      disabled={isBusy}
+                      onClick={() => setPendingEmbed(embed)}
+                    ><CloseIcon /></button> : null}
+                  </header>
+                  <iframe
+                    src={embed.embedUrl}
+                    title={t("room.embedTitle", { provider })}
+                    loading="lazy"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"
+                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                    allowFullScreen
+                  />
+                </section>;
+              })}
+            </div> : null}
+          </>
         )}
         {actionError ? <p className="error-text" aria-live="polite">{actionError}</p> : null}
       </div>
@@ -3170,8 +3274,27 @@ function MessageItem({
           void deleteCurrentMessage();
         }}
       /> : null}
+      {pendingEmbed ? <ConfirmDialog
+        title={t("room.suppressEmbedTitle")}
+        copy={t("room.suppressEmbedCopy")}
+        confirmLabel={t("room.suppressEmbedConfirm")}
+        cancelLabel={t("common.cancel")}
+        onCancel={() => setPendingEmbed(null)}
+        onConfirm={() => {
+          const embed = pendingEmbed;
+          setPendingEmbed(null);
+          void suppressCurrentEmbed(embed);
+        }}
+      /> : null}
     </article>
   );
+}
+
+function embedProviderLabel(provider: MessageEmbed["provider"]) {
+  if (provider === "youtube") return "YouTube";
+  if (provider === "x") return "X / Twitter";
+  if (provider === "vimeo") return "Vimeo";
+  return "Spotify";
 }
 
 function PreferencesCard({
@@ -3561,10 +3684,6 @@ function extractInviteToken(value: string) {
   return slashIndex >= 0 ? trimmed.slice(slashIndex + 1) : trimmed;
 }
 
-function formatTime(value: string, language: LanguageCode) {
-  return new Intl.DateTimeFormat(language, { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
-}
-
 function formatShortDate(value: string | null, language: LanguageCode, t: Translate) {
   if (!value) return t("common.noExpiry");
   return new Intl.DateTimeFormat(language, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
@@ -3644,11 +3763,12 @@ function UsersIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-
 function ShieldIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 19 7v5c0 4-2.7 6.7-7 8-4.3-1.3-7-4-7-8V7z" /><path d="M9 12h6" /></svg>; }
 function PlusIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>; }
 function CopyIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h10v10H8z" /><path d="M6 14H5a1 1 0 0 1-1-1V5h8a1 1 0 0 1 1 1v1" /></svg>; }
+function CloseIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12" /><path d="m18 6-12 12" /></svg>; }
 function EditIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16-1 4 4-1L19 8l-3-3Z" /><path d="m14 7 3 3" /></svg>; }
 function TrashIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12" /><path d="M9 7V5h6v2" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M8 7l1 12h6l1-12" /></svg>; }
 function LeaveIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8 4 12l4 4" /><path d="M4 12h11" /><path d="M14 5h5v14h-5" /></svg>; }
 function MaximizeIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5" /><path d="M16 3h5v5" /><path d="M21 16v5h-5" /><path d="M3 16v5h5" /></svg>; }
-function EyeIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12s3-5 8.5-5 8.5 5 8.5 5-3 5-8.5 5-8.5-5-8.5-5Z" /><circle cx="12" cy="12" r="2.5" /></svg>; }
+function EyeIcon({ off = false }: { off?: boolean }) { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12s3-5 8.5-5 8.5 5 8.5 5-3 5-8.5 5-8.5-5-8.5-5Z" /><circle cx="12" cy="12" r="2.5" />{off ? <path d="M4 4l16 16" /> : null}</svg>; }
 function MoreIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>; }
 function VolumeIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h4l5-4v12l-5-4H4z" /><path d="M16 9a4 4 0 0 1 0 6" /><path d="M19 6a8 8 0 0 1 0 12" /></svg>; }
 function MicIcon({ off }: { off: boolean }) { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" /><path d="M6 11a6 6 0 0 0 12 0" /><path d="M12 17v3" />{off ? <path d="M4 4l16 16" /> : null}</svg>; }

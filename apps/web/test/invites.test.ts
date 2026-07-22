@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { buildInviteUrl, inviteReference, resolveInviteOrigin } from "../src/lib/invites.js";
+import { buildInviteUrl, inviteReference, maskSecretLink, resolveInviteOrigin } from "../src/lib/invites.js";
 
 describe("owner invite display", () => {
   it("builds a shareable invite URL from the one-time token", () => {
@@ -15,6 +15,19 @@ describe("owner invite display", () => {
   it("prefers configured public URL over local browser origin", () => {
     assert.equal(resolveInviteOrigin("https://voxly.example.com/", "http://127.0.0.1:3000"), "https://voxly.example.com");
     assert.equal(resolveInviteOrigin(null, "http://127.0.0.1:3000/"), "http://127.0.0.1:3000");
+  });
+
+  it("masks secret links without retaining their token in the display value", () => {
+    const value = "https://voxly.example.com/invite/top-secret-token";
+    const masked = maskSecretLink(value);
+
+    assert.equal(masked, "https://voxly.example.com/invite/••••••••••••");
+    assert.equal(masked.includes("top-secret-token"), false);
+
+    assert.equal(
+      maskSecretLink("https://voxly.example.com/access/claim#token=another-secret"),
+      "https://voxly.example.com/access/claim#token=••••••••••••"
+    );
   });
 
   it("loads the current server name when an invite link opens", () => {

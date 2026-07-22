@@ -15,8 +15,8 @@ describe("server member identity updates", () => {
 
   it("renames loaded messages only in the target server", () => {
     const messages = {
-      roomA: [{ id: "a", roomId: "roomA", userId: "u1", nickname: "Old", body: "A", createdAt: "now", editedAt: null }],
-      roomB: [{ id: "b", roomId: "roomB", userId: "u1", nickname: "Old", body: "B", createdAt: "now", editedAt: null }]
+      roomA: [{ id: "a", roomId: "roomA", userId: "u1", nickname: "Old", body: "A", createdAt: "now", editedAt: null, suppressedEmbedKeys: [] }],
+      roomB: [{ id: "b", roomId: "roomB", userId: "u1", nickname: "Old", body: "B", createdAt: "now", editedAt: null, suppressedEmbedKeys: [] }]
     };
     const renamed = renameMessagesForServer(messages, { roomA: "server-a", roomB: "server-b" }, "server-a", {
       userId: "u1",

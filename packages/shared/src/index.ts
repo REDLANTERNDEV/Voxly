@@ -25,6 +25,7 @@ export interface ChatMessage {
   body: string;
   createdAt: string;
   editedAt: string | null;
+  suppressedEmbedKeys: string[];
 }
 
 export interface PresenceUser {

@@ -30,6 +30,17 @@ export function resolveRememberedRoom(rooms: RoomSummary[], rememberedId: string
   return rooms.find((room) => room.id === rememberedId) ?? rooms[0] ?? null;
 }
 
+export function roomsForServer(rooms: RoomSummary[], serverId: string) {
+  return rooms.filter((room) => room.serverId === serverId);
+}
+
+export function resolveServerTextRoom(rooms: RoomSummary[], serverId: string, rememberedId: string | undefined) {
+  return resolveRememberedRoom(
+    roomsForServer(rooms, serverId).filter((room) => room.kind === "text"),
+    rememberedId
+  );
+}
+
 export function incrementUnread(unread: Record<string, number>, roomId: string) {
   return { ...unread, [roomId]: (unread[roomId] ?? 0) + 1 };
 }

@@ -55,6 +55,11 @@ requirement.
 - Remember last-used text and voice rooms independently per server in versioned
   local storage. Ignore malformed data and fall back when a remembered room no
   longer exists.
+- Derive visible rooms, the current route room, history requests, and fallback
+  navigation only from rooms belonging to the active server. A stale room list
+  from the previously selected server must render no channel or message while
+  the next server loads. Owner-panel navigation returns to that server's
+  remembered text room or its first text room, never a hard-coded room ID.
 - Unread counts are browser-session state only. Ignore the current user's
   messages, increment only for inactive text rooms, and clear a room when it is
   opened. Do not add persistent read receipts without a separate design.
@@ -76,6 +81,10 @@ requirement.
   server summary without disturbing other memberships.
 - Owner invites, access links, membership actions, and history operate on that
   selected owner context; do not reintroduce a second invite target selector.
+- Newly generated invite and access links are masked in owner surfaces by
+  default. An accessible eye control may reveal and hide the complete link;
+  copy actions always use the complete one-time value. Masking is presentation
+  only and must not place a transformed value into the clipboard or API state.
 - Server and channel deletion keep exact-name confirmation and server-side
   protection against deleting the final owner server or final protected
   channel.
@@ -115,13 +124,31 @@ requirement.
   on outside input, Escape, or action selection.
 - Keep message creation time unchanged after edits. Show the localized edited
   marker beside it and expose the full local edit date and time.
+- A message created on the viewer's current local calendar day shows only its
+  localized time. Older messages show a localized date containing day, month,
+  year, and time; do not compare UTC date strings to decide whether it is today.
+- Linkify only valid `http:` and `https:` URLs. Render them as React text and
+  anchors with a new browsing context plus `noopener noreferrer`; never inject
+  message HTML or turn other protocols into clickable content.
+- Rich previews are derived from message links for the explicit YouTube,
+  X/Twitter, Vimeo, and Spotify provider allowlist. Deduplicate provider items,
+  render at most four previews per message, sandbox provider frames, and leave
+  every unknown site as an ordinary link. This is link-preview presentation,
+  not a webhook or server-side metadata fetch.
+- A preview close action is visible only to the message author or selected
+  server owner. Require localized confirmation, keep the original link, and
+  apply the server-acknowledged suppression so realtime viewers and later
+  history loads agree. Multiple previews are suppressed independently.
 - Preserve existing message ownership and moderation permissions in both the UI
   and API handling.
 
 ## Context Menus and Layering
 
 - Sidebar rows with actions open the shared portal menu from secondary click or
-  ellipsis. Rows without actions retain the browser context menu.
+  ellipsis. Left-rail voice-participant rows are the deliberate exception: omit
+  their ellipsis to preserve status-icon symmetry, keep the row focusable, and
+  open the same menu with secondary click, the Context Menu key, or Shift+F10.
+  Rows without actions retain the browser context menu.
 - Only one sidebar menu may be mounted at a time. Opening another replaces the
   current descriptor before the next overlay renders.
 - Outside pointer input, Escape, navigation, drawer changes, and action

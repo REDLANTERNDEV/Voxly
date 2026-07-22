@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { clampContextMenuPosition } from "../src/lib/contextMenu.js";
 import {
   formatMessageDateTime,
+  formatMessageTimestamp,
   isMessageListNearBottom,
   messageListUpdateAction,
   messageDeleteFailureCopy,
@@ -82,6 +83,28 @@ describe("edited message timestamp", () => {
     assert.equal(
       formatMessageDateTime(value, "en"),
       new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "medium" }).format(new Date(value))
+    );
+  });
+});
+
+describe("message timestamp", () => {
+  it("shows only the time for messages from the current local day", () => {
+    const now = new Date(2026, 6, 22, 18, 30);
+    const value = new Date(2026, 6, 22, 9, 5).toISOString();
+
+    assert.equal(
+      formatMessageTimestamp(value, "en", now),
+      new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit" }).format(new Date(value))
+    );
+  });
+
+  it("includes day, month, year, and time for older messages", () => {
+    const now = new Date(2026, 6, 22, 18, 30);
+    const value = new Date(2025, 11, 3, 9, 5).toISOString();
+
+    assert.equal(
+      formatMessageTimestamp(value, "tr", now),
+      new Intl.DateTimeFormat("tr", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
     );
   });
 });

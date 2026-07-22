@@ -114,6 +114,7 @@ function migrate(sqlite: DatabaseSync) {
       body text not null,
       created_at text not null,
       edited_at text,
+      suppressed_embed_keys text not null default '[]',
       deleted_at text,
       deleted_by_user_id text
     );
@@ -160,6 +161,7 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "invites", "revoked_at", "text");
   addColumnIfMissing(sqlite, "invites", "label", "text");
   addColumnIfMissing(sqlite, "messages", "edited_at", "text");
+  addColumnIfMissing(sqlite, "messages", "suppressed_embed_keys", "text not null default '[]'");
   addColumnIfMissing(sqlite, "messages", "deleted_at", "text");
   addColumnIfMissing(sqlite, "messages", "deleted_by_user_id", "text");
   addColumnIfMissing(sqlite, "rooms", "server_id", "text");

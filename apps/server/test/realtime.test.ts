@@ -675,6 +675,32 @@ describe("Voxly realtime MVP", () => {
     });
   });
 
+  it("publishes embed suppression to everyone viewing the text room", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Embed author");
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(memberSocket);
+    memberSocket.emit("room:join", "general");
+    await waitForSocketRoom(app, memberSocket, "room:general");
+
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/rooms/general/messages",
+      cookies: member.cookies,
+      payload: { body: "https://youtu.be/dQw4w9WgXcQ" }
+    });
+    const updatedPromise = onceEvent<{ id: string; suppressedEmbedKeys: string[] }>(memberSocket, "message:updated");
+    const suppressed = await app.server.inject({
+      method: "PATCH",
+      url: `/api/rooms/general/messages/${created.json().message.id}/embeds`,
+      cookies: owner.cookies,
+      payload: { embedKey: "youtube:dQw4w9WgXcQ" }
+    });
+
+    assert.equal(suppressed.statusCode, 200);
+    assert.deepEqual((await updatedPromise).suppressedEmbedKeys, ["youtube:dQw4w9WgXcQ"]);
+  });
+
   it("invalidates member directories after an offline member is unbanned", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Offline unban");

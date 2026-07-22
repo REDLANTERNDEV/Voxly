@@ -81,6 +81,7 @@ export const messages = sqliteTable("messages", {
   body: text("body").notNull(),
   createdAt: text("created_at").notNull(),
   editedAt: text("edited_at"),
+  suppressedEmbedKeys: text("suppressed_embed_keys").notNull().default("[]"),
   deletedAt: text("deleted_at"),
   deletedByUserId: text("deleted_by_user_id")
 });

@@ -52,7 +52,9 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | Atomic joins and media normalization | Web library, server, and shared Voice sections |
 | Reconnect retries and deafen restoration | `apps/web/src/lib/AGENTS.md` — Reconnect and Deafen sections |
 | Chat composition, scrolling, actions, and edits | Web Chat Interaction and server Messages sections |
+| Message dates, safe links, rich previews, and preview suppression | Web Chat Interaction; server Messages; shared Contract Rules |
 | Owner server context and lifecycle controls | Web Member and Owner Surfaces; server Membership section |
+| Owner one-time link masking and reveal behavior | `apps/web/AGENTS.md` — Member and Owner Surfaces |
 | Sidebar context menus and popover layering | `apps/web/AGENTS.md` — Context Menus and Layering |
 | Sidebar voice status and stage layout | `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
 

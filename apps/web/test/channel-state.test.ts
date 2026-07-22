@@ -6,6 +6,8 @@ import {
   incrementUnread,
   readRoomHistory,
   rememberRoom,
+  roomsForServer,
+  resolveServerTextRoom,
   resolveRememberedRoom,
   unreadAfterMessage,
   writeRoomHistory
@@ -31,6 +33,15 @@ describe("channel state", () => {
     assert.equal(resolveRememberedRoom([textRoom, voiceRoom], "lobby"), voiceRoom);
     assert.equal(resolveRememberedRoom([textRoom, voiceRoom], "missing"), textRoom);
     assert.equal(resolveRememberedRoom([], "missing"), null);
+  });
+
+  it("keeps visible and fallback rooms scoped to the active server", () => {
+    const betaText: RoomSummary = { id: "beta-general", serverId: "beta", name: "general", kind: "text", position: 10 };
+    const rooms = [textRoom, voiceRoom, betaText];
+
+    assert.deepEqual(roomsForServer(rooms, "beta"), [betaText]);
+    assert.equal(resolveServerTextRoom(rooms, "beta", "general"), betaText);
+    assert.equal(resolveServerTextRoom(rooms, "alpha", "general"), textRoom);
   });
 
   it("increments unread messages immutably and clears a room when opened", () => {

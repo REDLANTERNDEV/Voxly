@@ -34,6 +34,10 @@ or server-only runtime modules.
   `{ serverId: string; name: string }`. Producers emit it only after persistence
   and only to the renamed server room; consumers update only the matching
   `ServerSummary` so unrelated server options and memberships remain intact.
+- `ChatMessage.suppressedEmbedKeys` is a required bounded list produced for
+  history, creation, and `message:updated` deliveries. Consumers derive rich
+  previews from the plain message body and omit only matching keys; do not add
+  provider HTML or fetched metadata to the shared message contract.
 
 ## Voice Contract Invariants
 

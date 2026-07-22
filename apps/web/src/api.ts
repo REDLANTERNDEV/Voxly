@@ -121,6 +121,13 @@ export async function deleteMessage(roomId: string, messageId: string) {
   });
 }
 
+export async function suppressMessageEmbed(roomId: string, messageId: string, embedKey: string) {
+  return request<MessageResponse>(`/api/rooms/${roomId}/messages/${messageId}/embeds`, {
+    method: "PATCH",
+    body: JSON.stringify({ embedKey })
+  });
+}
+
 export async function acceptInvite(inviteToken: string, nickname: string, turnstileToken?: string) {
   return apiPost<CurrentUserResponse & { serverId: string }>("/api/invites/accept", { inviteToken, nickname: nickname || undefined, turnstileToken });
 }

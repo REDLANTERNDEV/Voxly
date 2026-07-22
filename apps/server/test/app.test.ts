@@ -73,6 +73,9 @@ describe("Voxly HTTP MVP", () => {
       const accessClaimColumns = tables.prepare("pragma table_info(access_claims)").all()
         .map((column) => (column as { name: string }).name);
       assert.ok(accessClaimColumns.includes("revoked_at"));
+      const messageColumns = tables.prepare("pragma table_info(messages)").all()
+        .map((column) => (column as { name: string }).name);
+      assert.ok(messageColumns.includes("suppressed_embed_keys"));
     } finally {
       migrated.close();
       await rm(databaseDir, { force: true, recursive: true });
@@ -634,6 +637,54 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(messages[0].body, "oyuna giriyorum");
     assert.equal(messages[0].nickname, "Deniz");
     assert.equal(messages[0].editedAt, null);
+    assert.deepEqual(messages[0].suppressedEmbedKeys, []);
+  });
+
+  it("lets message authors and server owners suppress individual embeds", async () => {
+    const owner = await bootstrapOwner(app);
+    const author = await acceptInvite(app, owner.cookies, "Author");
+    const otherMember = await acceptInvite(app, owner.cookies, "Other member");
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/rooms/general/messages",
+      cookies: author.cookies,
+      payload: { body: "https://youtu.be/dQw4w9WgXcQ https://x.com/user/status/123" }
+    });
+    const messageId = created.json().message.id as string;
+    assert.deepEqual(created.json().message.suppressedEmbedKeys, []);
+
+    const forbidden = await app.server.inject({
+      method: "PATCH",
+      url: `/api/rooms/general/messages/${messageId}/embeds`,
+      cookies: otherMember.cookies,
+      payload: { embedKey: "youtube:dQw4w9WgXcQ" }
+    });
+    assert.equal(forbidden.statusCode, 403);
+
+    const authorSuppressed = await app.server.inject({
+      method: "PATCH",
+      url: `/api/rooms/general/messages/${messageId}/embeds`,
+      cookies: author.cookies,
+      payload: { embedKey: "youtube:dQw4w9WgXcQ" }
+    });
+    assert.equal(authorSuppressed.statusCode, 200);
+    assert.deepEqual(authorSuppressed.json().message.suppressedEmbedKeys, ["youtube:dQw4w9WgXcQ"]);
+
+    const ownerSuppressed = await app.server.inject({
+      method: "PATCH",
+      url: `/api/rooms/general/messages/${messageId}/embeds`,
+      cookies: owner.cookies,
+      payload: { embedKey: "x:123" }
+    });
+    assert.equal(ownerSuppressed.statusCode, 200);
+    assert.deepEqual(ownerSuppressed.json().message.suppressedEmbedKeys, ["youtube:dQw4w9WgXcQ", "x:123"]);
+
+    const history = await app.server.inject({
+      method: "GET",
+      url: "/api/rooms/general/messages",
+      cookies: author.cookies
+    });
+    assert.deepEqual(history.json().messages[0].suppressedEmbedKeys, ["youtube:dQw4w9WgXcQ", "x:123"]);
   });
 
   it("lets members delete their own messages", async () => {
