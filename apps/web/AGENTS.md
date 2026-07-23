@@ -81,6 +81,12 @@ requirement.
   server summary without disturbing other memberships.
 - Owner invites, access links, membership actions, and history operate on that
   selected owner context; do not reintroduce a second invite target selector.
+- Invite expiry and maximum uses are independent selects. Show used/limit and
+  remaining capacity from server counts; a partially used active invite remains
+  revocable, while expired, exhausted, or revoked links are inactive.
+- Default invite creation to one day and one use. Offer only the approved
+  duration and capacity presets plus an independent unlimited option for each;
+  do not recreate a client-side hours contract.
 - Newly generated invite and access links are masked in owner surfaces by
   default. An accessible eye control may reveal and hide the complete link;
   copy actions always use the complete one-time value. Masking is presentation
@@ -194,10 +200,14 @@ requirement.
   selection behavior separate and unchanged.
 - If the source ends before activation, do not start a join. Surface existing
   localized recovery/error UI when joining or subscribing fails.
-- Sidebar voice rows show no icon for an active member, one red muted icon for
-  a muted member, and both red deafen and muted icons for a deafened member.
-  When both are present, muted is left and deafen is right. Keep accessible
-  localized names while remaining visually icon-only.
+- Self-managed mute/deafen icons are neutral gray. Owner-enforced mute/deafen
+  icons are red and take precedence; owner deafen alone shows only the red
+  headset. Keep accessible localized names while remaining visually icon-only.
+- Owner voice moderation is available for ordinary members in the owner panel
+  regardless of presence and in participant menus while they are in voice.
+- Keep the left channel rail visually quiet: text/voice section headings do not
+  show room totals, and voice-channel rows do not show participant totals.
+  Actual voice participants and text-room unread badges remain visible.
 - Activating a voice-channel name is an entry action, not a browse action. Join
   immediately when disconnected, open the already-active room without a new
   join, and require one localized confirmation before moving from another
@@ -216,6 +226,20 @@ requirement.
 - Microphone, deafen, camera, and screen-share dock controls use the same 44px
   hit area and 24px glyph on desktop, and the same 40px hit area and 24px glyph
   on mobile.
+- Owner-enforced mute/deafen dock controls are red, disabled, and cannot be
+  cleared by the affected member. Self-managed off controls remain gray.
+- Show Socket.IO health as signal bars plus the median RTT. After three seconds
+  disconnected, make the app inert under the technical reconnect overlay; keep
+  it open until the reconnected socket completes a successful probe.
+- Probe immediately after connect and every five seconds with one request in
+  flight. Use a 2.5-second ACK timeout and the median of the latest five
+  successes: up to 150ms is green, 151–300ms yellow, and above 300ms red.
+  While disconnected, disable only Socket.IO-dependent voice, join, and LIVE
+  actions before the overlay threshold; HTTP-backed surfaces remain usable.
+- Reconnect copy remains technical and localized: distinguish browser offline,
+  unreachable server, and reconnect attempt. Rotate the existing Voxly mark
+  unless reduced motion is requested, and close only after a fresh successful
+  probe ACK for the current connection generation.
 - Preserve the screen-share monitor/up-arrow geometry and show its diagonal
   cancellation stroke only when the action stops an active share.
 - Voice-channel prefixes use the inline microphone icon rather than text such

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { acceptInvite, ApiError, claimAccessLink, claimOwnerSession, deleteMessage, deleteServer, deleteServerRoom, fetchRtcConfig, previewInvite, revokeInvite, updateServer, updateServerMemberNickname } from "../src/api.js";
+import { acceptInvite, ApiError, claimAccessLink, claimOwnerSession, createServerInvite, deleteMessage, deleteServer, deleteServerRoom, fetchRtcConfig, previewInvite, revokeInvite, updateServer, updateServerMemberNickname, updateVoiceModeration } from "../src/api.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -162,6 +162,33 @@ describe("frontend api", () => {
       body: JSON.stringify({ nickname: "Basement Ece" })
     });
     assert.equal(response.user.nickname, "Basement Ece");
+  });
+
+  it("creates independently limited invites and updates voice moderation", async () => {
+    const requests: Array<{ path: string; method?: string; body?: string }> = [];
+    globalThis.fetch = async (input, init) => {
+      requests.push({ path: String(input), method: init?.method, body: String(init?.body) });
+      return new Response(JSON.stringify({ moderation: { muted: true, deafened: false } }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    };
+
+    await createServerInvite("server id", "Friends", 1440, 5);
+    await updateVoiceModeration("server id", "user/id", { muted: true });
+
+    assert.deepEqual(requests, [
+      {
+        path: "/api/servers/server%20id/invites",
+        method: "POST",
+        body: JSON.stringify({ label: "Friends", expiresInMinutes: 1440, maxUses: 5 })
+      },
+      {
+        path: "/api/servers/server%20id/members/user%2Fid/voice-moderation",
+        method: "PATCH",
+        body: JSON.stringify({ muted: true })
+      }
+    ]);
   });
 
   it("previews an invite and renames its server through scoped endpoints", async () => {

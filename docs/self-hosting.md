@@ -137,8 +137,10 @@ preserves every existing server membership.
 
 The 15-minute lifetime applies only to this account-recovery access link. It
 does not change server invite expiry. Server invites are used to add or re-add a
-member to one selected server, and the owner can choose their lifetime up to 72
-hours in the invite form.
+member to one selected server. The owner independently chooses an expiry of 30
+minutes, 1/6/12 hours, 1/7/30 days, or no expiry, and a capacity of
+1/5/10/25/50/100 uses or no usage limit. Each account consumes a link at most
+once, and capacity is claimed atomically.
 
 An access link is not an invitation:
 

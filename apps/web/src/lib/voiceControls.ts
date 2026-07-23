@@ -73,10 +73,10 @@ export function voiceDockStatus(controls: VoiceControls, connectedCount: number)
 
 export function controlPresentation(key: VoiceControlKey, controls: VoiceControls): { action: VoiceControlAction; tone: VoiceControlTone } {
   if (key === "mic") {
-    return controls.mic.on ? { action: "muteMic", tone: "neutral" } : { action: "unmuteMic", tone: "danger" };
+    return controls.mic.on ? { action: "muteMic", tone: "neutral" } : { action: "unmuteMic", tone: "neutral" };
   }
   if (key === "deafen") {
-    return controls.deafen.on ? { action: "undeafen", tone: "danger" } : { action: "deafen", tone: "neutral" };
+    return controls.deafen.on ? { action: "undeafen", tone: "neutral" } : { action: "deafen", tone: "neutral" };
   }
   if (key === "camera") {
     return controls.camera.on ? { action: "stopCamera", tone: "neutral" } : { action: "startCamera", tone: "neutral" };

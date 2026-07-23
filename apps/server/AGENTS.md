@@ -29,6 +29,10 @@ queries across endpoints.
 - Do not drop or reinterpret audit-relevant rows as an incidental cleanup.
 - Keep schema metadata, runtime initialization, SQL queries, and migration tests
   synchronized.
+- Migrate `invites.max_uses`, composite-keyed `invite_uses`, and membership
+  `moderator_muted` / `moderator_deafened` additively. Backfill legacy invite
+  consumption once, retain the legacy first-use metadata, and preserve owner
+  moderation values across restarts and membership lifecycle changes.
 - Legacy user-to-default-server backfill runs only when introducing the
   `server_members` table to an older database. Routine startups and later
   migrations must never infer default-server membership from global `users`;
@@ -41,12 +45,18 @@ queries across endpoints.
 
 - Invite, session, access-claim, and owner-claim tokens are stored only as
   hashes. Do not log or persist raw values.
+- Invite expiry and capacity are independent nullable limits. Count one use per
+  account in `invite_uses`; preserve the legacy first-use columns as metadata.
+- When supplied, invite expiry accepts only 30, 60, 360, 720, 1440, 10080, or
+  43200 minutes, and capacity accepts only 1, 5, 10, 25, 50, or 100 uses;
+  `null` means unlimited. Do not accept the removed `expiresInHours` shape or
+  arbitrary numeric values as a compatibility shortcut.
 - An authenticated active member may reopen the exact invite that they
   previously consumed. Return `already_server_member` with that invite's
-  `serverId` without restoring or changing membership.
-- Keep every other unknown, expired, consumed, revoked, or orphaned invite
-  response generic. A token consumed by a different user must not disclose its
-  server or consumption state.
+  `serverId` without restoring membership or consuming another use.
+- Keep unknown, expired, exhausted, revoked, repeated-by-a-removed-member, and
+  orphaned invite responses generic. Validate capacity and insert the use in
+  the same `BEGIN IMMEDIATE` transaction as membership activation.
 - Access links expire after 15 minutes. Creating a replacement revokes every
   older unconsumed, unexpired, non-revoked claim for the same server and user
   before inserting the new claim.
@@ -66,10 +76,10 @@ queries across endpoints.
 - Every server-scoped route and event requires an active, non-banned,
   non-removed membership; owner actions additionally require active owner role.
 - Accepting a valid invite as an existing active member returns the target
-  `serverId` and leaves that unused invite unused. Reopening a previously
+  `serverId` and leaves its remaining capacity unchanged. Reopening a previously
   consumed invite never restores a removed or banned membership.
 - A user account is global but each membership is independent and
-  server-scoped. When an existing user accepts a valid unused invite to a
+  server-scoped. When an existing user accepts a valid available invite to a
   different server, add or reactivate only that target membership, consume the
   invite, preserve every other active membership, and return the invited
   `serverId`. The authenticated server list must then expose both memberships.
@@ -78,6 +88,9 @@ queries across endpoints.
   return through the existing invite flow.
 - Banning is distinct from kicking. Banned users remain visible to owners so
   they can be unbanned, and existing sessions must not restore access.
+- Owner voice mute/deafen are independent, persistent membership flags. Only an
+  active owner may update an ordinary member; owner/self targets are rejected.
+  Neither kick, ban, rejoin, channel movement, nor restart clears these flags.
 - The member directory is available to active members and exposes only active
   users' `userId`, `nickname`, and `role`. Omit banned/removed memberships and
   all moderation/session fields.
@@ -86,13 +99,14 @@ queries across endpoints.
 - Preserve exact-name destructive confirmation at the client and enforce final
   owner-server/channel protections on the server.
 - Server deletion remains atomic while preserving global identities and audit
-  history that other servers still need.
+  history that other servers still need. Delete dependent `invite_uses` before
+  deleting that server's invites.
 - Server names are owner-managed, trimmed to 2–64 characters, persisted before
   publication, and updated only after active owner authorization in that
   server. Record the rename in the audit log and emit the typed update only to
   the renamed server room.
 - Invite links identify an invite, not a cached server name. Preview a valid,
-  unused, unrevoked, unexpired invite by joining its current server row so an
+  unexhausted, unrevoked, unexpired invite by joining its current server row so an
   older link shows the latest name after a rename. Keep every invalid preview
   response generic.
 - Store an optional nickname override on `server_members`; the global user
@@ -131,12 +145,23 @@ queries across endpoints.
 - Normalize requested media before storing it: `deafened: true` forces
   `mic: false`; either mic-off or deafen forces `speaking: false`; every new
   membership starts with `speaking: false`.
+- Owner mute additionally forces `mic: false` and `speaking: false`. Owner
+  deafen does not alter the member's microphone state. Apply this normalization
+  on both join and every media-state update.
 - Build the ACK and emitted snapshot from the same authoritative
   `VoiceMemberState`. Never publish a temporary default `mic: true` state.
 - A user account remains in at most one voice room globally. Moving rooms must
   clean the previous membership and visual subscriptions.
 - Keep visual publisher limits and subscription authorization server-side.
   Signals are forwarded only between active members of the same voice room.
+- Full speaking state is visible only to sockets joined to that voice room.
+  Other active server sockets receive the same snapshot with `speaking:false`.
+- A direct `voice:snapshot` acknowledgement follows the same rule: return full
+  state only when that requesting socket is in the room, otherwise redact every
+  member's speaking flag. Never forward RTC signaling unless sender and target
+  are both active members of the same voice room.
+- `connection:probe` is an authenticated ACK-only liveness event. It carries no
+  data and must not bypass the existing Socket.IO session middleware.
 - Kicks, bans, channel deletion, server deletion, explicit leave, and socket
   cleanup must remove affected voice/subscription state and notify clients with
   the existing typed reasons.

@@ -69,6 +69,15 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   user. Normal microphone-toggle behavior remains independent.
 - Leave and a fresh join reset room-scoped restoration state so preference does
   not leak between sessions.
+- Owner mute stores a separate pre-moderation microphone preference, disables
+  the published track, and acknowledges mic/speaking off. On owner unmute,
+  restore only when that preference was on and the existing track is live.
+- Clearing self-deafen while owner-muted must keep both the local control and
+  every microphone track off before and during the server acknowledgement; do
+  not briefly republish the saved pre-deafen preference.
+- Owner deafen never changes the local microphone track or self-managed deafen
+  state. It suppresses participant microphone playback only; screen-share audio
+  remains governed by its existing subscription and volume path.
 - Microphone testing treats automatic deafen as a room-scoped lease. Start
   playback only after deafen is acknowledged, restore undeafened state only
   when the lease changed it in the same active room, and preserve an existing
@@ -128,6 +137,22 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   remote tracks.
 - Deafen mutes participant microphone streams, not subscribed screen-share
   audio. Screen audio still obeys its own volume, unsubscribe, and leave state.
+- Independently mute receiver playback for an owner-muted publisher even if a
+  stale or modified peer still supplies an audio track.
+
+## Connection Health Lifecycle
+
+- Keep RTT classification in a pure helper and Socket.IO timers/listeners in a
+  lifecycle hook. Probe immediately after connect and then every five seconds.
+- Allow only one 2.5-second ACK wait at a time. Keep the latest five successful
+  samples, display their median, and classify 0–150ms green, 151–300ms yellow,
+  and greater than 300ms red; a timeout is degraded red state.
+- Increment a connection generation on reconnect and ignore late ACKs or
+  timers from an older generation. Cleanup disconnect delays, probe intervals,
+  ACK timeouts, and socket listeners idempotently.
+- Start the blocking overlay only after three continuous seconds disconnected.
+  A reconnect alone does not dismiss it; wait for the first successful probe in
+  the current generation.
 
 ## Screen Sharing
 

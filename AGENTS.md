@@ -50,13 +50,17 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | LIVE discovery and one-click watch | `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
 | Viewed-room participant scoping | `apps/web/src/lib/AGENTS.md` — Viewed-Room State |
 | Atomic joins and media normalization | Web library, server, and shared Voice sections |
+| Voice activity privacy and owner voice enforcement | Server Atomic Voice; web Deafen and Remote Streams; shared Voice sections |
 | Reconnect retries and deafen restoration | `apps/web/src/lib/AGENTS.md` — Reconnect and Deafen sections |
+| Connection RTT and reconnect overlay | `apps/web/AGENTS.md` — Controls, Icons, and Accessibility |
+| Multi-use invite limits and consumption | Server Authentication; web Member and Owner Surfaces; shared Invite Contracts |
 | Chat composition, scrolling, actions, and edits | Web Chat Interaction and server Messages sections |
 | Message dates, safe links, rich previews, and preview suppression | Web Chat Interaction; server Messages; shared Contract Rules |
 | Owner server context and lifecycle controls | Web Member and Owner Surfaces; server Membership section |
 | Owner one-time link masking and reveal behavior | `apps/web/AGENTS.md` — Member and Owner Surfaces |
 | Sidebar context menus and popover layering | `apps/web/AGENTS.md` — Context Menus and Layering |
 | Sidebar voice status and stage layout | `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
+| Sidebar channel and participant-count presentation | `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
 
 ## Repository Map
 
@@ -130,6 +134,13 @@ examples in `README.md`. Never commit a local `.env` or SQLite database.
   collapse them for convenience.
 - Media state shown to other users must reflect effective live local tracks,
   not merely UI intent or the existence of a `MediaStream` object.
+- Self-managed voice state is neutral presentation; owner-enforced mute/deafen
+  is persistent, red, locked, and server-authoritative.
+- Speaking activity is private to the active voice room. Server membership may
+  reveal who is present, but never another room's live speaking state or RTC
+  signaling path.
+- Invite expiry and usage capacity are independent limits; consuming capacity
+  and activating membership is one atomic server operation.
 - Keep failures recoverable where the current product has a safe fallback;
   avoid converting optional optimizations into hard failures.
 

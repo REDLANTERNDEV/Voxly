@@ -3,6 +3,15 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 describe("voice rail live controls", () => {
+  it("omits channel and participant totals from the rail", () => {
+    const app = readFileSync("src/App.tsx", "utf8");
+    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
+
+    assert.doesNotMatch(rail, /props\.rooms\.text\.length\}<\/span>/);
+    assert.doesNotMatch(rail, /props\.rooms\.voice\.length\}<\/span>/);
+    assert.doesNotMatch(rail, /members\.length\}<\/span>/);
+  });
+
   it("keeps the rail compact while retaining the speaking avatar ring", () => {
     const app = readFileSync("src/App.tsx", "utf8");
     const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";

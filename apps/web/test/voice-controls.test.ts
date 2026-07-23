@@ -108,8 +108,8 @@ describe("voice control view state", () => {
     const muted = toggleVoiceControl(createInitialVoiceControls(), "mic");
     const deafened = toggleVoiceControl(createInitialVoiceControls(), "deafen");
 
-    assert.deepEqual(controlPresentation("mic", muted), { action: "unmuteMic", tone: "danger" });
-    assert.deepEqual(controlPresentation("deafen", deafened), { action: "undeafen", tone: "danger" });
+    assert.deepEqual(controlPresentation("mic", muted), { action: "unmuteMic", tone: "neutral" });
+    assert.deepEqual(controlPresentation("deafen", deafened), { action: "undeafen", tone: "neutral" });
     assert.deepEqual(controlPresentation("mic", createInitialVoiceControls()), { action: "muteMic", tone: "neutral" });
   });
 

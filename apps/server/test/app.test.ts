@@ -43,7 +43,7 @@ describe("Voxly HTTP MVP", () => {
     `);
     legacy.prepare("insert into users values (?, ?, ?, ?)").run("owner", "Red Lantern", "owner", null);
     legacy.prepare("insert into rooms values (?, ?, ?, ?)").run("history", "history", "text", 50);
-    legacy.prepare("insert into invites values (?, ?, ?, ?, ?, ?, ?, ?, ?)").run("invite", "legacy-token-hash", "Legacy", "owner", null, null, null, null, "2026-01-01T00:00:00.000Z");
+    legacy.prepare("insert into invites values (?, ?, ?, ?, ?, ?, ?, ?, ?)").run("invite", "legacy-token-hash", "Legacy", "owner", "owner", "2026-01-01T00:00:00.000Z", null, null, "2026-01-01T00:00:00.000Z");
     legacy.close();
 
     const migrated = await openDatabase(databasePath);
@@ -60,6 +60,8 @@ describe("Voxly HTTP MVP", () => {
       const memberColumns = tables.prepare("pragma table_info(server_members)").all()
         .map((column) => (column as { name: string }).name);
       assert.ok(memberColumns.includes("nickname"));
+      assert.ok(memberColumns.includes("moderator_muted"));
+      assert.ok(memberColumns.includes("moderator_deafened"));
       assert.equal(
         tables.prepare("select nickname from server_members where user_id = 'owner'").get()?.nickname,
         null
@@ -76,6 +78,9 @@ describe("Voxly HTTP MVP", () => {
       const messageColumns = tables.prepare("pragma table_info(messages)").all()
         .map((column) => (column as { name: string }).name);
       assert.ok(messageColumns.includes("suppressed_embed_keys"));
+      assert.equal(tables.prepare("select max_uses from invites where id = 'invite'").get()?.max_uses, 1);
+      assert.ok(tables.prepare("select name from sqlite_master where type = 'table' and name = 'invite_uses'").get());
+      assert.equal(tables.prepare("select user_id from invite_uses where invite_id = 'invite'").get()?.user_id, "owner");
     } finally {
       migrated.close();
       await rm(databaseDir, { force: true, recursive: true });
@@ -462,7 +467,7 @@ describe("Voxly HTTP MVP", () => {
       method: "POST",
       url: "/api/owner/invites",
       cookies: owner.cookies,
-      payload: { expiresInHours: 2, label: "Jules" }
+      payload: { expiresInMinutes: 60, label: "Jules" }
     });
     assert.equal(createResponse.statusCode, 201);
     assert.equal(createResponse.json().invite.label, "Jules");
@@ -492,6 +497,208 @@ describe("Voxly HTTP MVP", () => {
       payload: { inviteToken, nickname: "Jules" }
     });
     assert.equal(acceptResponse.statusCode, 404);
+  });
+
+  it("creates independently limited invites and consumes each account once", async () => {
+    const owner = await bootstrapOwner(app);
+    const created = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServerId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Squad", expiresInMinutes: 30, maxUses: 5 }
+    });
+
+    assert.equal(created.statusCode, 201);
+    assert.equal(created.json().invite.maxUses, 5);
+    assert.equal(created.json().invite.usedCount, 0);
+    assert.equal(
+      new Date(created.json().invite.expiresAt).getTime() - Date.now() <= 30 * 60 * 1000,
+      true
+    );
+
+    const inviteToken = created.json().invite.token as string;
+    for (const nickname of ["Ada", "Ece"]) {
+      const accepted = await app.server.inject({
+        method: "POST",
+        url: "/api/invites/accept",
+        payload: { inviteToken, nickname }
+      });
+      assert.equal(accepted.statusCode, 201);
+    }
+
+    const listed = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${defaultServerId}/invites`,
+      cookies: owner.cookies
+    });
+    const invite = listed.json().invites.find((item: { id: string }) => item.id === created.json().invite.id);
+    assert.equal(invite.usedCount, 2);
+    assert.equal(invite.maxUses, 5);
+
+    const preview = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/preview",
+      payload: { inviteToken }
+    });
+    assert.deepEqual(preview.json(), {
+      serverName: "The Basement",
+      expiresAt: created.json().invite.expiresAt,
+      remainingUses: 3
+    });
+  });
+
+  it("validates every invite preset and supports unlimited combinations", async () => {
+    const owner = await bootstrapOwner(app);
+    for (const expiresInMinutes of [30, 60, 360, 720, 1440, 10080, 43200, null]) {
+      for (const maxUses of [1, 5, 10, 25, 50, 100, null]) {
+        const response = await app.server.inject({
+          method: "POST",
+          url: `/api/servers/${defaultServerId}/invites`,
+          cookies: owner.cookies,
+          payload: { label: `${expiresInMinutes}-${maxUses}`, expiresInMinutes, maxUses }
+        });
+        assert.equal(response.statusCode, 201);
+        assert.equal(response.json().invite.maxUses, maxUses);
+        assert.equal(response.json().invite.expiresAt === null, expiresInMinutes === null);
+      }
+    }
+
+    for (const payload of [
+      { label: "Bad expiry", expiresInMinutes: 31, maxUses: 1 },
+      { label: "Bad uses", expiresInMinutes: 30, maxUses: 2 },
+      { label: "Legacy expiry", expiresInHours: 2, maxUses: 1 },
+      { label: "Mixed expiry", expiresInMinutes: 60, expiresInHours: 1, maxUses: 1 }
+    ]) {
+      const response = await app.server.inject({
+        method: "POST",
+        url: `/api/servers/${defaultServerId}/invites`,
+        cookies: owner.cookies,
+        payload
+      });
+      assert.equal(response.statusCode, 400);
+    }
+  });
+
+  it("revokes partially used invites and serializes the final available use", async () => {
+    const owner = await bootstrapOwner(app);
+    const partial = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServerId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Partial", expiresInMinutes: null, maxUses: 5 }
+    });
+    await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      payload: { inviteToken: partial.json().invite.token, nickname: "First" }
+    });
+    const revoked = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServerId}/invites/${partial.json().invite.id}/revoke`,
+      cookies: owner.cookies
+    });
+    assert.equal(revoked.statusCode, 204);
+
+    const finalUse = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServerId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Final", expiresInMinutes: null, maxUses: 1 }
+    });
+    const attempts = await Promise.all(["Winner A", "Winner B"].map((nickname) => app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      payload: { inviteToken: finalUse.json().invite.token, nickname }
+    })));
+    assert.deepEqual(attempts.map((response) => response.statusCode).sort(), [201, 404]);
+    const count = one<{ count: number }>(app.sqlite, "select count(*) as count from invite_uses where invite_id = ?", [finalUse.json().invite.id]);
+    assert.equal(count?.count, 1);
+  });
+
+  it("persists owner voice moderation and prevents members from changing it", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Persistent mute");
+
+    const updated = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${member.user.id}/voice-moderation`,
+      cookies: owner.cookies,
+      payload: { muted: true, deafened: true }
+    });
+    assert.equal(updated.statusCode, 200);
+    assert.deepEqual(updated.json(), { moderation: { muted: true, deafened: true } });
+    const persisted = one<{ moderator_muted: number; moderator_deafened: number }>(
+      app.sqlite,
+      "select moderator_muted, moderator_deafened from server_members where server_id = ? and user_id = ?",
+      [defaultServerId, member.user.id]
+    );
+    assert.equal(persisted?.moderator_muted, 1);
+    assert.equal(persisted?.moderator_deafened, 1);
+
+    const memberForbidden = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${member.user.id}/voice-moderation`,
+      cookies: member.cookies,
+      payload: { muted: false }
+    });
+    assert.equal(memberForbidden.statusCode, 403);
+
+    const empty = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${member.user.id}/voice-moderation`,
+      cookies: owner.cookies,
+      payload: {}
+    });
+    assert.equal(empty.statusCode, 400);
+
+    const forbidden = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${owner.user.id}/voice-moderation`,
+      cookies: owner.cookies,
+      payload: { muted: true }
+    });
+    assert.equal(forbidden.statusCode, 409);
+
+    const members = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${defaultServerId}/members`,
+      cookies: owner.cookies
+    });
+    const stored = members.json().members.find((item: { id: string }) => item.id === member.user.id);
+    assert.deepEqual(stored.moderation, { muted: true, deafened: true });
+  });
+
+  it("keeps owner voice moderation across an application restart", async () => {
+    const databaseDir = await mkdtemp(join(tmpdir(), "voxly-voice-moderation-"));
+    const databasePath = join(databaseDir, "voxly.sqlite");
+    let persistent = await createVoxlyApp({
+      databasePath,
+      ownerBootstrapToken: "bootstrap-secret",
+      allowHttpOwnerBootstrap: true,
+      secureCookies: false
+    });
+    try {
+      const owner = await bootstrapOwner(persistent);
+      const member = await acceptInvite(persistent, owner.cookies, "Restarted member");
+      await persistent.server.inject({
+        method: "PATCH",
+        url: `/api/servers/${defaultServerId}/members/${member.user.id}/voice-moderation`,
+        cookies: owner.cookies,
+        payload: { muted: true, deafened: true }
+      });
+      await persistent.close();
+      persistent = await createVoxlyApp({ databasePath, secureCookies: false });
+      const members = await persistent.server.inject({
+        method: "GET",
+        url: `/api/servers/${defaultServerId}/members`,
+        cookies: owner.cookies
+      });
+      const stored = members.json().members.find((item: { id: string }) => item.id === member.user.id);
+      assert.deepEqual(stored.moderation, { muted: true, deafened: true });
+    } finally {
+      await persistent.close();
+      await rm(databaseDir, { force: true, recursive: true });
+    }
   });
 
   it("keeps TURN credentials out of public config", async () => {
@@ -561,7 +768,7 @@ describe("Voxly HTTP MVP", () => {
       method: "POST",
       url: "/api/owner/invites",
       cookies: owner.cookies,
-      payload: { expiresInHours: 2 }
+      payload: { expiresInMinutes: 60 }
     });
     assert.equal(missingLabel.statusCode, 400);
 
@@ -820,7 +1027,7 @@ describe("Voxly HTTP MVP", () => {
       method: "POST",
       url: `/api/servers/${server.id}/invites`,
       cookies: owner.cookies,
-      payload: { label: "Ada Friday invite", expiresInHours: 24 }
+      payload: { label: "Ada Friday invite", expiresInMinutes: 1440 }
     });
     assert.equal(invite.statusCode, 201);
     const usersBeforeSecondMembership = (app.dumpTables().users as unknown[]).length;
@@ -881,7 +1088,7 @@ describe("Voxly HTTP MVP", () => {
       method: "POST",
       url: `/api/servers/${serverId}/invites`,
       cookies: owner.cookies,
-      payload: { label: "Member invite", expiresInHours: 24 }
+      payload: { label: "Member invite", expiresInMinutes: 1440 }
     });
     const memberResponse = await app.server.inject({
       method: "POST",
@@ -893,7 +1100,7 @@ describe("Voxly HTTP MVP", () => {
       method: "POST",
       url: `/api/servers/${serverId}/invites`,
       cookies: owner.cookies,
-      payload: { label: "Later invite", expiresInHours: 24 }
+      payload: { label: "Later invite", expiresInMinutes: 1440 }
     });
     const inviteToken = previewInvite.json().invite.token as string;
 
@@ -903,7 +1110,9 @@ describe("Voxly HTTP MVP", () => {
       payload: { inviteToken }
     });
     assert.equal(beforeRename.statusCode, 200);
-    assert.deepEqual(beforeRename.json(), { serverName: "Friday Games" });
+    assert.equal(beforeRename.json().serverName, "Friday Games");
+    assert.equal(beforeRename.json().remainingUses, 1);
+    assert.equal(typeof beforeRename.json().expiresAt, "string");
 
     const forbiddenRename = await app.server.inject({
       method: "PATCH",
@@ -928,7 +1137,8 @@ describe("Voxly HTTP MVP", () => {
       payload: { inviteToken }
     });
     assert.equal(afterRename.statusCode, 200);
-    assert.deepEqual(afterRename.json(), { serverName: "Onyx Lounge" });
+    assert.equal(afterRename.json().serverName, "Onyx Lounge");
+    assert.equal(afterRename.json().remainingUses, 1);
 
     const memberServers = await app.server.inject({
       method: "GET",
@@ -964,7 +1174,7 @@ describe("Voxly HTTP MVP", () => {
       method: "POST",
       url: `/api/servers/${serverId}/invites`,
       cookies: owner.cookies,
-      payload: { label: "Ada directory test", expiresInHours: 24 }
+      payload: { label: "Ada directory test", expiresInMinutes: 1440 }
     });
     await app.server.inject({
       method: "POST",
@@ -1022,7 +1232,7 @@ describe("Voxly HTTP MVP", () => {
       method: "POST",
       url: `/api/servers/${secondServerId}/invites`,
       cookies: owner.cookies,
-      payload: { label: "Ece Friday", expiresInHours: 24 }
+      payload: { label: "Ece Friday", expiresInMinutes: 1440 }
     });
     await app.server.inject({
       method: "POST",
@@ -1137,7 +1347,7 @@ describe("Voxly HTTP MVP", () => {
       method: "POST",
       url: `/api/servers/${secondServerId}/invites`,
       cookies: owner.cookies,
-      payload: { label: "Ada second server", expiresInHours: 24 }
+      payload: { label: "Ada second server", expiresInMinutes: 1440 }
     });
 
     const joined = await app.server.inject({
@@ -1182,7 +1392,7 @@ describe("Voxly HTTP MVP", () => {
       method: "POST",
       url: `/api/servers/${serverId}/invites`,
       cookies: owner.cookies,
-      payload: { label: "Ada first invite", expiresInHours: 24 }
+      payload: { label: "Ada first invite", expiresInMinutes: 1440 }
     });
     const firstJoin = await app.server.inject({
       method: "POST",
@@ -1196,7 +1406,7 @@ describe("Voxly HTTP MVP", () => {
       method: "POST",
       url: `/api/servers/${serverId}/invites`,
       cookies: owner.cookies,
-      payload: { label: "Ada duplicate invite", expiresInHours: 24 }
+      payload: { label: "Ada duplicate invite", expiresInMinutes: 1440 }
     });
     const duplicateJoin = await app.server.inject({
       method: "POST",
@@ -1227,7 +1437,7 @@ describe("Voxly HTTP MVP", () => {
       method: "POST",
       url: `/api/servers/${serverId}/invites`,
       cookies: owner.cookies,
-      payload: { label, expiresInHours: 24 }
+      payload: { label, expiresInMinutes: 1440 }
     });
 
     const initialInvite = await createInvite("Initial membership");
@@ -1397,7 +1607,7 @@ describe("Voxly HTTP MVP", () => {
       method: "POST",
       url: `/api/servers/${serverId}/invites`,
       cookies: owner.cookies,
-      payload: { label: "Ada disposable", expiresInHours: 2 }
+      payload: { label: "Ada disposable", expiresInMinutes: 60 }
     });
     await app.server.inject({
       method: "POST",

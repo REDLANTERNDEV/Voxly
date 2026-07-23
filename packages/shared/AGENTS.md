@@ -39,17 +39,31 @@ or server-only runtime modules.
   previews from the plain message body and omit only matching keys; do not add
   provider HTML or fetched metadata to the shared message contract.
 
+## Invite Contract Invariants
+
+- Invite creation uses independent `expiresInMinutes` and `maxUses` values.
+  Finite values come only from the approved preset unions and `null` means the
+  corresponding limit is unlimited; do not restore `expiresInHours`.
+- Stored invite DTOs expose `maxUses` and `usedCount`. Public preview exposes
+  `expiresAt` and `remainingUses`, using `null` for an unlimited value.
+- Raw invite tokens remain creation-response-only. Listing, preview, realtime,
+  and shared membership shapes must never gain a stored raw token.
+
 ## Voice Contract Invariants
 
 - `VoiceJoinRequest` contains `roomId` and effective `VoiceMediaState`.
 - `VoiceJoinAck` returns the authoritative `VoiceMemberState` or a stable error;
   the join event is acknowledged and is not a room-ID-only fire-and-forget call.
+- Every `VoiceMemberState` includes independent owner `muted` and `deafened`
+  moderation flags; do not infer them from self-managed media state.
 - Deafen semantics remain consistent across packages: deafened state cannot
   coexist authoritatively with mic-on or speaking-on.
 - Visual targets identify publisher and media kind. Subscription and signaling
   ACKs retain explicit authorization and availability failures.
 - Force-leave reasons remain typed so UI recovery can distinguish room moves,
   moderation, and deleted resources without parsing messages.
+- Connection health uses the typed ACK-only `connection:probe` event; it must
+  not carry application data or weaken authenticated socket setup.
 
 ## Verification
 

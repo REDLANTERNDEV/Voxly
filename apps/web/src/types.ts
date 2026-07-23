@@ -1,4 +1,4 @@
-import type { ChatMessage, PresenceUser, PublicUser, RoomSummary } from "@voxly/shared";
+import type { ChatMessage, PresenceUser, PublicUser, RoomSummary, VoiceModerationState } from "@voxly/shared";
 
 export type { ChatMessage, PresenceUser, PublicUser, RoomSummary };
 
@@ -27,7 +27,11 @@ export interface ServerMember {
   bannedAt: string | null;
   removedAt: string | null;
   joinedAt: string;
+  moderation: VoiceModerationState;
 }
+
+export type InviteExpiryMinutes = 30 | 60 | 360 | 720 | 1440 | 10080 | 43200 | null;
+export type InviteMaxUses = 1 | 5 | 10 | 25 | 50 | 100 | null;
 
 export interface MessagesResponse {
   messages: ChatMessage[];
@@ -56,6 +60,8 @@ export interface InviteResponse {
     token: string;
     label: string;
     expiresAt: string | null;
+    maxUses: InviteMaxUses;
+    usedCount: number;
   };
 }
 
@@ -68,6 +74,8 @@ export interface OwnerInvite {
   usedAt: string | null;
   expiresAt: string | null;
   revokedAt: string | null;
+  maxUses: InviteMaxUses;
+  usedCount: number;
   createdAt: string;
 }
 

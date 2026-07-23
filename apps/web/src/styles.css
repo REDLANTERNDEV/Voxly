@@ -706,8 +706,12 @@ h3 {
 
 .voice-channel-status {
   align-items: center;
-  color: var(--danger);
+  color: var(--muted);
   display: inline-flex;
+}
+
+.voice-channel-status.is-enforced {
+  color: var(--danger);
 }
 
 .voice-channel-status .ui-icon {
@@ -2050,6 +2054,11 @@ h3 {
   color: var(--danger);
 }
 
+.voice-status-chip.neutral {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
 .feature-placeholder {
   align-items: center;
   background: color-mix(in oklab, var(--khaki-beige), var(--bg) 68%);
@@ -2082,6 +2091,69 @@ h3 {
   position: fixed;
   right: 8px;
   z-index: var(--layer-dock);
+}
+
+.connection-signal {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.connection-signal svg {
+  fill: currentColor;
+  height: 16px;
+  width: 20px;
+}
+
+.connection-signal.is-good {
+  color: var(--success);
+}
+
+.connection-signal.is-fair {
+  color: var(--warn);
+}
+
+.connection-signal.is-poor {
+  color: var(--danger);
+}
+
+.authenticated-surface {
+  display: contents;
+}
+
+.reconnect-overlay {
+  align-content: center;
+  background: var(--scene);
+  color: var(--on-scene);
+  display: grid;
+  gap: 12px;
+  inset: 0;
+  justify-items: center;
+  padding: 24px;
+  position: fixed;
+  text-align: center;
+  z-index: 60;
+}
+
+.reconnect-overlay span {
+  color: color-mix(in oklab, var(--on-scene), transparent 28%);
+  font-size: 13px;
+}
+
+.reconnect-logo {
+  animation: reconnect-logo-spin 1.6s linear infinite;
+}
+
+@keyframes reconnect-logo-spin {
+  to { transform: rotate(360deg); }
+}
+
+.moderation-toggle.is-enforced {
+  color: var(--danger);
 }
 
 .dock-room,
@@ -3301,6 +3373,10 @@ h3 {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .reconnect-logo {
+    animation: none;
+  }
+
   *,
   *::before,
   *::after {

@@ -5,6 +5,7 @@ import type {
   VisualMediaKind,
   VisualTarget,
   VoiceMediaState,
+  VoiceModerationState,
   VoiceSetMediaAck,
   VoiceSnapshot
 } from "@voxly/shared";
@@ -82,6 +83,7 @@ interface PeerRemovalOptions {
 export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, microphoneDeviceId = "", microphoneVolume = 100 }: UseVoiceMediaInput) {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [controls, setControls] = useState<VoiceControls>(() => createInitialVoiceControls());
+  const [voiceModeration, setVoiceModeration] = useState<VoiceModerationState>({ muted: false, deafened: false });
   const [voiceSnapshots, setVoiceSnapshots] = useState<Record<string, VoiceSnapshot>>({});
   const [visualTargets, setVisualTargets] = useState<VisualTarget[]>([]);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStreamState[]>([]);
@@ -122,6 +124,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const microphoneEndedCleanupRef = useRef<(() => void) | null>(null);
   const microphoneEnabledRef = useRef(true);
   const microphoneOnBeforeDeafenRef = useRef(true);
+  const microphoneOnBeforeModerationMuteRef = useRef(true);
+  const moderationRef = useRef<VoiceModerationState>({ muted: false, deafened: false });
   const deafenTransitionRef = useRef(0);
   const roomRef = useRef<string | null>(null);
   const userIdRef = useRef<string | null>(null);
@@ -527,6 +531,38 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     setVoiceSnapshots((current) => ({ ...current, [nextSnapshot.roomId]: nextSnapshot }));
     if (roomRef.current !== nextSnapshot.roomId) return;
 
+    const currentUserId = userIdRef.current;
+    const self = nextSnapshot.members.find((member) => member.user.userId === currentUserId);
+    if (self) {
+      const previousModeration = moderationRef.current;
+      moderationRef.current = self.moderation;
+      setVoiceModeration(self.moderation);
+      if (self.moderation.muted && !previousModeration.muted) {
+        microphoneOnBeforeModerationMuteRef.current = controlsRef.current.mic.on;
+        localStreamsRef.current.mic?.getAudioTracks().forEach((track) => { track.enabled = false; });
+        speakingRef.current = false;
+        const nextControls = { ...controlsRef.current, mic: { ...controlsRef.current.mic, on: false } };
+        controlsRef.current = nextControls;
+        setControls(nextControls);
+        void emitMediaState({ mic: false, speaking: false });
+      } else if (!self.moderation.muted && previousModeration.muted) {
+        const restoreMic = microphoneOnBeforeModerationMuteRef.current && !controlsRef.current.deafen.on;
+        const hasLiveTrack = localStreamsRef.current.mic?.getAudioTracks().some((track) => track.readyState === "live") ?? false;
+        localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
+          track.enabled = restoreMic && track.readyState === "live";
+        });
+        const nextControls = { ...controlsRef.current, mic: { ...controlsRef.current.mic, on: restoreMic && hasLiveTrack } };
+        controlsRef.current = nextControls;
+        setControls(nextControls);
+        void emitMediaState({ mic: nextControls.mic.on, speaking: false }).then((response) => {
+          if (!response.ok) return;
+          const accepted = { ...controlsRef.current, mic: { ...controlsRef.current.mic, on: response.state.media.mic } };
+          controlsRef.current = accepted;
+          setControls(accepted);
+        });
+      }
+    }
+
     setRemoteStreams((current) => pruneRemoteStreamsForSnapshot(current, nextSnapshot.members));
     const membersByUserId = new Map(nextSnapshot.members.map((member) => [member.user.userId, member.media]));
     const activeMemberUserIds = new Set(membersByUserId.keys());
@@ -553,7 +589,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         void sendOffer(peerUserId, peer).catch(() => setError("Could not start peer connection."));
       }
     }
-  }, [ensurePeer, persistVoiceResume, removePeer, sendOffer]);
+  }, [emitMediaState, ensurePeer, persistVoiceResume, removePeer, sendOffer]);
 
   const join = useCallback(async (roomId: string, restoredTargets: VisualTarget[] = [], options: VoiceJoinOptions = {}) => {
     if (!socket || !user) {
@@ -616,6 +652,11 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       mic: { ...nextControls.mic, on: response.state.media.mic },
       deafen: { ...nextControls.deafen, on: response.state.media.deafened }
     };
+    if (response.state.moderation.muted) {
+      microphoneOnBeforeModerationMuteRef.current = microphoneEnabled;
+    }
+    moderationRef.current = response.state.moderation;
+    setVoiceModeration(response.state.moderation);
     microphoneEnabledRef.current = response.state.media.mic;
     microphoneOnBeforeDeafenRef.current = response.state.media.mic;
     deafenTransitionRef.current += 1;
@@ -713,6 +754,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     microphoneSwitchRef.current += 1;
     deafenTransitionRef.current += 1;
     microphoneOnBeforeDeafenRef.current = true;
+    microphoneOnBeforeModerationMuteRef.current = true;
+    moderationRef.current = { muted: false, deafened: false };
+    setVoiceModeration({ muted: false, deafened: false });
     if (socket && roomRef.current) {
       socket.emit("voice:leave", roomRef.current);
     }
@@ -741,7 +785,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
 
   const toggleMic = useCallback(async () => {
     let stream = localStreamsRef.current.mic;
-    if (controlsRef.current.deafen.on) return;
+    if (controlsRef.current.deafen.on || moderationRef.current.muted) return;
     deafenTransitionRef.current += 1;
     if (stream && !stream.getAudioTracks().some((track) => track.readyState === "live")) {
       speakingRef.current = false;
@@ -799,6 +843,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   }, [activateMicrophoneInput, emitMediaState, persistVoiceResume, prepareMicrophoneInput, renegotiatePeers, stopStream]);
 
   const setDeafened = useCallback(async (deafened: boolean) => {
+    if (!deafened && moderationRef.current.deafened) return false;
     if (controlsRef.current.deafen.on === deafened) return true;
     const transition = ++deafenTransitionRef.current;
     const nextDeafened = deafened;
@@ -807,7 +852,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       const previousRestorePreference = microphoneOnBeforeDeafenRef.current;
       const previousTrackStates = localStreamsRef.current.mic?.getAudioTracks()
         .map((track) => [track, track.enabled] as const) ?? [];
-      microphoneOnBeforeDeafenRef.current = controlsRef.current.mic.on;
+      microphoneOnBeforeDeafenRef.current = moderationRef.current.muted
+        ? microphoneOnBeforeModerationMuteRef.current
+        : controlsRef.current.mic.on;
       localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
         track.enabled = false;
       });
@@ -839,7 +886,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       return acceptedControls.deafen.on === deafened;
     }
 
-    const restoreMicrophoneOn = microphoneOnBeforeDeafenRef.current;
+    const restoreMicrophoneOn = !moderationRef.current.muted
+      && microphoneOnBeforeDeafenRef.current;
     const microphoneAvailable = localStreamsRef.current.mic?.getAudioTracks()
       .some((track) => track.readyState === "live") ?? false;
     localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
@@ -1237,6 +1285,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     setVisualSubscriptions,
     visualTargets,
     voiceSnapshots,
+    voiceModeration,
     toggleControl
   };
 }

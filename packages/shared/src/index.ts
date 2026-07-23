@@ -47,9 +47,15 @@ export interface VoiceMediaState {
   speaking: boolean;
 }
 
+export interface VoiceModerationState {
+  muted: boolean;
+  deafened: boolean;
+}
+
 export interface VoiceMemberState {
   user: PresenceUser;
   media: VoiceMediaState;
+  moderation: VoiceModerationState;
 }
 
 export interface VoiceJoinRequest {
@@ -121,6 +127,7 @@ export interface ServerToClientEvents {
 }
 
 export interface ClientToServerEvents {
+  "connection:probe": (ack: () => void) => void;
   "room:join": (roomId: string) => void;
   "room:leave": (roomId: string) => void;
   "voice:join": (payload: VoiceJoinRequest, ack: (response: VoiceJoinAck) => void) => void;

@@ -17,6 +17,6 @@ describe("microphone test lifecycle integration", () => {
   it("keeps the deafen control locked while microphone monitoring is active", () => {
     const app = readFileSync("src/App.tsx", "utf8");
 
-    assert.match(app, /enabled=\{props\.controls\.deafen\.enabled && !props\.microphoneTestActive\}/);
+    assert.match(app, /enabled=\{props\.controls\.deafen\.enabled && !props\.microphoneTestActive && props\.socketState === "live"\}/);
   });
 });

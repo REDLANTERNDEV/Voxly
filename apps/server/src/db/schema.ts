@@ -16,7 +16,14 @@ export const invites = sqliteTable("invites", {
   usedAt: text("used_at"),
   expiresAt: text("expires_at"),
   revokedAt: text("revoked_at"),
+  maxUses: integer("max_uses"),
   createdAt: text("created_at").notNull()
+});
+
+export const inviteUses = sqliteTable("invite_uses", {
+  inviteId: text("invite_id").notNull(),
+  userId: text("user_id").notNull(),
+  usedAt: text("used_at").notNull()
 });
 
 export const sessions = sqliteTable("sessions", {
@@ -59,6 +66,8 @@ export const serverMembers = sqliteTable("server_members", {
   nickname: text("nickname"),
   bannedAt: text("banned_at"),
   removedAt: text("removed_at"),
+  moderatorMuted: integer("moderator_muted", { mode: "boolean" }).notNull().default(false),
+  moderatorDeafened: integer("moderator_deafened", { mode: "boolean" }).notNull().default(false),
   joinedAt: text("joined_at").notNull()
 });
 

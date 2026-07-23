@@ -45,6 +45,7 @@ export function dumpTables(sqlite: DatabaseSync) {
     serverMembers: all(sqlite, "select * from server_members"),
     users: all(sqlite, "select * from users"),
     invites: all(sqlite, "select * from invites"),
+    inviteUses: all(sqlite, "select * from invite_uses"),
     sessions: all(sqlite, "select * from sessions"),
     rooms: all(sqlite, "select * from rooms"),
     messages: all(sqlite, "select * from messages"),
@@ -77,7 +78,15 @@ function migrate(sqlite: DatabaseSync) {
       used_at text,
       expires_at text,
       revoked_at text,
+      max_uses integer default 1,
       created_at text not null
+    );
+
+    create table if not exists invite_uses (
+      invite_id text not null,
+      user_id text not null,
+      used_at text not null,
+      primary key (invite_id, user_id)
     );
 
     create table if not exists sessions (
@@ -141,6 +150,8 @@ function migrate(sqlite: DatabaseSync) {
       nickname text,
       banned_at text,
       removed_at text,
+      moderator_muted integer not null default 0,
+      moderator_deafened integer not null default 0,
       joined_at text not null,
       primary key (server_id, user_id)
     );
@@ -166,9 +177,20 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "messages", "deleted_by_user_id", "text");
   addColumnIfMissing(sqlite, "rooms", "server_id", "text");
   addColumnIfMissing(sqlite, "invites", "server_id", "text");
+  addColumnIfMissing(sqlite, "invites", "max_uses", "integer default 1");
   addColumnIfMissing(sqlite, "audit_events", "server_id", "text");
   addColumnIfMissing(sqlite, "access_claims", "revoked_at", "text");
   addColumnIfMissing(sqlite, "server_members", "nickname", "text");
+  addColumnIfMissing(sqlite, "server_members", "moderator_muted", "integer not null default 0");
+  addColumnIfMissing(sqlite, "server_members", "moderator_deafened", "integer not null default 0");
+
+  run(
+    sqlite,
+    `insert or ignore into invite_uses (invite_id, user_id, used_at)
+     select id, used_by_user_id, used_at
+     from invites
+     where used_by_user_id is not null and used_at is not null`
+  );
 
   sqlite.exec(`
     create index if not exists idx_server_members_user
@@ -177,6 +199,8 @@ function migrate(sqlite: DatabaseSync) {
       on rooms (server_id, position);
     create index if not exists idx_invites_server_created
       on invites (server_id, created_at desc);
+    create index if not exists idx_invite_uses_invite
+      on invite_uses (invite_id, used_at);
     create index if not exists idx_messages_room_created
       on messages (room_id, created_at desc);
   `);

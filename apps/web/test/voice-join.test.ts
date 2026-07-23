@@ -55,7 +55,8 @@ describe("atomic voice join", () => {
       ok: true,
       state: {
         user: { userId: "member", nickname: "Member", role: "member" },
-        media: { mic: false, camera: false, screen: false, deafened: false, speaking: false }
+        media: { mic: false, camera: false, screen: false, deafened: false, speaking: false },
+        moderation: { muted: false, deafened: false }
       }
     };
     const socket = {

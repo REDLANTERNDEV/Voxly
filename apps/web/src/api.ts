@@ -2,6 +2,8 @@ import type {
   AppConfigResponse,
   CurrentUserResponse,
   InviteResponse,
+  InviteExpiryMinutes,
+  InviteMaxUses,
   MessageResponse,
   MessagesResponse,
   OwnerInvite,
@@ -15,6 +17,7 @@ import type {
   ServerSummary,
   ServersResponse
 } from "./types.js";
+import type { VoiceModerationState } from "@voxly/shared";
 
 type JsonBody = Record<string, unknown>;
 type AccessClaimResponse = CurrentUserResponse & { serverId: string };
@@ -23,7 +26,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
-    public readonly code?: string
+    public readonly code?: string,
+    public readonly data?: Record<string, unknown>
   ) {
     super(message);
   }
@@ -133,7 +137,7 @@ export async function acceptInvite(inviteToken: string, nickname: string, turnst
 }
 
 export async function previewInvite(inviteToken: string) {
-  return apiPost<{ serverName: string }>("/api/invites/preview", { inviteToken });
+  return apiPost<{ serverName: string; expiresAt: string | null; remainingUses: number | null }>("/api/invites/preview", { inviteToken });
 }
 
 export function claimAccessLink(token: string) {
@@ -168,12 +172,12 @@ export async function logout() {
   await apiPost<void>("/api/logout");
 }
 
-export async function createInvite(label: string, expiresInHours: number) {
-  return apiPost<InviteResponse>("/api/owner/invites", { label, expiresInHours });
+export async function createInvite(label: string, expiresInMinutes: InviteExpiryMinutes, maxUses: InviteMaxUses) {
+  return apiPost<InviteResponse>("/api/owner/invites", { label, expiresInMinutes, maxUses });
 }
 
-export async function createServerInvite(serverId: string, label: string, expiresInHours: number) {
-  return apiPost<InviteResponse>(`/api/servers/${encodeURIComponent(serverId)}/invites`, { label, expiresInHours });
+export async function createServerInvite(serverId: string, label: string, expiresInMinutes: InviteExpiryMinutes, maxUses: InviteMaxUses) {
+  return apiPost<InviteResponse>(`/api/servers/${encodeURIComponent(serverId)}/invites`, { label, expiresInMinutes, maxUses });
 }
 
 export async function revokeServerInvite(serverId: string, inviteId: string) {
@@ -216,6 +220,20 @@ export async function updateServerMemberNickname(serverId: string, userId: strin
   );
 }
 
+export async function updateVoiceModeration(
+  serverId: string,
+  userId: string,
+  moderation: Partial<VoiceModerationState>
+) {
+  return request<{ moderation: VoiceModerationState }>(
+    `/api/servers/${encodeURIComponent(serverId)}/members/${encodeURIComponent(userId)}/voice-moderation`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(moderation)
+    }
+  );
+}
+
 export async function createAccessLink(serverId: string, userId: string) {
   return apiPost<{ token: string; expiresAt: string }>(
     `/api/servers/${encodeURIComponent(serverId)}/members/${encodeURIComponent(userId)}/access-links`
@@ -250,15 +268,17 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     let code: string | undefined;
+    let data: Record<string, unknown> | undefined;
     try {
-      const body = await response.json() as { error?: unknown };
+      const body = await response.json() as Record<string, unknown>;
+      data = body;
       if (typeof body.error === "string") {
         code = body.error;
       }
     } catch {
       code = undefined;
     }
-    throw new ApiError(response.status === 401 ? "Unauthorized" : "Request failed", response.status, code);
+    throw new ApiError(response.status === 401 ? "Unauthorized" : "Request failed", response.status, code, data);
   }
 
   if (response.status === 204) {

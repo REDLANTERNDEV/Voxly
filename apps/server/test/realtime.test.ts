@@ -71,7 +71,7 @@ describe("Voxly realtime MVP", () => {
       method: "POST",
       url: `/api/servers/${otherServerId}/invites`,
       cookies: owner.cookies,
-      payload: { label: "Other member", expiresInHours: 24 }
+      payload: { label: "Other member", expiresInMinutes: 1440 }
     });
     const otherMemberResponse = await app.server.inject({
       method: "POST",
@@ -129,7 +129,7 @@ describe("Voxly realtime MVP", () => {
       method: "POST",
       url: `/api/servers/${serverId}/invites`,
       cookies: owner.cookies,
-      payload: { label: "Scoped member", expiresInHours: 24 }
+      payload: { label: "Scoped member", expiresInMinutes: 1440 }
     });
     const memberResponse = await app.server.inject({
       method: "POST",
@@ -444,15 +444,71 @@ describe("Voxly realtime MVP", () => {
     const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
     sockets.push(observerSocket, memberSocket);
 
-    const snapshotPromise = onceEvent<{ roomId: string; members: Array<{ user: { nickname: string } }> }>(
+    await joinVoice(memberSocket, "lobby");
+    const snapshotPromise = onceEvent<{ roomId: string; members: Array<{ user: { nickname: string }; media: VoiceMediaState }> }>(
       observerSocket,
       "voice:snapshot"
     );
-    await joinVoice(memberSocket, "lobby");
+    await emitWithAck(memberSocket, "voice:setMediaState", { roomId: "lobby", media: { speaking: true } });
     const snapshot = await snapshotPromise;
 
     assert.equal(snapshot.roomId, "lobby");
-    assert.equal(snapshot.members.some((item) => item.user.nickname === "Viewer"), true);
+    assert.equal(snapshot.members.find((item) => item.user.nickname === "Viewer")?.media.speaking, false);
+
+    const memberSnapshot = await emitWithAck<{
+      roomId: string;
+      members: Array<{ user: { nickname: string }; media: VoiceMediaState }>;
+    }>(memberSocket, "voice:snapshot", "lobby");
+    assert.equal(memberSnapshot.members.find((item) => item.user.nickname === "Viewer")?.media.speaking, true);
+  });
+
+  it("enforces persistent owner mute while keeping owner deafen independent", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Moderated");
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(memberSocket);
+
+    const moderated = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/the-basement/members/${member.user.id}/voice-moderation`,
+      cookies: owner.cookies,
+      payload: { muted: true, deafened: true }
+    });
+    assert.equal(moderated.statusCode, 200);
+
+    const joined = await joinVoice(memberSocket, "lobby", { ...defaultJoinMedia, mic: true, screen: true });
+    assert.equal(joined.ok, true);
+    assert.equal(joined.ok && joined.state.media.mic, false);
+    assert.equal(joined.ok && joined.state.media.screen, true);
+    assert.deepEqual(joined.ok && joined.state.moderation, { muted: true, deafened: true });
+
+    const bypass = await emitWithAck<{
+      ok: boolean;
+      state: { media: VoiceMediaState; moderation: { muted: boolean; deafened: boolean } };
+    }>(memberSocket, "voice:setMediaState", {
+      roomId: "lobby",
+      media: { mic: true, speaking: true }
+    });
+    assert.equal(bypass.state.media.mic, false);
+    assert.equal(bypass.state.media.speaking, false);
+    assert.equal(bypass.state.moderation.deafened, true);
+
+    const ownerDeafenOnly = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/the-basement/members/${member.user.id}/voice-moderation`,
+      cookies: owner.cookies,
+      payload: { muted: false }
+    });
+    assert.deepEqual(ownerDeafenOnly.json(), { moderation: { muted: false, deafened: true } });
+
+    const speaking = await emitWithAck<{
+      state: { media: VoiceMediaState };
+    }>(memberSocket, "voice:setMediaState", {
+      roomId: "lobby",
+      media: { mic: true, speaking: true }
+    });
+    assert.equal(speaking.state.media.mic, true);
+    assert.equal(speaking.state.media.speaking, true);
   });
 
   it("forwards RTC signals only between users in the same voice room", async () => {
@@ -517,7 +573,7 @@ describe("Voxly realtime MVP", () => {
       method: "POST",
       url: `/api/servers/${secondServerId}/invites`,
       cookies: owner.cookies,
-      payload: { label: "Aylin weekend", expiresInHours: 24 }
+      payload: { label: "Aylin weekend", expiresInMinutes: 1440 }
     });
     await app.server.inject({
       method: "POST",
@@ -560,7 +616,7 @@ describe("Voxly realtime MVP", () => {
       method: "POST",
       url: `/api/servers/${serverId}/invites`,
       cookies: owner.cookies,
-      payload: { label: "Aylin weekend", expiresInHours: 24 }
+      payload: { label: "Aylin weekend", expiresInMinutes: 1440 }
     });
     const snapshotPromise = onceEvent<{ serverId: string; users: Array<{ userId: string }> }>(
       memberSocket,

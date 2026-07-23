@@ -15,6 +15,7 @@ import type {
   VoiceSetVisualSubscriptionsAck,
   VoiceMediaState,
   VoiceMemberState,
+  VoiceModerationState,
   VoiceSetMediaAck,
   VoiceSnapshot
 } from "@voxly/shared";
@@ -107,6 +108,8 @@ type ServerMemberRow = {
   role: "owner" | "member";
   banned_at: string | null;
   removed_at: string | null;
+  moderator_muted: number;
+  moderator_deafened: number;
 };
 
 type VoiceRoomMembership = Map<string, VoiceMemberState>;
@@ -119,6 +122,7 @@ interface RealtimeModeration {
   grantServerAccess: (serverId: string, userId: string) => Promise<void>;
   refreshMemberIdentity: (serverId: string, userId: string) => PresenceUser | null;
   revokeServerAccess: (serverId: string, userId: string, reason: "banned" | "kicked") => void;
+  updateVoiceModeration: (serverId: string, userId: string, moderation: VoiceModerationState) => void;
 }
 
 const visualSubscriptionsPayloadSchema = z.object({
@@ -134,8 +138,14 @@ const serverNameSchema = z.string().trim().min(2).max(64);
 const roomNameSchema = z.string().trim().min(2).max(64);
 const inviteBodySchema = z.object({
   label: z.string().trim().min(1).max(80),
-  expiresInHours: z.number().int().positive().max(168).optional()
-});
+  expiresInMinutes: z.union([z.literal(30), z.literal(60), z.literal(360), z.literal(720), z.literal(1440), z.literal(10080), z.literal(43200), z.null()]).optional(),
+  maxUses: z.union([z.literal(1), z.literal(5), z.literal(10), z.literal(25), z.literal(50), z.literal(100), z.null()]).optional()
+}).strict();
+
+const voiceModerationBodySchema = z.object({
+  muted: z.boolean().optional(),
+  deafened: z.boolean().optional()
+}).strict().refine((body) => body.muted !== undefined || body.deafened !== undefined);
 
 export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<VoxlyApp> {
   const database = await openDatabase(options.databasePath);
@@ -277,64 +287,112 @@ function registerRoutes(
       }
     }
 
-    const invite = one<{ id: string; server_id: string; used_at: string | null; expires_at: string | null; revoked_at: string | null }>(
-      database.sqlite,
-      "select id, server_id, used_at, expires_at, revoked_at from invites where token_hash = ?",
-      [hashToken(body.inviteToken)]
-    );
-    if (!invite || invite.used_at || invite.revoked_at || isExpired(invite.expires_at)) {
-      return reply.code(404).send({ error: "invite_invalid" });
-    }
-
     if (!existingUser && !body.nickname) {
       return reply.code(400).send({ error: "nickname_required" });
     }
 
-    const member = existingUser ? serverMembership(database.sqlite, invite.server_id, existingUser.id) : null;
-    if (member?.banned_at) {
-      return reply.code(403).send({ error: "server_banned" });
-    }
-    if (member && !member.removed_at) {
-      return reply.code(409).send({ error: "already_server_member", serverId: invite.server_id });
-    }
+    let user: { id: string; nickname: string; role: "owner" | "member"; bannedAt: string | null } | null = existingUser;
+    let serverId = "";
+    database.sqlite.exec("begin immediate");
+    try {
+      const invite = one<{
+        id: string;
+        server_id: string;
+        max_uses: number | null;
+        expires_at: string | null;
+        revoked_at: string | null;
+      }>(
+        database.sqlite,
+        `select id, server_id, max_uses, expires_at, revoked_at
+         from invites where token_hash = ?`,
+        [hashToken(body.inviteToken)]
+      );
+      if (!invite || invite.revoked_at || isExpired(invite.expires_at)) {
+        database.sqlite.exec("rollback");
+        return reply.code(404).send({ error: "invite_invalid" });
+      }
 
-    const user = existingUser ?? createUser(database, body.nickname as string, "member");
-    const now = new Date().toISOString();
-    activateServerMembership(database, invite.server_id, user.id, "member", now);
-    run(database.sqlite, "update invites set used_by_user_id = ?, used_at = ? where id = ?", [
-      user.id,
-      now,
-      invite.id
-    ]);
+      const member = existingUser ? serverMembership(database.sqlite, invite.server_id, existingUser.id) : null;
+      const priorUse = existingUser
+        ? one<{ used_at: string }>(database.sqlite, "select used_at from invite_uses where invite_id = ? and user_id = ?", [invite.id, existingUser.id])
+        : null;
+      if (member?.banned_at) {
+        database.sqlite.exec("rollback");
+        return reply.code(403).send({ error: "server_banned" });
+      }
+      if (member && !member.removed_at && priorUse) {
+        database.sqlite.exec("rollback");
+        return reply.code(409).send({ error: "already_server_member", serverId: invite.server_id });
+      }
+      if (priorUse) {
+        database.sqlite.exec("rollback");
+        return reply.code(404).send({ error: "invite_invalid" });
+      }
+
+      const usedCount = inviteUseCount(database.sqlite, invite.id);
+      if (invite.max_uses !== null && usedCount >= invite.max_uses) {
+        database.sqlite.exec("rollback");
+        return reply.code(404).send({ error: "invite_invalid" });
+      }
+      if (member && !member.removed_at) {
+        database.sqlite.exec("rollback");
+        return reply.code(409).send({ error: "already_server_member", serverId: invite.server_id });
+      }
+
+      user = existingUser ?? createUser(database, body.nickname as string, "member");
+      const now = new Date().toISOString();
+      activateServerMembership(database, invite.server_id, user.id, "member", now);
+      run(database.sqlite, "insert into invite_uses (invite_id, user_id, used_at) values (?, ?, ?)", [invite.id, user.id, now]);
+      run(
+        database.sqlite,
+        `update invites
+         set used_by_user_id = coalesce(used_by_user_id, ?), used_at = coalesce(used_at, ?)
+         where id = ?`,
+        [user.id, now, invite.id]
+      );
+      serverId = invite.server_id;
+      database.sqlite.exec("commit");
+    } catch (cause) {
+      database.sqlite.exec("rollback");
+      throw cause;
+    }
+    if (!user) throw new Error("invite acceptance completed without a user");
     database.save();
-    await realtime.grantServerAccess(invite.server_id, user.id);
+    await realtime.grantServerAccess(serverId, user.id);
     if (!existingUser) {
       const token = createSession(database, user.id);
       setSessionCookie(reply, token, options.secureCookies);
     }
 
-    return reply.code(existingUser ? 200 : 201).send({ user: publicUser(user), serverId: invite.server_id });
+    return reply.code(existingUser ? 200 : 201).send({ user: publicUser(user), serverId });
   });
 
   server.post("/api/invites/preview", async (request, reply) => {
     const { inviteToken } = z.object({ inviteToken: z.string().min(24) }).parse(request.body);
     const invite = one<{
       server_name: string;
-      used_at: string | null;
+      invite_id: string;
+      max_uses: number | null;
       expires_at: string | null;
       revoked_at: string | null;
     }>(
       database.sqlite,
-      `select servers.name as server_name, invites.used_at, invites.expires_at, invites.revoked_at
+      `select servers.name as server_name, invites.id as invite_id, invites.max_uses,
+        invites.expires_at, invites.revoked_at
        from invites
        join servers on servers.id = invites.server_id
        where invites.token_hash = ?`,
       [hashToken(inviteToken)]
     );
-    if (!invite || invite.used_at || invite.revoked_at || isExpired(invite.expires_at)) {
+    const usedCount = invite ? inviteUseCount(database.sqlite, invite.invite_id) : 0;
+    if (!invite || invite.revoked_at || isExpired(invite.expires_at) || (invite.max_uses !== null && usedCount >= invite.max_uses)) {
       return reply.code(404).send({ error: "invite_invalid" });
     }
-    return { serverName: invite.server_name };
+    return {
+      serverName: invite.server_name,
+      expiresAt: invite.expires_at,
+      remainingUses: invite.max_uses === null ? null : invite.max_uses - usedCount
+    };
   });
 
   server.post("/api/logout", async (request, reply) => {
@@ -481,6 +539,7 @@ function registerRoutes(
     database.sqlite.exec("begin immediate");
     try {
       run(database.sqlite, "delete from messages where room_id in (select id from rooms where server_id = ?)", [serverId]);
+      run(database.sqlite, "delete from invite_uses where invite_id in (select id from invites where server_id = ?)", [serverId]);
       run(database.sqlite, "delete from invites where server_id = ?", [serverId]);
       run(database.sqlite, "delete from access_claims where server_id = ?", [serverId]);
       run(database.sqlite, "delete from server_members where server_id = ?", [serverId]);
@@ -524,21 +583,36 @@ function registerRoutes(
     if (!owner) return;
     const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
     if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const members = all<{
+      id: string;
+      nickname: string;
+      role: "owner" | "member";
+      bannedAt: string | null;
+      removedAt: string | null;
+      joinedAt: string;
+      moderatorMuted: number;
+      moderatorDeafened: number;
+    }>(
+      database.sqlite,
+      `select users.id,
+        coalesce(server_members.nickname, users.nickname) as nickname,
+        server_members.role,
+        server_members.banned_at as bannedAt, server_members.removed_at as removedAt,
+        server_members.joined_at as joinedAt,
+        server_members.moderator_muted as moderatorMuted,
+        server_members.moderator_deafened as moderatorDeafened
+       from server_members
+       join users on users.id = server_members.user_id
+       where server_members.server_id = ?
+         and server_members.removed_at is null
+       order by nickname asc`,
+      [serverId]
+    );
     return {
-      members: all(
-        database.sqlite,
-        `select users.id,
-          coalesce(server_members.nickname, users.nickname) as nickname,
-          server_members.role,
-          server_members.banned_at as bannedAt, server_members.removed_at as removedAt,
-          server_members.joined_at as joinedAt
-         from server_members
-         join users on users.id = server_members.user_id
-         where server_members.server_id = ?
-           and server_members.removed_at is null
-         order by nickname asc`,
-        [serverId]
-      )
+      members: members.map(({ moderatorMuted, moderatorDeafened, ...member }) => ({
+        ...member,
+        moderation: { muted: Boolean(moderatorMuted), deafened: Boolean(moderatorDeafened) }
+      }))
     };
   });
 
@@ -598,6 +672,39 @@ function registerRoutes(
     const updated = realtime.refreshMemberIdentity(serverId, userId);
     if (!updated) return reply.code(404).send({ error: "member_not_found" });
     return { user: updated };
+  });
+
+  server.patch("/api/servers/:serverId/members/:userId/voice-moderation", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId, userId } = z.object({
+      serverId: z.string().min(1),
+      userId: z.string().uuid()
+    }).parse(request.params);
+    const body = voiceModerationBodySchema.parse(request.body ?? {});
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const target = serverMembership(database.sqlite, serverId, userId);
+    if (!target || target.removed_at) return reply.code(404).send({ error: "member_not_found" });
+    if (userId === owner.id || target.role === "owner") {
+      return reply.code(409).send({ error: "cannot_moderate_owner" });
+    }
+
+    const moderation = {
+      muted: body.muted ?? Boolean(target.moderator_muted),
+      deafened: body.deafened ?? Boolean(target.moderator_deafened)
+    };
+    run(
+      database.sqlite,
+      `update server_members
+       set moderator_muted = ?, moderator_deafened = ?
+       where server_id = ? and user_id = ?`,
+      [moderation.muted ? 1 : 0, moderation.deafened ? 1 : 0, serverId, userId]
+    );
+    audit(database, owner.id, "member.voice_moderation_updated", userId, serverId);
+    database.save();
+    realtime.updateVoiceModeration(serverId, userId, moderation);
+    io.to(`server:${serverId}`).emit("server:directoryChanged", { serverId });
+    return { moderation };
   });
 
   server.post("/api/servers/:serverId/members/:userId/:action", async (request, reply) => {
@@ -1032,6 +1139,10 @@ function registerRealtime(
     for (const serverId of serverIds) {
       socket.join(`server:${serverId}`);
     }
+
+    socket.on("connection:probe", (ack) => {
+      if (typeof ack === "function") ack();
+    });
     const entry = online.get(user.userId);
     const isNewPresence = !entry;
     if (entry) {
@@ -1072,7 +1183,8 @@ function registerRealtime(
         ack({ ok: false, error: "room_not_found" });
         return;
       }
-      if (!requireActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
+      const membership = activeServerMembership(database.sqlite, room.serverId, user.userId);
+      if (!membership) {
         ack({ ok: false, error: "forbidden" });
         return;
       }
@@ -1083,13 +1195,14 @@ function registerRealtime(
       }
 
       const requested = candidate?.media as Partial<VoiceMediaState> | undefined;
+      const moderation = voiceModeration(membership);
       const media = normalizeVoiceMedia({
         mic: requested?.mic === true,
         camera: requested?.camera === true,
         screen: requested?.screen === true,
         deafened: requested?.deafened === true,
         speaking: false
-      });
+      }, moderation);
       const members = ensureVoiceRoom(voiceMembership, roomId);
       if (visualPublisherCount(members, user.userId, media) > visualPublisherLimit) {
         ack({ ok: false, error: "visual_limit_reached" });
@@ -1102,7 +1215,7 @@ function registerRealtime(
         }
       }
       socket.join(`voice:${roomId}`);
-      const state: VoiceMemberState = { user: roomUser, media };
+      const state: VoiceMemberState = { user: roomUser, media, moderation };
       members.set(user.userId, state);
       ack({ ok: true, state });
       emitVoiceSnapshot(io, database, roomId, members);
@@ -1119,7 +1232,7 @@ function registerRealtime(
         ack({ roomId, members: [] });
         return;
       }
-      ack(voiceSnapshot(roomId, voiceMembership.get(roomId)));
+      ack(voiceSnapshot(roomId, voiceMembership.get(roomId), socket.rooms.has(`voice:${roomId}`)));
     });
 
     socket.on("voice:setMediaState", (payload, ack) => {
@@ -1134,12 +1247,18 @@ function registerRealtime(
         ack({ ok: false, error: "not_in_voice_room" });
         return;
       }
-      const nextMedia = normalizeVoiceMedia({ ...current.media, ...payload.media });
+      const membership = activeServerMembership(database.sqlite, room.serverId, user.userId);
+      if (!membership) {
+        ack({ ok: false, error: "not_in_voice_room" });
+        return;
+      }
+      const moderation = voiceModeration(membership);
+      const nextMedia = normalizeVoiceMedia({ ...current.media, ...payload.media }, moderation);
       if (visualPublisherCount(members, user.userId, nextMedia) > visualPublisherLimit) {
         ack({ ok: false, error: "visual_limit_reached" });
         return;
       }
-      const nextState = { ...current, media: nextMedia };
+      const nextState = { ...current, media: nextMedia, moderation };
       members.set(user.userId, nextState);
       clearUnavailableVisualSubscriptions(
         io,
@@ -1262,6 +1381,16 @@ function registerRealtime(
       io.to(`server:${serverId}`).emit("server:memberUpdated", { serverId, user: updated });
       return updated;
     },
+    updateVoiceModeration(serverId, userId, moderation) {
+      for (const [roomId, members] of voiceMembership) {
+        const room = roomById(database.sqlite, roomId);
+        const current = members.get(userId);
+        if (!room || room.serverId !== serverId || !current) continue;
+        const media = normalizeVoiceMedia(current.media, moderation);
+        members.set(userId, { ...current, media, moderation });
+        emitVoiceSnapshot(io, database, roomId, members);
+      }
+    },
     revokeServerAccess(serverId, userId, reason) {
       const textRoomIds = all<{ id: string }>(
         database.sqlite,
@@ -1367,7 +1496,9 @@ function emitVoiceSnapshot(
 ) {
   const room = roomById(database.sqlite, roomId);
   if (!room) return;
-  io.to(`server:${room.serverId}`).emit("voice:snapshot", voiceSnapshot(roomId, members));
+  const voiceRoom = `voice:${roomId}`;
+  io.to(voiceRoom).emit("voice:snapshot", voiceSnapshot(roomId, members, true));
+  io.to(`server:${room.serverId}`).except(voiceRoom).emit("voice:snapshot", voiceSnapshot(roomId, members, false));
 }
 
 function setVisualSubscriptions(
@@ -1559,9 +1690,23 @@ function activateServerMembership(
 function serverMembership(sqlite: DatabaseSync, serverId: string, userId: string) {
   return one<ServerMemberRow>(
     sqlite,
-    "select server_id, user_id, role, banned_at, removed_at from server_members where server_id = ? and user_id = ?",
+    `select server_id, user_id, role, banned_at, removed_at,
+      moderator_muted, moderator_deafened
+     from server_members where server_id = ? and user_id = ?`,
     [serverId, userId]
   );
+}
+
+function activeServerMembership(sqlite: DatabaseSync, serverId: string, userId: string) {
+  const membership = serverMembership(sqlite, serverId, userId);
+  return membership && !membership.banned_at && !membership.removed_at ? membership : null;
+}
+
+function voiceModeration(membership: ServerMemberRow): VoiceModerationState {
+  return {
+    muted: Boolean(membership.moderator_muted),
+    deafened: Boolean(membership.moderator_deafened)
+  };
 }
 
 function isServerOwner(sqlite: DatabaseSync, serverId: string, userId: string) {
@@ -1633,15 +1778,19 @@ function createInviteForServer(
   const token = createOpaqueToken();
   const id = crypto.randomUUID();
   const now = new Date();
-  const expiresAt = body.expiresInHours
-    ? new Date(now.getTime() + body.expiresInHours * 60 * 60 * 1000).toISOString()
-    : null;
+  const expiresInMinutes = body.expiresInMinutes ?? null;
+  const expiresAt = expiresInMinutes === null
+    ? null
+    : new Date(now.getTime() + expiresInMinutes * 60 * 1000).toISOString();
+  const maxUses = body.maxUses === undefined ? 1 : body.maxUses;
   run(
     database.sqlite,
-    "insert into invites (id, server_id, token_hash, label, created_by_user_id, expires_at, created_at) values (?, ?, ?, ?, ?, ?, ?)",
-    [id, serverId, hashToken(token), body.label, createdByUserId, expiresAt, now.toISOString()]
+    `insert into invites
+      (id, server_id, token_hash, label, created_by_user_id, expires_at, max_uses, created_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, serverId, hashToken(token), body.label, createdByUserId, expiresAt, maxUses, now.toISOString()]
   );
-  return { id, token, label: body.label, expiresAt, serverId };
+  return { id, token, label: body.label, expiresAt, maxUses, usedCount: 0, serverId };
 }
 
 function serverInvites(sqlite: DatabaseSync, serverId: string) {
@@ -1651,26 +1800,36 @@ function serverInvites(sqlite: DatabaseSync, serverId: string) {
       invites.created_by_user_id as createdByUserId,
       invites.used_by_user_id as usedByUserId, invites.used_at as usedAt,
       invites.expires_at as expiresAt, invites.revoked_at as revokedAt,
+      invites.max_uses as maxUses, count(invite_uses.user_id) as usedCount,
       invites.created_at as createdAt
      from invites
+     left join invite_uses on invite_uses.invite_id = invites.id
      where invites.server_id = ?
+     group by invites.id
      order by invites.created_at desc`,
     [serverId]
   );
 }
 
 function revokeServerInvite(database: VoxlyDatabase, serverId: string, inviteId: string, ownerId: string) {
-  const invite = one<{ id: string; used_at: string | null; revoked_at: string | null }>(
+  const invite = one<{ id: string; max_uses: number | null; expires_at: string | null; revoked_at: string | null }>(
     database.sqlite,
-    "select id, used_at, revoked_at from invites where id = ? and server_id = ?",
+    "select id, max_uses, expires_at, revoked_at from invites where id = ? and server_id = ?",
     [inviteId, serverId]
   );
   if (!invite) return "not_found" as const;
-  if (invite.used_at || invite.revoked_at) return "inactive" as const;
+  const usedCount = inviteUseCount(database.sqlite, invite.id);
+  if (invite.revoked_at || isExpired(invite.expires_at) || (invite.max_uses !== null && usedCount >= invite.max_uses)) {
+    return "inactive" as const;
+  }
   run(database.sqlite, "update invites set revoked_at = ? where id = ?", [new Date().toISOString(), inviteId]);
   audit(database, ownerId, "invite.revoked", inviteId, serverId);
   database.save();
   return "revoked" as const;
+}
+
+function inviteUseCount(sqlite: DatabaseSync, inviteId: string) {
+  return one<{ count: number }>(sqlite, "select count(*) as count from invite_uses where invite_id = ?", [inviteId])?.count ?? 0;
 }
 
 function createSession(database: VoxlyDatabase, userId: string) {
@@ -1867,14 +2026,18 @@ function ensureVoiceRoom(voiceMembership: Map<string, VoiceRoomMembership>, room
   return members;
 }
 
-function voiceSnapshot(roomId: string, members: VoiceRoomMembership | undefined): VoiceSnapshot {
+function voiceSnapshot(roomId: string, members: VoiceRoomMembership | undefined, includeSpeaking: boolean): VoiceSnapshot {
   return {
     roomId,
-    members: members ? [...members.values()] : []
+    members: members
+      ? [...members.values()].map((member) => includeSpeaking
+        ? member
+        : { ...member, media: { ...member.media, speaking: false } })
+      : []
   };
 }
 
-function normalizeVoiceMedia(media: VoiceMediaState): VoiceMediaState {
+function normalizeVoiceMedia(media: VoiceMediaState, moderation: VoiceModerationState = { muted: false, deafened: false }): VoiceMediaState {
   const next = {
     mic: Boolean(media.mic),
     camera: Boolean(media.camera),
@@ -1887,7 +2050,11 @@ function normalizeVoiceMedia(media: VoiceMediaState): VoiceMediaState {
     next.mic = false;
   }
 
-  if (!next.mic || next.deafened) {
+  if (moderation.muted) {
+    next.mic = false;
+  }
+
+  if (!next.mic || next.deafened || moderation.muted) {
     next.speaking = false;
   }
 

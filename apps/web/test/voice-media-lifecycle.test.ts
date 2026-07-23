@@ -114,7 +114,7 @@ describe("voice snapshot reconciliation", () => {
     const visualStage = source.match(/function VisualStage[\s\S]*?\n}\n\nfunction StatusPill/)?.[0] ?? "";
     const voiceRoom = source.match(/function VoiceRoomScreen[\s\S]*?\n}\n\nfunction OwnerPanel/)?.[0] ?? "";
 
-    assert.match(globalVoiceAudio, /<RemoteAudio[\s\S]*?muted=\{muted\}/);
+    assert.match(globalVoiceAudio, /<RemoteAudio[\s\S]*?muted=\{muted \|\| mutedUserIds\.has\(item\.userId\)\}/);
     assert.match(visualStage, /<RemoteAudio stream=\{focusedStream\} muted=\{false\}/);
     assert.doesNotMatch(visualStage, /^\s*muted:\s*boolean;/m);
     assert.doesNotMatch(voiceRoom, /<VisualStage[\s\S]*?muted=\{props\.controls\.deafen\.on\}/);
@@ -211,8 +211,8 @@ describe("voice snapshot reconciliation", () => {
 
     assert.match(source, /const microphoneOnBeforeDeafenRef = useRef\(true\)/);
     assert.match(source, /const deafenTransitionRef = useRef\(0\)/);
-    assert.match(setDeafened, /microphoneOnBeforeDeafenRef\.current = controlsRef\.current\.mic\.on/);
-    assert.match(setDeafened, /const restoreMicrophoneOn = microphoneOnBeforeDeafenRef\.current/);
+    assert.match(setDeafened, /microphoneOnBeforeDeafenRef\.current = moderationRef\.current\.muted[\s\S]*?microphoneOnBeforeModerationMuteRef\.current[\s\S]*?: controlsRef\.current\.mic\.on/);
+    assert.match(setDeafened, /const restoreMicrophoneOn = !moderationRef\.current\.muted[\s\S]*?&& microphoneOnBeforeDeafenRef\.current/);
     assert.match(setDeafened, /track\.enabled = restoreMicrophoneOn && track\.readyState === "live"/);
     assert.match(setDeafened, /restoreMicrophoneOn/);
     assert.match(setDeafened, /effectiveVoiceMediaState\(nextControls, localStreamsRef\.current\)/);
