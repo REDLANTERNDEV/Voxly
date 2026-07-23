@@ -9,8 +9,18 @@ applies. Files under `src/lib` have additional media and helper guidance in
 The web workspace owns the React application, routing, browser session state,
 localized presentation, media UI, and client-side Socket.IO/WebRTC lifecycle.
 
-- `src/App.tsx` composes authenticated surfaces and owns shared application
-  state. Avoid making it the home of new reusable algorithms.
+- `src/App.tsx` is the small application composition root. It wires focused
+  controllers together, mounts authenticated runtime audio once, and delegates
+  route rendering; do not move feature markup or reusable algorithms into it.
+- `src/app` owns route-level contracts plus focused session, workspace,
+  realtime, and listener-preference lifecycle controllers. A controller must
+  represent one lifecycle concern rather than hide the application in a
+  catch-all hook.
+- `src/features` owns route and domain surfaces for authentication, chat,
+  voice presentation, and owner administration. Feature surfaces receive
+  explicit feature props rather than the complete application shell contract.
+- `src/components/shell` owns authenticated chrome shared across routes;
+  `src/components/ui` owns small reusable presentation primitives and icons.
 - `src/components` contains focused reusable UI surfaces.
 - `src/lib` contains pure state helpers and browser integration modules.
 - `src/api.ts` is the typed HTTP boundary.

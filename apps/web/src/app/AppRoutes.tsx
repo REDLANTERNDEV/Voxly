@@ -1,0 +1,129 @@
+import type { ChatMessage,PublicUser } from "@voxly/shared";
+import type { ReactNode } from "react";
+import { AppShellSkeleton } from "../components/AppShellSkeleton.js";
+import { AppChrome } from "../components/shell/AppChrome.js";
+import { FatalState } from "../components/ui/Primitives.js";
+import { InviteRequiredScreen,LandingPage } from "../features/auth/AuthScreens.js";
+import { AccessClaimScreen,OwnerClaimScreen } from "../features/auth/ClaimScreens.js";
+import { InviteScreen } from "../features/auth/InviteScreen.js";
+import { TextRoomScreen } from "../features/chat/TextRoomScreen.js";
+import { OwnerPanel } from "../features/owner/OwnerPanel.js";
+import { VoiceRoomScreen } from "../features/voice/VoiceRoomScreen.js";
+import type { LanguageCode } from "../lib/i18n.js";
+import { startupSurface } from "../lib/startupSurface.js";
+import type { LoadState,Route,ShellActions,ShellModel,Translate } from "./types.js";
+
+export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, messages, language, t, renderSurface, turnstileSiteKey, completeAuthentication, loadAcceptedServer, onOwnerClaimed, onAccessClaimed, navigate, changeLanguage, textRoomActions }: {
+  route: Route;
+  user: PublicUser | null;
+  authState: LoadState;
+  rtcConfigReady: boolean;
+  shellProps: (ShellModel & ShellActions) | null;
+  messages: ChatMessage[];
+  language: LanguageCode;
+  t: Translate;
+  renderSurface(surface: ReactNode): ReactNode;
+  turnstileSiteKey: string | null;
+  completeAuthentication(user: PublicUser): void;
+  loadAcceptedServer(serverId: string): Promise<void>;
+  onOwnerClaimed(user: PublicUser): void;
+  onAccessClaimed(user: PublicUser, serverId: string): void;
+  navigate(path: string): void;
+  changeLanguage(language: LanguageCode): void;
+  textRoomActions: { send(body: string): Promise<void>; update(messageId: string, body: string): Promise<void>; delete(messageId: string): Promise<void>; suppressEmbed(messageId: string, embedKey: string): Promise<void> } | null;
+}) {
+  if (startupSurface(route.name, authState) === "shell-skeleton") return renderSurface(<AppShellSkeleton />);
+  if (user && !rtcConfigReady && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<AppShellSkeleton />);
+  if (authState === "error" && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<FatalState t={t} />);
+  if (route.name === "owner-claim") {
+    return renderSurface(<OwnerClaimScreen token={route.token} language={language} t={t} onLanguageChange={changeLanguage} onClaimed={onOwnerClaimed} />);
+  }
+  if (route.name === "access-claim") {
+    return renderSurface(<AccessClaimScreen token={route.token} t={t} onNavigate={navigate} onClaimed={onAccessClaimed} />);
+  }
+  if (!user && route.name === "landing") return <LandingPage language={language} t={t} onNavigate={navigate} onLanguageChange={changeLanguage} />;
+  if (!user && route.name === "invite" && !route.token) return <InviteRequiredScreen language={language} t={t} onNavigate={navigate} onLanguageChange={changeLanguage} />;
+  if (!user || route.name === "invite") {
+    return renderSurface(<InviteScreen
+      initialToken={route.name === "invite" ? route.token : ""}
+      existingUser={Boolean(user)}
+      currentUser={user}
+      turnstileSiteKey={turnstileSiteKey}
+      language={language}
+      t={t}
+      onLanguageChange={changeLanguage}
+      onAccepted={(accepted, serverId) => {
+        completeAuthentication(accepted);
+        void loadAcceptedServer(serverId).catch(() => navigate("/"));
+      }}
+    />);
+  }
+  if (!shellProps) return renderSurface(<AppShellSkeleton />);
+  if (route.name === "owner" && shellProps.servers.find((server) => server.id === route.serverId)?.role !== "owner") return renderSurface(<AppShellSkeleton />);
+  if (route.name === "owner") return renderSurface(<OwnerPanel
+    user={shellProps.user}
+    currentNickname={shellProps.currentNickname}
+    servers={shellProps.servers}
+    activeServerId={shellProps.activeServerId}
+    rooms={shellProps.rooms}
+    appConfig={shellProps.appConfig}
+    roomHistory={shellProps.roomHistory}
+    language={shellProps.language}
+    t={shellProps.t}
+    onNavigate={shellProps.onNavigate}
+    onCreateServer={shellProps.onCreateServer}
+    onUpdateServerName={shellProps.onUpdateServerName}
+    onDeleteServer={shellProps.onDeleteServer}
+    onModerateMember={shellProps.onModerateMember}
+    onVoiceModeration={shellProps.onVoiceModeration}
+    onUpdateMemberNickname={shellProps.onUpdateMemberNickname}
+  />);
+  if (route.name === "voice") return renderSurface(<AppChrome {...shellProps} mobileTitle={shellProps.currentRoom?.name ?? t("room.lobbyVoice")}><VoiceRoomScreen
+    user={shellProps.user}
+    currentNickname={shellProps.currentNickname}
+    route={shellProps.route}
+    activeServerId={shellProps.activeServerId}
+    rooms={shellProps.rooms}
+    socketState={shellProps.socketState}
+    activeVoiceRoomId={shellProps.activeVoiceRoomId}
+    controls={shellProps.controls}
+    visualTargets={shellProps.visualTargets}
+    voiceSnapshots={shellProps.voiceSnapshots}
+    remoteStreams={shellProps.remoteStreams}
+    peerConnectionStates={shellProps.peerConnectionStates}
+    localPreviews={shellProps.localPreviews}
+    memberVolumes={shellProps.memberVolumes}
+    screenVolumes={shellProps.screenVolumes}
+    roomHistory={shellProps.roomHistory}
+    pendingLiveWatch={shellProps.pendingLiveWatch}
+    audioLevels={shellProps.audioLevels}
+    t={shellProps.t}
+    currentRoom={shellProps.currentRoom}
+    onNavigate={shellProps.onNavigate}
+    onJoinVoice={shellProps.onJoinVoice}
+    onWatchLive={shellProps.onWatchLive}
+    onLiveWatchHandled={shellProps.onLiveWatchHandled}
+    onRequestVoiceSnapshot={shellProps.onRequestVoiceSnapshot}
+    onSetVisualSubscriptions={shellProps.onSetVisualSubscriptions}
+    onMemberVolumeChange={shellProps.onMemberVolumeChange}
+    onScreenVolumeChange={shellProps.onScreenVolumeChange}
+  /></AppChrome>);
+  if (route.name !== "text" || !textRoomActions) return renderSurface(<AppShellSkeleton />);
+  return renderSurface(<AppChrome {...shellProps} mobileTitle={shellProps.currentRoom?.name ?? "Text room"}>
+    <TextRoomScreen
+      user={shellProps.user}
+      language={shellProps.language}
+      t={shellProps.t}
+      currentRoom={shellProps.currentRoom}
+      rooms={shellProps.rooms}
+      roomHistory={shellProps.roomHistory}
+      activeServerId={shellProps.activeServerId}
+      onNavigate={shellProps.onNavigate}
+      messages={messages}
+      onSendMessage={textRoomActions.send}
+      onUpdateMessage={textRoomActions.update}
+      onDeleteMessage={textRoomActions.delete}
+      onSuppressEmbed={textRoomActions.suppressEmbed}
+    />
+  </AppChrome>);
+}

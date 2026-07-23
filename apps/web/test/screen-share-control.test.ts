@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { readAppSource } from "./app-source.js";
 
 describe("screen share control", () => {
   it("uses the supplied monitor upload geometry inline", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const styles = readFileSync("src/styles.css", "utf8");
     const icon = app.match(/function ScreenIcon[\s\S]*?\n}/)?.[0] ?? "";
 
@@ -17,7 +18,7 @@ describe("screen share control", () => {
   });
 
   it("keeps every compact media control visually symmetric", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const styles = readFileSync("src/styles.css", "utf8");
 
     assert.doesNotMatch(app, /className="screen-share-control"/);
@@ -27,7 +28,7 @@ describe("screen share control", () => {
   });
 
   it("shows the cancellation stroke only while the local share is active", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const dock = app.match(/function VoiceDock[\s\S]*?\n}\n\nfunction ConfirmDialog/)?.[0] ?? "";
 
     assert.match(dock, /<ScreenIcon off=\{props\.controls\.screenShare\.on\} \/>/);

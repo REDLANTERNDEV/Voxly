@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { readAppSource } from "./app-source.js";
 
 describe("server and channel deletion UI", () => {
   it("keeps the shared server switcher focused on navigation", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const switcher = readFileSync("src/components/ServerSwitcher.tsx", "utf8");
     const channelRail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelDeleteControl/)?.[0] ?? "";
 
@@ -17,7 +18,7 @@ describe("server and channel deletion UI", () => {
   });
 
   it("places server lifecycle actions in the owner server context", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const ownerPanel = app.match(/function OwnerPanel[\s\S]*?\n}\n\nfunction AppChrome/)?.[0] ?? "";
 
     assert.match(ownerPanel, /className="owner-server-context"/);
@@ -31,7 +32,7 @@ describe("server and channel deletion UI", () => {
   });
 
   it("requires exact-name confirmation for destructive channel and server actions", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
 
     assert.match(app, /confirmationText\?: string/);
     assert.match(app, /confirmationValue === confirmationText/);
@@ -41,10 +42,10 @@ describe("server and channel deletion UI", () => {
   });
 
   it("refreshes navigation for realtime room and server deletion events", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
 
-    assert.match(app, /socket\.on\("server:roomsChanged"/);
-    assert.match(app, /socket\.on\("server:deleted"/);
+    assert.match(app, /next\.on\("server:roomsChanged"/);
+    assert.match(app, /next\.on\("server:deleted"/);
     assert.match(app, /deletedRoomId/);
   });
 });

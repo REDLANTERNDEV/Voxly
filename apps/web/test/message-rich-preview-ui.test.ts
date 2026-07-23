@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { readAppSource } from "./app-source.js";
 
 describe("message rich previews", () => {
   it("renders safe links and allowlisted provider frames without raw HTML", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const message = app.match(/function MessageItem[\s\S]*?\n}\n\nfunction FatalState/)?.[0] ?? "";
 
     assert.match(message, /messageContentSegments\(message\.body\)/);
@@ -17,7 +18,7 @@ describe("message rich previews", () => {
   });
 
   it("shows a confirmed per-embed close action only to authors and owners", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const message = app.match(/function MessageItem[\s\S]*?\n}\n\nfunction FatalState/)?.[0] ?? "";
 
     assert.match(message, /permissions\.canDelete/);

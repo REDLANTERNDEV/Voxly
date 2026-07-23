@@ -1,0 +1,161 @@
+import type { ChatMessage } from "@voxly/shared";
+import type { FormEvent } from "react";
+import { useCallback,useLayoutEffect,useRef,useState } from "react";
+import { serverPath } from "../../app/navigation.js";
+import type { ShellActions,ShellModel } from "../../app/types.js";
+import { ArrowIcon } from "../../components/ui/Icons.js";
+import { EmptyState,RoomHeader } from "../../components/ui/Primitives.js";
+import { resolveRememberedRoom } from "../../lib/channelState.js";
+import { isMessageListNearBottom,messageListUpdateAction,shouldSubmitComposer } from "../../lib/messages.js";
+import { MessageItem } from "./MessageItem.js";
+type TextRoomProps = Pick<ShellModel,
+  "user" | "language" | "t" | "currentRoom" | "rooms" | "roomHistory" |
+  "activeServerId"
+> & Pick<ShellActions,
+  "onNavigate"
+> & {
+  messages: ChatMessage[];
+  onSendMessage: (body: string) => Promise<void>;
+  onUpdateMessage: (messageId: string, body: string) => Promise<void>;
+  onDeleteMessage: (messageId: string) => Promise<void>;
+  onSuppressEmbed: (messageId: string, embedKey: string) => Promise<void>;
+};
+
+export function TextRoomScreen(props: TextRoomProps) {
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [hasNewMessages, setHasNewMessages] = useState(false);
+  const listRef = useRef<HTMLElement | null>(null);
+  const wasNearBottomRef = useRef(true);
+  const previousMessageIdsRef = useRef<string[]>([]);
+  const roomId = props.currentRoom?.id;
+  const targetVoiceRoom = resolveRememberedRoom(
+    props.rooms.voice,
+    props.roomHistory[props.activeServerId]?.voice
+  );
+
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const list = listRef.current;
+    if (!list) return;
+    list.scrollTo({ top: list.scrollHeight, behavior });
+    wasNearBottomRef.current = true;
+    setHasNewMessages(false);
+  }, []);
+
+  useLayoutEffect(() => {
+    previousMessageIdsRef.current = props.messages.map((message) => message.id);
+    wasNearBottomRef.current = true;
+    setHasNewMessages(false);
+    scrollToLatest("auto");
+  }, [roomId, scrollToLatest]);
+
+  useLayoutEffect(() => {
+    const currentIds = props.messages.map((message) => message.id);
+    const action = messageListUpdateAction(
+      previousMessageIdsRef.current,
+      currentIds,
+      wasNearBottomRef.current
+    );
+    previousMessageIdsRef.current = currentIds;
+    if (action === "scroll") scrollToLatest("auto");
+    if (action === "notify") setHasNewMessages(true);
+  }, [props.messages, scrollToLatest]);
+
+  function handleListScroll() {
+    const list = listRef.current;
+    if (!list) return;
+    const isNearBottom = isMessageListNearBottom(list);
+    wasNearBottomRef.current = isNearBottom;
+    if (isNearBottom) setHasNewMessages(false);
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const body = draft.trim();
+    if (!body) {
+      setError(props.t("room.writeBeforeSending"));
+      return;
+    }
+
+    setError("");
+    setIsSending(true);
+    try {
+      await props.onSendMessage(body);
+      setDraft("");
+    } catch {
+      setError(props.t("room.messageCouldNotSend"));
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  return (
+    <main className="main-panel" id="main-content">
+        <RoomHeader
+          title={`#${props.currentRoom?.name ?? "lobby"}`}
+          subtitle={props.t("room.generalTalk")}
+          actionLabel={targetVoiceRoom ? props.t("room.openChannel", { channel: targetVoiceRoom.name }) : undefined}
+          onAction={targetVoiceRoom ? () => props.onNavigate(serverPath(props.activeServerId, "voice", targetVoiceRoom.id)) : undefined}
+        />
+        <div className="message-viewport">
+          <section className="message-list" ref={listRef} aria-label={props.t("room.messages")} onScroll={handleListScroll}>
+            <div className="message-day">{props.t("room.today")}</div>
+            {props.messages.length === 0 ? (
+              <EmptyState title={props.t("room.noMessages")} copy={props.t("room.noMessagesCopy")} />
+            ) : (
+              props.messages.map((message) => (
+                <MessageItem
+                  key={message.id}
+                  message={message}
+                  user={props.user}
+                  language={props.language}
+                  t={props.t}
+                  onUpdate={props.onUpdateMessage}
+                  onDelete={props.onDeleteMessage}
+                  onSuppressEmbed={props.onSuppressEmbed}
+                />
+              ))
+            )}
+          </section>
+          {hasNewMessages ? (
+            <button className="new-messages-indicator" type="button" onClick={() => scrollToLatest()}>
+              {props.t("room.newMessages")}
+              <span aria-hidden="true">↓</span>
+            </button>
+          ) : null}
+        </div>
+        <footer className="composer">
+          <form onSubmit={submit}>
+            <label className="form-field" htmlFor="messageInput">
+              <span className="label">{props.t("room.messageLabel", { room: props.currentRoom?.name ?? "lobby" })}</span>
+              <textarea
+                className="textarea"
+                id="messageInput"
+                value={draft}
+                name="message"
+                placeholder={props.t("room.chatPlaceholder")}
+                rows={1}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (!shouldSubmitComposer({
+                    key: event.key,
+                    shiftKey: event.shiftKey,
+                    isComposing: event.nativeEvent.isComposing,
+                    isSending
+                  })) return;
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }}
+              />
+            </label>
+            <button className="btn btn-primary" type="submit" disabled={isSending}>
+              <ArrowIcon />
+              <span>{isSending ? props.t("common.sending") : props.t("common.send")}</span>
+            </button>
+          </form>
+          <p className="error-text" aria-live="polite">{error}</p>
+        </footer>
+    </main>
+  );
+}

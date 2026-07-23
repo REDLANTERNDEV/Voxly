@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { readAppSource } from "./app-source.js";
 
 describe("landing presentation", () => {
   it("uses restrained social metadata without generated banner copy", () => {
@@ -15,7 +16,7 @@ describe("landing presentation", () => {
   });
 
   it("keeps the landing page as one hero and one principle row", () => {
-    const appSource = readFileSync("src/App.tsx", "utf8");
+    const appSource = readAppSource();
 
     assert.match(appSource, /className="landing-principles"/);
     assert.doesNotMatch(appSource, /landing-points|landing-point|reveal-block/);

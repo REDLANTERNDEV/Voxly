@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { readAppSource } from "./app-source.js";
 
 describe("member volume menus", () => {
   it("elevates open participant and member menus above adjacent content", () => {
@@ -12,7 +13,7 @@ describe("member volume menus", () => {
   });
 
   it("shares member volume state while retaining owner-only moderation", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelDeleteControl/)?.[0] ?? "";
     const panel = app.match(/function MemberPanel[\s\S]*?\n}\n\nfunction VoiceDock/)?.[0] ?? "";
     const menu = app.match(/function MemberActionMenu[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
@@ -29,7 +30,7 @@ describe("member volume menus", () => {
   });
 
   it("keeps voice status chips readable and separates owner member actions", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const styles = readFileSync("src/styles.css", "utf8");
 
     assert.doesNotMatch(app, /return t\("room\.desktopMic"\)/);
@@ -53,7 +54,7 @@ describe("member volume menus", () => {
   });
 
   it("lets the owner edit scoped nicknames from member surfaces", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
 
     assert.match(app, /function NicknameDialog/);
     assert.match(app, /props\.onUpdateMemberNickname/);

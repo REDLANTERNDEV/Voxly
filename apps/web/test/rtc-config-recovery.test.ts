@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { RtcConfigResponse } from "../src/types.js";
-import * as appModule from "../src/App.js";
+import * as appModule from "../src/app/rtcConfig.js";
 
 describe("RTC configuration recovery", () => {
   it("uses public STUN only before a successful authenticated configuration", () => {

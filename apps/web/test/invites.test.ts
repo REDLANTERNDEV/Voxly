@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { buildInviteUrl, inviteReference, maskSecretLink, resolveInviteOrigin } from "../src/lib/invites.js";
+import { readAppSource } from "./app-source.js";
 
 describe("owner invite display", () => {
   it("builds a shareable invite URL from the one-time token", () => {
@@ -31,7 +32,7 @@ describe("owner invite display", () => {
   });
 
   it("loads the current server name when an invite link opens", () => {
-    const source = readFileSync("src/App.tsx", "utf8");
+    const source = readAppSource();
     const inviteScreen = source.match(/function InviteScreen[\s\S]*?\n}\n\nfunction TurnstileWidget/)?.[0] ?? "";
 
     assert.match(inviteScreen, /previewInvite\(extractInviteToken\(initialToken\)\)/);
@@ -40,14 +41,16 @@ describe("owner invite display", () => {
   });
 
   it("refreshes the switcher and opens the invited server for an existing user", () => {
-    const source = readFileSync("src/App.tsx", "utf8");
+    const source = readAppSource();
     const switcher = readFileSync("src/components/ServerSwitcher.tsx", "utf8");
-    const inviteRoute = source.match(/if \(!user \|\| route\.name === "invite"\)[\s\S]*?\n  const currentNickname/)?.[0] ?? "";
+    const inviteRoute = source.match(/function AppRoutes[\s\S]*?function useSessionController/)?.[0] ?? "";
 
     assert.match(inviteRoute, /existingUser=\{Boolean\(user\)\}/);
-    assert.match(inviteRoute, /Promise\.all\(\[fetchServers\(\), fetchServerRooms\(serverId\)\]\)/);
-    assert.match(inviteRoute, /setServers\(serverResponse\.servers\)/);
-    assert.match(inviteRoute, /navigate\(`\/app\/server\/\$\{serverId\}\/\$\{target\.kind\}\/\$\{target\.id\}`\)/);
+    assert.match(inviteRoute, /completeAuthentication\(accepted\)/);
+    assert.match(inviteRoute, /loadAcceptedServer\(serverId\)/);
+    assert.match(source, /Promise\.all\(\[fetchServers\(\), fetchServerRooms\(serverId\)\]\)/);
+    assert.match(source, /setServers\(serverResponse\.servers\)/);
+    assert.match(source, /firstServerRoomPath\(serverId, roomResponse\.rooms\)/);
     assert.match(switcher, /props\.servers\.map\(\(server\) => <option key=\{server\.id\} value=\{server\.id\}>\{server\.name\}<\/option>\)/);
   });
 });

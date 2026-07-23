@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { readAppSource } from "./app-source.js";
 
 describe("exclusive sidebar context menus", () => {
   it("shares one menu controller across both sidebars", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const chrome = app.match(/function AppChrome[\s\S]*?\n}\n\nfunction ChannelRail/)?.[0] ?? "";
 
     assert.match(chrome, /useReducer\(contextMenuReducer, null\)/);
@@ -13,7 +14,7 @@ describe("exclusive sidebar context menus", () => {
   });
 
   it("opens actionable channel and member rows from right click or ellipsis", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
     const members = app.match(/function MemberPanel[\s\S]*?\n}\n\nfunction RoomHeader/)?.[0] ?? "";
 

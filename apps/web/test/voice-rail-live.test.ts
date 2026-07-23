@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { readAppSource } from "./app-source.js";
 
 describe("voice rail live controls", () => {
   it("omits channel and participant totals from the rail", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
 
     assert.doesNotMatch(rail, /props\.rooms\.text\.length\}<\/span>/);
@@ -13,7 +14,7 @@ describe("voice rail live controls", () => {
   });
 
   it("keeps the rail compact while retaining the speaking avatar ring", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
 
     assert.doesNotMatch(rail, /<VoiceStatusBadges[^>]*compact/);
@@ -21,7 +22,7 @@ describe("voice rail live controls", () => {
   });
 
   it("shows LIVE only for screen sharing and shares the existing member volume state", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
 
     assert.match(rail, /member\.media\.screen[\s\S]*?<LiveStreamPopover[\s\S]*?common\.live/);
@@ -32,7 +33,7 @@ describe("voice rail live controls", () => {
   });
 
   it("renders compact accessible mute and deafen icons for each rail member", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
 
     assert.match(rail, /sidebarVoiceStatusKeys\(member\.media\)/);
@@ -42,7 +43,7 @@ describe("voice rail live controls", () => {
   });
 
   it("uses a microphone icon for voice channels", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const styles = readFileSync("src/styles.css", "utf8");
     const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
 
@@ -53,7 +54,7 @@ describe("voice rail live controls", () => {
   });
 
   it("automatically joins a selected broadcast with the microphone enabled", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const voiceRoom = app.match(/function VoiceRoomScreen[\s\S]*?\n}\n\nfunction OwnerPanel/)?.[0] ?? "";
 
     assert.match(app, /pendingLiveWatch/);
@@ -66,7 +67,7 @@ describe("voice rail live controls", () => {
   });
 
   it("uses the whole middle LIVE source row to reuse the sidebar watch flow", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readAppSource();
     const styles = readFileSync("src/styles.css", "utf8");
     const voiceRoom = app.match(/function VoiceRoomScreen[\s\S]*?\n}\n\nfunction OwnerPanel/)?.[0] ?? "";
     const watchSource = voiceRoom.match(/const watchSource = \(source: StageSource\) => \{[\s\S]*?\n  };/)?.[0] ?? "";

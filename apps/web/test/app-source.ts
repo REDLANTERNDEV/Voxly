@@ -1,0 +1,97 @@
+import { readFileSync } from "node:fs";
+
+const declarations: Array<[string, string]> = [
+  ["src/app/rtcConfig.ts", "rtcConfigAfterFetchFailure"],
+  ["src/app/AuthenticatedAppSurface.tsx", "AuthenticatedAppSurface"],
+  ["src/features/voice/voiceActions.ts", "joinVoiceWithAudioUnlock"],
+  ["src/App.tsx", "App"],
+  ["src/app/AppRoutes.tsx", "AppRoutes"],
+  ["src/app/useSessionController.ts", "useSessionController"],
+  ["src/app/useWorkspaceController.ts", "useWorkspaceController"],
+  ["src/features/chat/useChatController.ts", "useChatController"],
+  ["src/app/useRealtimeSync.ts", "useRealtimeSync"],
+  ["src/app/useListenerAudio.ts", "useListenerAudio"],
+  ["src/features/auth/AuthScreens.tsx", "LandingPage"],
+  ["src/features/auth/AuthScreens.tsx", "InviteRequiredScreen"],
+  ["src/app/types.ts", "ShellModel"],
+  ["src/app/types.ts", "ShellActions"],
+  ["src/app/types.ts", "VoiceChromeModel"],
+  ["src/features/chat/TextRoomScreen.tsx", "TextRoomScreen"],
+  ["src/features/voice/VoicePresentation.tsx", "StageSource"],
+  ["src/features/voice/VoiceRoomScreen.tsx", "VoiceRoomScreen"],
+  ["src/features/owner/OwnerPanel.tsx", "OwnerPanel"],
+  ["src/features/owner/OwnerServerContext.tsx", "SecretLinkDisplay"],
+  ["src/features/owner/OwnerServerContext.tsx", "OwnerServerContext"],
+  ["src/components/shell/SidebarMenus.tsx", "SidebarActionMenuController"],
+  ["src/components/shell/SidebarMenus.tsx", "SidebarMenuTrigger"],
+  ["src/components/shell/SidebarMenus.tsx", "openSidebarMenuFromPointer"],
+  ["src/components/shell/AppChrome.tsx", "AppChrome"],
+  ["src/components/shell/ChannelRail.tsx", "ChannelRail"],
+  ["src/components/shell/ChannelRail.tsx", "ChannelDeleteControl"],
+  ["src/components/shell/SidebarMenus.tsx", "memberActionMenuHeight"],
+  ["src/components/shell/SidebarMenus.tsx", "MemberActionMenu"],
+  ["src/components/shell/ChannelRail.tsx", "ChannelCreateControl"],
+  ["src/components/shell/MemberPanel.tsx", "MemberPanel"],
+  ["src/components/ui/Primitives.tsx", "RoomHeader"],
+  ["src/components/shell/VoiceDock.tsx", "VoiceDock"],
+  ["src/components/shell/VoiceDock.tsx", "ConnectionSignal"],
+  ["src/components/shell/VoiceDock.tsx", "ReconnectOverlay"],
+  ["src/components/ui/Dialogs.tsx", "ConfirmDialog"],
+  ["src/components/ui/Dialogs.tsx", "NicknameDialog"],
+  ["src/features/auth/InviteScreen.tsx", "InviteScreen"],
+  ["src/features/auth/InviteScreen.tsx", "TurnstileWidget"],
+  ["src/features/auth/ClaimScreens.tsx", "OwnerClaimScreen"],
+  ["src/features/auth/ClaimScreens.tsx", "AccessClaimScreen"],
+  ["src/features/chat/MessageItem.tsx", "MessageItem"],
+  ["src/features/chat/MessageItem.tsx", "embedProviderLabel"],
+  ["src/components/ui/Primitives.tsx", "PreferencesCard"],
+  ["src/components/ui/Primitives.tsx", "LanguageSwitch"],
+  ["src/components/ui/Primitives.tsx", "ControlButton"],
+  ["src/components/ui/Primitives.tsx", "Toast"],
+  ["src/features/voice/VoicePresentation.tsx", "VoiceStatusBadges"],
+  ["src/features/voice/VoicePresentation.tsx", "RemoteVideo"],
+  ["src/components/ui/Primitives.tsx", "VolumeControl"],
+  ["src/features/voice/VoicePresentation.tsx", "RemoteAudio"],
+  ["src/features/voice/VoicePresentation.tsx", "AudioPlaybackRecovery"],
+  ["src/features/voice/VoicePresentation.tsx", "GlobalVoiceAudio"],
+  ["src/features/voice/VoicePresentation.tsx", "VisualStage"],
+  ["src/components/ui/Primitives.tsx", "StatusPill"],
+  ["src/components/ui/Primitives.tsx", "MemberRow"],
+  ["src/components/ui/Navigation.tsx", "BrandLockup"],
+  ["src/components/ui/Navigation.tsx", "NavLink"],
+  ["src/components/ui/Primitives.tsx", "EmptyState"],
+  ["src/components/ui/Primitives.tsx", "FatalState"],
+  ["src/components/ui/Icons.tsx", "ArrowIcon"],
+  ["src/components/ui/Icons.tsx", "ChatIcon"],
+  ["src/components/ui/Icons.tsx", "MenuIcon"],
+  ["src/components/ui/Icons.tsx", "UsersIcon"],
+  ["src/components/ui/Icons.tsx", "ShieldIcon"],
+  ["src/components/ui/Icons.tsx", "PlusIcon"],
+  ["src/components/ui/Icons.tsx", "CopyIcon"],
+  ["src/components/ui/Icons.tsx", "CloseIcon"],
+  ["src/components/ui/Icons.tsx", "EditIcon"],
+  ["src/components/ui/Icons.tsx", "TrashIcon"],
+  ["src/components/ui/Icons.tsx", "LeaveIcon"],
+  ["src/components/ui/Icons.tsx", "MaximizeIcon"],
+  ["src/components/ui/Icons.tsx", "EyeIcon"],
+  ["src/components/ui/Icons.tsx", "MoreIcon"],
+  ["src/components/ui/Icons.tsx", "VolumeIcon"],
+  ["src/components/ui/Icons.tsx", "MicIcon"],
+  ["src/components/ui/Icons.tsx", "HeadsetIcon"],
+  ["src/components/ui/Icons.tsx", "CameraIcon"],
+  ["src/components/ui/Icons.tsx", "ScreenIcon"]
+];
+
+function declarationSource(path: string, name: string) {
+  const source = readFileSync(path, "utf8");
+  const starts = [...source.matchAll(/^(?:export )?(?:async )?(?:function|interface) ([A-Za-z][A-Za-z0-9_]*)/gm)];
+  const matchIndex = starts.findIndex((match) => match[1] === name);
+  if (matchIndex < 0) throw new Error(`Missing ${name} in ${path}`);
+  const start = starts[matchIndex].index ?? 0;
+  const end = starts[matchIndex + 1]?.index ?? source.length;
+  return source.slice(start, end).replace(/^(?:export )/m, "").trim();
+}
+
+export function readAppSource() {
+  return declarations.map(([path, name]) => declarationSource(path, name)).join("\n\n");
+}

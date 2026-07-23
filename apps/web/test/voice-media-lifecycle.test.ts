@@ -3,11 +3,13 @@ import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { createElement, type ComponentType, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import * as appModule from "../src/App.js";
+import { AuthenticatedAppSurface } from "../src/app/AuthenticatedAppSurface.js";
+import { joinVoiceWithAudioUnlock } from "../src/features/voice/voiceActions.js";
+import { readAppSource } from "./app-source.js";
 
 describe("voice snapshot reconciliation", () => {
   it("moves a LIVE card selection into voice without a second confirmation", () => {
-    const source = readFileSync("src/App.tsx", "utf8");
+    const source = readAppSource();
     const voiceRoom = source.match(/function VoiceRoomScreen[\s\S]*?\n}\n\nfunction OwnerPanel/)?.[0] ?? "";
 
     assert.match(voiceRoom, /liveWatchAttemptRef/);
@@ -24,34 +26,28 @@ describe("voice snapshot reconciliation", () => {
     assert.match(source, /record\.microphoneEnabled/);
   });
   it("navigates away from the access claim route after authentication", () => {
-    const source = readFileSync("src/App.tsx", "utf8");
+    const source = readAppSource();
 
     assert.match(source, /const completeAuthentication = useCallback\([\s\S]*?authRequestGateRef\.current\.invalidate\(\)[\s\S]*?setUser\(nextUser\)[\s\S]*?setAuthState\("ready"\)/);
     assert.match(source, /const authenticatedUserIdRef = useRef<string \| null>\(null\)/);
     assert.match(source, /if \(authenticatedUserIdRef\.current !== nextUser\.id\) setRtcConfigReady\(false\)[\s\S]*?authenticatedUserIdRef\.current = nextUser\.id[\s\S]*?\}, \[\]\)/);
     assert.match(source, /fetchMe\(\)[\s\S]*?authenticatedUserIdRef\.current = response\.user\.id[\s\S]*?setUser\(response\.user\)/);
-    assert.match(source, /const requestGeneration = authRequestGateRef\.current\.begin\(\)[\s\S]*?authRequestGateRef\.current\.isCurrent\(requestGeneration\)/);
-    assert.match(source, /const handleAccessClaimed = useCallback\([\s\S]*?completeAuthentication\(claimedUser\)[\s\S]*?firstServerRoomPath\(serverId, roomResponse\.rooms\)/);
-    assert.match(source, /<AccessClaimScreen[\s\S]*?onClaimed=\{handleAccessClaimed\}/);
+    assert.match(source, /const generation = authRequestGateRef\.current\.begin\(\)[\s\S]*?authRequestGateRef\.current\.isCurrent\(generation\)/);
+    assert.match(source, /const handleAccessClaimed = useCallback\([\s\S]*?completeAuthentication\(claimed\)[\s\S]*?loadAcceptedServer\(serverId\)/);
+    assert.match(source, /<AccessClaimScreen[\s\S]*?onClaimed=\{onAccessClaimed\}/);
   });
 
   it("does not reserve a blank stage status row", () => {
-    const source = readFileSync("src/App.tsx", "utf8");
+    const source = readAppSource();
 
     assert.match(source, /\{stageStatus \? <p className="voice-stage-status" aria-live="polite">\{stageStatus\}<\/p> : null\}/);
   });
 
   it("unlocks audio playback synchronously before starting voice join", async () => {
-    const joinVoiceWithAudioUnlock = (appModule as Record<string, unknown>).joinVoiceWithAudioUnlock;
     const events: string[] = [];
 
     assert.equal(typeof joinVoiceWithAudioUnlock, "function");
-    await (joinVoiceWithAudioUnlock as (
-      roomId: string,
-      unlock: () => void,
-      release: () => void,
-      join: (roomId: string) => Promise<boolean>
-    ) => Promise<void>)("voice-room", () => events.push("unlock"), () => events.push("release"), async (roomId) => {
+    await joinVoiceWithAudioUnlock("voice-room", () => events.push("unlock"), () => events.push("release"), async (roomId) => {
       events.push(`join:${roomId}`);
       return true;
     });
@@ -60,16 +56,10 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("releases unused audio playback after a failed voice join", async () => {
-    const joinVoiceWithAudioUnlock = (appModule as Record<string, unknown>).joinVoiceWithAudioUnlock;
     const events: string[] = [];
 
     assert.equal(typeof joinVoiceWithAudioUnlock, "function");
-    await (joinVoiceWithAudioUnlock as (
-      roomId: string,
-      unlock: () => void,
-      release: () => void,
-      join: (roomId: string) => Promise<boolean>
-    ) => Promise<void>)("voice-room", () => events.push("unlock"), () => events.push("release"), async () => {
+    await joinVoiceWithAudioUnlock("voice-room", () => events.push("unlock"), () => events.push("release"), async () => {
       events.push("join");
       return false;
     });
@@ -86,7 +76,7 @@ describe("voice snapshot reconciliation", () => {
 
   it("keeps one voice-audio sibling mounted for every authenticated surface", () => {
     type SurfaceProps = { audio: ReactNode; children: ReactNode };
-    const Surface = (appModule as unknown as { AuthenticatedAppSurface?: ComponentType<SurfaceProps> }).AuthenticatedAppSurface;
+    const Surface = AuthenticatedAppSurface as ComponentType<SurfaceProps>;
 
     assert.equal(typeof Surface, "function");
     for (const route of ["text", "voice", "owner", "invite"]) {
@@ -100,7 +90,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("keeps the native remote audio element mounted as the only hardware sink", () => {
-    const source = readFileSync("src/App.tsx", "utf8");
+    const source = readAppSource();
     const remoteAudio = source.match(/function RemoteAudio[\s\S]*?\n}\n\nfunction GlobalVoiceAudio/)?.[0] ?? "";
 
     assert.match(remoteAudio, /connectAudioOutput\(audio, stream, \{ muted, volume \}\)/);
@@ -109,7 +99,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("keeps focused screen-share audio audible while participant audio is deafened", () => {
-    const source = readFileSync("src/App.tsx", "utf8");
+    const source = readAppSource();
     const globalVoiceAudio = source.match(/function GlobalVoiceAudio[\s\S]*?\n}\n\nfunction VisualStage/)?.[0] ?? "";
     const visualStage = source.match(/function VisualStage[\s\S]*?\n}\n\nfunction StatusPill/)?.[0] ?? "";
     const voiceRoom = source.match(/function VoiceRoomScreen[\s\S]*?\n}\n\nfunction OwnerPanel/)?.[0] ?? "";
@@ -121,7 +111,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("exposes a retry action only when native audio playback is blocked", () => {
-    const source = readFileSync("src/App.tsx", "utf8");
+    const source = readAppSource();
 
     assert.match(source, /subscribeBlockedAudioOutputs/);
     assert.match(source, /retryBlockedAudioOutputs/);

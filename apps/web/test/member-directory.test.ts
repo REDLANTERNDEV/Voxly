@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import type { PresenceUser } from "@voxly/shared";
 import { groupDirectoryMembers } from "../src/lib/memberDirectory.js";
 import { readFileSync } from "node:fs";
+import { readAppSource } from "./app-source.js";
 
 const owner: PresenceUser = { userId: "owner", nickname: "Owner", role: "owner" };
 const ada: PresenceUser = { userId: "ada", nickname: "Ada", role: "member" };
@@ -24,25 +25,26 @@ describe("member directory presence", () => {
   });
 
   it("refreshes the directory when membership changes", () => {
-    const source = readFileSync("src/App.tsx", "utf8");
+    const source = readAppSource();
 
-    assert.match(source, /socket\.on\("server:directoryChanged", \(\{ serverId \}\) => \{\s*void refreshServerDirectory\(serverId\)/);
+    assert.match(source, /next\.on\("server:directoryChanged"[\s\S]*handlersRef\.current\.directoryChanged\(serverId\)/);
+    assert.match(source, /directoryChanged: \(serverId\)[\s\S]*workspace\.refreshServerDirectory\(serverId\)/);
   });
 
   it("applies scoped realtime nickname updates to active client caches", () => {
-    const source = readFileSync("src/App.tsx", "utf8");
+    const source = readAppSource();
 
-    assert.match(source, /socket\.on\("server:memberUpdated", \(\{ serverId, user: updatedUser \}\) => \{/);
-    assert.match(source, /replacePresenceUser\(current\[serverId\][^)]*updatedUser\)/s);
-    assert.match(source, /renameMessagesForServer\(current, roomServerIdsRef\.current, serverId, updatedUser\)/);
+    assert.match(source, /next\.on\("server:memberUpdated"[\s\S]*handlersRef\.current\.memberUpdated\(serverId, nextUser\)/);
+    assert.match(source, /replacePresenceUser\(current\[serverId\][^)]*next\)/s);
+    assert.match(source, /renameMessagesForServer\(current, roomServerIds\.current, serverId, next\)/);
     assert.match(source, /currentNickname:/);
     assert.match(source, /onUpdateMemberNickname:/);
   });
 
   it("applies scoped realtime server name updates to navigation state", () => {
-    const source = readFileSync("src/App.tsx", "utf8");
+    const source = readAppSource();
 
-    assert.match(source, /socket\.on\("server:updated", \(\{ serverId, name \}\) => \{/);
+    assert.match(source, /next\.on\("server:updated"[\s\S]*handlersRef\.current\.serverUpdated\(serverId, name\)/);
     assert.match(source, /server\.id === serverId \? \{ \.\.\.server, name \} : server/);
   });
 });
