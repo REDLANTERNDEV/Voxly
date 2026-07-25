@@ -10,6 +10,7 @@ import { HeadsetIcon,MicIcon,PlusIcon,ScreenIcon } from "../../components/ui/Ico
 import { BrandLockup,NavLink } from "../../components/ui/Navigation.js";
 import { PreferencesCard } from "../../components/ui/Primitives.js";
 import { type TranslationKey } from "../../lib/i18n.js";
+import { canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
 import { voiceChannelActivation } from "../../lib/voiceChannelActivation.js";
 import { sidebarVoiceStatusKeys } from "../../lib/voiceControls.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
@@ -117,13 +118,14 @@ export function ChannelRail(props: ChannelRailProps) {
                   {members.map((member) => {
                     const isRemote = member.user.userId !== props.user.id;
                     const canRename = canManageServer && (member.user.role === "member" || member.user.userId === props.user.id);
-                    const canModerate = canManageServer && isRemote;
+                    const canModerate = canOwnerVoiceModerate(activeServerRole(props), props.user.id, member.user);
+                    const canVoiceModerate = canModerate;
                     const menuHeight = memberActionMenuHeight({
                       hasVolume: isRemote,
                       canRename,
                       canDisconnect: canModerate,
                       canModerate,
-                      canVoiceModerate: canModerate
+                      canVoiceModerate
                     });
                     const hasActions = isRemote || canRename || canModerate;
                     const menuKey = `rail-member:${member.user.userId}`;
@@ -172,7 +174,7 @@ export function ChannelRail(props: ChannelRailProps) {
                       <span className="voice-channel-statuses">
                         {member.moderation.deafened ? <span className="voice-channel-status is-enforced" aria-label={props.t("member.ownerDeafened")}><HeadsetIcon off /></span> : null}
                         {member.moderation.muted ? <span className="voice-channel-status is-enforced" aria-label={props.t("member.ownerMuted")}><MicIcon off /></span> : null}
-                        {sidebarVoiceStatusKeys(member.media).map((status) => (
+                        {sidebarVoiceStatusKeys(member.media, member.moderation).map((status) => (
                           <span className={`voice-channel-status is-${status} is-self`} aria-label={props.t(`common.${status}` as TranslationKey)} key={status}>
                             {status === "deafened" ? <HeadsetIcon off /> : <MicIcon off />}
                           </span>
@@ -188,8 +190,8 @@ export function ChannelRail(props: ChannelRailProps) {
                           canRename={canRename}
                           canDisconnect={canModerate}
                           canModerate={canModerate}
-                          moderation={canModerate ? member.moderation : undefined}
-                          onVoiceModeration={canModerate ? (moderation) => { void props.onVoiceModeration(member.user.userId, moderation); } : undefined}
+                          moderation={canVoiceModerate ? member.moderation : undefined}
+                          onVoiceModeration={canVoiceModerate ? (moderation) => { void props.onVoiceModeration(member.user.userId, moderation); } : undefined}
                           onRename={(returnFocus) => props.onRequestNickname(member.user, returnFocus)}
                           onRequestAction={(action) => props.onRequestMemberAction(member.user, action, room.id)}
                           showTrigger={false}

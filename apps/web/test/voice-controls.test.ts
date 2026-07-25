@@ -104,6 +104,23 @@ describe("voice control view state", () => {
     );
   });
 
+  it("suppresses self indicators that duplicate owner moderation", () => {
+    const selfDeafened = { mic: false, camera: false, screen: false, deafened: true, speaking: false };
+
+    assert.deepEqual(
+      sidebarVoiceStatusKeys(selfDeafened, { muted: true, deafened: false }),
+      ["deafened"]
+    );
+    assert.deepEqual(
+      sidebarVoiceStatusKeys(selfDeafened, { muted: false, deafened: true }),
+      []
+    );
+    assert.deepEqual(
+      sidebarVoiceStatusKeys(selfDeafened, { muted: true, deafened: true }),
+      []
+    );
+  });
+
   it("presents muted and deafened controls as attention states with recovery actions", () => {
     const muted = toggleVoiceControl(createInitialVoiceControls(), "mic");
     const deafened = toggleVoiceControl(createInitialVoiceControls(), "deafen");

@@ -23,4 +23,13 @@ describe("voice moderation UI", () => {
     assert.match(owner, /moderation\.muted/);
     assert.match(owner, /moderation\.deafened/);
   });
+
+  it("wires owner mute and deafen into left voice participant menus", () => {
+    const app = readAppSource();
+    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelDeleteControl/)?.[0] ?? "";
+
+    assert.match(rail, /canOwnerVoiceModerate/);
+    assert.match(rail, /moderation=\{canVoiceModerate \? member\.moderation : undefined\}/);
+    assert.match(rail, /onVoiceModeration=\{canVoiceModerate/);
+  });
 });

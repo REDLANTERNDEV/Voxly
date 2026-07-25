@@ -61,6 +61,9 @@ export function NicknameDialog({ user, returnFocus, t, onCancel, onSave }: {
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
+  }, []);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !isSaving) close();
     };

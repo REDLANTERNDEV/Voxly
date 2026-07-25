@@ -2,7 +2,7 @@ import type { ChatMessage,PresenceUser,PublicUser,VoiceMediaState,VoiceModeratio
 import type { ReactNode } from "react";
 import { CameraIcon,HeadsetIcon,MicIcon,ScreenIcon } from "../components/ui/Icons.js";
 import { type LanguageCode,type TranslationKey } from "../lib/i18n.js";
-import { type VoiceControls } from "../lib/voiceControls.js";
+import { sidebarVoiceStatusKeys,type VoiceControls } from "../lib/voiceControls.js";
 import type { OwnerInvite } from "../types.js";
 import type { ShellModel,ThemeChoice,Translate } from "./types.js";
 
@@ -110,10 +110,11 @@ export function voiceStatusItems(media: VoiceMediaState | undefined, moderation:
   if (moderation?.muted) {
     items.push({ label: t("member.ownerMuted"), icon: <MicIcon off />, tone: "danger" });
   }
-  if (media.deafened) {
+  const selfStatuses = sidebarVoiceStatusKeys(media, moderation);
+  if (selfStatuses.includes("deafened")) {
     items.push({ label: t("common.deafened"), icon: <HeadsetIcon off />, tone: "neutral" });
   }
-  if ((!media.mic || media.deafened) && !moderation?.muted) {
+  if (selfStatuses.includes("muted")) {
     items.push({ label: t("common.muted"), icon: <MicIcon off />, tone: "neutral" });
   }
   if (media.screen) {

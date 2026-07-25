@@ -36,7 +36,7 @@ describe("voice rail live controls", () => {
     const app = readAppSource();
     const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
 
-    assert.match(rail, /sidebarVoiceStatusKeys\(member\.media\)/);
+    assert.match(rail, /sidebarVoiceStatusKeys\(member\.media, member\.moderation\)/);
     assert.match(rail, /voice-channel-statuses/);
     assert.match(rail, /aria-label=\{props\.t\(`common\.\$\{status\}` as TranslationKey\)\}/);
     assert.match(rail, /status === "deafened" \? <HeadsetIcon off \/> : <MicIcon off \/>/);

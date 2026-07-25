@@ -74,10 +74,29 @@ requirement.
   messages, increment only for inactive text rooms, and clear a room when it is
   opened. Do not add persistent read receipts without a separate design.
 
+## Browser Compatibility Gate
+
+- Run browser compatibility gates outside `App` so a blocked environment never
+  starts session requests, Socket.IO, WebRTC, or authenticated application
+  lifecycle hooks.
+- Block only user agents containing the case-insensitive
+  `Valve Steam GameOverlay` marker. Do not treat ordinary Chromium user agents
+  or `Valve Steam Client` as the Shift+Tab overlay.
+- The Steam GameOverlay surface is a non-dismissible full-screen explanation
+  with equivalent English and Turkish copy. Direct users to copy the current
+  address into a regular Chrome, Edge, Firefox, or Safari browser.
+
 ## Member and Owner Surfaces
 
 - The member directory includes active memberships and presents online members
   before offline members. While loading, keep known live/current users visible.
+- Directory and nickname updates may replace an existing online presence entry
+  but must never add an offline member to the online list. Only authoritative
+  presence snapshot/online events may promote a member to online.
+- When an online snapshot has not loaded, derive the current user's fallback
+  identity from the selected server directory before falling back to the global
+  account nickname. Preserve the server-scoped self nickname while realtime is
+  disconnected.
 - Member-safe directory data is limited to user ID, nickname, and server role.
   Do not reuse owner moderation records as a public directory response.
 - The normal server switcher is navigation for owners and members. Server
@@ -123,6 +142,9 @@ requirement.
 - Nickname editing uses the shared accessible dialog, trims input to the
   server-enforced 2–32 character contract, and applies acknowledged HTTP and
   scoped realtime updates without duplicating cached users.
+- Focus and select the nickname input once when the dialog mounts. Keep Escape
+  handling in a separate lifecycle so parent or realtime rerenders never reset
+  the user's selection, cursor position, or controlled input value.
 
 ## Chat Interaction Contract
 
@@ -165,6 +187,9 @@ requirement.
   their ellipsis to preserve status-icon symmetry, keep the row focusable, and
   open the same menu with secondary click, the Context Menu key, or Shift+F10.
   Rows without actions retain the browser context menu.
+- Compute row action availability from target-specific permissions after all
+  filters are applied. Do not render an ellipsis or custom context menu when the
+  resulting menu would contain no action.
 - Only one sidebar menu may be mounted at a time. Opening another replaces the
   current descriptor before the next overlay renders.
 - Outside pointer input, Escape, navigation, drawer changes, and action

@@ -44,6 +44,7 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | Member and stream volume presentation | `apps/web/AGENTS.md` — Member and Owner Surfaces |
 | Moderation, access links, and token replacement | `apps/server/AGENTS.md` — Authentication and Membership |
 | Access-claim completion and authentication races | `apps/web/AGENTS.md` — Authentication and Navigation |
+| Browser startup compatibility gates | `apps/web/AGENTS.md` — Browser Compatibility Gate |
 | Channel history, unread state, and member presence | `apps/web/AGENTS.md` — Authentication and Member Surfaces |
 | Screen capture and sender quality | `apps/web/src/lib/AGENTS.md` — Screen Sharing |
 | Screen-share control appearance | `apps/web/AGENTS.md` — Controls, Icons, and Accessibility |

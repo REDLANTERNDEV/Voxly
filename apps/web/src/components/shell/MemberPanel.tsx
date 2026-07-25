@@ -1,7 +1,7 @@
 import type { PresenceUser,PublicUser,RoomSummary,VoiceModerationState,VoiceSnapshot } from "@voxly/shared";
-import { initial,presenceFromUser } from "../../app/presentation.js";
+import { initial } from "../../app/presentation.js";
 import type { MemberAction,Translate } from "../../app/types.js";
-import { groupDirectoryMembers } from "../../lib/memberDirectory.js";
+import { canOwnerVoiceModerate,currentServerPresence,groupDirectoryMembers } from "../../lib/memberDirectory.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
 import { MemberActionMenu,memberActionMenuHeight,openSidebarMenuFromPointer,type SidebarActionMenuController } from "./SidebarMenus.js";
 export function MemberPanel({
@@ -39,16 +39,16 @@ export function MemberPanel({
       roomByMemberId.set(member.user.userId, room);
     }
   }
-  const groupedMembers = groupDirectoryMembers(members, onlineUsers, presenceFromUser(currentUser));
+  const groupedMembers = groupDirectoryMembers(members, onlineUsers, currentServerPresence(currentUser, members));
   const renderMembers = (users: PresenceUser[], online: boolean) => users.map((user) => {
     const voiceRoom = roomByMemberId.get(user.userId);
     const voiceMember = voiceRoom ? voiceSnapshots[voiceRoom.id]?.members.find((member) => member.user.userId === user.userId) : undefined;
     const roleLabel = user.role === "owner" ? t("common.owner") : t("common.user");
     const detail = voiceRoom ? `${roleLabel} · ${voiceRoom.name}` : roleLabel;
     const canRename = canModerate && (user.role === "member" || user.userId === currentUser.id);
-    const hasRemoteActions = user.userId !== currentUser.id && Boolean(voiceRoom || canModerate);
+    const canModerateRemote = canOwnerVoiceModerate(canModerate ? "owner" : null, currentUser.id, user);
+    const hasRemoteActions = user.userId !== currentUser.id && Boolean(voiceRoom || canModerateRemote);
     const hasActions = hasRemoteActions || canRename;
-    const canModerateRemote = canModerate && user.userId !== currentUser.id;
     const menuHeight = memberActionMenuHeight({
       hasVolume: Boolean(voiceRoom && user.userId !== currentUser.id),
       canRename,

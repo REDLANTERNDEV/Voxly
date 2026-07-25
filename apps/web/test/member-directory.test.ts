@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { PresenceUser } from "@voxly/shared";
-import { groupDirectoryMembers } from "../src/lib/memberDirectory.js";
+import { canOwnerVoiceModerate, currentServerPresence, groupDirectoryMembers } from "../src/lib/memberDirectory.js";
 import { readFileSync } from "node:fs";
 import { readAppSource } from "./app-source.js";
 
@@ -10,6 +10,12 @@ const ada: PresenceUser = { userId: "ada", nickname: "Ada", role: "member" };
 const ece: PresenceUser = { userId: "ece", nickname: "Ece", role: "member" };
 
 describe("member directory presence", () => {
+  it("limits owner voice moderation to other ordinary members", () => {
+    assert.equal(canOwnerVoiceModerate("owner", owner.userId, ada), true);
+    assert.equal(canOwnerVoiceModerate("owner", owner.userId, owner), false);
+    assert.equal(canOwnerVoiceModerate("member", ada.userId, ece), false);
+  });
+
   it("groups active directory members online first and keeps offline members", () => {
     const grouped = groupDirectoryMembers([owner, ada, ece], [owner, ece], owner);
 
@@ -22,6 +28,26 @@ describe("member directory presence", () => {
 
     assert.deepEqual(grouped.online.map((user) => user.userId), ["ece", "owner"]);
     assert.deepEqual(grouped.offline, []);
+  });
+
+  it("uses the server-scoped nickname for the current user without a presence snapshot", () => {
+    const current = { id: "owner", nickname: "Account Owner", role: "owner" as const, bannedAt: null };
+
+    assert.deepEqual(currentServerPresence(current, [{ ...owner, nickname: "Server Owner" }]), {
+      ...owner,
+      nickname: "Server Owner"
+    });
+    assert.deepEqual(currentServerPresence(current, []), {
+      userId: "owner",
+      nickname: "Account Owner",
+      role: "owner"
+    });
+  });
+
+  it("does not expose an empty action menu for another owner outside voice", () => {
+    const panel = readFileSync("src/components/shell/MemberPanel.tsx", "utf8");
+
+    assert.match(panel, /const hasRemoteActions = user\.userId !== currentUser\.id && Boolean\(voiceRoom \|\| canModerateRemote\)/);
   });
 
   it("refreshes the directory when membership changes", () => {

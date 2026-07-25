@@ -1,4 +1,16 @@
-import type { PresenceUser } from "@voxly/shared";
+import type { PresenceUser,PublicUser,UserRole } from "@voxly/shared";
+
+export function canOwnerVoiceModerate(currentRole: UserRole | null, currentUserId: string, target: PresenceUser) {
+  return currentRole === "owner" && target.role === "member" && target.userId !== currentUserId;
+}
+
+export function currentServerPresence(currentUser: PublicUser, directory: PresenceUser[]): PresenceUser {
+  return directory.find((user) => user.userId === currentUser.id) ?? {
+    userId: currentUser.id,
+    nickname: currentUser.nickname,
+    role: currentUser.role
+  };
+}
 
 export function groupDirectoryMembers(
   directory: PresenceUser[],

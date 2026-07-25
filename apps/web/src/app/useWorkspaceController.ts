@@ -2,7 +2,8 @@ import type { PresenceUser,PublicUser,RoomSummary,VoiceModerationState } from "@
 import { useCallback,useEffect,useMemo,useState,type RefObject } from "react";
 import { createServer,createServerRoom,deleteServer,deleteServerRoom,disconnectVoiceMember,fetchServerDirectory,fetchServerRooms,fetchServers,moderateServerMember,updateServer,updateServerMemberNickname,updateVoiceModeration } from "../api.js";
 import { resolveRememberedRoom,roomsForServer,type RoomHistory } from "../lib/channelState.js";
-import { replacePresenceUser } from "../lib/memberIdentity.js";
+import { currentServerPresence } from "../lib/memberDirectory.js";
+import { replacePresenceUser,replaceServerPresenceUserIfPresent } from "../lib/memberIdentity.js";
 import { defaultServerId,firstServerRoomPath } from "../lib/navigation.js";
 import type { ServerSummary } from "../types.js";
 import { serverPath } from "./navigation.js";
@@ -27,8 +28,8 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
   }, []);
   const activeServerId = route.name === "text" || route.name === "voice" || route.name === "owner"
     ? route.serverId : servers[0]?.id ?? defaultServerId;
-  const onlineUsers = onlineUsersByServer[activeServerId] ?? (user ? [presenceFromUser(user)] : []);
   const serverMembers = serverMembersByServer[activeServerId] ?? [];
+  const onlineUsers = onlineUsersByServer[activeServerId] ?? (user ? [currentServerPresence(user, serverMembers)] : []);
   const activeRooms = useMemo(() => roomsForServer(rooms, activeServerId), [activeServerId, rooms]);
   const currentRoom = activeRooms.find((room) => (route.name === "text" || route.name === "voice") && room.id === route.roomId && room.serverId === route.serverId);
   const roomGroups = useMemo(() => ({
@@ -158,7 +159,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
     voiceModeration: (userId: string, moderation: Partial<VoiceModerationState>) => updateVoiceModeration(activeServerId, userId, moderation),
     updateMemberNickname: async (userId: string, nickname: string) => {
       const response = await updateServerMemberNickname(activeServerId, userId, nickname);
-      setOnlineUsersByServer((current) => ({ ...current, [activeServerId]: replacePresenceUser(current[activeServerId] ?? [], response.user) }));
+      setOnlineUsersByServer((current) => replaceServerPresenceUserIfPresent(current, activeServerId, response.user));
       setServerMembersByServer((current) => ({ ...current, [activeServerId]: replacePresenceUser(current[activeServerId] ?? [], response.user) }));
       return response.user;
     },
@@ -173,7 +174,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
     applyPresenceOnline: (serverId: string, next: PresenceUser) => user && setOnlineUsersByServer((current) => ({ ...current, [serverId]: upsertPresence(current[serverId] ?? [presenceFromUser(user)], next, user) })),
     applyPresenceOffline: (serverId: string, userId: string) => setOnlineUsersByServer((current) => ({ ...current, [serverId]: (current[serverId] ?? []).filter((item) => item.userId !== userId) })),
     applyMemberUpdate: (serverId: string, next: PresenceUser) => {
-      setOnlineUsersByServer((current) => ({ ...current, [serverId]: replacePresenceUser(current[serverId] ?? [], next) }));
+      setOnlineUsersByServer((current) => replaceServerPresenceUserIfPresent(current, serverId, next));
       setServerMembersByServer((current) => ({ ...current, [serverId]: replacePresenceUser(current[serverId] ?? [], next) }));
     },
     applyServerName: (serverId: string, name: string) => setServers((current) => current.map((server) => server.id === serverId ? { ...server, name } : server)),

@@ -73,6 +73,13 @@ describe("frontend localization", () => {
     assert.equal(translate("tr", "audio.playbackBlocked"), "Tarayıcı gelen sesi duraklattı.");
   });
 
+  it("translates the Steam overlay browser warning", () => {
+    assert.equal(translate("en", "browser.steamOverlayTitle"), "Open Voxly in a regular browser");
+    assert.equal(translate("tr", "browser.steamOverlayTitle"), "Voxly’yi normal bir tarayıcıda aç");
+    assert.match(translate("en", "browser.steamOverlayCopy"), /microphone access/);
+    assert.match(translate("tr", "browser.steamOverlayCopy"), /mikrofon izni/);
+  });
+
   it("translates general audio levels and microphone testing", () => {
     assert.equal(translate("en", "audio.inputVolume"), "Input level");
     assert.equal(translate("en", "audio.startTest"), "Listen to microphone");

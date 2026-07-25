@@ -6,6 +6,23 @@ export function replacePresenceUser(users: PresenceUser[], next: PresenceUser) {
     : [...users, next];
 }
 
+export function replacePresenceUserIfPresent(users: PresenceUser[], next: PresenceUser) {
+  return users.some((user) => user.userId === next.userId)
+    ? users.map((user) => user.userId === next.userId ? next : user)
+    : users;
+}
+
+export function replaceServerPresenceUserIfPresent(
+  usersByServer: Record<string, PresenceUser[]>,
+  serverId: string,
+  next: PresenceUser
+) {
+  const users = usersByServer[serverId];
+  return users
+    ? { ...usersByServer, [serverId]: replacePresenceUserIfPresent(users, next) }
+    : usersByServer;
+}
+
 export function renameMessagesForServer(
   messagesByRoom: Record<string, ChatMessage[]>,
   roomServerIds: Record<string, string>,

@@ -1,4 +1,4 @@
-import type { VoiceMediaState } from "@voxly/shared";
+import type { VoiceMediaState,VoiceModerationState } from "@voxly/shared";
 
 export type VoiceControlKey = "mic" | "deafen" | "camera" | "screenShare";
 
@@ -96,9 +96,10 @@ export function voiceStatusLabels(media: VoiceMediaState) {
   return labels;
 }
 
-export function sidebarVoiceStatusKeys(media: VoiceMediaState): SidebarVoiceStatusKey[] {
+export function sidebarVoiceStatusKeys(media: VoiceMediaState, moderation?: VoiceModerationState): SidebarVoiceStatusKey[] {
+  if (moderation?.deafened) return [];
   const statuses: SidebarVoiceStatusKey[] = [];
-  if (!media.mic || media.deafened) statuses.push("muted");
+  if ((!media.mic || media.deafened) && !moderation?.muted) statuses.push("muted");
   if (media.deafened) statuses.push("deafened");
   return statuses;
 }
