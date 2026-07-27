@@ -1,0 +1,61 @@
+# Dependabot configuration for monorepo (npm/yarn/pnpm workspaces)
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # -----------------------------------------------------------------
+  # npm workspaces (root) — covers all apps/* and packages/* workspaces
+  # -----------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    versioning-strategy: increase-if-necessary
+    groups:
+      npm-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "javascript"
+    open-pull-requests-limit: 10
+
+  # -----------------------------------------------------------------
+  # GitHub Actions workflows
+  # -----------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - "dependencies"
+      - "github_actions"
+    open-pull-requests-limit: 5
+
+  # -----------------------------------------------------------------
+  # Dockerfiles at repo root
+  # -----------------------------------------------------------------
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:15"
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+    open-pull-requests-limit: 5
