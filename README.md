@@ -1,13 +1,17 @@
 # Voxly
 
-<p align="center">
-  <img src="apps/web/public/brand/logo-wordmark.svg" alt="Voxly" width="360" />
-</p>
+![Voxly](apps/web/public/brand/logo-wordmark.svg)
 
 Voxly is a small, self-hosted text and WebRTC voice chat application for
 private groups. It provides invite-only accounts, server-scoped rooms,
 presence, moderation, camera and screen sharing without depending on a hosted
 chat or TURN provider.
+
+## Screenshots
+
+![Chat Interface](docs/screenshots/chat.png)
+
+![Voice Call](docs/screenshots/screen-share.png)
 
 ## Features
 
@@ -91,15 +95,15 @@ Dockerfile        Production application image
 Docker Compose reads `.env` from the repository root. Start from
 [`.env.example`](.env.example) and never commit the resulting `.env` file.
 
-| Variable | Purpose |
-| --- | --- |
-| `VOXLY_PUBLIC_URL` | Public HTTPS URL used for links and secure-cookie defaults |
-| `VOXLY_HTTP_PORT` | Host loopback port used by the reverse proxy |
-| `DATABASE_PATH` | SQLite path when running without Docker |
-| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Optional Cloudflare Turnstile protection |
-| `TURN_REALM` / `TURN_STATIC_AUTH_SECRET` | Enable authenticated self-hosted TURN |
-| `VOXLY_TURN_MEMORY_LIMIT` | Hard Coturn container memory ceiling |
-| `VOXLY_TURN_MEMORY_RESERVATION` | Soft Coturn memory reservation |
+| Variable                                      | Purpose                                                    |
+| --------------------------------------------- | ---------------------------------------------------------- |
+| `VOXLY_PUBLIC_URL`                            | Public HTTPS URL used for links and secure-cookie defaults |
+| `VOXLY_HTTP_PORT`                             | Host loopback port used by the reverse proxy               |
+| `DATABASE_PATH`                               | SQLite path when running without Docker                    |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Optional Cloudflare Turnstile protection                   |
+| `TURN_REALM` / `TURN_STATIC_AUTH_SECRET`      | Enable authenticated self-hosted TURN                      |
+| `VOXLY_TURN_MEMORY_LIMIT`                     | Hard Coturn container memory ceiling                       |
+| `VOXLY_TURN_MEMORY_RESERVATION`               | Soft Coturn memory reservation                             |
 
 The complete TURN variable reference is in [docs/turn.md](docs/turn.md).
 Owner and member session recovery procedures are documented in
