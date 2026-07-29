@@ -1,12 +1,57 @@
-include:
-  - compose.yaml
-  - compose.turn.yaml   # only if you want TURN bundled by default
+name: voxly
 
 services:
   app:
+    build:
+      context: .
+      target: runtime
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      DATABASE_PATH: /data/voxly.sqlite
+      WEB_DIST_PATH: /app/apps/web/dist
+      VOXLY_PUBLIC_URL: ${VOXLY_PUBLIC_URL:?VOXLY_PUBLIC_URL is required}
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
+      OWNER_BOOTSTRAP_TOKEN: ${OWNER_BOOTSTRAP_TOKEN:-}
+      ENABLE_HTTP_OWNER_BOOTSTRAP: ${ENABLE_HTTP_OWNER_BOOTSTRAP:-false}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      TURN_REALM: ${TURN_REALM:-}
+      TURN_STATIC_AUTH_SECRET: ${TURN_STATIC_AUTH_SECRET:-}
+      TURN_CREDENTIAL_TTL_SECONDS: ${TURN_CREDENTIAL_TTL_SECONDS:-86400}
+    expose:
+      - "3000"
+    volumes:
+      - voxly_data:/data
     networks:
       - dokploy-network
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: ${VOXLY_APP_MEMORY_LIMIT:-384m}
+    mem_reservation: ${VOXLY_APP_MEMORY_RESERVATION:-160m}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/me').then((r)=>process.exit(r.status < 500 ? 0 : 1)).catch(()=>process.exit(1))"
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
 
 networks:
   dokploy-network:
     external: true
+
+volumes:
+  voxly_data:
