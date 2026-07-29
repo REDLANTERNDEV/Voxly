@@ -10,3 +10,4 @@ dist-test/
 !.env.example
 Voxly-App-UI/
 voxly-web-logo-pack-v3-centered/
+/docs/superpowers/

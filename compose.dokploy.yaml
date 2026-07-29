@@ -1,0 +1,12 @@
+include:
+  - compose.yaml
+  - compose.turn.yaml   # only if you want TURN bundled by default
+
+services:
+  app:
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true
