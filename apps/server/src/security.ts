@@ -8,6 +8,8 @@
  * every deployment path gets an identical posture.
  */
 
+import { analyticsCspOrigins,type AnalyticsConfig } from "./analytics.js";
+
 /**
  * Origins embedded in `<iframe>` by the chat client.
  *
@@ -25,7 +27,10 @@ const embedFrameOrigins = [
 /** Cloudflare Turnstile loads its script and renders its widget in an iframe. */
 const turnstileOrigin = "https://challenges.cloudflare.com";
 
-export function contentSecurityPolicyDirectives(options: { upgradeInsecureRequests: boolean }) {
+export function contentSecurityPolicyDirectives(options: { upgradeInsecureRequests: boolean; analytics?: AnalyticsConfig }) {
+  // Analytics are opt-in per deployment. With none configured these lists are
+  // empty and the policy is identical to a build without the option.
+  const analytics = analyticsCspOrigins(options.analytics);
   return {
     "default-src": ["'self'"],
     "base-uri": ["'self'"],
@@ -33,13 +38,13 @@ export function contentSecurityPolicyDirectives(options: { upgradeInsecureReques
     "form-action": ["'self'"],
     // The app is never meant to be framed; this is the modern clickjacking guard.
     "frame-ancestors": ["'none'"],
-    "script-src": ["'self'", turnstileOrigin],
+    "script-src": ["'self'", turnstileOrigin, ...analytics.script],
     // React style props render as inline style attributes, which style-src governs.
     "style-src": ["'self'", "'unsafe-inline'"],
     "img-src": ["'self'", "data:", "blob:", "https:"],
     "font-src": ["'self'", "data:"],
     // Socket.IO negotiates over HTTP then upgrades to a WebSocket on the same origin.
-    "connect-src": ["'self'", "ws:", "wss:", turnstileOrigin],
+    "connect-src": ["'self'", "ws:", "wss:", turnstileOrigin, ...analytics.connect],
     // WebRTC tracks are attached via srcObject and are not CSP-governed, but
     // locally recorded or buffered media uses blob: URLs.
     "media-src": ["'self'", "blob:"],
@@ -51,11 +56,11 @@ export function contentSecurityPolicyDirectives(options: { upgradeInsecureReques
   };
 }
 
-export function helmetOptions(options: { https: boolean }) {
+export function helmetOptions(options: { https: boolean; analytics?: AnalyticsConfig }) {
   return {
     contentSecurityPolicy: {
       useDefaults: false,
-      directives: contentSecurityPolicyDirectives({ upgradeInsecureRequests: options.https })
+      directives: contentSecurityPolicyDirectives({ upgradeInsecureRequests: options.https, analytics: options.analytics })
     },
     // Only send HSTS when the deployment is actually HTTPS. Sending it over
     // plain HTTP is ignored by browsers, but sending it from a local HTTP

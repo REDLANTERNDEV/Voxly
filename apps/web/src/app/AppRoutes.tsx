@@ -9,11 +9,12 @@ import { InviteScreen } from "../features/auth/InviteScreen.js";
 import { TextRoomScreen } from "../features/chat/TextRoomScreen.js";
 import { OwnerPanel } from "../features/owner/OwnerPanel.js";
 import { VoiceRoomScreen } from "../features/voice/VoiceRoomScreen.js";
+import type { AnalyticsSettings } from "../lib/analytics.js";
 import type { LanguageCode } from "../lib/i18n.js";
 import { startupSurface } from "../lib/startupSurface.js";
 import type { LoadState,Route,ShellActions,ShellModel,Translate } from "./types.js";
 
-export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, messages, language, t, renderSurface, turnstileSiteKey, completeAuthentication, loadAcceptedServer, onOwnerClaimed, onAccessClaimed, navigate, changeLanguage, textRoomActions }: {
+export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, messages, language, t, renderSurface, turnstileSiteKey, analytics, completeAuthentication, loadAcceptedServer, onOwnerClaimed, onAccessClaimed, navigate, changeLanguage, textRoomActions }: {
   route: Route;
   user: PublicUser | null;
   authState: LoadState;
@@ -24,6 +25,7 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
   t: Translate;
   renderSurface(surface: ReactNode): ReactNode;
   turnstileSiteKey: string | null;
+  analytics: AnalyticsSettings | null;
   completeAuthentication(user: PublicUser): void;
   loadAcceptedServer(serverId: string): Promise<void>;
   onOwnerClaimed(user: PublicUser): void;
@@ -41,7 +43,7 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
   if (route.name === "access-claim") {
     return renderSurface(<AccessClaimScreen token={route.token} t={t} onNavigate={navigate} onClaimed={onAccessClaimed} />);
   }
-  if (!user && route.name === "landing") return <LandingPage language={language} t={t} onNavigate={navigate} onLanguageChange={changeLanguage} />;
+  if (!user && route.name === "landing") return <LandingPage language={language} analytics={analytics} t={t} onNavigate={navigate} onLanguageChange={changeLanguage} />;
   if (!user && route.name === "invite" && !route.token) return <InviteRequiredScreen language={language} t={t} onNavigate={navigate} onLanguageChange={changeLanguage} />;
   if (!user || route.name === "invite") {
     return renderSurface(<InviteScreen

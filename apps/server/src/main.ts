@@ -1,3 +1,4 @@
+import { resolveAnalyticsConfig } from "./analytics.js";
 import { createVoxlyApp } from "./app.js";
 import { createRtcConfigProvider } from "./rtcConfig.js";
 import { resolveTurnstileConfig } from "./turnstile.js";
@@ -17,6 +18,11 @@ const app = await createVoxlyApp({
     siteKey: process.env.TURNSTILE_SITE_KEY,
     secretKey: process.env.TURNSTILE_SECRET_KEY,
     publicUrl: process.env.VOXLY_PUBLIC_URL
+  }),
+  analytics: resolveAnalyticsConfig({
+    provider: process.env.ANALYTICS_PROVIDER,
+    scriptUrl: process.env.ANALYTICS_SCRIPT_URL,
+    websiteId: process.env.ANALYTICS_WEBSITE_ID
   }),
   rtc: createRtcConfigProvider(process.env)
 });

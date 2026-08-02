@@ -51,6 +51,33 @@ ENABLE_HTTP_OWNER_BOOTSTRAP=false
 Keep `.env` readable only by trusted operators. Do not configure
 `OWNER_BOOTSTRAP_TOKEN` in production; create owner access from the CLI.
 
+### Optional landing-page analytics
+
+Analytics are off unless you turn them on: a default deployment loads no
+third-party script and contacts no analytics host. When configured, the
+provider script is loaded only on the public landing page (`/`). Authenticated
+routes — which contain server and room IDs — are never reported, and automatic
+SPA route tracking is disabled on purpose.
+
+For a self-hosted Umami (or another instance using the same script tag):
+
+```dotenv
+ANALYTICS_PROVIDER=umami
+ANALYTICS_SCRIPT_URL=https://analytics.example.com/script.js
+ANALYTICS_WEBSITE_ID=451f26ee-726c-46f0-9643-2b302bef4a5f
+```
+
+For Google Analytics 4, only the measurement ID is needed:
+
+```dotenv
+ANALYTICS_PROVIDER=google
+ANALYTICS_WEBSITE_ID=G-XXXXXXXXXX
+```
+
+The application adds the provider's origins to its own Content-Security-Policy,
+so no proxy-side header change is required. An incomplete configuration fails at
+startup rather than silently disabling tracking.
+
 ## 4. Start the application
 
 ```sh

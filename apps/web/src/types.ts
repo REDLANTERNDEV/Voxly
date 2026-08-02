@@ -1,4 +1,5 @@
 import type { ChatMessage, PresenceUser, PublicUser, RoomSummary, VoiceModerationState } from "@voxly/shared";
+import type { AnalyticsSettings } from "./lib/analytics.js";
 
 export type { ChatMessage, PresenceUser, PublicUser, RoomSummary };
 
@@ -46,6 +47,8 @@ export interface AppConfigResponse {
   turnstile: {
     siteKey: string;
   } | null;
+  /** Null unless the deployment opted into landing-page analytics. */
+  analytics: AnalyticsSettings | null;
 }
 
 export interface RtcConfigResponse {

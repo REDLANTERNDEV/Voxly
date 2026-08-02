@@ -109,6 +109,7 @@ Docker Compose reads `.env` from the repository root. Start from
 | `TRUST_PROXY`                                 | Read client IPs from `X-Forwarded-For` (default `true`)    |
 | `DATABASE_PATH`                               | SQLite path when running without Docker                    |
 | `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Optional Cloudflare Turnstile protection                   |
+| `ANALYTICS_PROVIDER` / `ANALYTICS_SCRIPT_URL` / `ANALYTICS_WEBSITE_ID` | Optional landing-page analytics; disabled by default |
 | `TURN_REALM` / `TURN_STATIC_AUTH_SECRET`      | Enable authenticated self-hosted TURN                      |
 | `VOXLY_TURN_MEMORY_LIMIT`                     | Hard Coturn container memory ceiling                       |
 | `VOXLY_TURN_MEMORY_RESERVATION`               | Soft Coturn memory reservation                             |

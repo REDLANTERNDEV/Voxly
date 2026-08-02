@@ -22,6 +22,7 @@ import type {
   VoiceSnapshot
 } from "@voxly/shared";
 import type { DatabaseSync } from "node:sqlite";
+import type { AnalyticsConfig } from "./analytics.js";
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import { helmetOptions } from "./security.js";
 import { consumeOwnerClaim } from "./auth/ownerClaims.js";
@@ -46,6 +47,8 @@ export interface CreateVoxlyAppOptions {
   secureCookies: boolean;
   rtc?: RtcConfigProvider;
   turnstile?: TurnstileConfig;
+  /** Optional landing-page analytics chosen by the operator. */
+  analytics?: AnalyticsConfig;
   webDistPath?: string;
   /** Derive client IPs from X-Forwarded-For. Defaults to true; see below. */
   trustProxy?: boolean;
@@ -163,7 +166,7 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
     // TRUST_PROXY=false so a spoofed X-Forwarded-For cannot forge identities.
     trustProxy: options.trustProxy ?? true
   });
-  await server.register(helmet, helmetOptions({ https: options.secureCookies }));
+  await server.register(helmet, helmetOptions({ https: options.secureCookies, analytics: options.analytics }));
   await server.register(rateLimit, {
     // Opt in per route rather than throttling reads and WebSocket polling.
     global: false
@@ -246,7 +249,11 @@ function registerRoutes(
   server.get("/api/config", async () => {
     return {
       publicUrl: normalizePublicUrl(options.publicUrl),
-      turnstile: options.turnstile ? { siteKey: options.turnstile.siteKey } : null
+      turnstile: options.turnstile ? { siteKey: options.turnstile.siteKey } : null,
+      // Public by definition: the browser has to load this script itself.
+      analytics: options.analytics
+        ? { provider: options.analytics.provider, scriptUrl: options.analytics.scriptUrl, websiteId: options.analytics.websiteId }
+        : null
     };
   });
 

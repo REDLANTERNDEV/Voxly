@@ -1,10 +1,15 @@
+import { useEffect } from "react";
 import type { Translate } from "../../app/types.js";
 import { ArrowIcon } from "../../components/ui/Icons.js";
 import { BrandLockup,NavLink } from "../../components/ui/Navigation.js";
 import { LanguageSwitch } from "../../components/ui/Primitives.js";
+import { trackLandingView,type AnalyticsSettings } from "../../lib/analytics.js";
 import { type LanguageCode,type TranslationKey } from "../../lib/i18n.js";
 const landingPrincipleKeys = ["privateAccess", "selfHosted", "lowFootprint"] as const;
-export function LandingPage({ language, t, onLanguageChange, onNavigate }: { language: LanguageCode; t: Translate; onLanguageChange: (language: LanguageCode) => void; onNavigate: (path: string) => void }) {
+export function LandingPage({ language, analytics, t, onLanguageChange, onNavigate }: { language: LanguageCode; analytics: AnalyticsSettings | null; t: Translate; onLanguageChange: (language: LanguageCode) => void; onNavigate: (path: string) => void }) {
+  // Analytics arrive with /api/config, so this runs once the operator's
+  // configuration is known and stays a no-op when none is configured.
+  useEffect(() => trackLandingView(analytics), [analytics]);
   return (
     <main className="landing-page">
       <header className="landing-nav" style={{ viewTransitionName: "persistent-nav" }}>

@@ -10,7 +10,7 @@ import type { LoadState,Route } from "./types.js";
 export function useSessionController(route: Route, navigate: (path: string) => void) {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [authState, setAuthState] = useState<LoadState>("loading");
-  const [appConfig, setAppConfig] = useState<AppConfigResponse>({ publicUrl: null, turnstile: null });
+  const [appConfig, setAppConfig] = useState<AppConfigResponse>({ publicUrl: null, turnstile: null, analytics: null });
   const [rtcConfig, setRtcConfig] = useState<RtcConfigResponse>({ iceServers: [], expiresAt: null });
   const [rtcConfigReady, setRtcConfigReady] = useState(false);
   const [rtcConfigError, setRtcConfigError] = useState("");
@@ -35,7 +35,7 @@ export function useSessionController(route: Route, navigate: (path: string) => v
   useEffect(() => {
     let mounted = true;
     fetchConfig().then((config) => { if (mounted) setAppConfig(config); })
-      .catch(() => { if (mounted) setAppConfig({ publicUrl: null, turnstile: null }); });
+      .catch(() => { if (mounted) setAppConfig({ publicUrl: null, turnstile: null, analytics: null }); });
     return () => { mounted = false; };
   }, []);
 

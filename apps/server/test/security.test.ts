@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
+import { resolveAnalyticsConfig } from "../src/analytics.js";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 import { contentSecurityPolicyDirectives } from "../src/security.js";
 
@@ -54,6 +55,36 @@ describe("response security headers", () => {
     assert.ok(directives["connect-src"].includes("wss:"));
     // The production bundle emits no inline <script>, so this must stay strict.
     assert.ok(!directives["script-src"].includes("'unsafe-inline'"));
+  });
+
+  it("keeps the policy free of analytics origins when no provider is configured", () => {
+    const directives = contentSecurityPolicyDirectives({ upgradeInsecureRequests: false });
+
+    assert.deepEqual(directives["script-src"], ["'self'", "https://challenges.cloudflare.com"]);
+    assert.deepEqual(directives["connect-src"], ["'self'", "ws:", "wss:", "https://challenges.cloudflare.com"]);
+  });
+
+  it("allows only the configured analytics origin", () => {
+    const directives = contentSecurityPolicyDirectives({
+      upgradeInsecureRequests: false,
+      analytics: { provider: "umami", scriptUrl: "https://analytics.example.com/script.js", websiteId: "abc" }
+    });
+
+    assert.ok(directives["script-src"].includes("https://analytics.example.com"));
+    assert.ok(directives["connect-src"].includes("https://analytics.example.com"));
+    // The script path is not an origin and would silently invalidate the source.
+    assert.ok(!directives["script-src"].includes("https://analytics.example.com/script.js"));
+  });
+
+  it("allows the Google Analytics script and its regional collection endpoints", () => {
+    const directives = contentSecurityPolicyDirectives({
+      upgradeInsecureRequests: false,
+      analytics: resolveAnalyticsConfig({ provider: "google", websiteId: "G-TEST123" })
+    });
+
+    assert.ok(directives["script-src"].includes("https://www.googletagmanager.com"));
+    assert.ok(directives["connect-src"].includes("https://*.google-analytics.com"));
+    assert.ok(directives["connect-src"].includes("https://*.analytics.google.com"));
   });
 
   it("withholds HSTS and upgrade-insecure-requests from plain-HTTP deployments", async () => {

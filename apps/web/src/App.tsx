@@ -228,6 +228,7 @@ export function App() {
     t={t}
     renderSurface={renderSurface}
     turnstileSiteKey={session.appConfig.turnstile?.siteKey ?? null}
+    analytics={session.appConfig.analytics}
     completeAuthentication={session.completeAuthentication}
     loadAcceptedServer={workspace.loadAcceptedServer}
     onOwnerClaimed={handleOwnerClaimed}
