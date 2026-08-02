@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
 import {
   applyAudioOutputDevice,
   audioDeviceDisplayName,
@@ -124,6 +125,28 @@ describe("audio device application", () => {
       audio: { deviceId: { exact: "mic-a" } },
       video: false
     });
+  });
+
+  it("adds noise suppression only when the caller requests it", () => {
+    // Omitting the option must stay byte-identical to a capture built before
+    // the preference existed.
+    assert.deepEqual(buildMicrophoneConstraints("mic-a", {}), buildMicrophoneConstraints("mic-a"));
+    assert.deepEqual(buildMicrophoneConstraints("", {}), buildMicrophoneConstraints(""));
+
+    assert.deepEqual(buildMicrophoneConstraints("", { noiseSuppression: true }), {
+      audio: { noiseSuppression: true },
+      video: false
+    });
+    assert.deepEqual(buildMicrophoneConstraints("mic-a", { noiseSuppression: false }), {
+      audio: { deviceId: { exact: "mic-a" }, noiseSuppression: false },
+      video: false
+    });
+  });
+
+  it("keeps noise suppression an ideal constraint so capture never over-constrains", () => {
+    const source = readFileSync("src/lib/audioDevices.ts", "utf8");
+
+    assert.doesNotMatch(source, /noiseSuppression:\s*\{/);
   });
 
   it("prefers AudioContext output routing and maps system default to an empty sink", async () => {

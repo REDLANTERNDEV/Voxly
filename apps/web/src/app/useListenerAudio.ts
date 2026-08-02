@@ -3,6 +3,7 @@ import { useCallback,useEffect,useRef,useState } from "react";
 import { DEFAULT_AUDIO_LEVELS,readAudioLevels,writeAudioLevels,type AudioLevels } from "../lib/audioLevels.js";
 import { subscribeBlockedAudioOutputs } from "../lib/audioOutput.js";
 import { claimMicrophoneTestDeafen,shouldRestoreMicrophoneTestDeafen,type MicrophoneTestDeafenLease } from "../lib/microphoneTestIsolation.js";
+import { browserSupportsNoiseSuppression,DEFAULT_NOISE_SUPPRESSION,readNoiseSuppression,writeNoiseSuppression } from "../lib/noiseSuppression.js";
 import { useAudioDevices } from "../lib/useAudioDevices.js";
 import { useConnectionHealth } from "../lib/useConnectionHealth.js";
 import { useMicrophoneTest } from "../lib/useMicrophoneTest.js";
@@ -21,16 +22,19 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, activ
 }) {
   const audioDevices = useAudioDevices({ userId: user?.id });
   const [audioLevels, setAudioLevels] = useState<AudioLevels>(DEFAULT_AUDIO_LEVELS);
+  const [noiseSuppression, setNoiseSuppression] = useState(DEFAULT_NOISE_SUPPRESSION);
+  const [noiseSuppressionSupported] = useState(browserSupportsNoiseSuppression);
   const voice = useVoiceMedia({
     socket,
     user,
     iceServers,
     voiceRoomIds,
     microphoneDeviceId: audioDevices.selectedInputId,
-    microphoneVolume: audioLevels.input
+    microphoneVolume: audioLevels.input,
+    noiseSuppression
   });
   const connectionHealth = useConnectionHealth(socket);
-  const microphoneTest = useMicrophoneTest(audioDevices.selectedInputId, audioLevels.input, voice.microphoneMonitorStream);
+  const microphoneTest = useMicrophoneTest(audioDevices.selectedInputId, audioLevels.input, voice.microphoneMonitorStream, noiseSuppression);
   const microphoneTestDeafenRef = useRef<MicrophoneTestDeafenLease | null>(null);
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
   const [screenVolumes, setScreenVolumes] = useState<Record<string, number>>({});
@@ -47,6 +51,7 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, activ
   }, [voice.activeRoomId, voice.leave]);
   useEffect(() => setMemberVolumes(user ? readUserVolumes(user.id) : {}), [user?.id]);
   useEffect(() => setAudioLevels(user ? readAudioLevels(user.id) : { ...DEFAULT_AUDIO_LEVELS }), [user?.id]);
+  useEffect(() => setNoiseSuppression(user ? readNoiseSuppression(user.id) : DEFAULT_NOISE_SUPPRESSION), [user?.id]);
   useEffect(() => {
     const ids = voice.remoteStreams.filter((item) => item.kind === "screen").map((item) => item.stream.id);
     setScreenVolumes((current) => pruneVolumes(current, ids));
@@ -58,6 +63,11 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, activ
       if (user) writeAudioLevels(user.id, next);
       return next;
     });
+  }, [user?.id]);
+
+  const changeNoiseSuppression = useCallback((enabled: boolean) => {
+    setNoiseSuppression(enabled);
+    if (user) writeNoiseSuppression(user.id, enabled);
   }, [user?.id]);
 
   const isolateMicrophoneTest = useCallback(async () => {
@@ -114,9 +124,10 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, activ
 
   return {
     voice, connectionHealth, audioDevices, audioLevels, microphoneTest,
+    noiseSuppression, noiseSuppressionSupported,
     memberVolumes, screenVolumes, audioPlaybackBlocked, pendingLiveWatch,
     activeVoiceRoomRef, leaveVoiceRef, setPendingLiveWatch,
-    changeMemberVolume, changeScreenVolume, changeAudioLevel,
+    changeMemberVolume, changeScreenVolume, changeAudioLevel, changeNoiseSuppression,
     toggleMicrophoneTest, stopMicrophoneTest
   };
 }

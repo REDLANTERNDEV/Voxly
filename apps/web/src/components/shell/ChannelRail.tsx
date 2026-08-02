@@ -23,13 +23,14 @@ import { MemberActionMenu,memberActionMenuHeight,openSidebarMenuFromPointer,Side
 type ChannelRailProps = Pick<ShellModel,
   "activeServerId" | "activeVoiceRoomId" | "appConfig" | "audioDevices" | "audioLevels" |
   "controls" | "currentNickname" | "language" | "memberVolumes" |
-  "microphoneTestActive" | "microphoneTestError" | "rooms" | "route" |
+  "microphoneTestActive" | "microphoneTestError" | "noiseSuppression" |
+  "noiseSuppressionSupported" | "rooms" | "route" |
   "servers" | "socketState" | "t" | "theme" | "unreadByRoom" | "user" |
   "voiceModeration" | "voiceSnapshots"
 > & Pick<ShellActions,
   "onCloseAudioSettings" | "onCreateRoom" | "onDeleteRoom" |
   "onInputVolumeChange" | "onJoinVoice" | "onLanguageChange" |
-  "onMemberVolumeChange" | "onNavigate" | "onOutputVolumeChange" |
+  "onMemberVolumeChange" | "onNavigate" | "onNoiseSuppressionChange" | "onOutputVolumeChange" |
   "onSelectServer" | "onThemeChange" | "onToggleMicrophoneTest" |
   "onUpdateMemberPermissions" | "onVoiceModeration" | "onWatchLive"
 > & {
@@ -235,6 +236,8 @@ export function ChannelRail(props: ChannelRailProps) {
         selectedOutputId={props.audioDevices.selectedOutputId}
         inputVolume={props.audioLevels.input}
         outputVolume={props.audioLevels.output}
+        noiseSuppression={props.noiseSuppression}
+        noiseSuppressionSupported={props.noiseSuppressionSupported}
         microphoneTestActive={props.microphoneTestActive}
         microphoneTestError={props.microphoneTestError}
         loading={props.audioDevices.loading}
@@ -251,6 +254,9 @@ export function ChannelRail(props: ChannelRailProps) {
           unavailable: props.t("audio.unavailable"),
           inputVolume: props.t("audio.inputVolume"),
           outputVolume: props.t("audio.outputVolume"),
+          noiseSuppression: props.t("audio.noiseSuppression"),
+          noiseSuppressionHint: props.t("audio.noiseSuppressionHint"),
+          noiseSuppressionUnsupported: props.t("audio.noiseSuppressionUnsupported"),
           startTest: props.t("audio.startTest"),
           stopTest: props.t("audio.stopTest"),
           testHint: props.t("audio.testHint"),
@@ -265,6 +271,7 @@ export function ChannelRail(props: ChannelRailProps) {
         onSelectOutput={props.audioDevices.selectOutput}
         onInputVolumeChange={props.onInputVolumeChange}
         onOutputVolumeChange={props.onOutputVolumeChange}
+        onNoiseSuppressionChange={props.onNoiseSuppressionChange}
         onToggleMicrophoneTest={props.onToggleMicrophoneTest}
       />
       {deleteError ? <p className="error-text" aria-live="polite">{deleteError}</p> : null}

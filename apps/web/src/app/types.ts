@@ -55,6 +55,8 @@ export interface ShellModel {
   pendingLiveWatch: LiveWatchRequest | null;
   audioDevices: UseAudioDevicesResult;
   audioLevels: AudioLevels;
+  noiseSuppression: boolean;
+  noiseSuppressionSupported: boolean;
   microphoneTestActive: boolean;
   microphoneTestError: MicrophoneTestError;
   drawer: Drawer;
@@ -89,6 +91,7 @@ export interface ShellActions {
   onScreenVolumeChange: (streamId: string, volume: number) => void;
   onInputVolumeChange: (volume: number) => void;
   onOutputVolumeChange: (volume: number) => void;
+  onNoiseSuppressionChange: (enabled: boolean) => void;
   onToggleMicrophoneTest: () => Promise<void>;
   onCloseAudioSettings: () => void;
   onToggleControl: (key: keyof VoiceControls) => void;

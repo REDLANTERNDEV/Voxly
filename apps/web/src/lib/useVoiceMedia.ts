@@ -22,6 +22,7 @@ import {
 import { requestVoiceJoin } from "./voiceJoin.js";
 import { requestVisualSubscriptions, voiceRecoveryRetryDelayMs } from "./voiceRecovery.js";
 import { buildMicrophoneConstraints } from "./audioDevices.js";
+import { DEFAULT_NOISE_SUPPRESSION } from "./noiseSuppression.js";
 import { releaseUnusedSharedAudioOutput } from "./audioOutput.js";
 import {
   shouldIgnoreIncomingOffer,
@@ -57,6 +58,7 @@ interface UseVoiceMediaInput {
   voiceRoomIds: string[];
   microphoneDeviceId?: string;
   microphoneVolume?: number;
+  noiseSuppression?: boolean;
 }
 
 export interface VoiceJoinOptions {
@@ -80,7 +82,7 @@ interface PeerRemovalOptions {
   preserveVisualSubscriptions?: boolean;
 }
 
-export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, microphoneDeviceId = "", microphoneVolume = 100 }: UseVoiceMediaInput) {
+export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, microphoneDeviceId = "", microphoneVolume = 100, noiseSuppression = DEFAULT_NOISE_SUPPRESSION }: UseVoiceMediaInput) {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [controls, setControls] = useState<VoiceControls>(() => createInitialVoiceControls());
   const [voiceModeration, setVoiceModeration] = useState<VoiceModerationState>({ muted: false, deafened: false });
@@ -96,6 +98,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const iceServersRef = useRef(iceServers);
   const microphoneDeviceIdRef = useRef(microphoneDeviceId);
   const microphoneVolumeRef = useRef(microphoneVolume);
+  const noiseSuppressionRef = useRef(noiseSuppression);
+  const appliedMicrophoneCaptureRef = useRef({ deviceId: microphoneDeviceId, noiseSuppression });
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const remoteStreamKindsRef = useRef<Map<string, Map<string, RemoteMediaKind>>>(new Map());
   const viewerVisualSubscriptionsRef = useRef<Map<string, Set<VisualMediaKind>>>(new Map());
@@ -142,6 +146,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     microphoneVolumeRef.current = microphoneVolume;
     microphoneInputRef.current?.setVolume(microphoneVolume);
   }, [microphoneVolume]);
+
+  useEffect(() => {
+    noiseSuppressionRef.current = noiseSuppression;
+  }, [noiseSuppression]);
 
   useEffect(() => {
     userIdRef.current = user?.id ?? null;
@@ -483,9 +491,15 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     }
   }, [sendOffer, syncLocalTracks]);
 
-  const prepareMicrophoneInput = useCallback((rawStream: MediaStream) => (
-    createMicrophoneInput(rawStream, microphoneVolumeRef.current)
-  ), []);
+  const prepareMicrophoneInput = useCallback((rawStream: MediaStream) => {
+    // Record the capture settings this graph was opened with so the switch
+    // effect can tell an already-applied change from a pending one.
+    appliedMicrophoneCaptureRef.current = {
+      deviceId: microphoneDeviceIdRef.current,
+      noiseSuppression: noiseSuppressionRef.current
+    };
+    return createMicrophoneInput(rawStream, microphoneVolumeRef.current);
+  }, []);
 
   const activateMicrophoneInput = useCallback((input: MicrophoneInput) => {
     microphoneEndedCleanupRef.current?.();
@@ -608,7 +622,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (microphoneEnabled) {
       if (!mic) {
         try {
-          const rawStream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceIdRef.current));
+          const rawStream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceIdRef.current, { noiseSuppression: noiseSuppressionRef.current }));
           acquiredInput = prepareMicrophoneInput(rawStream);
           mic = acquiredInput.voiceStream;
         } catch {
@@ -690,10 +704,14 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   useEffect(() => {
     const previousStream = localStreamsRef.current.mic;
     if (!roomRef.current || !previousStream) return;
+    // The active graph may already carry these settings, either because the
+    // join capture picked them up or because an unrelated dependency changed.
+    const applied = appliedMicrophoneCaptureRef.current;
+    if (applied.deviceId === microphoneDeviceId && applied.noiseSuppression === noiseSuppression) return;
     const requestId = ++microphoneSwitchRef.current;
     let cancelled = false;
 
-    void navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceId))
+    void navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceId, { noiseSuppression }))
       .then((rawStream) => {
         const nextInput = prepareMicrophoneInput(rawStream);
         const nextTrack = nextInput.voiceStream.getAudioTracks()[0];
@@ -730,19 +748,19 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           setError("");
         }).catch(() => {
           nextInput.dispose();
-          setError("The selected microphone could not be opened. Using the previous microphone.");
+          setError("The microphone could not be reopened. Using the previous microphone.");
         });
       })
       .catch(() => {
         if (!cancelled && requestId === microphoneSwitchRef.current) {
-          setError("The selected microphone could not be opened. Using the previous microphone.");
+          setError("The microphone could not be reopened. Using the previous microphone.");
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [activateMicrophoneInput, microphoneDeviceId, prepareMicrophoneInput, stopStream]);
+  }, [activateMicrophoneInput, activeRoomId, microphoneDeviceId, noiseSuppression, prepareMicrophoneInput, stopStream]);
 
   const leave = useCallback(() => {
     joinAttemptRef.current += 1;
@@ -796,7 +814,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (!stream) {
       setError("");
       try {
-        const rawStream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceIdRef.current));
+        const rawStream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceIdRef.current, { noiseSuppression: noiseSuppressionRef.current }));
         const input = prepareMicrophoneInput(rawStream);
         stream = input.voiceStream;
         activateMicrophoneInput(input);

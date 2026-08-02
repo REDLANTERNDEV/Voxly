@@ -32,6 +32,10 @@ export interface AudioOutputTargets {
 
 export type AudioOutputApplication = "audio-context" | "media-elements" | "unsupported";
 
+export interface MicrophoneCaptureOptions {
+  noiseSuppression?: boolean;
+}
+
 export function audioDevicePreferenceKey(userId: string, kind: AudioDevicePreferenceKind) {
   return `voxly:audio-device:${userId}:${kind}`;
 }
@@ -96,9 +100,18 @@ export function subscribeToAudioDeviceChanges(
   return () => mediaDevices.removeEventListener("devicechange", onDeviceChange);
 }
 
-export function buildMicrophoneConstraints(deviceId: string): MediaStreamConstraints {
+// Noise suppression is requested as a plain boolean so it stays an ideal
+// constraint; an `exact` form could reject the capture on a device that cannot
+// honour it.
+export function buildMicrophoneConstraints(
+  deviceId: string,
+  options: MicrophoneCaptureOptions = {}
+): MediaStreamConstraints {
+  const audio: MediaTrackConstraints = {};
+  if (deviceId) audio.deviceId = { exact: deviceId };
+  if (options.noiseSuppression !== undefined) audio.noiseSuppression = options.noiseSuppression;
   return {
-    audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+    audio: Object.keys(audio).length > 0 ? audio : true,
     video: false
   };
 }

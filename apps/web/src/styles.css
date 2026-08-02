@@ -3288,6 +3288,60 @@ h3 {
   width: 100%;
 }
 
+.audio-toggle-control {
+  align-items: center;
+  display: grid;
+  gap: 7px 10px;
+  grid-template-columns: 1fr auto;
+}
+
+.audio-toggle-control > span:first-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.audio-toggle-control > span.muted {
+  grid-column: 1 / -1;
+}
+
+.audio-switch {
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  height: 20px;
+  padding: 2px;
+  transition: background 120ms ease, border-color 120ms ease;
+  width: 36px;
+}
+
+.audio-switch.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.audio-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* The knob reads against two different tracks, so each state uses the token
+   built to contrast with it: --muted against --border, --accent-on against
+   --accent. */
+.audio-switch > span {
+  background: var(--muted);
+  border-radius: 999px;
+  display: block;
+  height: 14px;
+  transition: background 120ms ease, transform 120ms ease;
+  width: 14px;
+}
+
+.audio-switch.is-on > span {
+  background: var(--accent-on);
+  transform: translateX(16px);
+}
+
 .microphone-test-control {
   border-bottom: 1px solid var(--border-soft);
   display: grid;

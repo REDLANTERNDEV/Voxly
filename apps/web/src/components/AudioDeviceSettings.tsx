@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { audioDeviceDisplayName, type AudioDevicePreferenceKind } from "../lib/audioDevices.js";
 import { clampContextMenuPosition } from "../lib/contextMenu.js";
@@ -11,6 +11,8 @@ interface AudioDeviceSettingsProps {
   selectedOutputId: string;
   inputVolume: number;
   outputVolume: number;
+  noiseSuppression: boolean;
+  noiseSuppressionSupported: boolean;
   microphoneTestActive: boolean;
   microphoneTestError: MicrophoneTestError;
   loading: boolean;
@@ -23,6 +25,9 @@ interface AudioDeviceSettingsProps {
     output: string;
     inputVolume: string;
     outputVolume: string;
+    noiseSuppression: string;
+    noiseSuppressionHint: string;
+    noiseSuppressionUnsupported: string;
     systemDefault: string;
     browserControlled: string;
     refresh: string;
@@ -41,6 +46,7 @@ interface AudioDeviceSettingsProps {
   onSelectOutput(deviceId: string): Promise<void>;
   onInputVolumeChange(volume: number): void;
   onOutputVolumeChange(volume: number): void;
+  onNoiseSuppressionChange(enabled: boolean): void;
   onToggleMicrophoneTest(): Promise<void>;
 }
 
@@ -57,6 +63,7 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [testPending, setTestPending] = useState(false);
   const [position, setPosition] = useState({ left: 8, top: 8, width: 320 });
+  const noiseSuppressionLabelId = useId();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -70,7 +77,7 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps) {
   const open = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     const width = Math.min(340, window.innerWidth - 16);
-    const height = Math.min(590, window.innerHeight - 16);
+    const height = Math.min(640, window.innerHeight - 16);
     const next = clampContextMenuPosition({
       x: rect?.left ?? 8,
       y: (rect?.top ?? window.innerHeight) - height - 8,
@@ -131,6 +138,19 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps) {
               </select>
             </label>
             <AudioLevelControl label={props.labels.inputVolume} value={props.inputVolume} onChange={props.onInputVolumeChange} />
+            <div className="audio-toggle-control">
+              <span id={noiseSuppressionLabelId}>{props.labels.noiseSuppression}</span>
+              <button
+                className={`audio-switch ${props.noiseSuppression ? "is-on" : ""}`}
+                type="button"
+                role="switch"
+                aria-checked={props.noiseSuppression}
+                aria-labelledby={noiseSuppressionLabelId}
+                disabled={!props.noiseSuppressionSupported}
+                onClick={() => props.onNoiseSuppressionChange(!props.noiseSuppression)}
+              ><span aria-hidden="true" /></button>
+              <span className="muted small">{props.noiseSuppressionSupported ? props.labels.noiseSuppressionHint : props.labels.noiseSuppressionUnsupported}</span>
+            </div>
             <div className="microphone-test-control">
               <button className={`btn ${props.microphoneTestActive ? "btn-danger" : "btn-ghost"}`} type="button" disabled={testPending} aria-pressed={props.microphoneTestActive} onClick={() => {
                 setTestPending(true);

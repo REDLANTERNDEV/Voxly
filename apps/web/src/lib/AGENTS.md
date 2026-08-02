@@ -101,6 +101,22 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   cleanup, logout, and stale async completion. Watch the raw device stream for
   disconnects; a generated destination track may remain live after its source
   ends.
+- Noise suppression is a browser-native capture constraint applied only at
+  `getUserMedia` time. Request it as a plain boolean so an unsupported device
+  degrades instead of rejecting the capture; never send an `exact` form. Echo
+  cancellation, automatic gain control, and screen-share audio stay unspecified
+  and untouched.
+- A noise-suppression change reuses the microphone re-acquisition path. Capture
+  again, replace the published track, and dispose the replaced graph through the
+  same generation guard, serialized queue, and rollback as a device change; do
+  not mutate a live capture track with `applyConstraints`. Record the settings
+  each graph was opened with so an unchanged capture never reopens the device.
+  Preserve mute, deafen, and owner-mute on the replacement track, and leave an
+  absent or inactive microphone untouched until its next capture.
+- The preference is stored per account in local storage, defaults on to match
+  browser behavior, and applies to both voice publication and the microphone
+  test. The microphone test re-captures only when it owns its capture; a shared
+  monitor branch inherits the voice graph and must not open a second device.
 
 ## Remote Streams and Audio Output
 

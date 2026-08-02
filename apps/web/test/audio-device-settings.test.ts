@@ -23,4 +23,19 @@ describe("audio device settings permission flow", () => {
     assert.match(source, /props\.microphoneTestActive \? props\.labels\.stopTest : props\.labels\.startTest/);
     assert.match(source, /props\.onClose\(\)/);
   });
+
+  it("exposes noise suppression as a switch that disables when unsupported", () => {
+    const source = readFileSync("src/components/AudioDeviceSettings.tsx", "utf8");
+    const styles = readFileSync("src/styles.css", "utf8");
+
+    assert.match(source, /role="switch"/);
+    assert.match(source, /aria-checked=\{props\.noiseSuppression\}/);
+    // A hardcoded id would collide if the popover ever mounts more than once.
+    assert.match(source, /const noiseSuppressionLabelId = useId\(\)/);
+    assert.match(source, /aria-labelledby=\{noiseSuppressionLabelId\}/);
+    assert.match(source, /disabled=\{!props\.noiseSuppressionSupported\}/);
+    assert.match(source, /props\.onNoiseSuppressionChange\(!props\.noiseSuppression\)/);
+    assert.match(source, /props\.noiseSuppressionSupported \? props\.labels\.noiseSuppressionHint : props\.labels\.noiseSuppressionUnsupported/);
+    assert.match(styles, /\.audio-switch\s*\{/);
+  });
 });

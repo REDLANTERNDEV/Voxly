@@ -224,8 +224,25 @@ describe("voice snapshot reconciliation", () => {
     const join = source.match(/const join = useCallback[\s\S]*?\n  }, \[([^\]]*)\]\);/) ?? [];
 
     assert.match(source, /const microphoneDeviceIdRef = useRef\(microphoneDeviceId\)/);
-    assert.match(join[0] ?? "", /buildMicrophoneConstraints\(microphoneDeviceIdRef\.current\)/);
+    assert.match(join[0] ?? "", /buildMicrophoneConstraints\(microphoneDeviceIdRef\.current, \{ noiseSuppression: noiseSuppressionRef\.current \}\)/);
     assert.doesNotMatch(join[1] ?? "", /\bmicrophoneDeviceId\b/);
+    assert.doesNotMatch(join[1] ?? "", /\bnoiseSuppression\b/);
+  });
+
+  it("re-captures the microphone when noise suppression changes", () => {
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const effect = source.match(/useEffect\(\(\) => \{\n    const previousStream = localStreamsRef\.current\.mic;[\s\S]*?\n  }, \[([^\]]*)\]\);/) ?? [];
+
+    assert.match(source, /const noiseSuppressionRef = useRef\(noiseSuppression\)/);
+    assert.match(effect[1] ?? "", /\bnoiseSuppression\b/);
+    assert.match(effect[0] ?? "", /buildMicrophoneConstraints\(microphoneDeviceId, \{ noiseSuppression \}\)/);
+    // The replacement track must inherit mute, deafen, and owner-mute state.
+    assert.match(effect[0] ?? "", /nextTrack\.enabled = controlsRef\.current\.mic\.on && !controlsRef\.current\.deafen\.on/);
+    assert.match(effect[0] ?? "", /replaceMicrophoneTrack\(peersRef\.current\.values\(\), nextTrack, previousTrack\)/);
+    // An unchanged capture must not reopen the device on unrelated dependency churn.
+    assert.match(effect[0] ?? "", /applied\.deviceId === microphoneDeviceId && applied\.noiseSuppression === noiseSuppression\) return/);
+    // Capture-time constraints are the only supported mechanism here.
+    assert.doesNotMatch(source, /applyConstraints/);
   });
 
   it("applies refreshed ICE servers to active peer connections", () => {
