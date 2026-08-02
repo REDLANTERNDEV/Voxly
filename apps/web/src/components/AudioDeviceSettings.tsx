@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { audioDeviceDisplayName, type AudioDevicePreferenceKind } from "../lib/audioDevices.js";
 import { clampContextMenuPosition } from "../lib/contextMenu.js";
+import { MAX_NOTIFICATION_VOLUME_PERCENT, type NotificationSoundPreferences } from "../lib/notificationSounds.js";
 import type { MicrophoneTestError } from "../lib/useMicrophoneTest.js";
 
 interface AudioDeviceSettingsProps {
@@ -13,6 +14,7 @@ interface AudioDeviceSettingsProps {
   outputVolume: number;
   noiseSuppression: boolean;
   noiseSuppressionSupported: boolean;
+  notificationSounds: NotificationSoundPreferences;
   microphoneTestActive: boolean;
   microphoneTestError: MicrophoneTestError;
   loading: boolean;
@@ -28,6 +30,12 @@ interface AudioDeviceSettingsProps {
     noiseSuppression: string;
     noiseSuppressionHint: string;
     noiseSuppressionUnsupported: string;
+    notificationSounds: string;
+    notificationSoundsHint: string;
+    notificationVolume: string;
+    notificationVoice: string;
+    notificationMessage: string;
+    notificationConnection: string;
     systemDefault: string;
     browserControlled: string;
     refresh: string;
@@ -47,15 +55,34 @@ interface AudioDeviceSettingsProps {
   onInputVolumeChange(volume: number): void;
   onOutputVolumeChange(volume: number): void;
   onNoiseSuppressionChange(enabled: boolean): void;
+  onNotificationSoundsChange(patch: Partial<NotificationSoundPreferences>): void;
   onToggleMicrophoneTest(): Promise<void>;
 }
 
-function AudioLevelControl({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+function AudioLevelControl({ label, value, max = 200, onChange }: { label: string; value: number; max?: number; onChange: (value: number) => void }) {
   return (
     <label className="audio-level-control">
       <span><span>{label}</span><strong>{value}%</strong></span>
-      <input aria-label={label} type="range" min="0" max="200" step="1" value={value} onChange={(event) => onChange(Number(event.currentTarget.value))} />
+      <input aria-label={label} type="range" min="0" max={max} step="1" value={value} onChange={(event) => onChange(Number(event.currentTarget.value))} />
     </label>
+  );
+}
+
+function AudioSwitchControl({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  const labelId = useId();
+  return (
+    <div className="audio-toggle-control">
+      <span id={labelId}>{label}</span>
+      <button
+        className={`audio-switch ${checked ? "is-on" : ""}`}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-labelledby={labelId}
+        onClick={() => onChange(!checked)}
+      ><span aria-hidden="true" /></button>
+      {hint ? <span className="muted small">{hint}</span> : null}
+    </div>
   );
 }
 
@@ -166,6 +193,27 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps) {
               </select>
             </label>
             <AudioLevelControl label={props.labels.outputVolume} value={props.outputVolume} onChange={props.onOutputVolumeChange} />
+            <div className="notification-sound-section">
+              <AudioSwitchControl
+                label={props.labels.notificationSounds}
+                hint={props.labels.notificationSoundsHint}
+                checked={props.notificationSounds.enabled}
+                onChange={(enabled) => props.onNotificationSoundsChange({ enabled })}
+              />
+              {props.notificationSounds.enabled ? (
+                <>
+                  <AudioLevelControl
+                    label={props.labels.notificationVolume}
+                    value={props.notificationSounds.volume}
+                    max={MAX_NOTIFICATION_VOLUME_PERCENT}
+                    onChange={(volume) => props.onNotificationSoundsChange({ volume })}
+                  />
+                  <AudioSwitchControl label={props.labels.notificationVoice} checked={props.notificationSounds.voice} onChange={(voice) => props.onNotificationSoundsChange({ voice })} />
+                  <AudioSwitchControl label={props.labels.notificationMessage} checked={props.notificationSounds.message} onChange={(message) => props.onNotificationSoundsChange({ message })} />
+                  <AudioSwitchControl label={props.labels.notificationConnection} checked={props.notificationSounds.connection} onChange={(connection) => props.onNotificationSoundsChange({ connection })} />
+                </>
+              ) : null}
+            </div>
             <button className="btn btn-ghost" type="button" disabled={props.loading} onClick={() => void props.onRefresh()}>{props.loading ? `${props.labels.refresh}…` : props.labels.refresh}</button>
             <p className="error-text" aria-live="polite">{deviceStatus || testStatus}</p>
           </div>

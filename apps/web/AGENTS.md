@@ -299,6 +299,11 @@ requirement.
   that user's servers and clamped to 0–200%. Input gain affects both published
   microphone audio and microphone monitoring. General output composes with
   member and screen-share levels and is clamped before playback.
+- Notification cues sit in the audio settings popover below the output level:
+  a master switch, then the level and the voice, message, and connection
+  switches. Each switch is a labeled `role="switch"` control with its own
+  generated label id. The cue level is a separate 0–100% preference and must
+  not be presented as part of the general output level.
 - Microphone monitoring uses the selected input, follows live input-level
   changes, and stops on panel close or cleanup. While monitoring in voice,
   acquire an acknowledged temporary deafen state, lock the dock deafen action,

@@ -11,14 +11,16 @@ import { useVoiceMedia } from "../lib/useVoiceMedia.js";
 import { clampVolumePercent,pruneVolumes,readUserVolumes,setVolume,writeUserVolumes } from "../lib/voiceVolume.js";
 import type { VoxlySocket } from "../socket.js";
 import type { LiveWatchRequest } from "./types.js";
+import { useNotificationSounds } from "./useNotificationSounds.js";
 
-export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, activeVoiceRoomRef, leaveVoiceRef }: {
+export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, activeVoiceRoomRef, leaveVoiceRef, activeTextRoomIdRef }: {
   socket: VoxlySocket | null;
   user: PublicUser | null;
   iceServers: RTCIceServer[];
   voiceRoomIds: string[];
   activeVoiceRoomRef: React.RefObject<string | null>;
   leaveVoiceRef: React.RefObject<() => void>;
+  activeTextRoomIdRef: React.RefObject<string | null>;
 }) {
   const audioDevices = useAudioDevices({ userId: user?.id });
   const [audioLevels, setAudioLevels] = useState<AudioLevels>(DEFAULT_AUDIO_LEVELS);
@@ -34,6 +36,15 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, activ
     noiseSuppression
   });
   const connectionHealth = useConnectionHealth(socket);
+  const notifications = useNotificationSounds({
+    user,
+    activeVoiceRoomId: voice.activeRoomId,
+    voiceSnapshot: voice.activeRoomId ? voice.voiceSnapshots[voice.activeRoomId] : undefined,
+    controls: voice.controls,
+    deafened: voice.controls.deafen.on || voice.voiceModeration.deafened,
+    connectionInterrupted: connectionHealth.overlayVisible,
+    activeTextRoomIdRef
+  });
   const microphoneTest = useMicrophoneTest(audioDevices.selectedInputId, audioLevels.input, voice.microphoneMonitorStream, noiseSuppression);
   const microphoneTestDeafenRef = useRef<MicrophoneTestDeafenLease | null>(null);
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
@@ -125,9 +136,12 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, activ
   return {
     voice, connectionHealth, audioDevices, audioLevels, microphoneTest,
     noiseSuppression, noiseSuppressionSupported,
+    notificationSounds: notifications.notificationSounds,
+    notifyMessage: notifications.notifyMessage,
     memberVolumes, screenVolumes, audioPlaybackBlocked, pendingLiveWatch,
     activeVoiceRoomRef, leaveVoiceRef, setPendingLiveWatch,
     changeMemberVolume, changeScreenVolume, changeAudioLevel, changeNoiseSuppression,
+    changeNotificationSounds: notifications.changeNotificationSounds,
     toggleMicrophoneTest, stopMicrophoneTest
   };
 }

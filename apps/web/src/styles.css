@@ -3342,6 +3342,13 @@ h3 {
   transform: translateX(16px);
 }
 
+.notification-sound-section {
+  border-top: 1px solid var(--border-soft);
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+
 .microphone-test-control {
   border-bottom: 1px solid var(--border-soft);
   display: grid;

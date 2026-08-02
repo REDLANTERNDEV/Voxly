@@ -41,6 +41,7 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | Decision area | Authoritative guidance |
 | --- | --- |
 | Remote playback, boost, sinks, autoplay, and cleanup | `apps/web/src/lib/AGENTS.md` — Remote Streams and Audio Output |
+| Notification cue triggers, gating, and preferences | `apps/web/src/lib/AGENTS.md` — Notification Sounds |
 | Member and stream volume presentation | `apps/web/AGENTS.md` — Member and Owner Surfaces |
 | Moderation, access links, and token replacement | `apps/server/AGENTS.md` — Authentication and Membership |
 | Access-claim completion and authentication races | `apps/web/AGENTS.md` — Authentication and Navigation |

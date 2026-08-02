@@ -18,6 +18,7 @@ chat or TURN provider.
 - Invite-only accounts and persistent browser sessions
 - Text and voice rooms with live Socket.IO presence
 - Microphone, camera, screen sharing, and optional screen audio
+- Per-account notification sounds for voice, messages, and connection changes
 - Owner CLI for initial access and recovery
 - SQLite storage with a single Node.js application container
 - Optional self-hosted Coturn fallback for restrictive networks
@@ -140,6 +141,7 @@ Owner and member session recovery procedures are documented in
 - [Self-hosting guide](docs/self-hosting.md)
 - [Coturn/TURN guide](docs/turn.md)
 - [Optional Cloudflare notes](docs/cloudflare.md)
+- [Notification sounds](docs/notification-sounds.md)
 - [Nginx example](infra/nginx.example.conf)
 - [Caddy example](infra/Caddyfile.example)
 - [Standalone Coturn example](infra/coturn.example.conf)

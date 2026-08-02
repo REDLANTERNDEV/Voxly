@@ -38,4 +38,18 @@ describe("audio device settings permission flow", () => {
     assert.match(source, /props\.noiseSuppressionSupported \? props\.labels\.noiseSuppressionHint : props\.labels\.noiseSuppressionUnsupported/);
     assert.match(styles, /\.audio-switch\s*\{/);
   });
+
+  it("groups notification cue switches behind the master switch", () => {
+    const source = readFileSync("src/components/AudioDeviceSettings.tsx", "utf8");
+    const styles = readFileSync("src/styles.css", "utf8");
+
+    // Each switch renders its own label id, so the group can mount repeatedly
+    // without colliding.
+    assert.match(source, /function AudioSwitchControl\(/);
+    assert.match(source, /const labelId = useId\(\)/);
+    assert.match(source, /props\.onNotificationSoundsChange\(\{ enabled \}\)/);
+    assert.match(source, /props\.notificationSounds\.enabled \? \(/);
+    assert.match(source, /max=\{MAX_NOTIFICATION_VOLUME_PERCENT\}/);
+    assert.match(styles, /\.notification-sound-section\s*\{/);
+  });
 });

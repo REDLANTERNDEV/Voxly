@@ -24,13 +24,14 @@ type ChannelRailProps = Pick<ShellModel,
   "activeServerId" | "activeVoiceRoomId" | "appConfig" | "audioDevices" | "audioLevels" |
   "controls" | "currentNickname" | "language" | "memberVolumes" |
   "microphoneTestActive" | "microphoneTestError" | "noiseSuppression" |
-  "noiseSuppressionSupported" | "rooms" | "route" |
+  "noiseSuppressionSupported" | "notificationSounds" | "rooms" | "route" |
   "servers" | "socketState" | "t" | "theme" | "unreadByRoom" | "user" |
   "voiceModeration" | "voiceSnapshots"
 > & Pick<ShellActions,
   "onCloseAudioSettings" | "onCreateRoom" | "onDeleteRoom" |
   "onInputVolumeChange" | "onJoinVoice" | "onLanguageChange" |
-  "onMemberVolumeChange" | "onNavigate" | "onNoiseSuppressionChange" | "onOutputVolumeChange" |
+  "onMemberVolumeChange" | "onNavigate" | "onNoiseSuppressionChange" |
+  "onNotificationSoundsChange" | "onOutputVolumeChange" |
   "onSelectServer" | "onThemeChange" | "onToggleMicrophoneTest" |
   "onUpdateMemberPermissions" | "onVoiceModeration" | "onWatchLive"
 > & {
@@ -238,6 +239,7 @@ export function ChannelRail(props: ChannelRailProps) {
         outputVolume={props.audioLevels.output}
         noiseSuppression={props.noiseSuppression}
         noiseSuppressionSupported={props.noiseSuppressionSupported}
+        notificationSounds={props.notificationSounds}
         microphoneTestActive={props.microphoneTestActive}
         microphoneTestError={props.microphoneTestError}
         loading={props.audioDevices.loading}
@@ -257,6 +259,12 @@ export function ChannelRail(props: ChannelRailProps) {
           noiseSuppression: props.t("audio.noiseSuppression"),
           noiseSuppressionHint: props.t("audio.noiseSuppressionHint"),
           noiseSuppressionUnsupported: props.t("audio.noiseSuppressionUnsupported"),
+          notificationSounds: props.t("audio.notificationSounds"),
+          notificationSoundsHint: props.t("audio.notificationSoundsHint"),
+          notificationVolume: props.t("audio.notificationVolume"),
+          notificationVoice: props.t("audio.notificationVoice"),
+          notificationMessage: props.t("audio.notificationMessage"),
+          notificationConnection: props.t("audio.notificationConnection"),
           startTest: props.t("audio.startTest"),
           stopTest: props.t("audio.stopTest"),
           testHint: props.t("audio.testHint"),
@@ -272,6 +280,7 @@ export function ChannelRail(props: ChannelRailProps) {
         onInputVolumeChange={props.onInputVolumeChange}
         onOutputVolumeChange={props.onOutputVolumeChange}
         onNoiseSuppressionChange={props.onNoiseSuppressionChange}
+        onNotificationSoundsChange={props.onNotificationSoundsChange}
         onToggleMicrophoneTest={props.onToggleMicrophoneTest}
       />
       {deleteError ? <p className="error-text" aria-live="polite">{deleteError}</p> : null}

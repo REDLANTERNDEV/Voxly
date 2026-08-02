@@ -1,4 +1,4 @@
-import type { PublicUser } from "@voxly/shared";
+import type { ChatMessage,PublicUser } from "@voxly/shared";
 import { useCallback,useEffect,useRef,useState,type ReactNode } from "react";
 import { logout } from "./api.js";
 import { AppRoutes } from "./app/AppRoutes.js";
@@ -29,6 +29,7 @@ export function App() {
   const roomServerIdsRef = useRef<Record<string, string>>({});
   const activeVoiceRoomRef = useRef<string | null>(null);
   const leaveVoiceRef = useRef<() => void>(() => undefined);
+  const notifyMessageRef = useRef<(message: ChatMessage) => void>(() => undefined);
 
   const navigate = useCallback((path: string) => {
     window.history.pushState(null, "", path);
@@ -101,7 +102,7 @@ export function App() {
       serverUpdated: workspace.applyServerName,
       roomsChanged: (serverId, roomId) => { void workspace.refreshRoomsAfterDeletion(serverId, roomId).catch(() => undefined); },
       serverDeleted: (serverId) => { void workspace.refreshServersAfterDeletion(serverId).catch(() => undefined); },
-      messageNew: chat.applyNewMessage,
+      messageNew: (message) => { chat.applyNewMessage(message); notifyMessageRef.current(message); },
       messageUpdated: chat.applyUpdatedMessage,
       messageDeleted: chat.applyDeletedMessage,
       accessRevoked: workspace.revokeAccess
@@ -113,12 +114,14 @@ export function App() {
     iceServers: session.rtcConfig.iceServers,
     voiceRoomIds: workspace.voiceRoomIds,
     activeVoiceRoomRef,
-    leaveVoiceRef
+    leaveVoiceRef,
+    activeTextRoomIdRef: chat.activeTextRoomIdRef
   });
 
   useEffect(() => {
     if (route.name === "voice") audio.voice.requestSnapshot(route.roomId);
   }, [route, audio.voice.requestSnapshot]);
+  useEffect(() => { notifyMessageRef.current = audio.notifyMessage; }, [audio.notifyMessage]);
 
   const renderSurface = (surface: ReactNode) => session.user ? (
     <AuthenticatedAppSurface connectionHealth={audio.connectionHealth} t={t} audio={<>
@@ -172,6 +175,7 @@ export function App() {
     audioLevels: audio.audioLevels,
     noiseSuppression: audio.noiseSuppression,
     noiseSuppressionSupported: audio.noiseSuppressionSupported,
+    notificationSounds: audio.notificationSounds,
     microphoneTestActive: audio.microphoneTest.active,
     microphoneTestError: audio.microphoneTest.error,
     drawer,
@@ -208,6 +212,7 @@ export function App() {
     onInputVolumeChange: (volume: number) => audio.changeAudioLevel("input", volume),
     onOutputVolumeChange: (volume: number) => audio.changeAudioLevel("output", volume),
     onNoiseSuppressionChange: audio.changeNoiseSuppression,
+    onNotificationSoundsChange: audio.changeNotificationSounds,
     onToggleMicrophoneTest: audio.toggleMicrophoneTest,
     onCloseAudioSettings: () => { void audio.stopMicrophoneTest(); },
     onToggleControl: audio.voice.toggleControl,

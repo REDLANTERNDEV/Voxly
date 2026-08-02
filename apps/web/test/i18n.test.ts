@@ -27,6 +27,16 @@ describe("frontend localization", () => {
     assert.equal(translate("tr", "audio.noiseSuppressionUnsupported"), "Bu tarayıcı gürültü engellemeyi değiştiremiyor.");
   });
 
+  it("translates the notification sound controls in both languages", () => {
+    assert.equal(translate("en", "audio.notificationSounds"), "Notification sounds");
+    assert.equal(translate("tr", "audio.notificationSounds"), "Bildirim sesleri");
+    assert.equal(translate("en", "audio.notificationVoice"), "Voice room cues");
+    assert.equal(translate("tr", "audio.notificationVoice"), "Ses odası uyarıları");
+    assert.equal(translate("tr", "audio.notificationMessage"), "Mesaj uyarıları");
+    assert.equal(translate("tr", "audio.notificationConnection"), "Bağlantı uyarıları");
+    assert.equal(translate("tr", "audio.notificationVolume"), "Bildirim seviyesi");
+  });
+
   it("localizes edited message timestamps", () => {
     assert.equal(translate("en", "room.editedAt", { time: "Jul 14, 2026, 3:34 PM" }), "Edited Jul 14, 2026, 3:34 PM");
     assert.equal(translate("tr", "room.editedAt", { time: "14 Tem 2026 15:34" }), "Düzenlendi: 14 Tem 2026 15:34");

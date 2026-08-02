@@ -83,6 +83,31 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   when the lease changed it in the same active room, and preserve an existing
   user-selected deafen state. A failed test start must release its lease.
 
+## Notification Sounds
+
+- Cues are static files under `public/sounds` played through short-lived
+  `HTMLAudioElement` instances, one cached per cue. Apply the shared output
+  device before playback so a cue never escapes to the system default after the
+  listener chose another sink. A missing file, a revoked device, or a blocked
+  autoplay policy degrades to silence and never surfaces an error.
+- Derive arrivals and departures by diffing the active room's voice snapshot,
+  not from a separate event. A room change or the first snapshot in a room only
+  establishes the baseline, so joining a populated room announces nobody.
+  Exclude the listener from that roster; their own transition is the join or
+  leave cue.
+- Self join and leave follow the active room id. Reconnect and recovery keep
+  that id, so restoring a session stays silent.
+- Deafen implies a microphone change; play only the deafen cue for that
+  transition. While deafened, every cue stays silent except the two that report
+  the deafen state itself. Owner-enforced deafen silences cues the same way.
+- Message cues follow the unread rule: never the listener's own message, and
+  never the room already on screen in a focused window.
+- Preferences are per account in local storage: a master switch, a level
+  clamped to 0–100%, and one switch per category. The level is independent of
+  the general output level, which governs voice playback.
+- Repeats of the same cue inside a short window are dropped rather than
+  restarted, so a burst of arrivals produces one sound instead of a stutter.
+
 ## Microphone Gain and Monitoring
 
 - Apply the user input level through one Web Audio source and `GainNode` before

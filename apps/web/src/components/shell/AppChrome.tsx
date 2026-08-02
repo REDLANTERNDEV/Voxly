@@ -76,6 +76,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           microphoneTestError={props.microphoneTestError}
           noiseSuppression={props.noiseSuppression}
           noiseSuppressionSupported={props.noiseSuppressionSupported}
+          notificationSounds={props.notificationSounds}
           rooms={props.rooms}
           route={props.route}
           servers={props.servers}
@@ -95,6 +96,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           onMemberVolumeChange={props.onMemberVolumeChange}
           onNavigate={props.onNavigate}
           onNoiseSuppressionChange={props.onNoiseSuppressionChange}
+          onNotificationSoundsChange={props.onNotificationSoundsChange}
           onOutputVolumeChange={props.onOutputVolumeChange}
           onSelectServer={props.onSelectServer}
           onThemeChange={props.onThemeChange}

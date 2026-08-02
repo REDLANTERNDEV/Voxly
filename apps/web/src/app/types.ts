@@ -4,6 +4,7 @@ import type { RoomHistory } from "../lib/channelState.js";
 import { type LanguageCode,type TranslationKey } from "../lib/i18n.js";
 import type { UseAudioDevicesResult } from "../lib/useAudioDevices.js";
 import type { ConnectionHealth } from "../lib/useConnectionHealth.js";
+import type { NotificationSoundPreferences } from "../lib/notificationSounds.js";
 import type { MicrophoneTestError } from "../lib/useMicrophoneTest.js";
 import { type VoiceControls } from "../lib/voiceControls.js";
 import { type PeerConnectionState } from "../lib/voiceNegotiation.js";
@@ -57,6 +58,7 @@ export interface ShellModel {
   audioLevels: AudioLevels;
   noiseSuppression: boolean;
   noiseSuppressionSupported: boolean;
+  notificationSounds: NotificationSoundPreferences;
   microphoneTestActive: boolean;
   microphoneTestError: MicrophoneTestError;
   drawer: Drawer;
@@ -92,6 +94,7 @@ export interface ShellActions {
   onInputVolumeChange: (volume: number) => void;
   onOutputVolumeChange: (volume: number) => void;
   onNoiseSuppressionChange: (enabled: boolean) => void;
+  onNotificationSoundsChange: (patch: Partial<NotificationSoundPreferences>) => void;
   onToggleMicrophoneTest: () => Promise<void>;
   onCloseAudioSettings: () => void;
   onToggleControl: (key: keyof VoiceControls) => void;
