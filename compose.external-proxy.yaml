@@ -1,5 +1,14 @@
 name: voxly
 
+# Use this file instead of compose.yaml when the HTTPS reverse proxy runs as a
+# container managed outside this project (Dokploy, Coolify, CapRover, or a
+# hand-run Traefik/nginx-proxy). Such a proxy cannot reach a loopback-published
+# host port, so the app joins the proxy's existing Docker network instead.
+# Set PROXY_NETWORK to that network's name; it must already exist.
+#
+# When the proxy runs on the host itself (Nginx or Caddy installed on the VM),
+# use compose.yaml instead.
+
 services:
   app:
     build:
@@ -27,7 +36,7 @@ services:
     volumes:
       - voxly_data:/data
     networks:
-      - dokploy-network
+      - proxy
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777
@@ -42,7 +51,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3000/api/me').then((r)=>process.exit(r.status < 500 ? 0 : 1)).catch(()=>process.exit(1))"
+          "fetch('http://127.0.0.1:3000/api/health').then((r)=>process.exit(r.ok ? 0 : 1)).catch(()=>process.exit(1))"
         ]
       interval: 30s
       timeout: 5s
@@ -50,8 +59,9 @@ services:
       retries: 3
 
 networks:
-  dokploy-network:
+  proxy:
     external: true
+    name: ${PROXY_NETWORK:-dokploy-network}
 
 volumes:
   voxly_data:

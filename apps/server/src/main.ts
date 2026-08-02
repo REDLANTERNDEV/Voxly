@@ -11,6 +11,7 @@ const app = await createVoxlyApp({
   ownerBootstrapToken: process.env.OWNER_BOOTSTRAP_TOKEN,
   allowHttpOwnerBootstrap: process.env.ENABLE_HTTP_OWNER_BOOTSTRAP === "true",
   secureCookies: resolveSecureCookies(),
+  trustProxy: process.env.TRUST_PROXY !== "false",
   webDistPath: process.env.WEB_DIST_PATH,
   turnstile: resolveTurnstileConfig({
     siteKey: process.env.TURNSTILE_SITE_KEY,

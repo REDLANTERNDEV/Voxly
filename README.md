@@ -85,10 +85,16 @@ apps/web          React and Vite client
 packages/shared   Shared event and DTO types
 docs              Operator and deployment documentation
 infra             Runnable reverse-proxy and Coturn examples
-compose.yaml      Core application deployment
+compose.yaml      Core application deployment (host-installed proxy)
+compose.external-proxy.yaml  Alternative for container-managed proxies
 compose.turn.yaml Optional Coturn overlay
 Dockerfile        Production application image
 ```
+
+Use `compose.yaml` when Nginx or Caddy runs on the host. Use
+`compose.external-proxy.yaml` when the HTTPS proxy is itself a container managed
+outside this project — Dokploy, Coolify, CapRover, or a hand-run Traefik. See
+[Self-hosting Voxly](docs/self-hosting.md#container-managed-proxy).
 
 ## Configuration
 
@@ -99,6 +105,8 @@ Docker Compose reads `.env` from the repository root. Start from
 | --------------------------------------------- | ---------------------------------------------------------- |
 | `VOXLY_PUBLIC_URL`                            | Public HTTPS URL used for links and secure-cookie defaults |
 | `VOXLY_HTTP_PORT`                             | Host loopback port used by the reverse proxy               |
+| `PROXY_NETWORK`                               | Existing proxy network (`compose.external-proxy.yaml` only) |
+| `TRUST_PROXY`                                 | Read client IPs from `X-Forwarded-For` (default `true`)    |
 | `DATABASE_PATH`                               | SQLite path when running without Docker                    |
 | `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Optional Cloudflare Turnstile protection                   |
 | `TURN_REALM` / `TURN_STATIC_AUTH_SECRET`      | Enable authenticated self-hosted TURN                      |
@@ -111,7 +119,14 @@ Owner and member session recovery procedures are documented in
 
 ## Security model
 
-- Invite, session, access, and owner-claim tokens are stored as hashes.
+- Invite, session, access, and owner-claim tokens are 256-bit random values
+  stored as SHA-256 hashes.
+- Security headers, including a Content Security Policy that pins the script,
+  frame, and connect origins the client actually uses, are set by the
+  application rather than the proxy, so Nginx, Caddy, and PaaS deployments all
+  get the same policy.
+- Unauthenticated endpoints and authenticated writes are rate limited per
+  client IP.
 - TURN credentials are short-lived and available only from an authenticated
   endpoint; the shared TURN secret is never returned to browsers.
 - The application port is loopback-only in Docker Compose.

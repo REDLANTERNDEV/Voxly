@@ -1,4 +1,6 @@
 import cookie from "@fastify/cookie";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
 import staticPlugin from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { Server } from "socket.io";
@@ -21,6 +23,7 @@ import type {
 } from "@voxly/shared";
 import type { DatabaseSync } from "node:sqlite";
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
+import { helmetOptions } from "./security.js";
 import { consumeOwnerClaim } from "./auth/ownerClaims.js";
 import { all, defaultServerId, dumpTables, one, openDatabase, run, type VoxlyDatabase } from "./db/database.js";
 import {
@@ -44,6 +47,8 @@ export interface CreateVoxlyAppOptions {
   rtc?: RtcConfigProvider;
   turnstile?: TurnstileConfig;
   webDistPath?: string;
+  /** Derive client IPs from X-Forwarded-For. Defaults to true; see below. */
+  trustProxy?: boolean;
 }
 
 export interface AuthUser {
@@ -149,7 +154,20 @@ const voiceModerationBodySchema = z.object({
 
 export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<VoxlyApp> {
   const database = await openDatabase(options.databasePath);
-  const server = Fastify({ logger: false });
+  const server = Fastify({
+    logger: false,
+    // Every supported Voxly topology terminates TLS in a reverse proxy, so the
+    // socket address is always the proxy's. Without this, per-IP rate limits
+    // would collapse into a single shared bucket and one abusive client would
+    // lock out everyone. Operators who expose the app directly should set
+    // TRUST_PROXY=false so a spoofed X-Forwarded-For cannot forge identities.
+    trustProxy: options.trustProxy ?? true
+  });
+  await server.register(helmet, helmetOptions({ https: options.secureCookies }));
+  await server.register(rateLimit, {
+    // Opt in per route rather than throttling reads and WebSocket polling.
+    global: false
+  });
   await server.register(cookie);
   server.setErrorHandler((error, _request, reply) => {
     if (error instanceof z.ZodError) {
@@ -198,6 +216,18 @@ async function registerWebStatic(server: FastifyInstance, webDistPath: string) {
   });
 }
 
+/**
+ * Rate limit tiers.
+ *
+ * Tokens are 256-bit and stored hashed, so these are not a guessing defence —
+ * they bound resource abuse: unauthenticated endpoints that hit the database
+ * before any session exists, and authenticated writes that a single account
+ * could otherwise flood.
+ */
+const unauthenticatedWriteLimit = { rateLimit: { max: 20, timeWindow: "1 minute" } };
+const authenticatedWriteLimit = { rateLimit: { max: 60, timeWindow: "1 minute" } };
+const messageLimit = { rateLimit: { max: 120, timeWindow: "1 minute" } };
+
 function registerRoutes(
   server: FastifyInstance,
   database: VoxlyDatabase,
@@ -205,6 +235,14 @@ function registerRoutes(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
   realtime: RealtimeModeration
 ) {
+  server.get("/api/health", async () => {
+    // Deliberately unauthenticated and dependency-checking: container and load
+    // balancer probes need a signal that the process can still reach SQLite,
+    // not merely that the event loop is alive.
+    one<{ ok: number }>(database.sqlite, "select 1 as ok");
+    return { status: "ok" };
+  });
+
   server.get("/api/config", async () => {
     return {
       publicUrl: normalizePublicUrl(options.publicUrl),
@@ -228,7 +266,7 @@ function registerRoutes(
   });
 
   if (options.allowHttpOwnerBootstrap && options.ownerBootstrapToken) {
-    server.post("/api/bootstrap/owner", async (request, reply) => {
+    server.post("/api/bootstrap/owner", { config: unauthenticatedWriteLimit }, async (request, reply) => {
       const body = z.object({
         bootstrapToken: z.string().min(1),
         nickname: nicknameSchema
@@ -255,7 +293,7 @@ function registerRoutes(
     });
   }
 
-  server.post("/api/setup/owner/claim", async (request, reply) => {
+  server.post("/api/setup/owner/claim", { config: unauthenticatedWriteLimit }, async (request, reply) => {
     const body = z.object({
       claimToken: z.string().min(24)
     }).parse(request.body);
@@ -271,7 +309,7 @@ function registerRoutes(
     return reply.code(201).send({ user: publicUser(user) });
   });
 
-  server.post("/api/invites/accept", async (request, reply) => {
+  server.post("/api/invites/accept", { config: unauthenticatedWriteLimit }, async (request, reply) => {
     const body = z.object({
       inviteToken: z.string().min(24),
       nickname: nicknameSchema.optional(),
@@ -367,7 +405,7 @@ function registerRoutes(
     return reply.code(existingUser ? 200 : 201).send({ user: publicUser(user), serverId });
   });
 
-  server.post("/api/invites/preview", async (request, reply) => {
+  server.post("/api/invites/preview", { config: unauthenticatedWriteLimit }, async (request, reply) => {
     const { inviteToken } = z.object({ inviteToken: z.string().min(24) }).parse(request.body);
     const invite = one<{
       server_name: string;
@@ -426,7 +464,7 @@ function registerRoutes(
     };
   });
 
-  server.post("/api/servers", async (request, reply) => {
+  server.post("/api/servers", { config: authenticatedWriteLimit }, async (request, reply) => {
     const owner = requireOwner(database, request, reply, options.secureCookies);
     if (!owner) return;
     const body = z.object({ name: serverNameSchema }).parse(request.body);
@@ -616,7 +654,7 @@ function registerRoutes(
     };
   });
 
-  server.post("/api/servers/:serverId/invites", async (request, reply) => {
+  server.post("/api/servers/:serverId/invites", { config: authenticatedWriteLimit }, async (request, reply) => {
     const owner = requireOwner(database, request, reply, options.secureCookies);
     if (!owner) return;
     const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
@@ -785,7 +823,7 @@ function registerRoutes(
     return reply.code(201).send({ token, expiresAt });
   });
 
-  server.post("/api/access/claim", async (request, reply) => {
+  server.post("/api/access/claim", { config: unauthenticatedWriteLimit }, async (request, reply) => {
     const { token } = z.object({ token: z.string().min(24) }).parse(request.body);
     const claim = one<{ id: string; user_id: string; server_id: string; expires_at: string; consumed_at: string | null; revoked_at: string | null }>(
       database.sqlite,
@@ -805,7 +843,7 @@ function registerRoutes(
     });
   });
 
-  server.post("/api/owner/invites", async (request, reply) => {
+  server.post("/api/owner/invites", { config: authenticatedWriteLimit }, async (request, reply) => {
     const owner = requireOwner(database, request, reply, options.secureCookies);
     if (!owner) {
       return;
@@ -931,7 +969,7 @@ function registerRoutes(
     };
   });
 
-  server.post("/api/rooms/:roomId/messages", async (request, reply) => {
+  server.post("/api/rooms/:roomId/messages", { config: messageLimit }, async (request, reply) => {
     const user = requireUser(database, request, reply, options.secureCookies);
     if (!user) {
       return;

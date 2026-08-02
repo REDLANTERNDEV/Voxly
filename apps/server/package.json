@@ -13,7 +13,9 @@
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
-    "@fastify/static": "^9.1.1",
+    "@fastify/helmet": "^13.1.0",
+    "@fastify/rate-limit": "^11.2.0",
+    "@fastify/static": "^10.1.2",
     "@voxly/shared": "file:../../packages/shared",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.5.0",

@@ -1,11 +1,10 @@
+# Voxly sets its own security headers (CSP, HSTS, X-Frame-Options,
+# X-Content-Type-Options, Referrer-Policy) at the application layer, so every
+# hosting method gets the same policy and this file does not repeat them.
+# Overriding them here would silently diverge from the tested policy.
+
 chat.example.com {
 	encode zstd gzip
-
-	header {
-		Strict-Transport-Security "max-age=31536000"
-		X-Content-Type-Options "nosniff"
-		Referrer-Policy "same-origin"
-	}
 
 	reverse_proxy 127.0.0.1:3000
 }

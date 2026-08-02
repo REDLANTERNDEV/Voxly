@@ -198,6 +198,122 @@ quota/port mismatches, and unreadable certificate files before Coturn starts.
 Deploy only `compose.yaml` when TURN is intentionally disabled, and leave both
 `TURN_REALM` and `TURN_STATIC_AUTH_SECRET` empty.
 
+### Coturn under a PaaS or container-managed proxy
+
+When the Voxly web application is deployed through a platform that manages
+containers for you (Dokploy, Coolify, CapRover, or similar), Coturn is deployed
+as a **separate Compose stack** using the same `compose.turn.yaml` from this
+repository. No platform-specific compose file is required.
+
+Do not attach an HTTP domain or ingress route to the Coturn stack. TURN is not
+HTTP traffic; it must listen directly on the VPS ports via `network_mode: host`,
+so the platform's reverse proxy is not involved at all.
+
+Keep a checkout of this repository on the server for the Coturn compose file
+and certificate export helper:
+
+```sh
+sudo git clone https://github.com/REDLANTERNDEV/Voxly.git /opt/voxly
+sudo chown -R "$USER":"$USER" /opt/voxly
+cd /opt/voxly
+```
+
+If the repository already exists at `/opt/voxly`, update it instead:
+
+```sh
+cd /opt/voxly
+git pull --ff-only
+```
+
+Create the TURN DNS record at your DNS provider. With Cloudflare, keep the TURN
+record in **DNS only** mode. The orange-cloud HTTP proxy does not proxy TURN
+traffic.
+
+```text
+turn.example.com → 203.0.113.10
+```
+
+Open the TURN ports on the VPS and in the hosting provider firewall:
+
+```sh
+sudo ufw allow 3478/udp
+sudo ufw allow 3478/tcp
+sudo ufw allow 5349/tcp
+sudo ufw allow 49160:49200/udp
+```
+
+When Cloudflare manages DNS for the domain, the cleanest ACME flow is a
+Cloudflare DNS challenge. Create a Cloudflare API token with `Zone / DNS / Edit`
+and `Zone / Zone / Read` permissions for the specific zone, then install the
+Certbot plugin:
+
+```sh
+sudo apt update
+sudo apt install certbot python3-certbot-dns-cloudflare
+sudo mkdir -p /root/.secrets
+sudo nano /root/.secrets/cloudflare.ini
+sudo chmod 600 /root/.secrets/cloudflare.ini
+```
+
+Store the token in `/root/.secrets/cloudflare.ini`:
+
+```ini
+dns_cloudflare_api_token = replace-with-cloudflare-token
+```
+
+Request the TURN certificate:
+
+```sh
+sudo certbot certonly \
+  --dns-cloudflare \
+  --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \
+  -d turn.example.com
+```
+
+Export the root-only Certbot files into the directory that the Coturn container
+can read:
+
+```sh
+cd /opt/voxly
+sudo ./infra/export-turn-cert.sh turn.example.com /etc/letsencrypt /opt/voxly/secrets/turn
+```
+
+Generate the shared TURN secret:
+
+```sh
+openssl rand -base64 48
+```
+
+Create a new Docker Compose service for Coturn in your platform:
+
+- Repository: this Voxly repository
+- Compose path: `compose.turn.yaml`
+- Domain: none
+
+Set the Coturn service environment in the platform:
+
+```dotenv
+TURN_REALM=turn.example.com
+TURN_EXTERNAL_IP=203.0.113.10
+TURN_STATIC_AUTH_SECRET=replace-with-generated-secret
+TURN_CERT_DIR=/opt/voxly/secrets/turn
+TURN_MIN_PORT=49160
+TURN_MAX_PORT=49200
+TURN_USER_QUOTA=12
+TURN_TOTAL_QUOTA=40
+VOXLY_TURN_MEMORY_LIMIT=128m
+VOXLY_TURN_MEMORY_RESERVATION=32m
+```
+
+Deploy the Coturn service and check its logs. Then add the same realm and
+secret to the environment of the Voxly web application service and redeploy it:
+
+```dotenv
+TURN_REALM=turn.example.com
+TURN_STATIC_AUTH_SECRET=replace-with-the-same-generated-secret
+TURN_CREDENTIAL_TTL_SECONDS=86400
+```
+
 ## 6. Certificate renewal
 
 Coturn must receive the exported certificate and restart after renewal. With
@@ -209,6 +325,32 @@ cd /opt/voxly || exit 1
 ./infra/export-turn-cert.sh turn.example.com /etc/letsencrypt /opt/voxly/secrets/turn || exit 1
 docker compose -f compose.yaml -f compose.turn.yaml restart coturn
 ```
+
+```sh
+sudo chmod 755 /etc/letsencrypt/renewal-hooks/deploy/restart-voxly-turn.sh
+sudo certbot renew --dry-run
+```
+
+When the Coturn stack is started by a platform rather than by your own
+`docker compose` invocation, the compose project name is chosen by the platform,
+so the hook has to find the container by label instead. Create the same deploy
+hook file with this restart command:
+
+```sh
+#!/bin/sh
+set -eu
+cd /opt/voxly
+./infra/export-turn-cert.sh turn.example.com /etc/letsencrypt /opt/voxly/secrets/turn
+ids=$(docker ps --filter "label=com.docker.compose.service=coturn" --format "{{.ID}}")
+[ -n "$ids" ] || { echo "no running coturn container found" >&2; exit 1; }
+docker restart $ids
+```
+
+The explicit emptiness check matters: without it the hook exits `0` after
+restarting nothing, and the stale certificate is not noticed until TLS fails
+weeks later.
+
+Then apply the same hook permissions and dry-run renewal check:
 
 ```sh
 sudo chmod 755 /etc/letsencrypt/renewal-hooks/deploy/restart-voxly-turn.sh

@@ -63,6 +63,16 @@ docker compose logs --tail=100 app
 The host listener is `127.0.0.1:3000` by default. It is intentionally not
 reachable directly from the internet.
 
+Confirm the container is serving before putting a proxy in front of it:
+
+```sh
+curl -fsS http://127.0.0.1:3000/api/health
+```
+
+`GET /api/health` is unauthenticated and verifies that the process can still
+reach SQLite. It is what the container healthcheck probes, and it is the right
+target for an external uptime monitor or a load balancer.
+
 ## 5. Configure a reverse proxy
 
 ### Nginx
@@ -80,11 +90,56 @@ The example forwards normal HTTP requests and WebSocket upgrades used by
 Socket.IO. If Nginx already hosts other applications, add Voxly as a separate
 `server` block rather than replacing the global configuration.
 
+Keep the `X-Forwarded-For` header in place. Voxly rate limits by client IP, and
+without that header every request appears to come from the proxy, so one
+abusive client would consume the limit for everyone. If you ever expose the
+application port directly to the internet instead, set `TRUST_PROXY=false` so a
+forged header cannot be used to evade those limits.
+
+Do not add security headers in the proxy. Voxly sets its own CSP, HSTS,
+`X-Frame-Options`, `X-Content-Type-Options`, and `Referrer-Policy` so that every
+hosting method has an identical policy; proxy-level overrides silently diverge
+from the tested one.
+
 ### Caddy
 
 Copy [`infra/Caddyfile.example`](../infra/Caddyfile.example), replace the
 hostname, and reload Caddy. Caddy obtains and renews the web certificate
 automatically when DNS and ports 80/443 are reachable.
+
+### Container-managed proxy
+
+The Nginx and Caddy instructions above assume the proxy is installed on the host
+itself, which is why `compose.yaml` publishes the application on
+`127.0.0.1:3000`.
+
+Some deployments instead run the HTTPS proxy as a container managed outside this
+project — a PaaS such as Dokploy, Coolify, or CapRover, or a hand-run Traefik.
+A containerized proxy cannot reach a loopback-published host port, so the
+application has to join the proxy's own Docker network. Use
+[`compose.external-proxy.yaml`](../compose.external-proxy.yaml) for that case.
+It is identical to `compose.yaml` except that it drops the published host port
+and attaches to an existing external network:
+
+```sh
+PROXY_NETWORK=dokploy-network \
+VOXLY_PUBLIC_URL=https://chat.example.com \
+  docker compose -f compose.external-proxy.yaml up -d --build
+```
+
+`PROXY_NETWORK` defaults to `dokploy-network`; set it to `coolify` or whatever
+your platform calls its shared network. The network must already exist —
+Compose will not create it.
+
+With a PaaS, point the service at this repository, set the compose path to
+`compose.external-proxy.yaml`, and let the platform assign the domain. The
+platform terminates TLS and issues certificates, so no Certbot step is needed
+for the web application. `VOXLY_PUBLIC_URL` is mandatory in this file — it is
+what makes session cookies `Secure`, and there is no `.env` file to fall back
+on.
+
+Everything else — the security hardening, memory limits, healthcheck, and data
+volume — is the same as `compose.yaml`.
 
 ## 6. Create the first owner
 
@@ -217,13 +272,13 @@ rules must match the host firewall.
 ```sh
 docker compose ps
 docker compose logs --tail=200 app
-curl -i http://127.0.0.1:3000/api/me
+curl -i http://127.0.0.1:3000/api/health
 sudo nginx -t
 ```
 
-An unauthenticated `/api/me` response may be `401`; that still confirms the app
-is reachable. A connection refusal means the container or configured host port
-is unavailable.
+`GET /api/health` returns `200` with `{"status":"ok"}` when the app is reachable
+and can read its database. A connection refusal means the container or
+configured host port is unavailable.
 
 ### Presence or voice state does not update
 
