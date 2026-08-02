@@ -1,4 +1,4 @@
-FROM node:22-alpine AS deps
+FROM node:25-alpine AS deps
 WORKDIR /app
 
 ENV HUSKY=0
@@ -19,7 +19,7 @@ COPY packages packages
 RUN npm run build
 RUN npm prune --omit=dev
 
-FROM node:22-alpine AS runtime
+FROM node:25-alpine AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production \
