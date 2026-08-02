@@ -15,6 +15,8 @@ export interface ServerSummary {
   id: string;
   name: string;
   role: "owner" | "member";
+  /** True for owners and for members the owner granted invite rights to. */
+  canInvite: boolean;
 }
 
 export interface ServersResponse {
@@ -25,6 +27,7 @@ export interface ServerMember {
   id: string;
   nickname: string;
   role: "owner" | "member";
+  canInvite: boolean;
   bannedAt: string | null;
   removedAt: string | null;
   joinedAt: string;

@@ -79,6 +79,7 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
     onModerateMember={shellProps.onModerateMember}
     onVoiceModeration={shellProps.onVoiceModeration}
     onUpdateMemberNickname={shellProps.onUpdateMemberNickname}
+    onUpdateMemberPermissions={shellProps.onUpdateMemberPermissions}
   />);
   if (route.name === "voice") return renderSurface(<AppChrome {...shellProps} mobileTitle={shellProps.currentRoom?.name ?? t("room.lobbyVoice")}><VoiceRoomScreen
     user={shellProps.user}

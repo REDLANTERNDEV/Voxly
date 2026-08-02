@@ -3,6 +3,8 @@ export function ChatIcon() { return <svg className="ui-icon" viewBox="0 0 24 24"
 export function MenuIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14" /><path d="M5 12h14" /><path d="M5 17h14" /></svg>; }
 export function UsersIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19c0-2.2-1.8-4-4-4s-4 1.8-4 4" /><circle cx="12" cy="9" r="3" /></svg>; }
 export function ShieldIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 19 7v5c0 4-2.7 6.7-7 8-4.3-1.3-7-4-7-8V7z" /><path d="M9 12h6" /></svg>; }
+export function UserPlusIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 19c0-2.2-1.8-4-4-4s-4 1.8-4 4" /><circle cx="10" cy="9" r="3" /><path d="M18 9v6" /><path d="M15 12h6" /></svg>; }
+export function LinkIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 6 .5l2-2a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-6-.5l-2 2A4 4 0 0 0 11.7 17l1-1" /></svg>; }
 export function PlusIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>; }
 export function CopyIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h10v10H8z" /><path d="M6 14H5a1 1 0 0 1-1-1V5h8a1 1 0 0 1 1 1v1" /></svg>; }
 export function CloseIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12" /><path d="m18 6-12 12" /></svg>; }

@@ -339,6 +339,40 @@ h3 {
   text-align: left;
 }
 
+.rail-head {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.rail-invite-trigger {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--rail-muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  width: 28px;
+}
+
+.rail-invite-trigger:hover,
+.rail-invite-trigger[aria-expanded="true"] {
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent), transparent 55%);
+  color: var(--rail-fg);
+}
+
+.rail-invite-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .skip-link {
   background: var(--fg);
   border-radius: var(--radius-sm);
@@ -1132,6 +1166,13 @@ h3 {
   color: var(--danger);
 }
 
+/* Toggle rows (invite grant, voice moderation) read as on rather than as a
+ * one-shot command. */
+.context-menu button.is-active {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
 .sidebar-context-menu {
   gap: 6px;
   min-width: 176px;
@@ -1386,7 +1427,15 @@ h3 {
 }
 
 .member-row {
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+/* Marks members holding the delegated invite grant, mirroring the role column
+ * in the owner dashboard so both member surfaces agree. */
+.member-role-tag {
+  align-items: center;
+  color: var(--success);
+  display: inline-flex;
 }
 
 .member-row.is-offline > .avatar,
@@ -2395,9 +2444,7 @@ h3 {
   width: 100%;
 }
 
-.invite-card,
-.owner-card,
-.table-card {
+.invite-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -2682,30 +2729,314 @@ h3 {
   width: 100%;
 }
 
-.owner-shell {
+/* Owner dashboard
+ *
+ * A fixed sidebar plus a scrolling work area. Every surface inside the work
+ * area is a `.dash-panel` on the same 1px border and radius, so sections read
+ * as one instrument panel rather than a stack of unrelated cards.
+ */
+.dash {
+  background: var(--bg);
   display: grid;
-  gap: 16px;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 236px minmax(0, 1fr);
   min-height: 100dvh;
 }
 
-.owner-nav {
-  background: color-mix(in oklch, var(--bg), var(--surface) 52%);
+.dash-sidebar {
+  align-content: start;
+  background: color-mix(in oklch, var(--bg), var(--surface) 60%);
   border-right: 1px solid var(--border);
-  padding: 16px;
-}
-
-.owner-main {
   display: grid;
-  gap: 14px;
-  padding: 16px 16px 92px;
+  gap: 20px;
+  padding: 18px 16px;
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  align-content: space-between;
+  grid-template-rows: auto 1fr auto;
 }
 
-.owner-hero {
+.dash-nav {
+  align-content: start;
+  display: grid;
+  gap: 2px;
+}
+
+.dash-nav-item {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 560;
+  padding: 9px 11px;
+  text-align: left;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.dash-nav-item:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.dash-nav-item.is-active {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.dash-nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.dash-sidebar-foot {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+}
+
+.dash-main {
+  align-content: start;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 0 20px 100px;
+}
+
+.dash-topbar {
   align-items: end;
+  background: color-mix(in oklab, var(--bg), transparent 8%);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
   display: grid;
   gap: 16px;
   grid-template-columns: minmax(0, 1fr) auto;
+  margin: 0 -20px;
+  padding: 18px 20px 14px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.dash-topbar-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dash-topbar-copy h1 {
+  font-size: 22px;
+  margin: 0;
+}
+
+.dash-topbar-actions {
+  align-items: end;
+  display: flex;
+  gap: 10px;
+}
+
+.dash-server-switch {
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+}
+
+.dash-status {
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  font-size: 13px;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.dash-sections {
+  display: grid;
+  gap: 16px;
+}
+
+.dash-stats {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dash-stat {
+  align-content: start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  position: relative;
+}
+
+.dash-stat-icon {
+  color: var(--muted);
+  position: absolute;
+  right: 14px;
+  top: 14px;
+}
+
+.dash-stat-value {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 640;
+  line-height: 1.1;
+}
+
+.dash-stat-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dash-split {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.15fr);
+}
+
+/* The invite ledger carries four columns, so it gets the wider half. */
+.dash-split.is-invites {
+  grid-template-columns: minmax(280px, 0.6fr) minmax(0, 1.4fr);
+}
+
+.dash-panel {
+  align-content: start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 18px;
+}
+
+.dash-panel-head {
+  display: grid;
+  gap: 3px;
+}
+
+.dash-panel-head h2 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.dash-panel-head p {
+  margin: 0;
+}
+
+.dash-notes {
+  color: var(--muted);
+  display: grid;
+  font-size: 13px;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* Tracks use a zero minimum so a narrow panel truncates cell text instead of
+ * pushing the action column past the panel edge; the scroller is the fallback
+ * for viewports where even that is not enough. */
+.dash-table {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.dash-table.is-invites {
+  --dash-table-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.75fr) 112px;
+}
+
+.dash-table.is-members {
+  --dash-table-columns: minmax(0, 1.4fr) 116px 100px 48px;
+}
+
+.dash-table-head,
+.dash-table-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: var(--dash-table-columns);
+  padding: 10px 12px;
+}
+
+.dash-table-head {
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dash-table-row {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+}
+
+.dash-table-row:hover {
+  background: color-mix(in oklab, var(--surface), var(--accent) 4%);
+}
+
+.dash-cell {
+  align-content: center;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dash-cell.is-actions {
+  justify-items: end;
+}
+
+.dash-table .sidebar-menu-trigger {
+  opacity: 1;
+}
+
+.dash-role {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 650;
+  justify-self: start;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  text-transform: uppercase;
+}
+
+.dash-role.is-owner {
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent), transparent 50%);
+  color: var(--fg);
+}
+
+.dash-role.is-inviter {
+  background: var(--success-soft);
+  border-color: color-mix(in oklab, var(--success), transparent 55%);
+  color: var(--fg);
+}
+
+.dash-callout {
+  background: color-mix(in oklab, var(--bg), var(--surface) 42%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding: 14px;
 }
 
 .owner-server-context {
@@ -2787,45 +3118,59 @@ h3 {
   margin: 0;
 }
 
-.owner-card {
-  align-content: start;
-  align-self: start;
+.invite-composer {
   display: grid;
   gap: 12px;
-  padding: 14px;
 }
 
-.owner-grid {
-  align-items: start;
+.invite-composer-limits {
   display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.owner-grid.members-grid {
-  --member-table-columns: minmax(160px, 1fr) 88px 104px 300px;
-
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.35fr);
+.invite-composer-status:empty {
+  display: none;
 }
 
-.members-grid .table-head,
-.members-grid .table-row {
-  grid-template-columns: var(--member-table-columns);
+.invite-popover {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  position: fixed;
+  width: min(300px, calc(100vw - 16px));
+  z-index: var(--layer-popover);
 }
 
-.table-actions {
+.invite-popover-head {
   align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  gap: 0 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.table-actions .btn {
+.invite-popover-head .label {
+  grid-column: 1;
+}
+
+.invite-popover-head strong {
+  grid-column: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.table-card {
-  overflow: hidden;
+.invite-popover-head .icon-btn {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.invite-popover > p {
+  margin: 0;
 }
 
 .server-switcher {
@@ -3064,29 +3409,6 @@ h3 {
   z-index: var(--layer-popover);
 }
 
-.table-head,
-.table-row {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: 1.2fr 0.9fr 0.8fr auto;
-  padding: 11px 12px;
-}
-
-.table-head {
-  background: var(--surface-2);
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.table-row {
-  align-items: center;
-  border-top: 1px solid var(--border);
-  min-width: 0;
-}
-
 .mobile-topbar,
 .drawer-scrim {
   display: none;
@@ -3199,13 +3521,58 @@ h3 {
 
   .composer form,
   .voice-dock,
-  .owner-shell,
-  .owner-grid,
-  .owner-hero,
+  .dash,
+  .dash-split,
+  .dash-topbar,
   .owner-server-context,
   .owner-server-rename-form,
   .owner-server-create-form {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dash-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dash-sidebar {
+    border-bottom: 1px solid var(--border);
+    border-right: 0;
+    grid-template-rows: none;
+    height: auto;
+    position: static;
+  }
+
+  .dash-nav {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+
+  .dash-nav-item {
+    font-size: 13px;
+    padding: 8px 6px;
+    text-align: center;
+  }
+
+  .dash-sidebar-foot {
+    display: none;
+  }
+
+  .dash-topbar {
+    align-items: stretch;
+    position: static;
+  }
+
+  .dash-table-head {
+    display: none;
+  }
+
+  .dash-table-row {
+    gap: 6px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dash-cell.is-actions {
+    justify-items: start;
   }
 
   .owner-server-rename-field,
@@ -3220,11 +3587,6 @@ h3 {
   .owner-server-actions {
     align-items: stretch;
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .owner-grid.members-grid,
-  .members-grid .table-row {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -3249,20 +3611,6 @@ h3 {
 
   .dock-self {
     justify-content: space-between;
-  }
-
-  .owner-nav {
-    border-bottom: 1px solid var(--border);
-    border-right: 0;
-  }
-
-  .table-head {
-    display: none;
-  }
-
-  .table-row {
-    gap: 6px;
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .landing-nav {

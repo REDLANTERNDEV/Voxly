@@ -220,6 +220,16 @@ export async function updateServerMemberNickname(serverId: string, userId: strin
   );
 }
 
+export async function updateServerMemberPermissions(serverId: string, userId: string, canInvite: boolean) {
+  return request<{ user: PresenceUser }>(
+    `/api/servers/${encodeURIComponent(serverId)}/members/${encodeURIComponent(userId)}/permissions`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ canInvite })
+    }
+  );
+}
+
 export async function updateVoiceModeration(
   serverId: string,
   userId: string,

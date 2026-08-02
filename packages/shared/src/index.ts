@@ -32,6 +32,11 @@ export interface PresenceUser {
   userId: string;
   nickname: string;
   role: UserRole;
+  /**
+   * Per-server grant that lets a plain member create invites. Optional because
+   * presence objects synthesised from the local session have no server context.
+   */
+  canInvite?: boolean;
 }
 
 export interface ServerPresenceSnapshot {

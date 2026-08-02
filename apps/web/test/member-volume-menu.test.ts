@@ -35,22 +35,21 @@ describe("member volume menus", () => {
 
     assert.doesNotMatch(app, /return t\("room\.desktopMic"\)/);
     assert.match(app, /if \(items\.length === 0\) \{\s*return null;\s*\}/);
-    assert.match(app, /className="owner-grid members-grid"/);
-    assert.match(app, /className="table-actions"/);
-    assert.match(app, /item\.role === "owner" \? props\.t\("common\.owner"\) : props\.t\("common\.user"\)/);
-    assert.match(app, /item\.bannedAt \? props\.t\("common\.banned"\) : props\.t\("common\.active"\)/);
+    assert.match(app, /className="dash-table is-members"/);
+    assert.match(app, /className="dash-cell is-actions"/);
+    assert.match(app, /memberRoleLabel\(member, props\.t\)/);
+    assert.match(app, /member\.bannedAt \? props\.t\("common\.banned"\) : props\.t\("common\.active"\)/);
     assert.match(styles, /\.voice-status-chip\.live\s*\{[^}]*background:[^}]*color:\s*var\(--status-live-fg\)/s);
     assert.match(styles, /\.voice-status-chip\.online\s*\{[^}]*background:[^}]*color:\s*var\(--status-online-fg\)/s);
     assert.match(styles, /\.voice-status-chip\.warn\s*\{[^}]*background:[^}]*color:\s*var\(--status-warn-fg\)/s);
-    assert.match(styles, /\.table-actions\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap[^}]*gap:/s);
   });
 
   it("uses one explicit column contract for owner and member rows", () => {
     const styles = readFileSync("src/styles.css", "utf8");
 
-    assert.match(styles, /\.owner-grid\.members-grid\s*\{[^}]*--member-table-columns:/s);
-    assert.match(styles, /\.members-grid \.table-head,\s*\.members-grid \.table-row\s*\{[^}]*grid-template-columns:\s*var\(--member-table-columns\)/s);
-    assert.doesNotMatch(styles, /\.members-grid \.table-head,[\s\S]*?minmax\([^)]*,\s*auto\)/);
+    assert.match(styles, /\.dash-table\.is-members\s*\{[^}]*--dash-table-columns:/s);
+    assert.match(styles, /\.dash-table-head,\s*\.dash-table-row\s*\{[^}]*grid-template-columns:\s*var\(--dash-table-columns\)/s);
+    assert.doesNotMatch(styles, /\.dash-table\.is-members\s*\{[^}]*minmax\([^)]*,\s*auto\)/s);
   });
 
   it("lets the owner edit scoped nicknames from member surfaces", () => {

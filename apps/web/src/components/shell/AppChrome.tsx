@@ -65,6 +65,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         <ChannelRail
           activeServerId={props.activeServerId}
           activeVoiceRoomId={props.activeVoiceRoomId}
+          appConfig={props.appConfig}
           audioDevices={props.audioDevices}
           audioLevels={props.audioLevels}
           controls={props.controls}
@@ -95,6 +96,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           onSelectServer={props.onSelectServer}
           onThemeChange={props.onThemeChange}
           onToggleMicrophoneTest={props.onToggleMicrophoneTest}
+          onUpdateMemberPermissions={props.onUpdateMemberPermissions}
           onVoiceModeration={props.onVoiceModeration}
           onWatchLive={props.onWatchLive}
           actionMenu={actionMenu}
@@ -115,6 +117,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           memberVolumes={props.memberVolumes}
           onMemberVolumeChange={props.onMemberVolumeChange}
           onVoiceModeration={props.onVoiceModeration}
+          onUpdateMemberPermissions={props.onUpdateMemberPermissions}
           onRequestNickname={(member, returnFocus) => setNicknameTarget({ user: member, returnFocus })}
           onRequestMemberAction={(member, action, roomId) => {
             closeActionMenu();

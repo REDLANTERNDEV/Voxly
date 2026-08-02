@@ -118,6 +118,7 @@ type ServerMemberRow = {
   removed_at: string | null;
   moderator_muted: number;
   moderator_deafened: number;
+  can_invite: number;
 };
 
 type VoiceRoomMembership = Map<string, VoiceMemberState>;
@@ -456,18 +457,23 @@ function registerRoutes(
   server.get("/api/servers", async (request, reply) => {
     const user = requireUser(database, request, reply, options.secureCookies);
     if (!user) return;
+    const memberships = all<{ id: string; name: string; role: "owner" | "member"; canInvite: number }>(
+      database.sqlite,
+      `select servers.id, servers.name, server_members.role,
+        server_members.can_invite as canInvite
+       from server_members
+       join servers on servers.id = server_members.server_id
+       where server_members.user_id = ?
+         and server_members.banned_at is null
+         and server_members.removed_at is null
+       order by servers.created_at asc`,
+      [user.id]
+    );
     return {
-      servers: all(
-        database.sqlite,
-        `select servers.id, servers.name, server_members.role
-         from server_members
-         join servers on servers.id = server_members.server_id
-         where server_members.user_id = ?
-           and server_members.banned_at is null
-           and server_members.removed_at is null
-         order by servers.created_at asc`,
-        [user.id]
-      )
+      servers: memberships.map((membership) => ({
+        ...membership,
+        canInvite: membership.role === "owner" || Boolean(membership.canInvite)
+      }))
     };
   });
 
@@ -489,7 +495,7 @@ function registerRoutes(
     audit(database, owner.id, "server.created", null, serverId);
     database.save();
     await realtime.grantServerAccess(serverId, owner.id);
-    return reply.code(201).send({ server: { id: serverId, name: body.name, role: "owner" } });
+    return reply.code(201).send({ server: { id: serverId, name: body.name, role: "owner", canInvite: true } });
   });
 
   server.get("/api/servers/:serverId/rooms", async (request, reply) => {
@@ -533,7 +539,7 @@ function registerRoutes(
     audit(database, owner.id, "server.renamed", null, serverId);
     database.save();
     io.to(`server:${serverId}`).emit("server:updated", { serverId, name });
-    return { server: { id: serverId, name, role: "owner" as const } };
+    return { server: { id: serverId, name, role: "owner" as const, canInvite: true } };
   });
 
   server.delete("/api/servers/:serverId/rooms/:roomId", async (request, reply) => {
@@ -606,21 +612,21 @@ function registerRoutes(
     if (!user) return;
     const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
     if (!requireServerMember(database, serverId, user.id, reply)) return;
-    return {
-      members: all(
-        database.sqlite,
-        `select users.id as userId,
-          coalesce(server_members.nickname, users.nickname) as nickname,
-          server_members.role
-         from server_members
-         join users on users.id = server_members.user_id
-         where server_members.server_id = ?
-           and server_members.banned_at is null
-           and server_members.removed_at is null
-         order by nickname asc`,
-        [serverId]
-      )
-    };
+    const members = all<{ userId: string; nickname: string; role: "owner" | "member"; canInvite: number }>(
+      database.sqlite,
+      `select users.id as userId,
+        coalesce(server_members.nickname, users.nickname) as nickname,
+        server_members.role,
+        server_members.can_invite as canInvite
+       from server_members
+       join users on users.id = server_members.user_id
+       where server_members.server_id = ?
+         and server_members.banned_at is null
+         and server_members.removed_at is null
+       order by nickname asc`,
+      [serverId]
+    );
+    return { members: members.map((member) => ({ ...member, canInvite: Boolean(member.canInvite) })) };
   });
 
   server.get("/api/servers/:serverId/members", async (request, reply) => {
@@ -637,6 +643,7 @@ function registerRoutes(
       joinedAt: string;
       moderatorMuted: number;
       moderatorDeafened: number;
+      canInvite: number;
     }>(
       database.sqlite,
       `select users.id,
@@ -645,7 +652,8 @@ function registerRoutes(
         server_members.banned_at as bannedAt, server_members.removed_at as removedAt,
         server_members.joined_at as joinedAt,
         server_members.moderator_muted as moderatorMuted,
-        server_members.moderator_deafened as moderatorDeafened
+        server_members.moderator_deafened as moderatorDeafened,
+        server_members.can_invite as canInvite
        from server_members
        join users on users.id = server_members.user_id
        where server_members.server_id = ?
@@ -654,20 +662,21 @@ function registerRoutes(
       [serverId]
     );
     return {
-      members: members.map(({ moderatorMuted, moderatorDeafened, ...member }) => ({
+      members: members.map(({ moderatorMuted, moderatorDeafened, canInvite, ...member }) => ({
         ...member,
+        canInvite: member.role === "owner" || Boolean(canInvite),
         moderation: { muted: Boolean(moderatorMuted), deafened: Boolean(moderatorDeafened) }
       }))
     };
   });
 
   server.post("/api/servers/:serverId/invites", { config: authenticatedWriteLimit }, async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
+    const user = requireUser(database, request, reply, options.secureCookies);
+    if (!user) return;
     const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
-    const invite = createInviteForServer(database, serverId, owner.id, inviteBodySchema.parse(request.body ?? {}));
-    audit(database, owner.id, "invite.created", null, serverId);
+    if (!requireServerInviter(database, serverId, user.id, reply)) return;
+    const invite = createInviteForServer(database, serverId, user.id, inviteBodySchema.parse(request.body ?? {}));
+    audit(database, user.id, "invite.created", null, serverId);
     database.save();
     return reply.code(201).send({ invite });
   });
@@ -689,6 +698,36 @@ function registerRoutes(
     if (result === "not_found") return reply.code(404).send({ error: "invite_not_found" });
     if (result === "inactive") return reply.code(409).send({ error: "invite_not_active" });
     return reply.code(204).send();
+  });
+
+  server.patch("/api/servers/:serverId/members/:userId/permissions", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId, userId } = z.object({
+      serverId: z.string().min(1),
+      userId: z.string().uuid()
+    }).parse(request.params);
+    const { canInvite } = z.object({ canInvite: z.boolean() }).strict().parse(request.body);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const target = serverMembership(database.sqlite, serverId, userId);
+    if (!target || target.removed_at) {
+      return reply.code(404).send({ error: "member_not_found" });
+    }
+    // Owners already hold every permission; storing a grant for them would let a
+    // later revoke read as if it removed something.
+    if (target.role === "owner") {
+      return reply.code(409).send({ error: "cannot_change_owner_permissions" });
+    }
+    run(
+      database.sqlite,
+      "update server_members set can_invite = ? where server_id = ? and user_id = ?",
+      [canInvite ? 1 : 0, serverId, userId]
+    );
+    audit(database, owner.id, canInvite ? "member.invite_granted" : "member.invite_revoked", userId, serverId);
+    database.save();
+    const updated = realtime.refreshMemberIdentity(serverId, userId);
+    if (!updated) return reply.code(404).send({ error: "member_not_found" });
+    return { user: updated };
   });
 
   server.patch("/api/servers/:serverId/members/:userId/nickname", async (request, reply) => {
@@ -765,12 +804,14 @@ function registerRoutes(
     const member = serverMembership(database.sqlite, serverId, userId);
     if (!member) return reply.code(404).send({ error: "member_not_found" });
     const now = new Date().toISOString();
+    // Losing access also drops the invite grant, so a member who returns through
+    // a later invite cannot silently resume issuing links.
     if (action === "ban") {
-      run(database.sqlite, "update server_members set banned_at = ?, removed_at = null where server_id = ? and user_id = ?", [now, serverId, userId]);
+      run(database.sqlite, "update server_members set banned_at = ?, removed_at = null, can_invite = 0 where server_id = ? and user_id = ?", [now, serverId, userId]);
     } else if (action === "unban") {
       run(database.sqlite, "update server_members set banned_at = null where server_id = ? and user_id = ?", [serverId, userId]);
     } else {
-      run(database.sqlite, "update server_members set removed_at = ? where server_id = ? and user_id = ?", [now, serverId, userId]);
+      run(database.sqlite, "update server_members set removed_at = ?, can_invite = 0 where server_id = ? and user_id = ?", [now, serverId, userId]);
     }
     audit(database, owner.id, `member.${action}`, userId, serverId);
     database.save();
@@ -1736,7 +1777,7 @@ function serverMembership(sqlite: DatabaseSync, serverId: string, userId: string
   return one<ServerMemberRow>(
     sqlite,
     `select server_id, user_id, role, banned_at, removed_at,
-      moderator_muted, moderator_deafened
+      moderator_muted, moderator_deafened, can_invite
      from server_members where server_id = ? and user_id = ?`,
     [serverId, userId]
   );
@@ -1785,6 +1826,21 @@ function requireServerOwner(database: VoxlyDatabase, serverId: string, userId: s
   const membership = requireServerMember(database, serverId, userId, reply);
   if (!membership) return null;
   if (membership.role !== "owner") {
+    reply.code(403).send({ error: "forbidden" });
+    return null;
+  }
+  return membership;
+}
+
+/**
+ * Invite creation is the one privileged action an owner can delegate. Listing
+ * and revoking links stays owner-only: a delegated inviter can add people but
+ * cannot audit or undo anyone else's links.
+ */
+function requireServerInviter(database: VoxlyDatabase, serverId: string, userId: string, reply: FastifyReply) {
+  const membership = requireServerMember(database, serverId, userId, reply);
+  if (!membership) return null;
+  if (membership.role !== "owner" && !membership.can_invite) {
     reply.code(403).send({ error: "forbidden" });
     return null;
   }

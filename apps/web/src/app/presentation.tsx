@@ -10,6 +10,17 @@ export function activeServerRole(props: Pick<ShellModel, "activeServerId" | "ser
   return props.servers.find((server) => server.id === props.activeServerId)?.role ?? null;
 }
 
+export function canInviteToActiveServer(props: Pick<ShellModel, "activeServerId" | "servers">) {
+  const server = props.servers.find((item) => item.id === props.activeServerId);
+  return Boolean(server && (server.role === "owner" || server.canInvite));
+}
+
+/** Owner outranks the delegated invite grant, which outranks a plain member. */
+export function memberRoleLabel(user: Pick<PresenceUser, "role" | "canInvite">, t: Translate) {
+  if (user.role === "owner") return t("common.owner");
+  return user.canInvite ? t("member.inviterRole") : t("common.user");
+}
+
 export function includeCurrentPresence(users: PresenceUser[], user: PublicUser) {
   return upsertPresence(users, presenceFromUser(user), user);
 }

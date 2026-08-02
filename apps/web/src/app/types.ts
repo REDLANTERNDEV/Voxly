@@ -75,6 +75,7 @@ export interface ShellActions {
   onModerateMember: (userId: string, action: "ban" | "unban" | "kick") => Promise<void>;
   onVoiceModeration: (userId: string, moderation: Partial<VoiceModerationState>) => Promise<{ moderation: VoiceModerationState }>;
   onUpdateMemberNickname: (userId: string, nickname: string) => Promise<PresenceUser>;
+  onUpdateMemberPermissions: (userId: string, canInvite: boolean) => Promise<PresenceUser>;
   onDisconnectMember: (roomId: string, userId: string) => Promise<void>;
   onDrawerChange: (drawer: Drawer) => void;
   onThemeChange: (theme: ThemeChoice) => void;

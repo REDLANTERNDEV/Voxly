@@ -78,14 +78,15 @@ export function openSidebarMenuFromPointer(
 }
 
 
-export function memberActionMenuHeight({ hasVolume, canRename, canDisconnect, canModerate, canVoiceModerate = false }: {
+export function memberActionMenuHeight({ hasVolume, canRename, canDisconnect, canModerate, canVoiceModerate = false, canAssignRoles = false }: {
   hasVolume: boolean;
   canRename: boolean;
   canDisconnect: boolean;
   canModerate: boolean;
   canVoiceModerate?: boolean;
+  canAssignRoles?: boolean;
 }) {
-  return 20 + (hasVolume ? 64 : 0) + (canRename ? 40 : 0) + (canVoiceModerate ? 80 : 0) + (canDisconnect ? 40 : 0) + (canModerate ? 80 : 0);
+  return 20 + (hasVolume ? 64 : 0) + (canRename ? 40 : 0) + (canAssignRoles ? 62 : 0) + (canVoiceModerate ? 80 : 0) + (canDisconnect ? 40 : 0) + (canModerate ? 80 : 0);
 }
 
 export function MemberActionMenu({
@@ -99,6 +100,7 @@ export function MemberActionMenu({
   canModerate,
   moderation,
   onVoiceModeration,
+  onToggleInviteRole,
   onRename,
   onRequestAction,
   showTrigger = true,
@@ -114,6 +116,7 @@ export function MemberActionMenu({
   canModerate: boolean;
   moderation?: VoiceModerationState;
   onVoiceModeration?: (moderation: Partial<VoiceModerationState>) => void;
+  onToggleInviteRole?: (canInvite: boolean) => void;
   onRename: (returnFocus: HTMLButtonElement | null) => void;
   onRequestAction: (action: MemberAction) => void;
   showTrigger?: boolean;
@@ -125,7 +128,8 @@ export function MemberActionMenu({
     canRename,
     canDisconnect,
     canModerate,
-    canVoiceModerate: Boolean(moderation && onVoiceModeration)
+    canVoiceModerate: Boolean(moderation && onVoiceModeration),
+    canAssignRoles: Boolean(onToggleInviteRole)
   });
   return (
     <>
@@ -142,6 +146,16 @@ export function MemberActionMenu({
             actionMenu.close();
             onRename(returnFocus);
           }}>{t("member.changeNickname")}</button> : null}
+          {onToggleInviteRole ? (
+            <button
+              className={member.canInvite ? "is-active" : ""}
+              type="button"
+              aria-pressed={Boolean(member.canInvite)}
+              onClick={() => onToggleInviteRole(!member.canInvite)}
+            >
+              {member.canInvite ? t("member.revokeInviteRole") : t("member.grantInviteRole")}
+            </button>
+          ) : null}
           {moderation && onVoiceModeration ? <>
             <button className={moderation.muted ? "is-danger" : ""} type="button" aria-pressed={moderation.muted} onClick={() => onVoiceModeration({ muted: !moderation.muted })}>{moderation.muted ? t("member.ownerUnmute") : t("member.ownerMute")}</button>
             <button className={moderation.deafened ? "is-danger" : ""} type="button" aria-pressed={moderation.deafened} onClick={() => onVoiceModeration({ deafened: !moderation.deafened })}>{moderation.deafened ? t("member.ownerUndeafen") : t("member.ownerDeafen")}</button>

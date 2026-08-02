@@ -1129,7 +1129,7 @@ describe("Voxly HTTP MVP", () => {
       payload: { name: "Onyx Lounge" }
     });
     assert.equal(renamed.statusCode, 200);
-    assert.deepEqual(renamed.json(), { server: { id: serverId, name: "Onyx Lounge", role: "owner" } });
+    assert.deepEqual(renamed.json(), { server: { id: serverId, name: "Onyx Lounge", role: "owner", canInvite: true } });
 
     const afterRename = await app.server.inject({
       method: "POST",
@@ -1191,7 +1191,7 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(visibleToMember.statusCode, 200);
     assert.deepEqual(
       visibleToMember.json().members.map((entry: Record<string, unknown>) => Object.keys(entry).sort()),
-      [["nickname", "role", "userId"], ["nickname", "role", "userId"]]
+      [["canInvite", "nickname", "role", "userId"], ["canInvite", "nickname", "role", "userId"]]
     );
     assert.deepEqual(
       visibleToMember.json().members.map((entry: { nickname: string }) => entry.nickname),
@@ -1216,6 +1216,137 @@ describe("Voxly HTTP MVP", () => {
       cookies: owner.cookies
     });
     assert.deepEqual(afterBan.json().members.map((entry: { nickname: string }) => entry.nickname), [owner.user.nickname]);
+  });
+
+  it("lets the owner delegate invite creation without delegating invite management", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ada");
+    const serverId = defaultServerId;
+
+    const beforeGrant = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: member.cookies,
+      payload: { label: "Member attempt" }
+    });
+    assert.equal(beforeGrant.statusCode, 403);
+
+    const memberCannotGrant = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${serverId}/members/${member.user.id}/permissions`,
+      cookies: member.cookies,
+      payload: { canInvite: true }
+    });
+    assert.equal(memberCannotGrant.statusCode, 403);
+
+    const granted = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${serverId}/members/${member.user.id}/permissions`,
+      cookies: owner.cookies,
+      payload: { canInvite: true }
+    });
+    assert.equal(granted.statusCode, 200);
+    assert.equal(granted.json().user.canInvite, true);
+
+    const ownerPermissionsRejected = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${serverId}/members/${owner.user.id}/permissions`,
+      cookies: owner.cookies,
+      payload: { canInvite: false }
+    });
+    assert.equal(ownerPermissionsRejected.statusCode, 409);
+
+    const memberServers = await app.server.inject({
+      method: "GET",
+      url: "/api/servers",
+      cookies: member.cookies
+    });
+    assert.equal(memberServers.json().servers.find((entry: { id: string }) => entry.id === serverId)?.canInvite, true);
+
+    const delegatedInvite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: member.cookies,
+      payload: { label: "Friend of Ada" }
+    });
+    assert.equal(delegatedInvite.statusCode, 201);
+
+    const joined = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      payload: { inviteToken: delegatedInvite.json().invite.token, nickname: "Ece" }
+    });
+    assert.equal(joined.statusCode, 201);
+
+    // Creating a link is delegated; auditing and undoing links are not.
+    const listAttempt = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: member.cookies
+    });
+    assert.equal(listAttempt.statusCode, 403);
+    const revokeAttempt = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites/${delegatedInvite.json().invite.id}/revoke`,
+      cookies: member.cookies
+    });
+    assert.equal(revokeAttempt.statusCode, 403);
+
+    const revoked = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${serverId}/members/${member.user.id}/permissions`,
+      cookies: owner.cookies,
+      payload: { canInvite: false }
+    });
+    assert.equal(revoked.statusCode, 200);
+    assert.equal(revoked.json().user.canInvite, false);
+
+    const afterRevoke = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: member.cookies,
+      payload: { label: "Second attempt" }
+    });
+    assert.equal(afterRevoke.statusCode, 403);
+  });
+
+  it("drops the invite grant when a delegated member loses access", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ada");
+    const serverId = defaultServerId;
+
+    await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${serverId}/members/${member.user.id}/permissions`,
+      cookies: owner.cookies,
+      payload: { canInvite: true }
+    });
+    await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/members/${member.user.id}/kick`,
+      cookies: owner.cookies
+    });
+
+    const rejoinInvite = await app.server.inject({
+      method: "POST",
+      url: "/api/owner/invites",
+      cookies: owner.cookies,
+      payload: { label: "Ada returns" }
+    });
+    await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: rejoinInvite.json().invite.token }
+    });
+
+    const afterRejoin = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: member.cookies,
+      payload: { label: "Should be denied" }
+    });
+    assert.equal(afterRejoin.statusCode, 403);
   });
 
   it("keeps owner-managed nicknames scoped to one server and current in messages", async () => {

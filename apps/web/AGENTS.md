@@ -120,6 +120,13 @@ requirement.
   default. An accessible eye control may reveal and hide the complete link;
   copy actions always use the complete one-time value. Masking is presentation
   only and must not place a transformed value into the clipboard or API state.
+- Owner and delegated-member invite creation share one composer, so the label,
+  expiry, capacity, and masked-link contracts cannot drift between the owner
+  dashboard and the rail popover.
+- The rail invite affordance appears only when the active server summary reports
+  `canInvite`, which is true for owners and for members holding the grant. The
+  grant is assigned from member action menus, is offered only by an owner acting
+  on an ordinary member, and shows as a distinct role in member surfaces.
 - Server and channel deletion keep exact-name confirmation and server-side
   protection against deleting the final owner server or final protected
   channel.

@@ -191,6 +191,7 @@ export function App() {
       chat.applyMemberRename(workspace.activeServerId, updated);
       return updated;
     },
+    onUpdateMemberPermissions: workspace.actions.updateMemberPermissions,
     onDisconnectMember: workspace.actions.disconnectMember,
     onDrawerChange: setDrawer,
     onThemeChange: changeTheme,

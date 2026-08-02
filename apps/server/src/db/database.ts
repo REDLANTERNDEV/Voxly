@@ -152,6 +152,7 @@ function migrate(sqlite: DatabaseSync) {
       removed_at text,
       moderator_muted integer not null default 0,
       moderator_deafened integer not null default 0,
+      can_invite integer not null default 0,
       joined_at text not null,
       primary key (server_id, user_id)
     );
@@ -183,6 +184,7 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "server_members", "nickname", "text");
   addColumnIfMissing(sqlite, "server_members", "moderator_muted", "integer not null default 0");
   addColumnIfMissing(sqlite, "server_members", "moderator_deafened", "integer not null default 0");
+  addColumnIfMissing(sqlite, "server_members", "can_invite", "integer not null default 0");
 
   run(
     sqlite,

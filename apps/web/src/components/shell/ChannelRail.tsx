@@ -3,7 +3,7 @@ import { useEffect,useRef,useState } from "react";
 import { createPortal } from "react-dom";
 import { ApiError } from "../../api.js";
 import { serverPath } from "../../app/navigation.js";
-import { activeServerRole,initial,voiceMembersForRoom } from "../../app/presentation.js";
+import { activeServerRole,canInviteToActiveServer,initial,voiceMembersForRoom } from "../../app/presentation.js";
 import type { MemberAction,ShellActions,ShellModel,Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
 import { HeadsetIcon,MicIcon,PlusIcon,ScreenIcon } from "../../components/ui/Icons.js";
@@ -18,9 +18,10 @@ import { AudioDeviceSettings } from "../AudioDeviceSettings.js";
 import { ContextMenu } from "../ContextMenu.js";
 import { LiveStreamPopover } from "../LiveStreamPopover.js";
 import { ServerSwitcher } from "../ServerSwitcher.js";
+import { InviteQuickAction } from "../../features/invites/InviteQuickAction.js";
 import { MemberActionMenu,memberActionMenuHeight,openSidebarMenuFromPointer,SidebarMenuTrigger,type SidebarActionMenuController } from "./SidebarMenus.js";
 type ChannelRailProps = Pick<ShellModel,
-  "activeServerId" | "activeVoiceRoomId" | "audioDevices" | "audioLevels" |
+  "activeServerId" | "activeVoiceRoomId" | "appConfig" | "audioDevices" | "audioLevels" |
   "controls" | "currentNickname" | "language" | "memberVolumes" |
   "microphoneTestActive" | "microphoneTestError" | "rooms" | "route" |
   "servers" | "socketState" | "t" | "theme" | "unreadByRoom" | "user" |
@@ -30,7 +31,7 @@ type ChannelRailProps = Pick<ShellModel,
   "onInputVolumeChange" | "onJoinVoice" | "onLanguageChange" |
   "onMemberVolumeChange" | "onNavigate" | "onOutputVolumeChange" |
   "onSelectServer" | "onThemeChange" | "onToggleMicrophoneTest" |
-  "onVoiceModeration" | "onWatchLive"
+  "onUpdateMemberPermissions" | "onVoiceModeration" | "onWatchLive"
 > & {
   actionMenu: SidebarActionMenuController;
   onRequestNickname: (user: PresenceUser, returnFocus: HTMLButtonElement | null) => void;
@@ -39,6 +40,8 @@ type ChannelRailProps = Pick<ShellModel,
 
 export function ChannelRail(props: ChannelRailProps) {
   const canManageServer = activeServerRole(props) === "owner";
+  const canInvite = canInviteToActiveServer(props);
+  const activeServer = props.servers.find((server) => server.id === props.activeServerId);
   const [deleteTarget, setDeleteTarget] = useState<RoomSummary | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [moveTarget, setMoveTarget] = useState<RoomSummary | null>(null);
@@ -63,7 +66,15 @@ export function ChannelRail(props: ChannelRailProps) {
   };
   return (
     <aside className="rail">
-      <BrandLockup subtitle="" href={serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general")} onNavigate={props.onNavigate} />
+      <div className="rail-head">
+        <BrandLockup subtitle="" href={serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general")} onNavigate={props.onNavigate} />
+        {canInvite ? <InviteQuickAction
+          serverId={props.activeServerId}
+          serverName={activeServer?.name ?? "Voxly"}
+          publicUrl={props.appConfig.publicUrl}
+          t={props.t}
+        /> : null}
+      </div>
       <ServerSwitcher
         activeServerId={props.activeServerId}
         servers={props.servers}
@@ -120,14 +131,16 @@ export function ChannelRail(props: ChannelRailProps) {
                     const canRename = canManageServer && (member.user.role === "member" || member.user.userId === props.user.id);
                     const canModerate = canOwnerVoiceModerate(activeServerRole(props), props.user.id, member.user);
                     const canVoiceModerate = canModerate;
+                    const canAssignRoles = canManageServer && member.user.role === "member";
                     const menuHeight = memberActionMenuHeight({
                       hasVolume: isRemote,
                       canRename,
                       canDisconnect: canModerate,
                       canModerate,
-                      canVoiceModerate
+                      canVoiceModerate,
+                      canAssignRoles
                     });
-                    const hasActions = isRemote || canRename || canModerate;
+                    const hasActions = isRemote || canRename || canModerate || canAssignRoles;
                     const menuKey = `rail-member:${member.user.userId}`;
                     return (
                     <div
@@ -192,6 +205,7 @@ export function ChannelRail(props: ChannelRailProps) {
                           canModerate={canModerate}
                           moderation={canVoiceModerate ? member.moderation : undefined}
                           onVoiceModeration={canVoiceModerate ? (moderation) => { void props.onVoiceModeration(member.user.userId, moderation); } : undefined}
+                          onToggleInviteRole={canAssignRoles ? (canInviteMember) => { void props.onUpdateMemberPermissions(member.user.userId, canInviteMember); } : undefined}
                           onRename={(returnFocus) => props.onRequestNickname(member.user, returnFocus)}
                           onRequestAction={(action) => props.onRequestMemberAction(member.user, action, room.id)}
                           showTrigger={false}

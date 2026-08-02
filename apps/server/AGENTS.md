@@ -30,7 +30,7 @@ queries across endpoints.
 - Keep schema metadata, runtime initialization, SQL queries, and migration tests
   synchronized.
 - Migrate `invites.max_uses`, composite-keyed `invite_uses`, and membership
-  `moderator_muted` / `moderator_deafened` additively. Backfill legacy invite
+  `moderator_muted` / `moderator_deafened` / `can_invite` additively. Backfill legacy invite
   consumption once, retain the legacy first-use metadata, and preserve owner
   moderation values across restarts and membership lifecycle changes.
 - Legacy user-to-default-server backfill runs only when introducing the
@@ -75,6 +75,15 @@ queries across endpoints.
 
 - Every server-scoped route and event requires an active, non-banned,
   non-removed membership; owner actions additionally require active owner role.
+  Invite creation is the sole exception: an active member holding the
+  `can_invite` grant may create invites for that server.
+- `server_members.can_invite` is an owner-assigned, per-server grant. Only an
+  active owner may set it, and only on ordinary members — owners already hold
+  every permission, so their row stays untouched. Listing and revoking invites
+  remain owner-only, so a delegated inviter can add people but cannot audit or
+  undo anyone's links.
+- Banning or kicking clears `can_invite`, so a member who later returns through
+  a new invite cannot resume issuing links without a fresh grant.
 - Accepting a valid invite as an existing active member returns the target
   `serverId` and leaves its remaining capacity unchanged. Reopening a previously
   consumed invite never restores a removed or banned membership.
@@ -92,8 +101,8 @@ queries across endpoints.
   active owner may update an ordinary member; owner/self targets are rejected.
   Neither kick, ban, rejoin, channel movement, nor restart clears these flags.
 - The member directory is available to active members and exposes only active
-  users' `userId`, `nickname`, and `role`. Omit banned/removed memberships and
-  all moderation/session fields.
+  users' `userId`, `nickname`, `role`, and `canInvite`. Omit banned/removed
+  memberships and all moderation/session fields.
 - Membership changes emit the existing directory/access events to the correct
   server rooms. Do not broadcast server-scoped data globally.
 - Preserve exact-name destructive confirmation at the client and enforce final

@@ -68,6 +68,7 @@ export const serverMembers = sqliteTable("server_members", {
   removedAt: text("removed_at"),
   moderatorMuted: integer("moderator_muted", { mode: "boolean" }).notNull().default(false),
   moderatorDeafened: integer("moderator_deafened", { mode: "boolean" }).notNull().default(false),
+  canInvite: integer("can_invite", { mode: "boolean" }).notNull().default(false),
   joinedAt: text("joined_at").notNull()
 });
 

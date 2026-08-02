@@ -1,6 +1,6 @@
 import type { PresenceUser,PublicUser,RoomSummary,VoiceModerationState } from "@voxly/shared";
 import { useCallback,useEffect,useMemo,useState,type RefObject } from "react";
-import { createServer,createServerRoom,deleteServer,deleteServerRoom,disconnectVoiceMember,fetchServerDirectory,fetchServerRooms,fetchServers,moderateServerMember,updateServer,updateServerMemberNickname,updateVoiceModeration } from "../api.js";
+import { createServer,createServerRoom,deleteServer,deleteServerRoom,disconnectVoiceMember,fetchServerDirectory,fetchServerRooms,fetchServers,moderateServerMember,updateServer,updateServerMemberNickname,updateServerMemberPermissions,updateVoiceModeration } from "../api.js";
 import { resolveRememberedRoom,roomsForServer,type RoomHistory } from "../lib/channelState.js";
 import { currentServerPresence } from "../lib/memberDirectory.js";
 import { replacePresenceUser,replaceServerPresenceUserIfPresent } from "../lib/memberIdentity.js";
@@ -129,6 +129,17 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
     return () => { cancelled = true; };
   }, [navigate, route, serverListReady, servers]);
 
+  // A member update can flip the viewer's own invite grant, so the server list —
+  // which gates every invite affordance in the shell — has to follow it live.
+  const applyMemberUpdate = useCallback((serverId: string, next: PresenceUser) => {
+    setOnlineUsersByServer((current) => replaceServerPresenceUserIfPresent(current, serverId, next));
+    setServerMembersByServer((current) => ({ ...current, [serverId]: replacePresenceUser(current[serverId] ?? [], next) }));
+    if (!user || next.userId !== user.id || next.canInvite === undefined) return;
+    setServers((current) => current.map((server) => server.id === serverId
+      ? { ...server, canInvite: server.role === "owner" || Boolean(next.canInvite) }
+      : server));
+  }, [user]);
+
   const actions = {
     selectServer: async (serverId: string) => {
       const response = await fetchServerRooms(serverId);
@@ -159,8 +170,12 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
     voiceModeration: (userId: string, moderation: Partial<VoiceModerationState>) => updateVoiceModeration(activeServerId, userId, moderation),
     updateMemberNickname: async (userId: string, nickname: string) => {
       const response = await updateServerMemberNickname(activeServerId, userId, nickname);
-      setOnlineUsersByServer((current) => replaceServerPresenceUserIfPresent(current, activeServerId, response.user));
-      setServerMembersByServer((current) => ({ ...current, [activeServerId]: replacePresenceUser(current[activeServerId] ?? [], response.user) }));
+      applyMemberUpdate(activeServerId, response.user);
+      return response.user;
+    },
+    updateMemberPermissions: async (userId: string, canInvite: boolean) => {
+      const response = await updateServerMemberPermissions(activeServerId, userId, canInvite);
+      applyMemberUpdate(activeServerId, response.user);
       return response.user;
     },
     disconnectMember: (roomId: string, userId: string) => disconnectVoiceMember(activeServerId, roomId, userId)
@@ -173,10 +188,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
     applyPresenceSnapshot: (serverId: string, users: PresenceUser[]) => setOnlineUsersByServer((current) => ({ ...current, [serverId]: user ? includeCurrentPresence(users, user) : users })),
     applyPresenceOnline: (serverId: string, next: PresenceUser) => user && setOnlineUsersByServer((current) => ({ ...current, [serverId]: upsertPresence(current[serverId] ?? [presenceFromUser(user)], next, user) })),
     applyPresenceOffline: (serverId: string, userId: string) => setOnlineUsersByServer((current) => ({ ...current, [serverId]: (current[serverId] ?? []).filter((item) => item.userId !== userId) })),
-    applyMemberUpdate: (serverId: string, next: PresenceUser) => {
-      setOnlineUsersByServer((current) => replaceServerPresenceUserIfPresent(current, serverId, next));
-      setServerMembersByServer((current) => ({ ...current, [serverId]: replacePresenceUser(current[serverId] ?? [], next) }));
-    },
+    applyMemberUpdate,
     applyServerName: (serverId: string, name: string) => setServers((current) => current.map((server) => server.id === serverId ? { ...server, name } : server)),
     revokeAccess: (serverId: string) => {
       setOnlineUsersByServer((current) => { const next = { ...current }; delete next[serverId]; return next; });
