@@ -1846,6 +1846,149 @@ describe("Voxly static web serving", () => {
   });
 });
 
+describe("Voxly invite lifecycle hardening", () => {
+  let app: VoxlyApp;
+
+  beforeEach(async () => {
+    app = await createVoxlyApp({
+      databasePath: ":memory:",
+      ownerBootstrapToken: "bootstrap-secret",
+      allowHttpOwnerBootstrap: true,
+      secureCookies: false
+    });
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  async function grantInviter(ownerCookies: Record<string, string>, userId: string) {
+    const response = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${userId}/permissions`,
+      cookies: ownerCookies,
+      payload: { canInvite: true }
+    });
+    assert.equal(response.statusCode, 200);
+  }
+
+  async function createInviteAs(cookies: Record<string, string>, label: string) {
+    const response = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServerId}/invites`,
+      cookies,
+      payload: { label, expiresInMinutes: 1440, maxUses: null }
+    });
+    assert.equal(response.statusCode, 201);
+    return response.json().invite as { id: string; token: string };
+  }
+
+  async function acceptAs(token: string, nickname: string) {
+    return app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      payload: { inviteToken: token, nickname }
+    });
+  }
+
+  it("revokes invites a member created once they are kicked", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Mallory");
+    await grantInviter(owner.cookies, member.user.id);
+    const invite = await createInviteAs(member.cookies, "Mallory link");
+
+    const kick = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServerId}/members/${member.user.id}/kick`,
+      cookies: owner.cookies
+    });
+    assert.equal(kick.statusCode, 204);
+
+    // Without this, the kicked member replays their own surviving link and
+    // clears their `removed_at`, undoing the kick unilaterally.
+    const rejoin = await acceptAs(invite.token, "Mallory");
+    assert.equal(rejoin.statusCode, 404);
+
+    const stranger = await acceptAs(invite.token, "Stranger");
+    assert.equal(stranger.statusCode, 404);
+  });
+
+  it("revokes invites a member created once they are banned", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Mallory");
+    await grantInviter(owner.cookies, member.user.id);
+    const invite = await createInviteAs(member.cookies, "Mallory link");
+
+    const ban = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServerId}/members/${member.user.id}/ban`,
+      cookies: owner.cookies
+    });
+    assert.equal(ban.statusCode, 204);
+
+    // A ban binds to a user id and identities are free, so a surviving link
+    // would let the banned member return under a fresh nickname.
+    const freshIdentity = await acceptAs(invite.token, "Mallory2");
+    assert.equal(freshIdentity.statusCode, 404);
+  });
+
+  it("revokes invites a member created when their invite permission is withdrawn", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Mallory");
+    await grantInviter(owner.cookies, member.user.id);
+    const invite = await createInviteAs(member.cookies, "Mallory link");
+
+    const revoke = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${member.user.id}/permissions`,
+      cookies: owner.cookies,
+      payload: { canInvite: false }
+    });
+    assert.equal(revoke.statusCode, 200);
+
+    const accepted = await acceptAs(invite.token, "Stranger");
+    assert.equal(accepted.statusCode, 404);
+  });
+
+  it("defaults an omitted expiry to a bounded window instead of never", async () => {
+    const owner = await bootstrapOwner(app);
+    const response = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServerId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "No expiry supplied" }
+    });
+    assert.equal(response.statusCode, 201);
+    const { expiresAt } = response.json().invite;
+    assert.equal(typeof expiresAt, "string");
+    assert.ok(new Date(expiresAt).getTime() > Date.now());
+  });
+
+  it("lets only owners mint a never-expiring invite", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Mallory");
+    await grantInviter(owner.cookies, member.user.id);
+
+    const delegated = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServerId}/invites`,
+      cookies: member.cookies,
+      payload: { label: "Forever", expiresInMinutes: null, maxUses: null }
+    });
+    assert.equal(delegated.statusCode, 403);
+    assert.equal(delegated.json().error, "invite_expiry_required");
+
+    const byOwner = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServerId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Forever", expiresInMinutes: null, maxUses: null }
+    });
+    assert.equal(byOwner.statusCode, 201);
+    assert.equal(byOwner.json().invite.expiresAt, null);
+  });
+});
+
 async function bootstrapOwner(app: VoxlyApp) {
   const response = await app.server.inject({
     method: "POST",

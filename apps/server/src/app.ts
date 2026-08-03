@@ -52,6 +52,12 @@ export interface CreateVoxlyAppOptions {
   webDistPath?: string;
   /** Derive client IPs from X-Forwarded-For. Defaults to true; see below. */
   trustProxy?: boolean;
+  /**
+   * Request and error logging. Off by default so tests stay quiet; `main.ts`
+   * enables it, because a silent process gives operators no way to diagnose a
+   * 500 or a crash.
+   */
+  logger?: boolean;
 }
 
 export interface AuthUser {
@@ -126,6 +132,8 @@ type VisualSubscriptions = Map<string, Map<string, Set<VisualMediaKind>>>;
 
 interface RealtimeModeration {
   disconnectVoice: (serverId: string, roomId: string, userId: string) => boolean;
+  /** Evict every live socket for a user, across all servers. Used by the global ban. */
+  disconnectUser: (userId: string) => void;
   deleteRoom: (serverId: string, roomId: string) => void;
   deleteServer: (serverId: string, roomIds: string[], affectedUserIds: string[]) => void;
   grantServerAccess: (serverId: string, userId: string) => Promise<void>;
@@ -142,7 +150,74 @@ const visualSubscriptionsPayloadSchema = z.object({
   }).strict()).max(6)
 }).strict();
 
+/**
+ * Socket payloads are attacker-controlled and arrive without Fastify's schema layer.
+ *
+ * A handler that dereferences an unvalidated payload — or calls an ack the client
+ * simply omitted — throws inside a Socket.IO listener, which Socket.IO does not
+ * catch. That terminates the process and drops every active call, so each event
+ * validates its payload up front and treats the ack as optional.
+ */
+const roomIdPayloadSchema = z.string().min(1);
+
+const setMediaStatePayloadSchema = z.object({
+  roomId: z.string().min(1),
+  media: z.object({
+    mic: z.boolean(),
+    camera: z.boolean(),
+    screen: z.boolean(),
+    deafened: z.boolean(),
+    speaking: z.boolean()
+  }).partial()
+}).strict();
+
+const rtcSignalPayloadSchema = z.object({
+  roomId: z.string().min(1),
+  toUserId: z.string().min(1),
+  signal: z.record(z.string(), z.unknown())
+}).strict();
+
+/**
+ * Last-resort guard so one unhandled throw cannot end every user's session.
+ *
+ * Individual handlers still validate their own input; this exists so a future
+ * handler that forgets cannot repeat the same outage.
+ */
+/** Fastify attaches `statusCode` to framework errors; anything without one is a fault. */
+function errorStatusCode(error: unknown) {
+  const candidate = (error as { statusCode?: unknown } | null)?.statusCode;
+  return typeof candidate === "number" ? candidate : 500;
+}
+
+function safeSocketHandler<Args extends unknown[]>(event: string, handler: (...args: Args) => void) {
+  return (...args: Args) => {
+    try {
+      handler(...args);
+    } catch (cause) {
+      console.error(`socket handler failed for ${event}`, cause);
+    }
+  };
+}
+
+function callAck(ack: unknown, response: unknown) {
+  if (typeof ack === "function") (ack as (value: unknown) => void)(response);
+}
+
 const visualPublisherLimit = 3;
+
+/**
+ * Resource ceilings.
+ *
+ * Voxly targets small private groups, so these are deliberately far above any
+ * legitimate use and exist only to stop unbounded growth on a single-file SQLite
+ * database. Tune them freely — nothing else depends on the exact values.
+ */
+const defaultInviteExpiryMinutes = 10080; // 7 days, when the caller omits an expiry
+// Comfortably above the 56-entry preset matrix an owner can legitimately create
+// (see the invite-preset test), while still bounding growth.
+const maxActiveInvitesPerCreator = 200;
+const maxRoomsPerServer = 100;
+const maxServersPerOwner = 50;
 const serverNameSchema = z.string().trim().min(2).max(64);
 const roomNameSchema = z.string().trim().min(2).max(64);
 const inviteBodySchema = z.object({
@@ -159,7 +234,7 @@ const voiceModerationBodySchema = z.object({
 export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<VoxlyApp> {
   const database = await openDatabase(options.databasePath);
   const server = Fastify({
-    logger: false,
+    logger: options.logger ?? false,
     // Every supported Voxly topology terminates TLS in a reverse proxy, so the
     // socket address is always the proxy's. Without this, per-IP rate limits
     // would collapse into a single shared bucket and one abusive client would
@@ -173,12 +248,22 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
     global: false
   });
   await server.register(cookie);
-  server.setErrorHandler((error, _request, reply) => {
+  server.setErrorHandler((error, request, reply) => {
     if (error instanceof z.ZodError) {
       reply.code(400).send({ error: "bad_request" });
       return;
     }
-    throw error;
+    // Framework-generated client errors carry their own status and a safe,
+    // non-revealing message — rate limiting (429), unsupported media type (415),
+    // and malformed JSON (400) all arrive this way and must keep their shape.
+    if (errorStatusCode(error) < 500) {
+      throw error;
+    }
+    // Anything else is an internal fault. Fastify's default handler would return
+    // `error.message` verbatim, which leaks SQLite constraint and column names to
+    // the caller; the operator needs that detail instead.
+    request.log.error({ err: error }, "unhandled route error");
+    reply.code(500).send({ error: "internal_error" });
   });
 
   const io = new Server<ClientToServerEvents, ServerToClientEvents>(server.server, {
@@ -481,6 +566,14 @@ function registerRoutes(
     const owner = requireOwner(database, request, reply, options.secureCookies);
     if (!owner) return;
     const body = z.object({ name: serverNameSchema }).parse(request.body);
+    const ownedServers = one<{ count: number }>(
+      database.sqlite,
+      "select count(*) as count from servers where created_by_user_id = ?",
+      [owner.id]
+    )?.count ?? 0;
+    if (ownedServers >= maxServersPerOwner) {
+      return reply.code(409).send({ error: "server_limit_reached" });
+    }
     const serverId = crypto.randomUUID();
     const now = new Date().toISOString();
     run(database.sqlite, "insert into servers (id, name, created_by_user_id, created_at) values (?, ?, ?, ?)", [
@@ -518,6 +611,14 @@ function registerRoutes(
     const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
     if (!requireServerOwner(database, serverId, owner.id, reply)) return;
     const body = z.object({ name: roomNameSchema, kind: z.enum(["text", "voice"]) }).parse(request.body);
+    const roomTotal = one<{ count: number }>(
+      database.sqlite,
+      "select count(*) as count from rooms where server_id = ?",
+      [serverId]
+    )?.count ?? 0;
+    if (roomTotal >= maxRoomsPerServer) {
+      return reply.code(409).send({ error: "room_limit_reached" });
+    }
     const position = one<{ position: number | null }>(
       database.sqlite,
       "select max(position) as position from rooms where server_id = ?",
@@ -674,8 +775,18 @@ function registerRoutes(
     const user = requireUser(database, request, reply, options.secureCookies);
     if (!user) return;
     const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    if (!requireServerInviter(database, serverId, user.id, reply)) return;
-    const invite = createInviteForServer(database, serverId, user.id, inviteBodySchema.parse(request.body ?? {}));
+    const membership = requireServerInviter(database, serverId, user.id, reply);
+    if (!membership) return;
+    const body = inviteBodySchema.parse(request.body ?? {});
+    // A never-expiring link is a standing credential. Delegated inviters can add
+    // people; handing them a permanent one exceeds what that grant is meant to be.
+    if (body.expiresInMinutes === null && membership.role !== "owner") {
+      return reply.code(403).send({ error: "invite_expiry_required" });
+    }
+    if (activeInviteCount(database.sqlite, serverId, user.id) >= maxActiveInvitesPerCreator) {
+      return reply.code(409).send({ error: "invite_limit_reached" });
+    }
+    const invite = createInviteForServer(database, serverId, user.id, body);
     audit(database, user.id, "invite.created", null, serverId);
     database.save();
     return reply.code(201).send({ invite });
@@ -718,12 +829,25 @@ function registerRoutes(
     if (target.role === "owner") {
       return reply.code(409).send({ error: "cannot_change_owner_permissions" });
     }
-    run(
-      database.sqlite,
-      "update server_members set can_invite = ? where server_id = ? and user_id = ?",
-      [canInvite ? 1 : 0, serverId, userId]
-    );
-    audit(database, owner.id, canInvite ? "member.invite_granted" : "member.invite_revoked", userId, serverId);
+    database.sqlite.exec("begin immediate");
+    try {
+      run(
+        database.sqlite,
+        "update server_members set can_invite = ? where server_id = ? and user_id = ?",
+        [canInvite ? 1 : 0, serverId, userId]
+      );
+      // Revoking the grant has to take its products with it, or the links the
+      // member already issued keep admitting people after the owner believes the
+      // delegation ended.
+      if (!canInvite) {
+        revokeInvitesCreatedBy(database, serverId, userId, new Date().toISOString());
+      }
+      audit(database, owner.id, canInvite ? "member.invite_granted" : "member.invite_revoked", userId, serverId);
+      database.sqlite.exec("commit");
+    } catch (cause) {
+      database.sqlite.exec("rollback");
+      throw cause;
+    }
     database.save();
     const updated = realtime.refreshMemberIdentity(serverId, userId);
     if (!updated) return reply.code(404).send({ error: "member_not_found" });
@@ -806,14 +930,32 @@ function registerRoutes(
     const now = new Date().toISOString();
     // Losing access also drops the invite grant, so a member who returns through
     // a later invite cannot silently resume issuing links.
-    if (action === "ban") {
-      run(database.sqlite, "update server_members set banned_at = ?, removed_at = null, can_invite = 0 where server_id = ? and user_id = ?", [now, serverId, userId]);
-    } else if (action === "unban") {
-      run(database.sqlite, "update server_members set banned_at = null where server_id = ? and user_id = ?", [serverId, userId]);
-    } else {
-      run(database.sqlite, "update server_members set removed_at = ?, can_invite = 0 where server_id = ? and user_id = ?", [now, serverId, userId]);
+    //
+    // Dropping the grant is not enough on its own: invites are bearer tokens with
+    // no tie to their creator's standing, so any link the member already minted
+    // stays usable. A kicked member could replay one to clear their own
+    // `removed_at`, and a banned one could replay it under a fresh nickname —
+    // the ban binds to a user id, and identities are free. Revoking what they
+    // issued closes both paths, in one transaction with the membership change so
+    // the two can never diverge.
+    database.sqlite.exec("begin immediate");
+    try {
+      if (action === "ban") {
+        run(database.sqlite, "update server_members set banned_at = ?, removed_at = null, can_invite = 0 where server_id = ? and user_id = ?", [now, serverId, userId]);
+      } else if (action === "unban") {
+        run(database.sqlite, "update server_members set banned_at = null where server_id = ? and user_id = ?", [serverId, userId]);
+      } else {
+        run(database.sqlite, "update server_members set removed_at = ?, can_invite = 0 where server_id = ? and user_id = ?", [now, serverId, userId]);
+      }
+      if (action === "ban" || action === "kick") {
+        revokeInvitesCreatedBy(database, serverId, userId, now);
+      }
+      audit(database, owner.id, `member.${action}`, userId, serverId);
+      database.sqlite.exec("commit");
+    } catch (cause) {
+      database.sqlite.exec("rollback");
+      throw cause;
     }
-    audit(database, owner.id, `member.${action}`, userId, serverId);
     database.save();
     if (action === "ban" || action === "kick") {
       realtime.revokeServerAccess(serverId, userId, action === "ban" ? "banned" : "kicked");
@@ -895,6 +1037,9 @@ function registerRoutes(
     const owner = requireOwner(database, request, reply, options.secureCookies);
     if (!owner) {
       return;
+    }
+    if (activeInviteCount(database.sqlite, defaultServerId, owner.id) >= maxActiveInvitesPerCreator) {
+      return reply.code(409).send({ error: "invite_limit_reached" });
     }
     const invite = createInviteForServer(database, defaultServerId, owner.id, inviteBodySchema.parse(request.body ?? {}));
     audit(database, owner.id, "invite.created", null, defaultServerId);
@@ -1059,7 +1204,7 @@ function registerRoutes(
     return reply.code(201).send({ message });
   });
 
-  server.patch("/api/rooms/:roomId/messages/:messageId", async (request, reply) => {
+  server.patch("/api/rooms/:roomId/messages/:messageId", { config: messageLimit }, async (request, reply) => {
     const user = requireUser(database, request, reply, options.secureCookies);
     if (!user) {
       return;
@@ -1097,7 +1242,7 @@ function registerRoutes(
     return { message };
   });
 
-  server.patch("/api/rooms/:roomId/messages/:messageId/embeds", async (request, reply) => {
+  server.patch("/api/rooms/:roomId/messages/:messageId/embeds", { config: messageLimit }, async (request, reply) => {
     const user = requireUser(database, request, reply, options.secureCookies);
     if (!user) return;
     const { roomId, messageId } = z.object({
@@ -1132,7 +1277,7 @@ function registerRoutes(
     return { message };
   });
 
-  server.delete("/api/rooms/:roomId/messages/:messageId", async (request, reply) => {
+  server.delete("/api/rooms/:roomId/messages/:messageId", { config: messageLimit }, async (request, reply) => {
     const user = requireUser(database, request, reply, options.secureCookies);
     if (!user) {
       return;
@@ -1170,12 +1315,32 @@ function registerRoutes(
       return;
     }
     const { userId } = z.object({ userId: z.string().uuid() }).parse(request.params);
+    const now = new Date().toISOString();
+    const target = one<{ role: "owner" | "member" }>(
+      database.sqlite,
+      "select role from users where id = ?",
+      [userId]
+    );
     run(database.sqlite, "update users set banned_at = ? where id = ? and role != 'owner'", [
-      new Date().toISOString(),
+      now,
       userId
     ]);
+    // A ban that leaves the account usable is not a ban. Revoking the sessions
+    // closes the HTTP path; evicting the sockets closes the realtime path, which
+    // otherwise keeps serving messages and WebRTC signalling on the connection
+    // that was already open. Owners are exempt above, so skip the cascade for them.
+    if (target && target.role !== "owner") {
+      run(
+        database.sqlite,
+        "update sessions set revoked_at = ? where user_id = ? and revoked_at is null",
+        [now, userId]
+      );
+    }
     audit(database, owner.id, "user.banned", userId);
     database.save();
+    if (target && target.role !== "owner") {
+      realtime.disconnectUser(userId);
+    }
     return reply.code(204).send();
   });
 
@@ -1226,9 +1391,9 @@ function registerRealtime(
       socket.join(`server:${serverId}`);
     }
 
-    socket.on("connection:probe", (ack) => {
+    socket.on("connection:probe", safeSocketHandler("connection:probe", (ack) => {
       if (typeof ack === "function") ack();
-    });
+    }));
     const entry = online.get(user.userId);
     const isNewPresence = !entry;
     if (entry) {
@@ -1247,19 +1412,23 @@ function registerRealtime(
       }
     }
 
-    socket.on("room:join", (roomId) => {
-      const room = roomById(database.sqlite, roomId);
+    socket.on("room:join", safeSocketHandler("room:join", (roomId) => {
+      const parsed = roomIdPayloadSchema.safeParse(roomId);
+      if (!parsed.success) return;
+      const room = roomById(database.sqlite, parsed.data);
       if (!room || !serverMembership(database.sqlite, room.serverId, user.userId) || !requireActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
         return;
       }
-      socket.join(`room:${roomId}`);
-    });
+      socket.join(`room:${parsed.data}`);
+    }));
 
-    socket.on("room:leave", (roomId) => {
-      socket.leave(`room:${roomId}`);
-    });
+    socket.on("room:leave", safeSocketHandler("room:leave", (roomId) => {
+      const parsed = roomIdPayloadSchema.safeParse(roomId);
+      if (!parsed.success) return;
+      socket.leave(`room:${parsed.data}`);
+    }));
 
-    socket.on("voice:join", (payload, ack) => {
+    socket.on("voice:join", safeSocketHandler("voice:join", (payload, ack) => {
       if (typeof ack !== "function") return;
 
       const candidate = payload as Partial<VoiceJoinRequest> | null;
@@ -1306,61 +1475,73 @@ function registerRealtime(
       ack({ ok: true, state });
       emitVoiceSnapshot(io, database, roomId, members);
       socket.to(`server:${room.serverId}`).emit("voice:joined", { roomId, user: roomUser });
-    });
+    }));
 
-    socket.on("voice:leave", (roomId) => {
-      leaveVoice(io, database, socket, roomId, user.userId, voiceMembership, visualSubscriptions);
-    });
+    socket.on("voice:leave", safeSocketHandler("voice:leave", (roomId) => {
+      const parsed = roomIdPayloadSchema.safeParse(roomId);
+      if (!parsed.success) return;
+      leaveVoice(io, database, socket, parsed.data, user.userId, voiceMembership, visualSubscriptions);
+    }));
 
-    socket.on("voice:snapshot", (roomId, ack) => {
-      const room = roomById(database.sqlite, roomId);
+    socket.on("voice:snapshot", safeSocketHandler("voice:snapshot", (roomId, ack) => {
+      const parsed = roomIdPayloadSchema.safeParse(roomId);
+      if (!parsed.success) {
+        callAck(ack, { roomId: typeof roomId === "string" ? roomId : "", members: [] });
+        return;
+      }
+      const room = roomById(database.sqlite, parsed.data);
       if (!room || !requireActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
-        ack({ roomId, members: [] });
+        callAck(ack, { roomId: parsed.data, members: [] });
         return;
       }
-      ack(voiceSnapshot(roomId, voiceMembership.get(roomId), socket.rooms.has(`voice:${roomId}`)));
-    });
+      callAck(ack, voiceSnapshot(parsed.data, voiceMembership.get(parsed.data), socket.rooms.has(`voice:${parsed.data}`)));
+    }));
 
-    socket.on("voice:setMediaState", (payload, ack) => {
-      const room = roomById(database.sqlite, payload.roomId);
-      if (!room || room.kind !== "voice") {
-        ack({ ok: false, error: "room_not_found" });
+    socket.on("voice:setMediaState", safeSocketHandler("voice:setMediaState", (payload, ack) => {
+      const parsed = setMediaStatePayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        callAck(ack, { ok: false, error: "room_not_found" });
         return;
       }
-      const members = voiceMembership.get(payload.roomId);
+      const room = roomById(database.sqlite, parsed.data.roomId);
+      if (!room || room.kind !== "voice") {
+        callAck(ack, { ok: false, error: "room_not_found" });
+        return;
+      }
+      const members = voiceMembership.get(parsed.data.roomId);
       const current = members?.get(user.userId);
       if (!members || !current) {
-        ack({ ok: false, error: "not_in_voice_room" });
+        callAck(ack, { ok: false, error: "not_in_voice_room" });
         return;
       }
       const membership = activeServerMembership(database.sqlite, room.serverId, user.userId);
       if (!membership) {
-        ack({ ok: false, error: "not_in_voice_room" });
+        callAck(ack, { ok: false, error: "not_in_voice_room" });
         return;
       }
       const moderation = voiceModeration(membership);
-      const nextMedia = normalizeVoiceMedia({ ...current.media, ...payload.media }, moderation);
+      const nextMedia = normalizeVoiceMedia({ ...current.media, ...parsed.data.media }, moderation);
       if (visualPublisherCount(members, user.userId, nextMedia) > visualPublisherLimit) {
-        ack({ ok: false, error: "visual_limit_reached" });
+        callAck(ack, { ok: false, error: "visual_limit_reached" });
         return;
       }
       const nextState = { ...current, media: nextMedia, moderation };
       members.set(user.userId, nextState);
       clearUnavailableVisualSubscriptions(
         io,
-        payload.roomId,
+        parsed.data.roomId,
         user.userId,
         nextMedia,
         visualSubscriptions
       );
-      emitVoiceSnapshot(io, database, payload.roomId, members);
-      ack({ ok: true, state: nextState });
-    });
+      emitVoiceSnapshot(io, database, parsed.data.roomId, members);
+      callAck(ack, { ok: true, state: nextState });
+    }));
 
-    socket.on("voice:setVisualSubscriptions", (payload, ack) => {
+    socket.on("voice:setVisualSubscriptions", safeSocketHandler("voice:setVisualSubscriptions", (payload, ack) => {
       const parsed = visualSubscriptionsPayloadSchema.safeParse(payload);
       if (!parsed.success) {
-        ack?.({ ok: false, error: "invalid_payload" });
+        callAck(ack, { ok: false, error: "invalid_payload" });
         return;
       }
       const response = setVisualSubscriptions(
@@ -1371,13 +1552,18 @@ function registerRealtime(
         user.userId,
         parsed.data
       );
-      ack?.(response);
-    });
+      callAck(ack, response);
+    }));
 
-    socket.on("rtc:signal", (payload, ack) => {
-      const response = forwardRtcSignal(io, database, voiceMembership, user.userId, payload);
-      ack?.(response);
-    });
+    socket.on("rtc:signal", safeSocketHandler("rtc:signal", (payload, ack) => {
+      const parsed = rtcSignalPayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        callAck(ack, { ok: false, error: "room_not_found" });
+        return;
+      }
+      const response = forwardRtcSignal(io, database, voiceMembership, user.userId, parsed.data);
+      callAck(ack, response);
+    }));
 
     socket.on("disconnect", () => {
       for (const [roomId, members] of voiceMembership) {
@@ -1414,6 +1600,18 @@ function registerRealtime(
       leaveVoiceMember(io, database, roomId, userId, voiceMembership, visualSubscriptions);
       emitVoiceForceLeave(io, userId, roomId, "owner_disconnect");
       return true;
+    },
+    disconnectUser(userId) {
+      for (const [roomId, members] of voiceMembership) {
+        if (members.has(userId)) {
+          leaveVoiceMember(io, database, roomId, userId, voiceMembership, visualSubscriptions);
+          emitVoiceForceLeave(io, userId, roomId, "server_access_revoked");
+        }
+      }
+      for (const socket of io.sockets.sockets.values()) {
+        const socketUser = socket.data.user as PresenceUser | undefined;
+        if (socketUser?.userId === userId) socket.disconnect(true);
+      }
     },
     deleteRoom(_serverId, roomId) {
       deleteRealtimeVoiceRoom(io, roomId, voiceMembership, visualSubscriptions, "room_deleted");
@@ -1783,9 +1981,24 @@ function serverMembership(sqlite: DatabaseSync, serverId: string, userId: string
   );
 }
 
+/**
+ * A global ban must reach live sockets, not just the next HTTP request.
+ *
+ * `authenticate()` re-reads `users.banned_at` per request, but Socket.IO runs its
+ * middleware once per *connection* and freezes `socket.data.user`. Without this
+ * check a banned user keeps reading messages, joins voice, and completes WebRTC
+ * signalling for as long as the connection stays open. Fails closed on a missing
+ * row.
+ */
+function isGloballyBanned(sqlite: DatabaseSync, userId: string) {
+  const user = one<{ banned_at: string | null }>(sqlite, "select banned_at from users where id = ?", [userId]);
+  return !user || Boolean(user.banned_at);
+}
+
 function activeServerMembership(sqlite: DatabaseSync, serverId: string, userId: string) {
   const membership = serverMembership(sqlite, serverId, userId);
-  return membership && !membership.banned_at && !membership.removed_at ? membership : null;
+  if (!membership || membership.banned_at || membership.removed_at) return null;
+  return isGloballyBanned(sqlite, userId) ? null : membership;
 }
 
 function voiceModeration(membership: ServerMemberRow): VoiceModerationState {
@@ -1801,8 +2014,7 @@ function isServerOwner(sqlite: DatabaseSync, serverId: string, userId: string) {
 }
 
 function requireActiveServerMembership(sqlite: DatabaseSync, serverId: string, userId: string) {
-  const membership = serverMembership(sqlite, serverId, userId);
-  return Boolean(membership && !membership.banned_at && !membership.removed_at);
+  return activeServerMembership(sqlite, serverId, userId) !== null;
 }
 
 function serverPresenceUsers(
@@ -1879,7 +2091,13 @@ function createInviteForServer(
   const token = createOpaqueToken();
   const id = crypto.randomUUID();
   const now = new Date();
-  const expiresInMinutes = body.expiresInMinutes ?? null;
+  // An omitted expiry used to mean "never", which made every such link a
+  // permanent account-creation credential — the opposite of how `maxUses`
+  // defaults. Omission now means the bounded default; only an explicit `null`
+  // from an owner produces a link that never expires.
+  const expiresInMinutes = body.expiresInMinutes === undefined
+    ? defaultInviteExpiryMinutes
+    : body.expiresInMinutes;
   const expiresAt = expiresInMinutes === null
     ? null
     : new Date(now.getTime() + expiresInMinutes * 60 * 1000).toISOString();
@@ -1927,6 +2145,38 @@ function revokeServerInvite(database: VoxlyDatabase, serverId: string, inviteId:
   audit(database, ownerId, "invite.revoked", inviteId, serverId);
   database.save();
   return "revoked" as const;
+}
+
+/**
+ * Revoke the still-active invites a member issued on one server.
+ *
+ * Called when that member loses access or loses the invite grant. Already-revoked
+ * and already-expired rows are left alone so the audit trail keeps their original
+ * timestamps.
+ */
+function revokeInvitesCreatedBy(database: VoxlyDatabase, serverId: string, userId: string, now: string) {
+  run(
+    database.sqlite,
+    `update invites
+     set revoked_at = ?
+     where server_id = ?
+       and created_by_user_id = ?
+       and revoked_at is null
+       and (expires_at is null or expires_at > ?)`,
+    [now, serverId, userId, now]
+  );
+}
+
+/** Invites a member has outstanding on one server: neither revoked nor expired. */
+function activeInviteCount(sqlite: DatabaseSync, serverId: string, createdByUserId: string) {
+  return one<{ count: number }>(
+    sqlite,
+    `select count(*) as count from invites
+     where server_id = ? and created_by_user_id = ?
+       and revoked_at is null
+       and (expires_at is null or expires_at > ?)`,
+    [serverId, createdByUserId, new Date().toISOString()]
+  )?.count ?? 0;
 }
 
 function inviteUseCount(sqlite: DatabaseSync, inviteId: string) {
@@ -2224,6 +2474,24 @@ function audit(
   );
 }
 
+/**
+ * A malformed percent-escape must not be fatal.
+ *
+ * `decodeURIComponent` throws `URIError` on input like `%ZZ`, and this parser runs
+ * inside the Socket.IO handshake middleware before any session exists. Socket.IO
+ * invokes that middleware from an async caller, so a throw here surfaces as an
+ * unhandled rejection and takes the process down — an unauthenticated remote kill.
+ * `@fastify/cookie` on the HTTP path is lenient and yields the raw value, so
+ * degrading the same way keeps the two paths reading a header identically.
+ */
+function safeDecodeCookieComponent(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function parseCookieHeader(header: string) {
   return Object.fromEntries(
     header
@@ -2234,7 +2502,7 @@ function parseCookieHeader(header: string) {
         const index = part.indexOf("=");
         return index === -1
           ? [part, ""]
-          : [decodeURIComponent(part.slice(0, index)), decodeURIComponent(part.slice(index + 1))];
+          : [safeDecodeCookieComponent(part.slice(0, index)), safeDecodeCookieComponent(part.slice(index + 1))];
       })
   );
 }

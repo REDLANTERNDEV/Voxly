@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { createServerInvite } from "../../api.js";
+import { ApiError, createServerInvite } from "../../api.js";
 import type { Translate } from "../../app/types.js";
 import { CopyIcon,PlusIcon } from "../../components/ui/Icons.js";
 import { buildInviteUrl,resolveInviteOrigin } from "../../lib/invites.js";
@@ -55,8 +55,18 @@ export function InviteComposer({ serverId, publicUrl, idPrefix, t, onCreated }: 
       setLabel("");
       setStatus(t("owner.created"));
       await onCreated?.();
-    } catch {
-      setStatus(t("invite.createFailed"));
+    } catch (error) {
+      // The server refuses a never-expiring link from a delegated inviter, and
+      // caps how many links one member may have outstanding. Both are ordinary
+      // outcomes for a non-owner, so name them rather than failing opaquely.
+      const code = error instanceof ApiError ? error.code : undefined;
+      if (code === "invite_expiry_required") {
+        setStatus(t("invite.expiryRequired"));
+      } else if (code === "invite_limit_reached") {
+        setStatus(t("invite.limitReached"));
+      } else {
+        setStatus(t("invite.createFailed"));
+      }
     } finally {
       setIsBusy(false);
     }

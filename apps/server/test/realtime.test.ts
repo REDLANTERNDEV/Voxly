@@ -856,6 +856,102 @@ describe("Voxly realtime MVP", () => {
     assert.deepEqual(await memberDeleted, { serverId });
     assert.equal(app.io.sockets.sockets.get(memberSocket.id ?? "")?.rooms.has(`voice:${voiceRoom.id}`), false);
   });
+
+  it("rejects a malformed session cookie without killing the process", async () => {
+    // `decodeURIComponent` throws on `%ZZ`. This parser runs in the handshake
+    // middleware before any session exists, so an unguarded throw was an
+    // unauthenticated remote kill.
+    await assert.rejects(connectSocket(baseUrl, "%ZZ"), /connect_error/);
+    await assert.rejects(connectSocket(baseUrl, "%E0%A4%A"), /connect_error/);
+
+    // Still serving: a valid session connects and the HTTP side answers.
+    const owner = await bootstrapOwner(app);
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    const health = await app.server.inject({ method: "GET", url: "/api/health" });
+    assert.equal(health.statusCode, 200);
+  });
+
+  it("survives malformed socket payloads on every event", async () => {
+    const owner = await bootstrapOwner(app);
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+
+    // Each of these previously threw inside the listener — an unvalidated payload
+    // dereference, or an ack the client simply omitted — and Socket.IO does not
+    // catch listener exceptions.
+    ownerSocket.emit("voice:setMediaState", { roomId: "nope", media: {} });
+    ownerSocket.emit("voice:setMediaState", null);
+    ownerSocket.emit("voice:snapshot", "lobby");
+    ownerSocket.emit("rtc:signal", null);
+    ownerSocket.emit("room:join", { toString: 1 });
+    ownerSocket.emit("room:join", 123);
+    ownerSocket.emit("voice:leave", null);
+    ownerSocket.emit("voice:setVisualSubscriptions", null);
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    // The connection and the process are both still up.
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("probe never acked")), 1000);
+      ownerSocket.emit("connection:probe", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+    const health = await app.server.inject({ method: "GET", url: "/api/health" });
+    assert.equal(health.statusCode, 200);
+  });
+
+  it("terminates a live socket when the member is banned globally", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Mallory");
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(memberSocket);
+
+    const voiceRoom = { id: "lobby" };
+    assert.equal((await joinVoice(memberSocket, voiceRoom.id)).ok, true);
+
+    const disconnected = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("socket was never disconnected")), 1000);
+      memberSocket.once("disconnect", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+
+    const ban = await app.server.inject({
+      method: "POST",
+      url: `/api/owner/users/${member.user.id}/ban`,
+      cookies: owner.cookies
+    });
+    assert.equal(ban.statusCode, 204);
+
+    // A ban that leaves the realtime connection alive is not a ban: the member
+    // otherwise keeps receiving messages and relaying WebRTC signals.
+    await disconnected;
+    assert.equal(app.io.sockets.sockets.get(memberSocket.id ?? ""), undefined);
+
+    // The revoked session cannot be used to reconnect either.
+    await assert.rejects(connectSocket(baseUrl, member.cookies.voxly_session), /connect_error/);
+  });
+
+  it("blocks realtime access for a globally banned member that is still connected", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Mallory");
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(memberSocket);
+
+    // Ban directly in the database so the socket is not evicted — this isolates
+    // the per-event authorization check from the eviction path.
+    app.sqlite.prepare("update users set banned_at = ? where id = ?").run(new Date().toISOString(), member.user.id);
+
+    const join = await joinVoice(memberSocket, "lobby");
+    assert.equal(join.ok, false);
+
+    const snapshot = await emitWithAck<{ roomId: string; members: unknown[] }>(memberSocket, "voice:snapshot", "lobby");
+    assert.deepEqual(snapshot.members, []);
+  });
 });
 
 async function bootstrapOwner(app: VoxlyApp) {
