@@ -133,20 +133,23 @@ describe("audio device application", () => {
     assert.deepEqual(buildMicrophoneConstraints("mic-a", {}), buildMicrophoneConstraints("mic-a"));
     assert.deepEqual(buildMicrophoneConstraints("", {}), buildMicrophoneConstraints(""));
 
-    assert.deepEqual(buildMicrophoneConstraints("", { noiseSuppression: true }), {
-      audio: { noiseSuppression: true },
+    assert.deepEqual(buildMicrophoneConstraints("", { noiseSuppression: true, autoGainControl: true }), {
+      audio: { noiseSuppression: true, autoGainControl: true },
       video: false
     });
-    assert.deepEqual(buildMicrophoneConstraints("mic-a", { noiseSuppression: false }), {
-      audio: { deviceId: { exact: "mic-a" }, noiseSuppression: false },
+    assert.deepEqual(buildMicrophoneConstraints("mic-a", { noiseSuppression: false, autoGainControl: false }), {
+      audio: { deviceId: { exact: "mic-a" }, noiseSuppression: false, autoGainControl: false },
       video: false
     });
   });
 
-  it("keeps noise suppression an ideal constraint so capture never over-constrains", () => {
+  it("keeps processing flags ideal and never constrains echo cancellation", () => {
     const source = readFileSync("src/lib/audioDevices.ts", "utf8");
 
     assert.doesNotMatch(source, /noiseSuppression:\s*\{/);
+    assert.doesNotMatch(source, /autoGainControl:\s*\{/);
+    // Forcing echo cancellation off would make speaker users echo.
+    assert.doesNotMatch(source, /echoCancellation/);
   });
 
   it("prefers AudioContext output routing and maps system default to an empty sink", async () => {

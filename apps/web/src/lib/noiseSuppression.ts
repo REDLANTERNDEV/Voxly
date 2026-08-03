@@ -36,6 +36,45 @@ export function writeNoiseSuppression(userId: string, enabled: boolean, storage 
   }
 }
 
+export interface MicrophoneProcessingSettings {
+  noiseSuppression: boolean;
+  autoGainControl: boolean;
+}
+
+// Automatic gain control rides with suppression. Left on over an unsuppressed
+// signal it keeps re-riding the exposed noise floor between words, which pumps
+// the voice itself; the manual input level covers the gain it used to provide.
+export function microphoneProcessingConstraints(enabled: boolean): MicrophoneProcessingSettings {
+  return { noiseSuppression: enabled, autoGainControl: enabled };
+}
+
+interface ReconfigurableTrack {
+  applyConstraints(constraints: MediaTrackConstraints): Promise<void>;
+  getSettings(): MediaTrackSettings;
+}
+
+// Reconfiguring the live capture avoids reopening the device, which would reset
+// the echo canceller and make it audibly re-converge. Browsers may resolve
+// without actually reconfiguring, so the observed settings decide whether the
+// caller still has to re-capture.
+export async function applyMicrophoneProcessing(
+  track: ReconfigurableTrack | null | undefined,
+  enabled: boolean
+) {
+  if (typeof track?.applyConstraints !== "function" || typeof track.getSettings !== "function") {
+    return false;
+  }
+  const wanted = microphoneProcessingConstraints(enabled);
+  try {
+    await track.applyConstraints(wanted);
+    const settings = track.getSettings();
+    return settings.noiseSuppression === wanted.noiseSuppression
+      && settings.autoGainControl === wanted.autoGainControl;
+  } catch {
+    return false;
+  }
+}
+
 export function supportsNoiseSuppression(
   supported: Partial<MediaTrackSupportedConstraints> | null | undefined
 ) {

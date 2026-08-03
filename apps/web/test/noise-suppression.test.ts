@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   DEFAULT_NOISE_SUPPRESSION,
+  applyMicrophoneProcessing,
   browserSupportsNoiseSuppression,
+  microphoneProcessingConstraints,
   noiseSuppressionStorageKey,
   readNoiseSuppression,
   supportsNoiseSuppression,
@@ -52,6 +54,30 @@ describe("noise suppression preference", () => {
   it("reads and writes safely when storage is unavailable", () => {
     assert.equal(readNoiseSuppression("user-a", undefined), DEFAULT_NOISE_SUPPRESSION);
     assert.doesNotThrow(() => writeNoiseSuppression("user-a", false, undefined));
+  });
+
+  it("moves automatic gain control together with suppression", () => {
+    // Gain control left on over an unsuppressed signal pumps the voice.
+    assert.deepEqual(microphoneProcessingConstraints(true), { noiseSuppression: true, autoGainControl: true });
+    assert.deepEqual(microphoneProcessingConstraints(false), { noiseSuppression: false, autoGainControl: false });
+  });
+
+  it("treats a live reconfiguration as applied only when the settings agree", async () => {
+    const track = (settings: MediaTrackSettings, fail = false) => ({
+      applyConstraints: () => fail ? Promise.reject(new Error("nope")) : Promise.resolve(),
+      getSettings: () => settings
+    });
+
+    assert.equal(await applyMicrophoneProcessing(track({ noiseSuppression: false, autoGainControl: false }), false), true);
+    // A browser that resolves without reconfiguring must not be trusted.
+    assert.equal(await applyMicrophoneProcessing(track({ noiseSuppression: true, autoGainControl: true }), false), false);
+    // A partial application still requires a full re-capture.
+    assert.equal(await applyMicrophoneProcessing(track({ noiseSuppression: false, autoGainControl: true }), false), false);
+    // Browsers that do not report the settings at all fall back.
+    assert.equal(await applyMicrophoneProcessing(track({}), false), false);
+    assert.equal(await applyMicrophoneProcessing(track({}, true), false), false);
+    assert.equal(await applyMicrophoneProcessing(null, false), false);
+    assert.equal(await applyMicrophoneProcessing(undefined, true), false);
   });
 
   it("detects support only from an explicit supported constraint", () => {

@@ -22,7 +22,7 @@ import {
 import { requestVoiceJoin } from "./voiceJoin.js";
 import { requestVisualSubscriptions, voiceRecoveryRetryDelayMs } from "./voiceRecovery.js";
 import { buildMicrophoneConstraints } from "./audioDevices.js";
-import { DEFAULT_NOISE_SUPPRESSION } from "./noiseSuppression.js";
+import { applyMicrophoneProcessing, DEFAULT_NOISE_SUPPRESSION, microphoneProcessingConstraints } from "./noiseSuppression.js";
 import { releaseUnusedSharedAudioOutput } from "./audioOutput.js";
 import {
   shouldIgnoreIncomingOffer,
@@ -622,7 +622,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (microphoneEnabled) {
       if (!mic) {
         try {
-          const rawStream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceIdRef.current, { noiseSuppression: noiseSuppressionRef.current }));
+          const rawStream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceIdRef.current, microphoneProcessingConstraints(noiseSuppressionRef.current)));
           acquiredInput = prepareMicrophoneInput(rawStream);
           mic = acquiredInput.voiceStream;
         } catch {
@@ -711,51 +711,72 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     const requestId = ++microphoneSwitchRef.current;
     let cancelled = false;
 
-    void navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceId, { noiseSuppression }))
-      .then((rawStream) => {
-        const nextInput = prepareMicrophoneInput(rawStream);
-        const nextTrack = nextInput.voiceStream.getAudioTracks()[0];
-        if (!nextTrack || cancelled || requestId !== microphoneSwitchRef.current) {
-          nextInput.dispose();
-          return;
-        }
-        microphoneSwitchQueueRef.current = microphoneSwitchQueueRef.current.then(async () => {
-          if (cancelled || requestId !== microphoneSwitchRef.current) {
+    const recapture = () => {
+      void navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceId, microphoneProcessingConstraints(noiseSuppression)))
+        .then((rawStream) => {
+          const nextInput = prepareMicrophoneInput(rawStream);
+          const nextTrack = nextInput.voiceStream.getAudioTracks()[0];
+          if (!nextTrack || cancelled || requestId !== microphoneSwitchRef.current) {
             nextInput.dispose();
             return;
           }
-          const activeStream = localStreamsRef.current.mic;
-          const previousTrack = activeStream?.getAudioTracks()[0];
-          if (!roomRef.current || !activeStream || !previousTrack) {
+          microphoneSwitchQueueRef.current = microphoneSwitchQueueRef.current.then(async () => {
+            if (cancelled || requestId !== microphoneSwitchRef.current) {
+              nextInput.dispose();
+              return;
+            }
+            const activeStream = localStreamsRef.current.mic;
+            const previousTrack = activeStream?.getAudioTracks()[0];
+            if (!roomRef.current || !activeStream || !previousTrack) {
+              nextInput.dispose();
+              return;
+            }
+            nextTrack.enabled = controlsRef.current.mic.on && !controlsRef.current.deafen.on;
+            try {
+              await replaceMicrophoneTrack(peersRef.current.values(), previousTrack, nextTrack);
+            } catch (cause) {
+              await replaceMicrophoneTrack(peersRef.current.values(), nextTrack, previousTrack).catch(() => undefined);
+              nextInput.dispose();
+              throw cause;
+            }
+            if (!roomRef.current || requestId !== microphoneSwitchRef.current) {
+              await replaceMicrophoneTrack(peersRef.current.values(), nextTrack, previousTrack).catch(() => undefined);
+              nextInput.dispose();
+              return;
+            }
+            stopStream("mic");
+            activateMicrophoneInput(nextInput);
+            setError("");
+          }).catch(() => {
             nextInput.dispose();
-            return;
+            setError("The microphone could not be reopened. Using the previous microphone.");
+          });
+        })
+        .catch(() => {
+          if (!cancelled && requestId === microphoneSwitchRef.current) {
+            setError("The microphone could not be reopened. Using the previous microphone.");
           }
-          nextTrack.enabled = controlsRef.current.mic.on && !controlsRef.current.deafen.on;
-          try {
-            await replaceMicrophoneTrack(peersRef.current.values(), previousTrack, nextTrack);
-          } catch (cause) {
-            await replaceMicrophoneTrack(peersRef.current.values(), nextTrack, previousTrack).catch(() => undefined);
-            nextInput.dispose();
-            throw cause;
-          }
-          if (!roomRef.current || requestId !== microphoneSwitchRef.current) {
-            await replaceMicrophoneTrack(peersRef.current.values(), nextTrack, previousTrack).catch(() => undefined);
-            nextInput.dispose();
-            return;
-          }
-          stopStream("mic");
-          activateMicrophoneInput(nextInput);
-          setError("");
-        }).catch(() => {
-          nextInput.dispose();
-          setError("The microphone could not be reopened. Using the previous microphone.");
         });
-      })
-      .catch(() => {
-        if (!cancelled && requestId === microphoneSwitchRef.current) {
-          setError("The microphone could not be reopened. Using the previous microphone.");
-        }
-      });
+    };
+
+    if (applied.deviceId !== microphoneDeviceId) {
+      // A different device always needs a new capture.
+      recapture();
+    } else {
+      // Only the processing changed. Reconfiguring the live capture keeps the
+      // published track, the graph, and the converged echo canceller intact, so
+      // the swap is inaudible where the browser supports it.
+      void applyMicrophoneProcessing(microphoneInputRef.current?.rawStream.getAudioTracks()[0], noiseSuppression)
+        .then((reconfigured) => {
+          if (cancelled || requestId !== microphoneSwitchRef.current) return;
+          if (!reconfigured) {
+            recapture();
+            return;
+          }
+          appliedMicrophoneCaptureRef.current = { deviceId: microphoneDeviceId, noiseSuppression };
+          setError("");
+        });
+    }
 
     return () => {
       cancelled = true;
@@ -814,7 +835,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (!stream) {
       setError("");
       try {
-        const rawStream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceIdRef.current, { noiseSuppression: noiseSuppressionRef.current }));
+        const rawStream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceIdRef.current, microphoneProcessingConstraints(noiseSuppressionRef.current)));
         const input = prepareMicrophoneInput(rawStream);
         stream = input.voiceStream;
         activateMicrophoneInput(input);

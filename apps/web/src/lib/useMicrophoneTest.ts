@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildMicrophoneConstraints } from "./audioDevices.js";
 import { createMicrophoneInput, type MicrophoneInput } from "./microphoneInput.js";
-import { DEFAULT_NOISE_SUPPRESSION } from "./noiseSuppression.js";
+import { applyMicrophoneProcessing, DEFAULT_NOISE_SUPPRESSION, microphoneProcessingConstraints } from "./noiseSuppression.js";
 
 export type MicrophoneTestError = "permission" | "unavailable" | null;
 
@@ -45,7 +45,7 @@ export function useMicrophoneTest(
     }
     let rawStream: MediaStream | null = null;
     try {
-      rawStream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(deviceIdRef.current, { noiseSuppression: noiseSuppressionRef.current }));
+      rawStream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(deviceIdRef.current, microphoneProcessingConstraints(noiseSuppressionRef.current)));
       const input = createMicrophoneInput(rawStream, volumeRef.current);
       if (generation !== generationRef.current) {
         input.dispose();
@@ -73,10 +73,24 @@ export function useMicrophoneTest(
   // change restarts a self-owned capture once. A test riding the shared voice
   // monitor has no input of its own and inherits the voice graph instead.
   useEffect(() => {
-    const changed = deviceIdRef.current !== deviceId || noiseSuppressionRef.current !== noiseSuppression;
+    const deviceChanged = deviceIdRef.current !== deviceId;
+    const processingChanged = noiseSuppressionRef.current !== noiseSuppression;
     deviceIdRef.current = deviceId;
     noiseSuppressionRef.current = noiseSuppression;
-    if (changed && inputRef.current) void start();
+    const input = inputRef.current;
+    if (!input || (!deviceChanged && !processingChanged)) return;
+    if (deviceChanged) {
+      void start();
+      return;
+    }
+    // Reopening the device to change processing makes the echo canceller
+    // re-converge, which is plainly audible while monitoring. Reconfigure the
+    // live capture instead and only restart where that is unsupported.
+    const generation = generationRef.current;
+    void applyMicrophoneProcessing(input.rawStream.getAudioTracks()[0], noiseSuppression).then((reconfigured) => {
+      if (reconfigured || generation !== generationRef.current || inputRef.current !== input) return;
+      void start();
+    });
   }, [deviceId, noiseSuppression, start]);
 
   useEffect(() => {
