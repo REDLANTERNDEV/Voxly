@@ -70,6 +70,37 @@ describe("rich message embeds", () => {
     );
   });
 
+  it("keeps YouTube timestamps by mapping them onto the embed start parameter", () => {
+    const embedUrls = messageEmbeds([
+      "https://youtu.be/dQw4w9WgXcQ?t=90",
+      "https://www.youtube.com/watch?v=aQw4w9WgXcQ&t=1m30s",
+      "https://www.youtube.com/watch?v=bQw4w9WgXcQ&t=1h2m3s",
+      "https://www.youtube.com/embed/cQw4w9WgXcQ?start=45"
+    ].join("\n")).map((embed) => embed.embedUrl);
+
+    assert.deepEqual(embedUrls, [
+      "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?playsinline=1&start=90",
+      "https://www.youtube-nocookie.com/embed/aQw4w9WgXcQ?playsinline=1&start=90",
+      "https://www.youtube-nocookie.com/embed/bQw4w9WgXcQ?playsinline=1&start=3723",
+      "https://www.youtube-nocookie.com/embed/cQw4w9WgXcQ?playsinline=1&start=45"
+    ]);
+  });
+
+  it("ignores unusable YouTube timestamps", () => {
+    assert.deepEqual(
+      messageEmbeds([
+        "https://youtu.be/dQw4w9WgXcQ?t=later",
+        "https://youtu.be/aQw4w9WgXcQ?t=0",
+        "https://youtu.be/bQw4w9WgXcQ?t="
+      ].join("\n")).map((embed) => embed.embedUrl),
+      [
+        "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?playsinline=1",
+        "https://www.youtube-nocookie.com/embed/aQw4w9WgXcQ?playsinline=1",
+        "https://www.youtube-nocookie.com/embed/bQw4w9WgXcQ?playsinline=1"
+      ]
+    );
+  });
+
   it("leaves unapproved hosts as ordinary links", () => {
     assert.deepEqual(messageEmbeds("https://youtube.example/video/dQw4w9WgXcQ"), []);
   });

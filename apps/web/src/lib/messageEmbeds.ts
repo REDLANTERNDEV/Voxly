@@ -54,6 +54,23 @@ export function messageEmbeds(body: string, suppressedKeys: string[] = []): Mess
   return embeds;
 }
 
+const youtubeTimestampPattern = /^(?:(\d{1,3})h)?(?:(\d{1,4})m)?(?:(\d{1,6})s?)?$/u;
+const maximumStartSeconds = 24 * 60 * 60;
+
+function youtubeStartSeconds(url: URL): number | null {
+  const raw = url.searchParams.get("t")
+    ?? url.searchParams.get("start")
+    ?? (url.hash.startsWith("#t=") ? url.hash.slice(3) : null);
+  if (!raw) return null;
+  const match = youtubeTimestampPattern.exec(raw.trim().toLowerCase());
+  if (!match) return null;
+  const [, hours, minutes, seconds] = match;
+  if (hours === undefined && minutes === undefined && seconds === undefined) return null;
+  const total = Number(hours ?? 0) * 3600 + Number(minutes ?? 0) * 60 + Number(seconds ?? 0);
+  if (total <= 0) return null;
+  return Math.min(total, maximumStartSeconds);
+}
+
 function embedForUrl(sourceUrl: string): MessageEmbed | null {
   const url = new URL(sourceUrl);
   const host = url.hostname.toLowerCase();
@@ -68,11 +85,12 @@ function embedForUrl(sourceUrl: string): MessageEmbed | null {
           ? parts[1]
           : null;
     if (videoId && /^[A-Za-z0-9_-]{11}$/u.test(videoId)) {
+      const start = youtubeStartSeconds(url);
       return {
         key: `youtube:${videoId}`,
         provider: "youtube",
         sourceUrl,
-        embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1`
+        embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1${start === null ? "" : `&start=${start}`}`
       };
     }
   }
