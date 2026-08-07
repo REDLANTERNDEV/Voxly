@@ -143,6 +143,11 @@ examples in `README.md`. Never commit a local `.env` or SQLite database.
   signaling path.
 - Invite expiry and usage capacity are independent limits; consuming capacity
   and activating membership is one atomic server operation.
+- Third-party analytics are an operator choice and off by default: a deployment
+  that configures none must contact no analytics host at all. Reporting stays
+  limited to the public landing page, with automatic route tracking disabled,
+  because authenticated paths carry server and room IDs. Adding a provider does
+  not widen that scope.
 - Keep failures recoverable where the current product has a safe fallback;
   avoid converting optional optimizations into hard failures.
 
@@ -159,6 +164,14 @@ examples in `README.md`. Never commit a local `.env` or SQLite database.
   revoked.
 - Keep TURN secrets server-side. Browsers receive only short-lived generated
   credentials from the authenticated RTC configuration endpoint.
+- The Content-Security-Policy is built in the application layer so every
+  deployment path shares one posture. Widen it only for an origin the client
+  actually loads, and name origins rather than URLs; a path in a source list
+  silently invalidates it.
+- A third-party provider is two origins, not one: where its script is fetched
+  from, and where its script sends data. Resolve both, and cover both
+  directives. A missing `connect-src` origin loads the script and then discards
+  everything it reports, which no server-side check can observe.
 - Keep the Docker application port loopback-bound by default and retain the
   existing read-only filesystem, resource limits, and no-new-privileges
   controls unless a deployment change explicitly requires otherwise.

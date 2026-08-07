@@ -108,6 +108,26 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
 - Repeats of the same cue inside a short window are dropped rather than
   restarted, so a burst of arrivals produces one sound instead of a stutter.
 
+## Landing Analytics
+
+- `analytics.ts` loads nothing until `/api/config` reports a provider, and only
+  while the public landing page is mounted. A deployment that configured none
+  must issue no request to any analytics host.
+- Keep automatic route tracking off. Umami patches `history` when left alone and
+  would report authenticated in-app paths, which carry server and room IDs; the
+  single landing view is reported explicitly instead. gtag does not follow SPA
+  navigation on its own, so its `config` call is that view.
+- Pass the deployment's reported endpoint to the tag in whatever form that
+  provider expects — Umami's `data-host-url`, gtag's `transport_url`. Left to
+  itself a tag derives its own destination, which can differ from the origin the
+  server allowed, and every event is then dropped by the browser rather than by
+  us.
+- Keep the bootstrap out of inline `<script>`; the strict `script-src` policy
+  carries no `'unsafe-inline'`. gtag reads its commands from the `arguments`
+  object the canonical snippet pushes, so forward that rather than an array.
+- A blocked, unreachable, or misconfigured analytics host is not an application
+  error. Swallow the failure and cache nothing that would prevent a later retry.
+
 ## Microphone Gain and Monitoring
 
 - Apply the user input level through one Web Audio source and `GainNode` before

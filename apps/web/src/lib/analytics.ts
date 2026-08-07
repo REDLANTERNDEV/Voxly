@@ -13,6 +13,12 @@ export interface AnalyticsSettings {
   provider: "umami" | "google";
   scriptUrl: string;
   websiteId: string;
+  /**
+   * Where events go, when that is not the provider's own endpoint. Each tag
+   * takes it differently — Umami as an attribute, gtag as a config option — so
+   * the value is passed through and the shape is decided per provider below.
+   */
+  hostUrl?: string;
 }
 
 interface UmamiApi {
@@ -43,6 +49,9 @@ function loadScript(settings: AnalyticsSettings) {
       script.dataset.websiteId = settings.websiteId;
       // Umami otherwise patches history and would report every in-app path.
       script.dataset.autoTrack = "false";
+      // Left unset, the tracker guesses its endpoint from its own URL; this
+      // pins it to the origin the policy was actually built around.
+      if (settings.hostUrl) script.dataset.hostUrl = settings.hostUrl;
     }
     script.onload = () => resolve();
     script.onerror = () => reject(new Error("analytics_load_failed"));
@@ -78,7 +87,9 @@ export function trackLandingView(settings: AnalyticsSettings | null) {
     // existing dataLayer on load. `config` sends the single page view; gtag
     // does not follow SPA navigation on its own.
     gtag("js", new Date());
-    gtag("config", settings.websiteId);
+    // `transport_url` is how gtag reaches a server-side tagging container; the
+    // policy only allows that origin because the server resolved it too.
+    gtag("config", settings.websiteId, settings.hostUrl ? { transport_url: settings.hostUrl } : {});
     void loadScript(settings).catch(() => undefined);
     return;
   }

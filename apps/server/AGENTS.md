@@ -14,6 +14,9 @@ web serving, and owner recovery CLIs.
 - `src/db/database.ts` initializes SQLite and performs compatibility migrations.
 - `src/auth` owns token hashing and owner-claim behavior.
 - `src/rtcConfig.ts` produces authenticated browser ICE configuration.
+- `src/security.ts` builds the response header policy every route shares.
+- `src/analytics.ts` resolves the optional analytics provider and the origins
+  its policy needs.
 - `test/app.test.ts` covers HTTP, persistence, membership, and migrations.
 - `test/realtime.test.ts` covers Socket.IO authorization and voice state.
 
@@ -174,6 +177,31 @@ queries across endpoints.
 - Kicks, bans, channel deletion, server deletion, explicit leave, and socket
   cleanup must remove affected voice/subscription state and notify clients with
   the existing typed reasons.
+
+## Optional Third-Party Providers
+
+Turnstile and analytics are operator options. Both are resolved at startup from
+environment variables, both are published to the browser through `/api/config`,
+and both need the response policy widened for the origins they use.
+
+- Resolve a provider into *both* of its origins: the host serving its script and
+  the host receiving its data. These coincide often enough to look like one
+  field, and they are not the same thing. `src/analytics.ts` records where each
+  provider reports; a provider added without that entry produces a deployment
+  that loads its script and records nothing.
+- Prefer pinning a tag's destination over letting it derive one. Where the
+  provider accepts an explicit endpoint — a Umami `data-host-url`, a gtag
+  `transport_url` — send the value the policy was built from, so the two cannot
+  drift apart.
+- Only replace a provider's default endpoints with an operator-supplied one
+  where that tag has no other destination to fall back to. Otherwise allow both;
+  a redundant origin costs nothing next to events dropped in the browser.
+- Fail at startup on a half-configuration rather than degrading to a disabled
+  provider. An operator who set two of three values wants the third, not
+  silence.
+- Keep the disabled path inert: with nothing configured, the emitted policy must
+  be byte-identical to one from a build without the option, and no origin may
+  leak into it.
 
 ## Server Verification
 

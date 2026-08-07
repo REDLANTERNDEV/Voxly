@@ -22,6 +22,61 @@ describe("analytics configuration", () => {
       scriptUrl: "https://analytics.example.com/script.js",
       websiteId: "451f26ee-726c-46f0-9643-2b302bef4a5f"
     });
+    // Such an instance ingests next to the script it served.
+    assert.deepEqual(analyticsCspOrigins(config), {
+      script: ["https://analytics.example.com"],
+      connect: ["https://analytics.example.com"]
+    });
+  });
+
+  it("allows the Umami Cloud ingest host, which is not the host serving the tag", () => {
+    // Every regional tag host reports to the one gateway.
+    for (const host of ["cloud.umami.is", "eu.umami.is", "us.umami.is", "analytics.umami.is"]) {
+      const config = resolveAnalyticsConfig({ provider: "umami", scriptUrl: `https://${host}/script.js`, websiteId: "abc" });
+
+      // The tracker has this endpoint compiled in. Allowing only the script
+      // origin loads the tag and then blocks every event it posts.
+      assert.deepEqual(analyticsCspOrigins(config), {
+        script: [`https://${host}`],
+        connect: ["https://gateway.umami.is"]
+      });
+    }
+  });
+
+  it("does not mistake a self-hosted lookalike domain for Umami Cloud", () => {
+    const config = resolveAnalyticsConfig({
+      provider: "umami",
+      scriptUrl: "https://umami.is.example.com/script.js",
+      websiteId: "abc"
+    });
+
+    assert.deepEqual(analyticsCspOrigins(config)?.connect, ["https://umami.is.example.com"]);
+  });
+
+  it("lets an operator point events at an instance separate from the script host", () => {
+    const config = resolveAnalyticsConfig({
+      provider: "umami",
+      scriptUrl: "https://cdn.example.com/umami/script.js",
+      websiteId: "abc",
+      hostUrl: " https://analytics.example.com "
+    });
+
+    assert.equal(config?.hostUrl, "https://analytics.example.com/");
+    assert.deepEqual(analyticsCspOrigins(config), {
+      script: ["https://cdn.example.com"],
+      connect: ["https://analytics.example.com"]
+    });
+  });
+
+  it("lets an explicit host override the Umami Cloud default", () => {
+    const config = resolveAnalyticsConfig({
+      provider: "umami",
+      scriptUrl: "https://cloud.umami.is/script.js",
+      websiteId: "abc",
+      hostUrl: "https://ingest.example.com"
+    });
+
+    assert.deepEqual(analyticsCspOrigins(config)?.connect, ["https://ingest.example.com"]);
   });
 
   it("derives the Google Analytics script URL from the measurement ID", () => {
@@ -38,6 +93,21 @@ describe("analytics configuration", () => {
     assert.throws(() => resolveAnalyticsConfig({ provider: "umami", websiteId: "abc" }), /ANALYTICS_SCRIPT_URL/);
     assert.throws(() => resolveAnalyticsConfig({ provider: "umami", websiteId: "abc", scriptUrl: "script.js" }), /absolute URL/);
     assert.throws(() => resolveAnalyticsConfig({ provider: "umami", websiteId: "abc", scriptUrl: "javascript:alert(1)" }), /http or https/);
+    assert.throws(() => resolveAnalyticsConfig({ provider: "umami", websiteId: "abc", scriptUrl: "https://a.example/s.js", hostUrl: "analytics.example.com" }), /ANALYTICS_HOST_URL must be an absolute URL/);
+    // A lone host URL is still a half-configuration rather than "disabled".
+    assert.throws(() => resolveAnalyticsConfig({ hostUrl: "https://analytics.example.com" }), /ANALYTICS_PROVIDER/);
+  });
+
+  it("routes Google events to a server-side tagging container without closing off gtag's own", () => {
+    const config = resolveAnalyticsConfig({ provider: "google", websiteId: "G-TEST123", hostUrl: "https://gtm.example.com" });
+    const origins = analyticsCspOrigins(config);
+
+    assert.equal(config?.hostUrl, "https://gtm.example.com/");
+    assert.ok(origins.connect.includes("https://gtm.example.com"));
+    // gtag has been observed bypassing transport_url; dropping these would make
+    // those events disappear as quietly as the bug this guards against.
+    assert.ok(origins.connect.includes("https://*.google-analytics.com"));
+    assert.deepEqual(origins.script, ["https://www.googletagmanager.com"]);
   });
 });
 
@@ -81,5 +151,18 @@ describe("analytics in the public app config", () => {
       websiteId: "abc"
     });
     assert.match(response.headers["content-security-policy"] as string, /script-src [^;]*https:\/\/analytics\.example\.com/);
+  });
+
+  it("hands the browser the ingest host so the tracker does not have to guess it", async () => {
+    const server = await start(resolveAnalyticsConfig({
+      provider: "umami",
+      scriptUrl: "https://cloud.umami.is/script.js",
+      websiteId: "abc",
+      hostUrl: "https://gateway.umami.is"
+    }));
+    const response = await server.server.inject({ method: "GET", url: "/api/config" });
+
+    assert.equal(response.json().analytics.hostUrl, "https://gateway.umami.is/");
+    assert.match(response.headers["content-security-policy"] as string, /connect-src [^;]*https:\/\/gateway\.umami\.is/);
   });
 });

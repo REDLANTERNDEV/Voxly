@@ -338,7 +338,12 @@ function registerRoutes(
       turnstile: options.turnstile ? { siteKey: options.turnstile.siteKey } : null,
       // Public by definition: the browser has to load this script itself.
       analytics: options.analytics
-        ? { provider: options.analytics.provider, scriptUrl: options.analytics.scriptUrl, websiteId: options.analytics.websiteId }
+        ? {
+            provider: options.analytics.provider,
+            scriptUrl: options.analytics.scriptUrl,
+            websiteId: options.analytics.websiteId,
+            ...(options.analytics.hostUrl ? { hostUrl: options.analytics.hostUrl } : {})
+          }
         : null
     };
   });

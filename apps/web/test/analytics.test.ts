@@ -55,12 +55,29 @@ describe("landing analytics", () => {
     assert.equal(script.dataset.websiteId, "site-1");
     // Auto tracking would report authenticated in-app paths once loaded.
     assert.equal(script.dataset.autoTrack, "false");
+    // Unset, so the tracker keeps deriving the endpoint from its own URL.
+    assert.equal(script.dataset.hostUrl, undefined);
 
     dom.window.umami = { track: () => { views += 1; } };
     script.onload?.();
     await settled();
 
     assert.equal(views, 1);
+  });
+
+  it("pins the Umami endpoint when the deployment reports one", () => {
+    const dom = installDom();
+
+    trackLandingView({
+      provider: "umami",
+      scriptUrl: "https://cloud.umami.is/umami-three.js",
+      websiteId: "site-3",
+      hostUrl: "https://gateway.umami.is"
+    });
+
+    // Otherwise the tracker picks its own endpoint and can miss the one the
+    // Content-Security-Policy allows, which drops every event silently.
+    assert.equal(dom.scripts[0].dataset.hostUrl, "https://gateway.umami.is");
   });
 
   it("survives a blocked or unreachable analytics host", async () => {
@@ -79,8 +96,22 @@ describe("landing analytics", () => {
     const queued = (dom.window.dataLayer ?? []).map((entry) => Array.from(entry as IArguments));
     assert.equal(queued.length, 2);
     assert.equal(queued[0][0], "js");
-    assert.deepEqual(queued[1], ["config", "G-TEST123"]);
+    assert.deepEqual(queued[1], ["config", "G-TEST123", {}]);
     assert.equal(dom.scripts[0].src, "https://www.googletagmanager.com/gtag/js?id=G-TEST123");
     assert.equal(dom.scripts[0].dataset.websiteId, undefined);
+  });
+
+  it("points Google at a server-side tagging container when the deployment has one", () => {
+    const dom = installDom();
+
+    trackLandingView({
+      provider: "google",
+      scriptUrl: "https://www.googletagmanager.com/gtag/js?id=G-TEST123",
+      websiteId: "G-TEST123",
+      hostUrl: "https://gtm.example.com"
+    });
+
+    const queued = (dom.window.dataLayer ?? []).map((entry) => Array.from(entry as IArguments));
+    assert.deepEqual(queued[1], ["config", "G-TEST123", { transport_url: "https://gtm.example.com" }]);
   });
 });

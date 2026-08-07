@@ -67,6 +67,14 @@ ANALYTICS_SCRIPT_URL=https://analytics.example.com/script.js
 ANALYTICS_WEBSITE_ID=451f26ee-726c-46f0-9643-2b302bef4a5f
 ```
 
+For Umami Cloud, use the script URL from its tracking-code panel:
+
+```dotenv
+ANALYTICS_PROVIDER=umami
+ANALYTICS_SCRIPT_URL=https://cloud.umami.is/script.js
+ANALYTICS_WEBSITE_ID=451f26ee-726c-46f0-9643-2b302bef4a5f
+```
+
 For Google Analytics 4, only the measurement ID is needed:
 
 ```dotenv
@@ -77,6 +85,35 @@ ANALYTICS_WEBSITE_ID=G-XXXXXXXXXX
 The application adds the provider's origins to its own Content-Security-Policy,
 so no proxy-side header change is required. An incomplete configuration fails at
 startup rather than silently disabling tracking.
+
+### Sending events somewhere other than the provider's endpoint
+
+Whichever provider you pick, it fetches a script from one host and posts events
+to a second one. The two are the same host only for an ordinary self-hosted
+Umami; the defaults for everything above are already known, so most deployments
+need nothing here.
+
+Set `ANALYTICS_HOST_URL` when your deployment moved that second host:
+
+```dotenv
+# Self-hosted Umami whose COLLECT_API_HOST points elsewhere
+ANALYTICS_HOST_URL=https://analytics.example.com
+
+# GA4 through a server-side tagging container (gtag transport_url)
+ANALYTICS_HOST_URL=https://gtm.example.com
+```
+
+Getting this one wrong is quiet rather than loud: the script loads normally and
+the browser refuses each event it tries to send. If a configured provider
+records nothing, open the landing page and look for a `Content-Security-Policy`
+violation in the browser console naming a host that is not in `connect-src` —
+that host is the value to put here.
+
+Note what is deliberately *not* counted. Only the public landing page (`/`) is
+reported, and only for visitors who are not signed in. Authenticated routes
+carry server and room IDs, so they are never sent, and no `/invite` or in-app
+navigation appears in your dashboard. A working setup still shows far fewer
+page views than total traffic.
 
 ## 4. Start the application
 

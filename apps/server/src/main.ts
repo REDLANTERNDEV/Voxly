@@ -40,7 +40,8 @@ const app = await createVoxlyApp({
   analytics: resolveAnalyticsConfig({
     provider: process.env.ANALYTICS_PROVIDER,
     scriptUrl: process.env.ANALYTICS_SCRIPT_URL,
-    websiteId: process.env.ANALYTICS_WEBSITE_ID
+    websiteId: process.env.ANALYTICS_WEBSITE_ID,
+    hostUrl: process.env.ANALYTICS_HOST_URL
   }),
   rtc: createRtcConfigProvider(process.env)
 });

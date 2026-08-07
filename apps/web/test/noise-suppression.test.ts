@@ -58,15 +58,19 @@ describe("noise suppression preference", () => {
     assert.doesNotThrow(() => writeNoiseSuppression("user-a", false, undefined));
   });
 
-  it("moves automatic gain control together with suppression", () => {
-    // Gain control left on over an unsuppressed signal pumps the voice.
+  it("changes suppression alone", () => {
     assert.deepEqual(microphoneProcessingConstraints(true), { noiseSuppression: true, autoGainControl: true, echoCancellation: true });
-    assert.deepEqual(microphoneProcessingConstraints(false), { noiseSuppression: false, autoGainControl: false, echoCancellation: true });
+    assert.deepEqual(microphoneProcessingConstraints(false), { noiseSuppression: false, autoGainControl: true, echoCancellation: true });
   });
 
-  it("keeps echo cancellation on so speaker users never hear themselves back", () => {
-    assert.equal(microphoneProcessingConstraints(true).echoCancellation, true);
-    assert.equal(microphoneProcessingConstraints(false).echoCancellation, true);
+  it("holds gain and echo cancellation steady across the preference", () => {
+    // Dropping gain with suppression costs far more than the +6 dB the input
+    // level can add back, and the drop hides the raw noise the preference is
+    // there to expose. Echo cancellation off would make speaker users echo.
+    for (const enabled of [true, false]) {
+      assert.equal(microphoneProcessingConstraints(enabled).autoGainControl, true);
+      assert.equal(microphoneProcessingConstraints(enabled).echoCancellation, true);
+    }
   });
 
   it("separates a device change from a processing change", () => {
@@ -103,7 +107,7 @@ describe("noise suppression preference", () => {
     // is already open and silently keeps its processing.
     assert.deepEqual(order, ["release", "getUserMedia"]);
     assert.deepEqual(requested, {
-      audio: { deviceId: { exact: "mic-a" }, noiseSuppression: false, autoGainControl: false, echoCancellation: true },
+      audio: { deviceId: { exact: "mic-a" }, noiseSuppression: false, autoGainControl: true, echoCancellation: true },
       video: false
     });
   });

@@ -76,6 +76,17 @@ describe("response security headers", () => {
     assert.ok(!directives["script-src"].includes("https://analytics.example.com/script.js"));
   });
 
+  it("allows the Umami ingest host as well as the host serving the tag", () => {
+    const directives = contentSecurityPolicyDirectives({
+      upgradeInsecureRequests: false,
+      analytics: resolveAnalyticsConfig({ provider: "umami", scriptUrl: "https://cloud.umami.is/script.js", websiteId: "abc" })
+    });
+
+    assert.ok(directives["script-src"].includes("https://cloud.umami.is"));
+    // Without this the tag loads and every event it posts is dropped.
+    assert.ok(directives["connect-src"].includes("https://gateway.umami.is"));
+  });
+
   it("allows the Google Analytics script and its regional collection endpoints", () => {
     const directives = contentSecurityPolicyDirectives({
       upgradeInsecureRequests: false,

@@ -43,16 +43,19 @@ export interface MicrophoneProcessingSettings {
   echoCancellation: boolean;
 }
 
-// Automatic gain control rides with suppression. Left on over an unsuppressed
-// signal it keeps re-riding the exposed noise floor between words, which pumps
-// the voice itself; the manual input level covers the gain it used to provide.
+// Only suppression follows the preference. Automatic gain control used to ride
+// with it, on the theory that gain left over an unsuppressed signal pumps and
+// that the manual input level covers what it provided. It does not: the level
+// tops out at +6 dB while browsers apply well past that, so turning suppression
+// off dropped the voice through the floor — and the drop took the raw noise
+// down with it, hiding the one difference the preference exists to make.
 //
-// Echo cancellation stays on either way so speaker users never hear themselves
-// back, but it is stated rather than left implicit: browsers hand every capture
-// of one device the same processing pipeline, so two capture sites that request
+// Echo cancellation stays on so speaker users never hear themselves back. Both
+// are stated rather than left implicit: browsers hand every capture of one
+// device the same processing pipeline, so two capture sites that request
 // different sets silently resolve to whichever opened first.
 export function microphoneProcessingConstraints(enabled: boolean): MicrophoneProcessingSettings {
-  return { noiseSuppression: enabled, autoGainControl: enabled, echoCancellation: true };
+  return { noiseSuppression: enabled, autoGainControl: true, echoCancellation: true };
 }
 
 export interface MicrophoneCaptureSettings {
