@@ -133,23 +133,24 @@ describe("audio device application", () => {
     assert.deepEqual(buildMicrophoneConstraints("mic-a", {}), buildMicrophoneConstraints("mic-a"));
     assert.deepEqual(buildMicrophoneConstraints("", {}), buildMicrophoneConstraints(""));
 
-    assert.deepEqual(buildMicrophoneConstraints("", { noiseSuppression: true, autoGainControl: true }), {
-      audio: { noiseSuppression: true, autoGainControl: true },
+    assert.deepEqual(buildMicrophoneConstraints("", { noiseSuppression: true, autoGainControl: true, echoCancellation: true }), {
+      audio: { noiseSuppression: true, autoGainControl: true, echoCancellation: true },
       video: false
     });
-    assert.deepEqual(buildMicrophoneConstraints("mic-a", { noiseSuppression: false, autoGainControl: false }), {
-      audio: { deviceId: { exact: "mic-a" }, noiseSuppression: false, autoGainControl: false },
+    assert.deepEqual(buildMicrophoneConstraints("mic-a", { noiseSuppression: false, autoGainControl: false, echoCancellation: true }), {
+      audio: { deviceId: { exact: "mic-a" }, noiseSuppression: false, autoGainControl: false, echoCancellation: true },
       video: false
     });
   });
 
-  it("keeps processing flags ideal and never constrains echo cancellation", () => {
+  it("keeps every processing flag ideal rather than exact", () => {
+    // An exact form would reject capture outright on a device that cannot
+    // honour the flag, instead of falling back to what it can do.
     const source = readFileSync("src/lib/audioDevices.ts", "utf8");
 
     assert.doesNotMatch(source, /noiseSuppression:\s*\{/);
     assert.doesNotMatch(source, /autoGainControl:\s*\{/);
-    // Forcing echo cancellation off would make speaker users echo.
-    assert.doesNotMatch(source, /echoCancellation/);
+    assert.doesNotMatch(source, /echoCancellation:\s*\{/);
   });
 
   it("prefers AudioContext output routing and maps system default to an empty sink", async () => {

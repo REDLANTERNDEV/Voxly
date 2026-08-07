@@ -6,29 +6,33 @@ describe("microphone test capture", () => {
   it("uses the selected input and shared input level for monitoring", () => {
     const source = readFileSync("src/lib/useMicrophoneTest.ts", "utf8");
 
-    assert.match(source, /getUserMedia\(buildMicrophoneConstraints\(deviceIdRef\.current, microphoneProcessingConstraints\(noiseSuppressionRef\.current\)\)\)/);
+    assert.match(source, /openMicrophoneCapture\(\s*\{ deviceId: deviceIdRef\.current, noiseSuppression: noiseSuppressionRef\.current \},/);
     assert.match(source, /createMicrophoneInput\(rawStream, volumeRef\.current\)/);
     assert.match(source, /if \(sharedStreamRef\.current\) \{[\s\S]*setMonitorStream\(sharedStreamRef\.current\)/);
     assert.match(source, /setMonitorStream\(input\.monitorStream\)/);
     assert.match(source, /inputRef\.current\?\.setVolume\(volume\)/);
   });
 
-  it("restarts a self-owned capture only when the device changes", () => {
+  it("restarts a self-owned capture for a device or a processing change", () => {
     const source = readFileSync("src/lib/useMicrophoneTest.ts", "utf8");
 
+    // Monitoring is where the setting is actually audible, so a processing
+    // change has to reopen the capture rather than keep the running one.
+    assert.match(source, /const change = microphoneCaptureChange\(/);
     // A test riding the shared voice monitor owns no input and must not open a
     // second device when the voice graph re-captures.
-    assert.match(source, /if \(!input \|\| \(!deviceChanged && !processingChanged\)\) return/);
-    assert.match(source, /if \(deviceChanged\) \{\s*\n\s*void start\(\);/);
+    assert.match(source, /if \(change === "none" \|\| !inputRef\.current\) return/);
+    assert.match(source, /void start\(\);/);
   });
 
-  it("reconfigures the live monitor capture instead of reopening it for processing", () => {
+  it("releases the running capture before reopening the device", () => {
     const source = readFileSync("src/lib/useMicrophoneTest.ts", "utf8");
 
-    // Reopening the device mid-monitor makes the echo canceller re-converge,
-    // which the listener hears.
-    assert.match(source, /applyMicrophoneProcessing\(input\.rawStream\.getAudioTracks\(\)\[0\], noiseSuppression\)/);
-    assert.match(source, /if \(reconfigured \|\| generation !== generationRef\.current \|\| inputRef\.current !== input\) return/);
+    // Disposing after the reopen would hand the new capture the pipeline that
+    // is already running, processing settings and all.
+    assert.match(source, /const previous = inputRef\.current;/);
+    assert.match(source, /release: \(\) => previous\?\.dispose\(\)/);
+    assert.doesNotMatch(source, /applyMicrophoneProcessing/);
   });
 
   it("disposes capture on stop and component cleanup", () => {

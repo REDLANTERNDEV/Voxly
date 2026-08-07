@@ -35,6 +35,7 @@ export type AudioOutputApplication = "audio-context" | "media-elements" | "unsup
 export interface MicrophoneCaptureOptions {
   noiseSuppression?: boolean;
   autoGainControl?: boolean;
+  echoCancellation?: boolean;
 }
 
 export function audioDevicePreferenceKey(userId: string, kind: AudioDevicePreferenceKind) {
@@ -103,8 +104,7 @@ export function subscribeToAudioDeviceChanges(
 
 // Processing flags are requested as plain booleans so they stay ideal
 // constraints; an `exact` form could reject the capture on a device that cannot
-// honour them. Echo cancellation is deliberately never set here: leaving it to
-// the browser default keeps speaker users from hearing themselves back.
+// honour them.
 export function buildMicrophoneConstraints(
   deviceId: string,
   options: MicrophoneCaptureOptions = {}
@@ -113,6 +113,7 @@ export function buildMicrophoneConstraints(
   if (deviceId) audio.deviceId = { exact: deviceId };
   if (options.noiseSuppression !== undefined) audio.noiseSuppression = options.noiseSuppression;
   if (options.autoGainControl !== undefined) audio.autoGainControl = options.autoGainControl;
+  if (options.echoCancellation !== undefined) audio.echoCancellation = options.echoCancellation;
   return {
     audio: Object.keys(audio).length > 0 ? audio : true,
     video: false

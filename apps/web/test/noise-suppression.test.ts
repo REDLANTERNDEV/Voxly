@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
 import {
   DEFAULT_NOISE_SUPPRESSION,
-  applyMicrophoneProcessing,
   browserSupportsNoiseSuppression,
+  microphoneCaptureChange,
   microphoneProcessingConstraints,
   noiseSuppressionStorageKey,
+  openMicrophoneCapture,
   readNoiseSuppression,
   supportsNoiseSuppression,
   writeNoiseSuppression
@@ -58,26 +60,76 @@ describe("noise suppression preference", () => {
 
   it("moves automatic gain control together with suppression", () => {
     // Gain control left on over an unsuppressed signal pumps the voice.
-    assert.deepEqual(microphoneProcessingConstraints(true), { noiseSuppression: true, autoGainControl: true });
-    assert.deepEqual(microphoneProcessingConstraints(false), { noiseSuppression: false, autoGainControl: false });
+    assert.deepEqual(microphoneProcessingConstraints(true), { noiseSuppression: true, autoGainControl: true, echoCancellation: true });
+    assert.deepEqual(microphoneProcessingConstraints(false), { noiseSuppression: false, autoGainControl: false, echoCancellation: true });
   });
 
-  it("treats a live reconfiguration as applied only when the settings agree", async () => {
-    const track = (settings: MediaTrackSettings, fail = false) => ({
-      applyConstraints: () => fail ? Promise.reject(new Error("nope")) : Promise.resolve(),
-      getSettings: () => settings
-    });
+  it("keeps echo cancellation on so speaker users never hear themselves back", () => {
+    assert.equal(microphoneProcessingConstraints(true).echoCancellation, true);
+    assert.equal(microphoneProcessingConstraints(false).echoCancellation, true);
+  });
 
-    assert.equal(await applyMicrophoneProcessing(track({ noiseSuppression: false, autoGainControl: false }), false), true);
-    // A browser that resolves without reconfiguring must not be trusted.
-    assert.equal(await applyMicrophoneProcessing(track({ noiseSuppression: true, autoGainControl: true }), false), false);
-    // A partial application still requires a full re-capture.
-    assert.equal(await applyMicrophoneProcessing(track({ noiseSuppression: false, autoGainControl: true }), false), false);
-    // Browsers that do not report the settings at all fall back.
-    assert.equal(await applyMicrophoneProcessing(track({}), false), false);
-    assert.equal(await applyMicrophoneProcessing(track({}, true), false), false);
-    assert.equal(await applyMicrophoneProcessing(null, false), false);
-    assert.equal(await applyMicrophoneProcessing(undefined, true), false);
+  it("separates a device change from a processing change", () => {
+    const settings = (deviceId: string, noiseSuppression: boolean) => ({ deviceId, noiseSuppression });
+
+    assert.equal(microphoneCaptureChange(settings("mic-a", true), settings("mic-a", true)), "none");
+    assert.equal(microphoneCaptureChange(settings("", false), settings("", false)), "none");
+    assert.equal(microphoneCaptureChange(settings("mic-a", true), settings("mic-a", false)), "processing");
+    assert.equal(microphoneCaptureChange(settings("mic-a", true), settings("mic-b", true)), "device");
+    // A device change already reopens the capture, so it carries the processing
+    // with it and must not be reported as the narrower change.
+    assert.equal(microphoneCaptureChange(settings("mic-a", true), settings("mic-b", false)), "device");
+  });
+
+  it("frees the device before reopening it so the new processing takes", async () => {
+    const order: string[] = [];
+    const stream = {} as MediaStream;
+    let requested: MediaStreamConstraints | null = null;
+    const mediaDevices = {
+      getUserMedia(constraints: MediaStreamConstraints) {
+        order.push("getUserMedia");
+        requested = constraints;
+        return Promise.resolve(stream);
+      }
+    };
+
+    const opened = await openMicrophoneCapture(
+      { deviceId: "mic-a", noiseSuppression: false },
+      { release: () => order.push("release"), mediaDevices }
+    );
+
+    assert.equal(opened, stream);
+    // A capture that overlaps the running one is served from the pipeline that
+    // is already open and silently keeps its processing.
+    assert.deepEqual(order, ["release", "getUserMedia"]);
+    assert.deepEqual(requested, {
+      audio: { deviceId: { exact: "mic-a" }, noiseSuppression: false, autoGainControl: false, echoCancellation: true },
+      video: false
+    });
+  });
+
+  it("opens without a release when nothing holds the device", async () => {
+    let calls = 0;
+    const mediaDevices = {
+      getUserMedia: () => {
+        calls += 1;
+        return Promise.resolve({} as MediaStream);
+      }
+    };
+
+    await openMicrophoneCapture({ deviceId: "", noiseSuppression: true }, { mediaDevices });
+
+    assert.equal(calls, 1);
+  });
+
+  it("never asks a live track to change its processing", () => {
+    // `applyConstraints` resolves and `getSettings` then echoes the request
+    // whether or not the running capture was reconfigured, so a reconfigure
+    // reports success while the audio is unchanged.
+    const source = readFileSync("src/lib/noiseSuppression.ts", "utf8");
+
+    assert.doesNotMatch(source, /\.applyConstraints\(/);
+    assert.doesNotMatch(source, /\.getSettings\(/);
   });
 
   it("detects support only from an explicit supported constraint", () => {

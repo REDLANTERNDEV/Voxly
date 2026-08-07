@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buildMicrophoneConstraints } from "./audioDevices.js";
 import { createMicrophoneInput, type MicrophoneInput } from "./microphoneInput.js";
-import { applyMicrophoneProcessing, DEFAULT_NOISE_SUPPRESSION, microphoneProcessingConstraints } from "./noiseSuppression.js";
+import { DEFAULT_NOISE_SUPPRESSION, microphoneCaptureChange, openMicrophoneCapture } from "./noiseSuppression.js";
 
 export type MicrophoneTestError = "permission" | "unavailable" | null;
 
@@ -33,19 +32,25 @@ export function useMicrophoneTest(
 
   const start = useCallback(async () => {
     const generation = ++generationRef.current;
-    inputRef.current?.dispose();
+    const previous = inputRef.current;
     inputRef.current = null;
     setMonitorStream(null);
     setActive(false);
     setError(null);
     if (sharedStreamRef.current) {
+      previous?.dispose();
       setMonitorStream(sharedStreamRef.current);
       setActive(true);
       return true;
     }
     let rawStream: MediaStream | null = null;
     try {
-      rawStream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(deviceIdRef.current, microphoneProcessingConstraints(noiseSuppressionRef.current)));
+      // Releasing the running capture is what lets the requested processing
+      // take on the reopened device, so it is handed to the opener.
+      rawStream = await openMicrophoneCapture(
+        { deviceId: deviceIdRef.current, noiseSuppression: noiseSuppressionRef.current },
+        { release: () => previous?.dispose() }
+      );
       const input = createMicrophoneInput(rawStream, volumeRef.current);
       if (generation !== generationRef.current) {
         input.dispose();
@@ -73,24 +78,17 @@ export function useMicrophoneTest(
   // change restarts a self-owned capture once. A test riding the shared voice
   // monitor has no input of its own and inherits the voice graph instead.
   useEffect(() => {
-    const deviceChanged = deviceIdRef.current !== deviceId;
-    const processingChanged = noiseSuppressionRef.current !== noiseSuppression;
+    const change = microphoneCaptureChange(
+      { deviceId: deviceIdRef.current, noiseSuppression: noiseSuppressionRef.current },
+      { deviceId, noiseSuppression }
+    );
     deviceIdRef.current = deviceId;
     noiseSuppressionRef.current = noiseSuppression;
-    const input = inputRef.current;
-    if (!input || (!deviceChanged && !processingChanged)) return;
-    if (deviceChanged) {
-      void start();
-      return;
-    }
-    // Reopening the device to change processing makes the echo canceller
-    // re-converge, which is plainly audible while monitoring. Reconfigure the
-    // live capture instead and only restart where that is unsupported.
-    const generation = generationRef.current;
-    void applyMicrophoneProcessing(input.rawStream.getAudioTracks()[0], noiseSuppression).then((reconfigured) => {
-      if (reconfigured || generation !== generationRef.current || inputRef.current !== input) return;
-      void start();
-    });
+    if (change === "none" || !inputRef.current) return;
+    // Both kinds of change reopen the device. Monitoring is the one place the
+    // suppression setting can actually be heard, so it has to reflect the
+    // preference rather than whatever the capture happened to open with.
+    void start();
   }, [deviceId, noiseSuppression, start]);
 
   useEffect(() => {

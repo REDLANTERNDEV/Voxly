@@ -21,8 +21,7 @@ import {
 } from "./voiceMedia.js";
 import { requestVoiceJoin } from "./voiceJoin.js";
 import { requestVisualSubscriptions, voiceRecoveryRetryDelayMs } from "./voiceRecovery.js";
-import { buildMicrophoneConstraints } from "./audioDevices.js";
-import { applyMicrophoneProcessing, DEFAULT_NOISE_SUPPRESSION, microphoneProcessingConstraints } from "./noiseSuppression.js";
+import { DEFAULT_NOISE_SUPPRESSION, microphoneCaptureChange, openMicrophoneCapture } from "./noiseSuppression.js";
 import { releaseUnusedSharedAudioOutput } from "./audioOutput.js";
 import {
   shouldIgnoreIncomingOffer,
@@ -501,6 +500,26 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     return createMicrophoneInput(rawStream, microphoneVolumeRef.current);
   }, []);
 
+  // Reached when the capture is gone and no replacement is coming: the device
+  // was unplugged, or a reopen failed after the previous capture was released.
+  const handleMicrophoneLost = useCallback((message: string) => {
+    speakingRef.current = false;
+    stopStream("mic");
+    microphoneEnabledRef.current = false;
+    microphoneOnBeforeDeafenRef.current = false;
+    deafenTransitionRef.current += 1;
+    const nextControls: VoiceControls = {
+      ...controlsRef.current,
+      mic: { ...controlsRef.current.mic, on: false }
+    };
+    controlsRef.current = nextControls;
+    setControls(nextControls);
+    setError(message);
+    void emitMediaState({ mic: false, speaking: false });
+    persistVoiceResume();
+    renegotiatePeers();
+  }, [emitMediaState, persistVoiceResume, renegotiatePeers, stopStream]);
+
   const activateMicrophoneInput = useCallback((input: MicrophoneInput) => {
     microphoneEndedCleanupRef.current?.();
     microphoneInputRef.current = input;
@@ -508,24 +527,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     setMicrophoneMonitorStream(input.monitorStream);
     microphoneEndedCleanupRef.current = watchMicrophoneStreamEnd(input.rawStream, () => {
       if (microphoneInputRef.current !== input) return;
-      speakingRef.current = false;
-      stopStream("mic");
-      microphoneEnabledRef.current = false;
-      microphoneOnBeforeDeafenRef.current = false;
-      deafenTransitionRef.current += 1;
-      const nextControls: VoiceControls = {
-        ...controlsRef.current,
-        mic: { ...controlsRef.current.mic, on: false }
-      };
-      controlsRef.current = nextControls;
-      setControls(nextControls);
-      setError("Microphone disconnected.");
-      void emitMediaState({ mic: false, speaking: false });
-      persistVoiceResume();
-      renegotiatePeers();
+      handleMicrophoneLost("Microphone disconnected.");
     });
     startSpeakingMonitor(input.voiceStream);
-  }, [emitMediaState, persistVoiceResume, renegotiatePeers, startSpeakingMonitor, stopStream]);
+  }, [handleMicrophoneLost, startSpeakingMonitor]);
 
   const setVisualSubscriptions = useCallback(async (targets: VisualTarget[]) => {
     if (!socket || !roomRef.current) {
@@ -622,7 +627,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (microphoneEnabled) {
       if (!mic) {
         try {
-          const rawStream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceIdRef.current, microphoneProcessingConstraints(noiseSuppressionRef.current)));
+          const rawStream = await openMicrophoneCapture({
+            deviceId: microphoneDeviceIdRef.current,
+            noiseSuppression: noiseSuppressionRef.current
+          });
           acquiredInput = prepareMicrophoneInput(rawStream);
           mic = acquiredInput.voiceStream;
         } catch {
@@ -706,82 +714,79 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (!roomRef.current || !previousStream) return;
     // The active graph may already carry these settings, either because the
     // join capture picked them up or because an unrelated dependency changed.
-    const applied = appliedMicrophoneCaptureRef.current;
-    if (applied.deviceId === microphoneDeviceId && applied.noiseSuppression === noiseSuppression) return;
+    const change = microphoneCaptureChange(appliedMicrophoneCaptureRef.current, { deviceId: microphoneDeviceId, noiseSuppression });
+    if (change === "none") return;
     const requestId = ++microphoneSwitchRef.current;
     let cancelled = false;
 
-    const recapture = () => {
-      void navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceId, microphoneProcessingConstraints(noiseSuppression)))
-        .then((rawStream) => {
-          const nextInput = prepareMicrophoneInput(rawStream);
-          const nextTrack = nextInput.voiceStream.getAudioTracks()[0];
-          if (!nextTrack || cancelled || requestId !== microphoneSwitchRef.current) {
-            nextInput.dispose();
-            return;
-          }
-          microphoneSwitchQueueRef.current = microphoneSwitchQueueRef.current.then(async () => {
-            if (cancelled || requestId !== microphoneSwitchRef.current) {
-              nextInput.dispose();
-              return;
-            }
-            const activeStream = localStreamsRef.current.mic;
-            const previousTrack = activeStream?.getAudioTracks()[0];
-            if (!roomRef.current || !activeStream || !previousTrack) {
-              nextInput.dispose();
-              return;
-            }
-            nextTrack.enabled = controlsRef.current.mic.on && !controlsRef.current.deafen.on;
-            try {
-              await replaceMicrophoneTrack(peersRef.current.values(), previousTrack, nextTrack);
-            } catch (cause) {
-              await replaceMicrophoneTrack(peersRef.current.values(), nextTrack, previousTrack).catch(() => undefined);
-              nextInput.dispose();
-              throw cause;
-            }
-            if (!roomRef.current || requestId !== microphoneSwitchRef.current) {
-              await replaceMicrophoneTrack(peersRef.current.values(), nextTrack, previousTrack).catch(() => undefined);
-              nextInput.dispose();
-              return;
-            }
-            stopStream("mic");
-            activateMicrophoneInput(nextInput);
-            setError("");
-          }).catch(() => {
-            nextInput.dispose();
-            setError("The microphone could not be reopened. Using the previous microphone.");
-          });
-        })
-        .catch(() => {
-          if (!cancelled && requestId === microphoneSwitchRef.current) {
-            setError("The microphone could not be reopened. Using the previous microphone.");
-          }
-        });
-    };
+    // Switching device can hold both captures at once, which keeps a live track
+    // published across the swap. Changing processing cannot: the device has to
+    // be free before the reopen, so the published track carries silence from
+    // the orphaned graph until the replacement lands. Nothing is left to fall
+    // back to if that reopen fails, hence the two failure paths below.
+    const release = change === "processing"
+      ? () => {
+          // Without this the end-of-stream watcher reads our own release as the
+          // microphone having been unplugged.
+          microphoneEndedCleanupRef.current?.();
+          microphoneEndedCleanupRef.current = null;
+          microphoneInputRef.current?.rawStream.getAudioTracks().forEach((track) => track.stop());
+        }
+      : null;
 
-    if (applied.deviceId !== microphoneDeviceId) {
-      // A different device always needs a new capture.
-      recapture();
-    } else {
-      // Only the processing changed. Reconfiguring the live capture keeps the
-      // published track, the graph, and the converged echo canceller intact, so
-      // the swap is inaudible where the browser supports it.
-      void applyMicrophoneProcessing(microphoneInputRef.current?.rawStream.getAudioTracks()[0], noiseSuppression)
-        .then((reconfigured) => {
-          if (cancelled || requestId !== microphoneSwitchRef.current) return;
-          if (!reconfigured) {
-            recapture();
+    void openMicrophoneCapture({ deviceId: microphoneDeviceId, noiseSuppression }, { release })
+      .then((rawStream) => {
+        const nextInput = prepareMicrophoneInput(rawStream);
+        const nextTrack = nextInput.voiceStream.getAudioTracks()[0];
+        if (!nextTrack || cancelled || requestId !== microphoneSwitchRef.current) {
+          nextInput.dispose();
+          return;
+        }
+        microphoneSwitchQueueRef.current = microphoneSwitchQueueRef.current.then(async () => {
+          if (cancelled || requestId !== microphoneSwitchRef.current) {
+            nextInput.dispose();
             return;
           }
-          appliedMicrophoneCaptureRef.current = { deviceId: microphoneDeviceId, noiseSuppression };
+          const activeStream = localStreamsRef.current.mic;
+          const previousTrack = activeStream?.getAudioTracks()[0];
+          if (!roomRef.current || !activeStream || !previousTrack) {
+            nextInput.dispose();
+            return;
+          }
+          nextTrack.enabled = controlsRef.current.mic.on && !controlsRef.current.deafen.on;
+          try {
+            await replaceMicrophoneTrack(peersRef.current.values(), previousTrack, nextTrack);
+          } catch (cause) {
+            await replaceMicrophoneTrack(peersRef.current.values(), nextTrack, previousTrack).catch(() => undefined);
+            nextInput.dispose();
+            throw cause;
+          }
+          if (!roomRef.current || requestId !== microphoneSwitchRef.current) {
+            await replaceMicrophoneTrack(peersRef.current.values(), nextTrack, previousTrack).catch(() => undefined);
+            nextInput.dispose();
+            return;
+          }
+          stopStream("mic");
+          activateMicrophoneInput(nextInput);
           setError("");
+        }).catch(() => {
+          nextInput.dispose();
+          setError("The microphone could not be reopened. Using the previous microphone.");
         });
-    }
+      })
+      .catch(() => {
+        if (cancelled || requestId !== microphoneSwitchRef.current) return;
+        if (change === "device") {
+          setError("The microphone could not be reopened. Using the previous microphone.");
+          return;
+        }
+        handleMicrophoneLost("The microphone could not be reopened with the new noise suppression setting.");
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [activateMicrophoneInput, activeRoomId, microphoneDeviceId, noiseSuppression, prepareMicrophoneInput, stopStream]);
+  }, [activateMicrophoneInput, activeRoomId, handleMicrophoneLost, microphoneDeviceId, noiseSuppression, prepareMicrophoneInput, stopStream]);
 
   const leave = useCallback(() => {
     joinAttemptRef.current += 1;
@@ -835,7 +840,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (!stream) {
       setError("");
       try {
-        const rawStream = await navigator.mediaDevices.getUserMedia(buildMicrophoneConstraints(microphoneDeviceIdRef.current, microphoneProcessingConstraints(noiseSuppressionRef.current)));
+        const rawStream = await openMicrophoneCapture({
+          deviceId: microphoneDeviceIdRef.current,
+          noiseSuppression: noiseSuppressionRef.current
+        });
         const input = prepareMicrophoneInput(rawStream);
         stream = input.voiceStream;
         activateMicrophoneInput(input);
