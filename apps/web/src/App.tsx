@@ -116,6 +116,7 @@ export function App() {
     user: session.user,
     iceServers: session.rtcConfig.iceServers,
     voiceRoomIds: workspace.voiceRoomIds,
+    afkRoomIds: workspace.afkRoomIds,
     activeVoiceRoomRef,
     leaveVoiceRef,
     activeTextRoomIdRef: chat.activeTextRoomIdRef
@@ -179,6 +180,7 @@ export function App() {
     activeVoiceRoomId: audio.voice.activeRoomId,
     controls: audio.voice.controls,
     voiceModeration: audio.voice.voiceModeration,
+    micLockedByRoom: Boolean(audio.voice.activeRoomId && workspace.afkRoomIds.includes(audio.voice.activeRoomId)),
     appConfig: session.appConfig,
     voiceError: audio.voice.error || session.rtcConfigError,
     visualTargets: audio.voice.visualTargets,

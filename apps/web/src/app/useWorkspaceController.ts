@@ -32,12 +32,20 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
   // Rebuilt from the server list, which every member receives, so the idle
   // clock uses the owner's setting rather than a client-side default.
   const afkTimeoutsByServerRef = useRef<Record<string, AfkTimeoutMinutes>>({});
+  // Reactive, unlike the ref above, because the media layer has to react to it:
+  // knowing a room is AFK is what keeps the local microphone track disabled, and
+  // that cannot wait for a render that a ref would not trigger.
+  const [afkRoomIds, setAfkRoomIds] = useState<string[]>([]);
 
   const indexRooms = useCallback((nextRooms: RoomSummary[]) => {
     for (const room of nextRooms) roomServerIdsRef.current[room.id] = room.serverId;
     for (const serverId of new Set(nextRooms.map((room) => room.serverId))) {
       indexAfkRoom(afkRoomIdsByServerRef.current, serverId, nextRooms);
     }
+    setAfkRoomIds((current) => {
+      const next = Object.values(afkRoomIdsByServerRef.current).sort();
+      return next.length === current.length && next.every((id, index) => id === current[index]) ? current : next;
+    });
   }, []);
   const activeServerId = route.name === "text" || route.name === "voice" || route.name === "owner"
     ? route.serverId : servers[0]?.id ?? defaultServerId;
@@ -207,7 +215,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
   };
 
   return {
-    servers, rooms, serverListReady, activeServerId, onlineUsers, serverMembers, activeRooms, currentRoom, roomGroups, voiceRoomIds,
+    servers, rooms, serverListReady, activeServerId, onlineUsers, serverMembers, activeRooms, currentRoom, roomGroups, voiceRoomIds, afkRoomIds,
     afkTimeoutsByServerRef,
     afkRoomIdsByServerRef,
     roomServerIdsRef, loadAcceptedServer, refreshServerDirectory, refreshRooms, refreshServersAfterDeletion, actions,

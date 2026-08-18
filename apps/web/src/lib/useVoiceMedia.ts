@@ -58,6 +58,13 @@ interface UseVoiceMediaInput {
   microphoneDeviceId?: string;
   microphoneVolume?: number;
   noiseSuppression?: boolean;
+  /**
+   * Rooms whose microphone is closed by the room itself. Needed here rather
+   * than only on the server because audio flows peer to peer: a server that
+   * records `mic: false` stops the indicator, not the sound, so the local track
+   * has to be held disabled too.
+   */
+  afkRoomIds?: string[];
 }
 
 export interface VoiceJoinOptions {
@@ -81,7 +88,7 @@ interface PeerRemovalOptions {
   preserveVisualSubscriptions?: boolean;
 }
 
-export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, microphoneDeviceId = "", microphoneVolume = 100, noiseSuppression = DEFAULT_NOISE_SUPPRESSION }: UseVoiceMediaInput) {
+export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, microphoneDeviceId = "", microphoneVolume = 100, noiseSuppression = DEFAULT_NOISE_SUPPRESSION, afkRoomIds = [] }: UseVoiceMediaInput) {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [controls, setControls] = useState<VoiceControls>(() => createInitialVoiceControls());
   const [voiceModeration, setVoiceModeration] = useState<VoiceModerationState>({ muted: false, deafened: false });
@@ -122,6 +129,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const recoveryAttemptInFlightRef = useRef(false);
   const controlsRef = useRef(controls);
   const voiceRoomIdsRef = useRef(voiceRoomIds);
+  const afkRoomIdsRef = useRef(afkRoomIds);
+  /** True while the member occupies a room that closes the microphone. */
+  const micLockedByRoom = () => Boolean(roomRef.current && afkRoomIdsRef.current.includes(roomRef.current));
   const speakingRef = useRef(false);
   const speakingCleanupRef = useRef<(() => void) | null>(null);
   const microphoneEndedCleanupRef = useRef<(() => void) | null>(null);
@@ -163,6 +173,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   useEffect(() => {
     controlsRef.current = controls;
   }, [controls]);
+
+  useEffect(() => {
+    afkRoomIdsRef.current = afkRoomIds;
+  }, [afkRoomIds]);
 
   const persistVoiceResume = useCallback((targets = visualTargetsRef.current, resetDeadline = false) => {
     if (!roomRef.current) return;
@@ -630,7 +644,12 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     const previousMic = localStreamsRef.current.mic;
     const previousTrackStates = previousMic?.getAudioTracks().map((track) => [track, track.enabled] as const) ?? [];
     const attempt = ++joinAttemptRef.current;
-    const microphoneEnabled = options.microphoneEnabled ?? true;
+    // A room that closes the microphone overrides the request, including the
+    // default. The idle mover joins with no options, so without this the member
+    // it parks arrives transmitting.
+    const microphoneEnabled = afkRoomIdsRef.current.includes(roomId)
+      ? false
+      : options.microphoneEnabled ?? true;
     let mic = previousMic;
     let acquiredInput: MicrophoneInput | null = null;
 
@@ -820,7 +839,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
 
   const toggleMic = useCallback(async () => {
     let stream = localStreamsRef.current.mic;
-    if (controlsRef.current.deafen.on || moderationRef.current.muted) return;
+    if (controlsRef.current.deafen.on || moderationRef.current.muted || micLockedByRoom()) return;
     deafenTransitionRef.current += 1;
     if (stream && !stream.getAudioTracks().some((track) => track.readyState === "live")) {
       speakingRef.current = false;

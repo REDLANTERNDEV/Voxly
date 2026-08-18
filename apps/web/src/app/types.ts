@@ -42,6 +42,8 @@ export interface ShellModel {
   activeVoiceRoomId: string | null;
   controls: VoiceControls;
   voiceModeration: VoiceModerationState;
+  /** The active voice room closes the microphone for everyone in it. */
+  micLockedByRoom: boolean;
   appConfig: AppConfigResponse;
   voiceError: string;
   visualTargets: VisualTarget[];

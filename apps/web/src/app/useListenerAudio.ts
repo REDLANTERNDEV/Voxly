@@ -13,11 +13,12 @@ import type { VoxlySocket } from "../socket.js";
 import type { LiveWatchRequest } from "./types.js";
 import { useNotificationSounds } from "./useNotificationSounds.js";
 
-export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, activeVoiceRoomRef, leaveVoiceRef, activeTextRoomIdRef }: {
+export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRoomIds, activeVoiceRoomRef, leaveVoiceRef, activeTextRoomIdRef }: {
   socket: VoxlySocket | null;
   user: PublicUser | null;
   iceServers: RTCIceServer[];
   voiceRoomIds: string[];
+  afkRoomIds: string[];
   activeVoiceRoomRef: React.RefObject<string | null>;
   leaveVoiceRef: React.RefObject<() => void>;
   activeTextRoomIdRef: React.RefObject<string | null>;
@@ -31,6 +32,7 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, activ
     user,
     iceServers,
     voiceRoomIds,
+    afkRoomIds,
     microphoneDeviceId: audioDevices.selectedInputId,
     microphoneVolume: audioLevels.input,
     noiseSuppression

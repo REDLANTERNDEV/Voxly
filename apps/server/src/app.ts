@@ -1535,17 +1535,13 @@ function registerRealtime(
 
       const requested = candidate?.media as Partial<VoiceMediaState> | undefined;
       const moderation = voiceModeration(membership);
-      // The AFK room is for people who are not there. Arriving with a live
-      // microphone would broadcast an empty chair into it, so entry mutes —
-      // enforced here rather than trusted to the client, since a member moved
-      // by their own idle timer is not the one making the request.
       const media = normalizeVoiceMedia({
-        mic: room.isAfk ? false : requested?.mic === true,
+        mic: requested?.mic === true,
         camera: requested?.camera === true,
         screen: requested?.screen === true,
         deafened: requested?.deafened === true,
         speaking: false
-      }, moderation);
+      }, moderation, room);
       const members = ensureVoiceRoom(voiceMembership, roomId);
       if (visualPublisherCount(members, user.userId, media) > visualPublisherLimit) {
         ack({ ok: false, error: "visual_limit_reached" });
@@ -1608,7 +1604,7 @@ function registerRealtime(
         return;
       }
       const moderation = voiceModeration(membership);
-      const nextMedia = normalizeVoiceMedia({ ...current.media, ...parsed.data.media }, moderation);
+      const nextMedia = normalizeVoiceMedia({ ...current.media, ...parsed.data.media }, moderation, room);
       if (visualPublisherCount(members, user.userId, nextMedia) > visualPublisherLimit) {
         callAck(ack, { ok: false, error: "visual_limit_reached" });
         return;
@@ -1766,7 +1762,7 @@ function registerRealtime(
         const room = roomById(database.sqlite, roomId);
         const current = members.get(userId);
         if (!room || room.serverId !== serverId || !current) continue;
-        const media = normalizeVoiceMedia(current.media, moderation);
+        const media = normalizeVoiceMedia(current.media, moderation, room);
         members.set(userId, { ...current, media, moderation });
         emitVoiceSnapshot(io, database, roomId, members);
       }
@@ -2557,7 +2553,17 @@ function voiceSnapshot(roomId: string, members: VoiceRoomMembership | undefined,
   };
 }
 
-function normalizeVoiceMedia(media: VoiceMediaState, moderation: VoiceModerationState = { muted: false, deafened: false }): VoiceMediaState {
+/**
+ * `room` carries the room-level rules. Enforcement lives here rather than at
+ * each call site so join, later media changes, and moderation recalculation all
+ * apply the same constraints; an unmute request that reached only one of those
+ * paths would let the microphone back on.
+ */
+function normalizeVoiceMedia(
+  media: VoiceMediaState,
+  moderation: VoiceModerationState = { muted: false, deafened: false },
+  room: { isAfk: boolean } = { isAfk: false }
+): VoiceMediaState {
   const next = {
     mic: Boolean(media.mic),
     camera: Boolean(media.camera),
@@ -2571,6 +2577,15 @@ function normalizeVoiceMedia(media: VoiceMediaState, moderation: VoiceModeration
   }
 
   if (moderation.muted) {
+    next.mic = false;
+  }
+
+  // The AFK room mutes everyone in it, and the mute cannot be lifted from
+  // inside. It is a property of the room rather than of the member: nobody in
+  // there is present, so nothing they transmit is wanted, and unlike owner
+  // moderation it applies to owners too. Leaving the room is how you get your
+  // microphone back.
+  if (room.isAfk) {
     next.mic = false;
   }
 

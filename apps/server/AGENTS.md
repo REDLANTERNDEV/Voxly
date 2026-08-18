@@ -156,9 +156,14 @@ queries across endpoints.
   delete or rewrite the answer.
 - Excerpts are trimmed server-side. A full 2,000-character body must not be sent
   again behind every reply to it.
-- Entering a room flagged `is_afk` forces the microphone off in the join
-  acknowledgement. A member parked by their own idle timer is not the one making
-  the request, so the mute cannot be left to the client to apply.
+- A room flagged `is_afk` closes the microphone for everyone in it, owners
+  included, and the mute cannot be lifted from inside — leaving the room is how
+  it is released. Enforce it inside `normalizeVoiceMedia` rather than at any call
+  site, so join, later media changes, and moderation recalculation all apply it;
+  an unmute that reached only one of those paths reopened the microphone.
+- Server enforcement stops the indicator, not the sound: media flows peer to
+  peer, so the client must also hold the local track closed. Neither half is
+  sufficient alone.
 - The AFK timeout is per server, owner-only, and restricted to the shared option
   list; legacy rows with no value read as the default. Changing it emits to the
   whole server room, because every member runs their own idle clock.

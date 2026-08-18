@@ -70,6 +70,10 @@ requirement.
   from the previously selected server must render no channel or message while
   the next server loads. Owner-panel navigation returns to that server's
   remembered text room or its first text room, never a hard-coded room ID.
+- A room that closes the microphone overrides the join default as well as an
+  explicit request, and the toggle refuses while the member is in it — the same
+  guard owner mute uses. Show the control locked; an enabled control the server
+  will not honour reads as a bug.
 - Idle is measured in the browser, never from socket liveness: a tab that is
   open, connected, and untouched is exactly the case AFK exists for, and the
   server cannot tell that apart from someone listening. Speaking counts as

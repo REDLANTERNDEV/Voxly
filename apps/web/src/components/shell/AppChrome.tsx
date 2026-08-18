@@ -146,6 +146,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         t={props.t}
         user={props.user}
         voiceModeration={props.voiceModeration}
+        micLockedByRoom={props.micLockedByRoom}
         onJoinVoice={props.onJoinVoice}
         onLeaveVoice={props.onLeaveVoice}
         onLogout={props.onLogout}

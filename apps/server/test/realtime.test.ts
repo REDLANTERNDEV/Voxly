@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
-import type { VoiceJoinAck, VoiceMediaState } from "@voxly/shared";
+import type { VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck } from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 
 describe("Voxly realtime MVP", () => {
@@ -797,6 +797,42 @@ describe("Voxly realtime MVP", () => {
 
     assert.equal(joined.ok, true);
     assert.equal(joined.ok && joined.state.media.mic, false);
+  });
+
+  it("refuses an unmute from inside the AFK room, including from the owner", async () => {
+    // Regression: entry mute alone was not enough. `voice:setMediaState` let the
+    // member turn the microphone straight back on, so the room muted nobody.
+    const owner = await bootstrapOwner(app);
+    const socket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(socket);
+    const afkRoom = app.sqlite
+      .prepare("select id from rooms where server_id = ? and is_afk = 1")
+      .all("the-basement")[0] as { id: string } | undefined;
+    assert.ok(afkRoom);
+    await joinVoice(socket, afkRoom.id, { ...defaultJoinMedia, mic: false });
+
+    const ack = await new Promise<VoiceSetMediaAck>((resolve) => {
+      socket.emit("voice:setMediaState", { roomId: afkRoom.id, media: { mic: true } }, resolve);
+    });
+
+    assert.equal(ack.ok, true, "the request is accepted rather than errored");
+    assert.equal(ack.ok && ack.state.media.mic, false, "but the microphone stays closed");
+  });
+
+  it("restores the microphone once the member leaves the AFK room", async () => {
+    // The mute belongs to the room, so leaving is how you get it back.
+    const owner = await bootstrapOwner(app);
+    const socket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(socket);
+    const afkRoom = app.sqlite
+      .prepare("select id from rooms where server_id = ? and is_afk = 1")
+      .all("the-basement")[0] as { id: string } | undefined;
+    assert.ok(afkRoom);
+    await joinVoice(socket, afkRoom.id, { ...defaultJoinMedia, mic: true });
+
+    const moved = await joinVoice(socket, "lobby", { ...defaultJoinMedia, mic: true });
+
+    assert.equal(moved.ok && moved.state.media.mic, true);
   });
 
   it("leaves an ordinary voice room's microphone request alone", async () => {

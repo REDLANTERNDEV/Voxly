@@ -11,7 +11,7 @@ import { controlPresentation } from "../../lib/voiceControls.js";
 type VoiceDockProps = Pick<ShellModel,
   "activeServerId" | "activeVoiceRoomId" | "connectionHealth" | "controls" |
   "currentNickname" | "currentRoom" | "microphoneTestActive" | "route" |
-  "servers" | "socketState" | "t" | "user" | "voiceModeration"
+  "servers" | "socketState" | "t" | "user" | "voiceModeration" | "micLockedByRoom"
 > & Pick<ShellActions,
   "onJoinVoice" | "onLeaveVoice" | "onLogout" | "onNavigate" | "onToggleControl"
 > & { connectedCount: number };
@@ -37,7 +37,9 @@ export function VoiceDock(props: VoiceDockProps) {
         ) : null}
         {props.activeVoiceRoomId ? (
           <>
-            {props.voiceModeration.muted
+            {props.micLockedByRoom
+              ? <ControlButton label={props.t("room.afkMuted")} active tone="danger" enabled={false} onClick={() => undefined}><MicIcon off /></ControlButton>
+              : props.voiceModeration.muted
               ? <ControlButton label={props.t("member.ownerMuted")} active tone="danger" enabled={false} onClick={() => undefined}><MicIcon off /></ControlButton>
               : <ControlButton label={props.t(`common.${micControl.action}` as TranslationKey)} active={props.controls.mic.on} tone={micControl.tone} enabled={props.controls.mic.enabled && props.socketState === "live"} onClick={() => props.onToggleControl("mic")}><MicIcon off={!props.controls.mic.on} /></ControlButton>}
             {props.voiceModeration.deafened
