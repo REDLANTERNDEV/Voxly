@@ -71,6 +71,13 @@ export async function createServer(name: string) {
   return apiPost<{ server: ServerSummary }>("/api/servers", { name });
 }
 
+export async function updateServerAfkTimeout(serverId: string, afkTimeoutMinutes: number) {
+  return request<{ afkTimeoutMinutes: number }>(`/api/servers/${encodeURIComponent(serverId)}/afk`, {
+    method: "PATCH",
+    body: JSON.stringify({ afkTimeoutMinutes })
+  });
+}
+
 export async function updateServer(serverId: string, name: string) {
   return request<{ server: ServerSummary }>(`/api/servers/${encodeURIComponent(serverId)}`, {
     method: "PATCH",

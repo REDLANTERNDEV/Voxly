@@ -40,8 +40,8 @@ describe("frontend navigation", () => {
   });
 
   it("selects a text-first destination after an access claim", () => {
-    const voice = { id: "voice", serverId: "s1", name: "Voice", kind: "voice" as const, position: 1 };
-    const text = { id: "text", serverId: "s1", name: "Text", kind: "text" as const, position: 2 };
+    const voice = { id: "voice", serverId: "s1", name: "Voice", kind: "voice" as const, position: 1, isAfk: false };
+    const text = { id: "text", serverId: "s1", name: "Text", kind: "text" as const, position: 2, isAfk: false };
 
     assert.equal(firstServerRoomPath("s1", [voice, text]), "/app/server/s1/text/text");
     assert.equal(firstServerRoomPath("s1", [voice]), "/app/server/s1/voice/voice");

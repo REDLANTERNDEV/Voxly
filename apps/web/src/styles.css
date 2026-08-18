@@ -1413,25 +1413,51 @@ button.reply-quote:focus-visible .reply-quote-body {
   color: var(--text);
 }
 
+/* One line, read left to right: what is happening, to whom, and what they said.
+   The author is named once — the quote beside it drops its own copy of the
+   name, which otherwise printed it twice within a few characters. */
 .composer-reply {
   align-items: center;
   background: color-mix(in oklab, var(--accent), var(--bg) 92%);
   border-radius: var(--radius-sm, 8px);
   display: grid;
   gap: 8px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   margin-bottom: 8px;
   padding: 6px 8px;
 }
 
 .composer-reply-label {
-  color: var(--muted);
-  font-size: 0.78rem;
+  align-items: center;
+  color: var(--accent);
+  display: inline-flex;
+}
+
+.composer-reply-label .ui-icon {
+  height: 16px;
+  width: 16px;
+}
+
+.composer-reply-target {
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .composer-reply .reply-quote {
+  border-left-color: color-mix(in oklab, var(--accent), var(--bg) 55%);
   margin-bottom: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .composer-reply {
+    animation: composer-reply-in 160ms ease-out;
+  }
+}
+
+@keyframes composer-reply-in {
+  from { opacity: 0; transform: translateY(4px); }
 }
 
 /* Sits beside the existing ellipsis and shares its reveal rules, so the pair
@@ -1486,6 +1512,29 @@ button.reply-quote:focus-visible .reply-quote-body {
 
 @keyframes message-jump-target {
   to { background: transparent; }
+}
+
+/* Presence rides the avatar rather than sitting in the row, so it survives the
+   row's own layout and reads at a glance: green present, amber away, hollow
+   grey gone. The ring matches the panel background so the dot never merges
+   into the avatar behind it. */
+.presence-dot {
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  bottom: -1px;
+  display: block;
+  height: 11px;
+  position: absolute;
+  right: -1px;
+  width: 11px;
+}
+
+.presence-dot.is-online { background: var(--speaking); }
+.presence-dot.is-idle { background: #e0a326; }
+.presence-dot.is-offline { background: var(--muted); opacity: 0.55; }
+
+.member-row .avatar {
+  position: relative;
 }
 
 .message-actions {
@@ -1753,18 +1802,38 @@ button.reply-quote:focus-visible .reply-quote-body {
   z-index: var(--layer-popover);
 }
 
+/* Fullscreen is edge-to-edge picture. Every seam the panel carries against the
+   page — border, radius, grid padding, tile chrome — reads as a frame drawn
+   around the video once there is no page behind it. The control bar stays, but
+   as an overlay on the picture rather than a strip that shortens it. */
 .screen-stage:fullscreen {
   block-size: 100dvh;
-  /* The panel border is a seam against the page. In fullscreen there is no page
-     behind it, so it reads as a coloured line drawn around the video. */
   border: 0;
   border-radius: 0;
   max-block-size: none;
   min-block-size: 100dvh;
+  padding: 0;
 }
 
 .screen-stage:fullscreen .stage-grid {
-  padding: 16px;
+  block-size: 100dvh;
+  gap: 0;
+  padding: 0;
+}
+
+.screen-stage:fullscreen .stage-media {
+  border: 0;
+  border-radius: 0;
+}
+
+.screen-stage:fullscreen .stage-media.is-focused {
+  box-shadow: none;
+}
+
+/* The bar already floats over the picture at every size, so fullscreen only has
+   to keep it above the edge-to-edge video. */
+.screen-stage:fullscreen .screen-stage-bar {
+  z-index: 1;
 }
 
 .screen-stage .call-video {

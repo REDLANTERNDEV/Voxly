@@ -1,9 +1,10 @@
-import type { PresenceUser,PublicUser,RoomSummary,VoiceModerationState } from "@voxly/shared";
-import { useCallback,useEffect,useMemo,useState,type RefObject } from "react";
-import { createServer,createServerRoom,deleteServer,deleteServerRoom,disconnectVoiceMember,fetchServerDirectory,fetchServerRooms,fetchServers,moderateServerMember,updateServer,updateServerMemberNickname,updateServerMemberPermissions,updateVoiceModeration } from "../api.js";
+import type { AfkTimeoutMinutes,PresenceStatus,PresenceUser,PublicUser,RoomSummary,VoiceModerationState } from "@voxly/shared";
+import { useCallback,useEffect,useMemo,useRef,useState,type RefObject } from "react";
+import { createServer,createServerRoom,deleteServer,deleteServerRoom,disconnectVoiceMember,fetchServerDirectory,fetchServerRooms,fetchServers,moderateServerMember,updateServer,updateServerAfkTimeout,updateServerMemberNickname,updateServerMemberPermissions,updateVoiceModeration } from "../api.js";
 import { resolveRememberedRoom,roomsForServer,type RoomHistory } from "../lib/channelState.js";
 import { currentServerPresence } from "../lib/memberDirectory.js";
 import { replacePresenceUser,replaceServerPresenceUserIfPresent } from "../lib/memberIdentity.js";
+import { indexAfkRoom } from "../lib/idleActivity.js";
 import { defaultServerId,firstServerRoomPath } from "../lib/navigation.js";
 import type { ServerSummary } from "../types.js";
 import { serverPath } from "./navigation.js";
@@ -19,12 +20,24 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
   routeRef: RefObject<Route>;
 }) {
   const [servers, setServers] = useState<ServerSummary[]>([]);
+
   const [serverListReady, setServerListReady] = useState(false);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [onlineUsersByServer, setOnlineUsersByServer] = useState<Record<string, PresenceUser[]>>({});
   const [serverMembersByServer, setServerMembersByServer] = useState<Record<string, PresenceUser[]>>({});
+  // Accumulates across servers, unlike `rooms`, which only ever holds the active
+  // one. Voice outlives navigation, so anything keyed off the room a member is
+  // connected to has to survive them browsing elsewhere.
+  const afkRoomIdsByServerRef = useRef<Record<string, string>>({});
+  // Rebuilt from the server list, which every member receives, so the idle
+  // clock uses the owner's setting rather than a client-side default.
+  const afkTimeoutsByServerRef = useRef<Record<string, AfkTimeoutMinutes>>({});
+
   const indexRooms = useCallback((nextRooms: RoomSummary[]) => {
     for (const room of nextRooms) roomServerIdsRef.current[room.id] = room.serverId;
+    for (const serverId of new Set(nextRooms.map((room) => room.serverId))) {
+      indexAfkRoom(afkRoomIdsByServerRef.current, serverId, nextRooms);
+    }
   }, []);
   const activeServerId = route.name === "text" || route.name === "voice" || route.name === "owner"
     ? route.serverId : servers[0]?.id ?? defaultServerId;
@@ -78,6 +91,14 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
     setRooms(roomResponse.rooms);
     navigate(firstServerRoomPath(serverId, roomResponse.rooms));
   }, [indexRooms, navigate]);
+
+  // One index rebuilt from the whole list, rather than patched at each write
+  // site, so a server that disappears cannot leave a stale timeout behind.
+  useEffect(() => {
+    const next: Record<string, AfkTimeoutMinutes> = {};
+    for (const server of servers) next[server.id] = server.afkTimeoutMinutes;
+    afkTimeoutsByServerRef.current = next;
+  }, [servers]);
 
   useEffect(() => {
     if (!user) {
@@ -164,6 +185,10 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
       setRooms((current) => [...current, response.room].sort((a, b) => a.position - b.position));
       navigate(serverPath(activeServerId, response.room.kind, response.room.id));
     },
+    setAfkTimeout: async (minutes: AfkTimeoutMinutes) => {
+      await updateServerAfkTimeout(activeServerId, minutes);
+      setServers((current) => current.map((server) => server.id === activeServerId ? { ...server, afkTimeoutMinutes: minutes } : server));
+    },
     deleteRoom: async (roomId: string) => { await deleteServerRoom(activeServerId, roomId); await refreshRooms(activeServerId, roomId); },
     deleteServer: async () => { await deleteServer(activeServerId); await refreshServersAfterDeletion(activeServerId); },
     moderateMember: async (userId: string, action: "ban" | "unban" | "kick") => { await moderateServerMember(activeServerId, userId, action); await refreshServerDirectory(activeServerId); },
@@ -183,13 +208,24 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
 
   return {
     servers, rooms, serverListReady, activeServerId, onlineUsers, serverMembers, activeRooms, currentRoom, roomGroups, voiceRoomIds,
+    afkTimeoutsByServerRef,
+    afkRoomIdsByServerRef,
     roomServerIdsRef, loadAcceptedServer, refreshServerDirectory, refreshRooms, refreshServersAfterDeletion, actions,
     setServers, setOnlineUsersByServer, setServerMembersByServer,
     applyPresenceSnapshot: (serverId: string, users: PresenceUser[]) => setOnlineUsersByServer((current) => ({ ...current, [serverId]: user ? includeCurrentPresence(users, user) : users })),
     applyPresenceOnline: (serverId: string, next: PresenceUser) => user && setOnlineUsersByServer((current) => ({ ...current, [serverId]: upsertPresence(current[serverId] ?? [presenceFromUser(user)], next, user) })),
     applyPresenceOffline: (serverId: string, userId: string) => setOnlineUsersByServer((current) => ({ ...current, [serverId]: (current[serverId] ?? []).filter((item) => item.userId !== userId) })),
     applyMemberUpdate,
+    // Status only ever updates an entry that is already present. Someone who is
+    // not in the online list is offline, and an idle report must not resurrect
+    // them into it.
+    applyPresenceStatus: (serverId: string, userId: string, status: PresenceStatus) => setOnlineUsersByServer((current) => {
+      const present = current[serverId];
+      if (!present?.some((item) => item.userId === userId)) return current;
+      return { ...current, [serverId]: present.map((item) => item.userId === userId ? { ...item, status } : item) };
+    }),
     applyServerName: (serverId: string, name: string) => setServers((current) => current.map((server) => server.id === serverId ? { ...server, name } : server)),
+    applyAfkTimeout: (serverId: string, afkTimeoutMinutes: AfkTimeoutMinutes) => setServers((current) => current.map((server) => server.id === serverId ? { ...server, afkTimeoutMinutes } : server)),
     revokeAccess: (serverId: string) => {
       setOnlineUsersByServer((current) => { const next = { ...current }; delete next[serverId]; return next; });
       setServerMembersByServer((current) => { const next = { ...current }; delete next[serverId]; return next; });

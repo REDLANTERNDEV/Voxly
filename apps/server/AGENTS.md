@@ -156,6 +156,25 @@ queries across endpoints.
   delete or rewrite the answer.
 - Excerpts are trimmed server-side. A full 2,000-character body must not be sent
   again behind every reply to it.
+- Entering a room flagged `is_afk` forces the microphone off in the join
+  acknowledgement. A member parked by their own idle timer is not the one making
+  the request, so the mute cannot be left to the client to apply.
+- The AFK timeout is per server, owner-only, and restricted to the shared option
+  list; legacy rows with no value read as the default. Changing it emits to the
+  whole server room, because every member runs their own idle clock.
+- Presence status is per connection. A member is away only when every one of
+  their sockets says so, and dropping an idle socket has to re-publish the
+  derived status rather than leave it stale. Status never adds or removes a
+  member from the online list — that is what online and offline mean.
+- Every server carries exactly one AFK voice room, flagged by `rooms.is_afk`.
+  Seeding runs for existing servers too, additively, so a deployment upgrading
+  into the feature is not left with nowhere to park idle members. It skips
+  servers that already have one, so it is safe to re-run and an owner who
+  deletes theirs is not given it back on the next restart.
+- The AFK room is otherwise an ordinary room: renameable, movable, deletable,
+  and counted by the last-room floor. The server enforces nothing about who may
+  be in it and needs no dedicated move endpoint — being parked is a normal
+  `voice:join`, which already handles leaving the previous room atomically.
 - Every change to a server's room list is announced on `server:roomsChanged` to
   that server's room, creation included. Members hold a cached room list, so a
   route that mutates rooms and stays silent leaves a new channel invisible until

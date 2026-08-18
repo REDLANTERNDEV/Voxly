@@ -37,7 +37,7 @@ describe("reply quote", () => {
     assert.match(replyQuote, /if \(!onJump\) \{/);
     assert.match(messageItem, /<ReplyQuote reply=\{message\.replyTo\} t=\{t\} onJump=\{onJumpToMessage\} \/>/);
     // The composer strip and unsent rows quote without a jump target.
-    assert.match(textRoom, /<ReplyQuote reply=\{replyTarget\} t=\{props\.t\} \/>/);
+    assert.match(textRoom, /<ReplyQuote reply=\{replyTarget\} t=\{props\.t\} hideAuthor \/>/);
   });
 
   it("clips the excerpt to one line so it cannot compete with the message", () => {
@@ -47,6 +47,15 @@ describe("reply quote", () => {
 });
 
 describe("reply composition", () => {
+  it("names the author once in the composer strip", () => {
+    // The strip's own copy already says whose message this answers, so the
+    // quote beside it drops its author and only carries the excerpt.
+    assert.match(textRoom, /composer-reply-target">\{props\.t\("room\.replyingTo"/);
+    assert.match(textRoom, /hideAuthor/);
+    assert.match(replyQuote, /const author = hideAuthor \? null :/);
+  });
+
+
   it("carries the pending target into the send and clears it afterwards", () => {
     assert.match(textRoom, /props\.onSendMessage\(body, replyTarget\);\s*\n\s*setReplyTarget\(null\);/);
   });

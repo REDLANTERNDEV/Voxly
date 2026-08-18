@@ -30,3 +30,15 @@ export function groupDirectoryMembers(
     offline: allMembers.filter((user) => !onlineIds.has(user.userId)).sort(byNickname)
   };
 }
+
+/**
+ * Three states, one rule: an entry absent from the online list is offline, an
+ * entry present is online unless it reports otherwise. Derived rather than
+ * stored so the dot can never disagree with which list the member is in.
+ */
+export type MemberPresenceState = "online" | "idle" | "offline";
+
+export function memberPresenceState(user: { status?: "online" | "idle" }, online: boolean): MemberPresenceState {
+  if (!online) return "offline";
+  return user.status === "idle" ? "idle" : "online";
+}

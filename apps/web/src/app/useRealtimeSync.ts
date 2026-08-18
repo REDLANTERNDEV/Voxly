@@ -1,4 +1,4 @@
-import type { ChatMessage,PresenceUser,PublicUser } from "@voxly/shared";
+import type { AfkTimeoutMinutes,ChatMessage,PresenceStatus,PresenceUser,PublicUser } from "@voxly/shared";
 import { useEffect,useRef,useState,type RefObject } from "react";
 import { createVoxlySocket,type VoxlySocket } from "../socket.js";
 import type { Route } from "./types.js";
@@ -7,9 +7,11 @@ interface RealtimeHandlers {
   presenceSnapshot(serverId: string, users: PresenceUser[]): void;
   presenceOnline(serverId: string, user: PresenceUser): void;
   presenceOffline(serverId: string, userId: string): void;
+  presenceStatus(serverId: string, userId: string, status: PresenceStatus): void;
   directoryChanged(serverId: string): void;
   memberUpdated(serverId: string, user: PresenceUser): void;
   serverUpdated(serverId: string, name: string): void;
+  afkUpdated(serverId: string, afkTimeoutMinutes: AfkTimeoutMinutes): void;
   roomsChanged(serverId: string, deletedRoomId: string | undefined): void;
   serverDeleted(serverId: string): void;
   messageNew(message: ChatMessage): void;
@@ -41,9 +43,11 @@ export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, lea
     next.on("presence:serverSnapshot", ({ serverId, users }) => handlersRef.current.presenceSnapshot(serverId, users));
     next.on("presence:serverOnline", ({ serverId, user: nextUser }) => handlersRef.current.presenceOnline(serverId, nextUser));
     next.on("presence:serverOffline", ({ serverId, userId }) => handlersRef.current.presenceOffline(serverId, userId));
+    next.on("presence:serverStatus", ({ serverId, userId, status }) => handlersRef.current.presenceStatus(serverId, userId, status));
     next.on("server:directoryChanged", ({ serverId }) => handlersRef.current.directoryChanged(serverId));
     next.on("server:memberUpdated", ({ serverId, user: nextUser }) => handlersRef.current.memberUpdated(serverId, nextUser));
     next.on("server:updated", ({ serverId, name }) => handlersRef.current.serverUpdated(serverId, name));
+    next.on("server:afkUpdated", ({ serverId, afkTimeoutMinutes }) => handlersRef.current.afkUpdated(serverId, afkTimeoutMinutes));
     next.on("server:roomsChanged", ({ serverId, deletedRoomId }) => handlersRef.current.roomsChanged(serverId, deletedRoomId));
     next.on("server:deleted", ({ serverId }) => handlersRef.current.serverDeleted(serverId));
     next.on("message:new", (message) => handlersRef.current.messageNew(message));

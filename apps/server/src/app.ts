@@ -5,9 +5,17 @@ import staticPlugin from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { Server } from "socket.io";
 import { z } from "zod";
-import { replyExcerptMaxLength } from "@voxly/shared";
+import {
+  afkRoomName,
+  DEFAULT_AFK_TIMEOUT_MINUTES,
+  isAfkTimeoutMinutes,
+  replyExcerptMaxLength,
+  type AfkTimeoutMinutes,
+  type PresenceStatus
+} from "@voxly/shared";
 import type {
   ChatMessage,
+  RoomSummary,
   ClientToServerEvents,
   PresenceUser,
   RtcSignalAck,
@@ -118,6 +126,8 @@ type RoomRow = {
   serverId: string;
   name: string;
   kind: "text" | "voice";
+  /** SQLite has no boolean; `publicRoom` is what turns this into the DTO. */
+  isAfkFlag: number;
   position: number;
 };
 
@@ -552,10 +562,11 @@ function registerRoutes(
   server.get("/api/servers", async (request, reply) => {
     const user = requireUser(database, request, reply, options.secureCookies);
     if (!user) return;
-    const memberships = all<{ id: string; name: string; role: "owner" | "member"; canInvite: number }>(
+    const memberships = all<{ id: string; name: string; role: "owner" | "member"; canInvite: number; afkTimeoutMinutes: number | null }>(
       database.sqlite,
       `select servers.id, servers.name, server_members.role,
-        server_members.can_invite as canInvite
+        server_members.can_invite as canInvite,
+        servers.afk_timeout_minutes as afkTimeoutMinutes
        from server_members
        join servers on servers.id = server_members.server_id
        where server_members.user_id = ?
@@ -567,7 +578,8 @@ function registerRoutes(
     return {
       servers: memberships.map((membership) => ({
         ...membership,
-        canInvite: membership.role === "owner" || Boolean(membership.canInvite)
+        canInvite: membership.role === "owner" || Boolean(membership.canInvite),
+        afkTimeoutMinutes: afkTimeoutOf(membership.afkTimeoutMinutes)
       }))
     };
   });
@@ -595,6 +607,7 @@ function registerRoutes(
     activateServerMembership(database, serverId, owner.id, "owner", now);
     createServerRoom(database, serverId, "general", "text", 10);
     createServerRoom(database, serverId, "Lobby", "voice", 20);
+    createServerRoom(database, serverId, afkRoomName, "voice", 30, true);
     audit(database, owner.id, "server.created", null, serverId);
     database.save();
     await realtime.grantServerAccess(serverId, owner.id);
@@ -609,9 +622,9 @@ function registerRoutes(
     return {
       rooms: all<RoomRow>(
         database.sqlite,
-        "select id, server_id as serverId, name, kind, position from rooms where server_id = ? order by position asc",
+        `select ${roomColumns} from rooms where server_id = ? order by position asc`,
         [serverId]
-      )
+      ).map(publicRoom)
     };
   });
 
@@ -642,6 +655,23 @@ function registerRoutes(
     // also covers creation.
     io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
     return reply.code(201).send({ room });
+  });
+
+  server.patch("/api/servers/:serverId/afk", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const { afkTimeoutMinutes } = z.object({
+      afkTimeoutMinutes: z.number().int().refine(isAfkTimeoutMinutes, { message: "unsupported_timeout" })
+    }).parse(request.body);
+    run(database.sqlite, "update servers set afk_timeout_minutes = ? where id = ?", [afkTimeoutMinutes, serverId]);
+    audit(database, owner.id, "server.afkTimeoutChanged", null, serverId);
+    database.save();
+    // Every member runs their own idle clock, so all of them need the new value
+    // rather than only the owner who set it.
+    io.to(`server:${serverId}`).emit("server:afkUpdated", { serverId, afkTimeoutMinutes });
+    return { afkTimeoutMinutes };
   });
 
   server.patch("/api/servers/:serverId", async (request, reply) => {
@@ -1132,7 +1162,7 @@ function registerRoutes(
     if (!requireServerMember(database, defaultServerId, user.id, reply)) return;
 
     return {
-      rooms: all(database.sqlite, "select id, server_id as serverId, name, kind, position from rooms where server_id = ? order by position asc", [defaultServerId])
+      rooms: all<RoomRow>(database.sqlite, `select ${roomColumns} from rooms where server_id = ? order by position asc`, [defaultServerId]).map(publicRoom)
     };
   });
 
@@ -1402,7 +1432,9 @@ function registerRealtime(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
   database: VoxlyDatabase
 ): RealtimeModeration {
-  const online = new Map<string, { user: PresenceUser; sockets: Set<string> }>();
+  // `idleSockets` is a subset of `sockets`: a member is away only when every
+  // one of their connections says so, so a second, active tab keeps them online.
+  const online = new Map<string, { user: PresenceUser; sockets: Set<string>; idleSockets: Set<string> }>();
   const voiceMembership = new Map<string, VoiceRoomMembership>();
   const visualSubscriptions = new Map<string, VisualSubscriptions>();
 
@@ -1432,12 +1464,26 @@ function registerRealtime(
     socket.on("connection:probe", safeSocketHandler("connection:probe", (ack) => {
       if (typeof ack === "function") ack();
     }));
+
+    socket.on("presence:setStatus", safeSocketHandler("presence:setStatus", (status) => {
+      if (status !== "online" && status !== "idle") return;
+      const presence = online.get(user.userId);
+      if (!presence) return;
+      const before = presenceStatusOf(online, user.userId);
+      if (status === "idle") presence.idleSockets.add(socket.id);
+      else presence.idleSockets.delete(socket.id);
+      const after = presenceStatusOf(online, user.userId);
+      if (before === after) return;
+      for (const serverId of serverIds) {
+        io.to(`server:${serverId}`).emit("presence:serverStatus", { serverId, userId: user.userId, status: after });
+      }
+    }));
     const entry = online.get(user.userId);
     const isNewPresence = !entry;
     if (entry) {
       entry.sockets.add(socket.id);
     } else {
-      online.set(user.userId, { user, sockets: new Set([socket.id]) });
+      online.set(user.userId, { user, sockets: new Set([socket.id]), idleSockets: new Set() });
     }
     for (const serverId of serverIds) {
       const serverUser = serverPresenceUser(database.sqlite, serverId, user.userId);
@@ -1489,8 +1535,12 @@ function registerRealtime(
 
       const requested = candidate?.media as Partial<VoiceMediaState> | undefined;
       const moderation = voiceModeration(membership);
+      // The AFK room is for people who are not there. Arriving with a live
+      // microphone would broadcast an empty chair into it, so entry mutes —
+      // enforced here rather than trusted to the client, since a member moved
+      // by their own idle timer is not the one making the request.
       const media = normalizeVoiceMedia({
-        mic: requested?.mic === true,
+        mic: room.isAfk ? false : requested?.mic === true,
         camera: requested?.camera === true,
         screen: requested?.screen === true,
         deafened: requested?.deafened === true,
@@ -1615,6 +1665,14 @@ function registerRealtime(
         return;
       }
       current.sockets.delete(socket.id);
+      // Dropping an idle connection can make the remaining ones the majority,
+      // so the derived status has to be re-published rather than left stale.
+      const wasIdle = current.idleSockets.delete(socket.id);
+      if (wasIdle && current.sockets.size > 0 && presenceStatusOf(online, user.userId) === "online") {
+        for (const serverId of serverIds) {
+          io.to(`server:${serverId}`).emit("presence:serverStatus", { serverId, userId: user.userId, status: "online" });
+        }
+      }
       if (current.sockets.size === 0) {
         online.delete(user.userId);
         const activeServerIds = all<{ server_id: string }>(
@@ -2055,12 +2113,21 @@ function requireActiveServerMembership(sqlite: DatabaseSync, serverId: string, u
   return activeServerMembership(sqlite, serverId, userId) !== null;
 }
 
+type OnlineRegistry = Map<string, { user: PresenceUser; sockets: Set<string>; idleSockets: Set<string> }>;
+
+function presenceStatusOf(online: OnlineRegistry, userId: string): PresenceStatus {
+  const entry = online.get(userId);
+  if (!entry || entry.sockets.size === 0) return "online";
+  return entry.idleSockets.size >= entry.sockets.size ? "idle" : "online";
+}
+
 function serverPresenceUsers(
   sqlite: DatabaseSync,
-  online: Map<string, { user: PresenceUser; sockets: Set<string> }>,
+  online: OnlineRegistry,
   serverId: string
 ) {
-  return effectiveServerPresenceUsers(sqlite, serverId, online.keys());
+  return effectiveServerPresenceUsers(sqlite, serverId, online.keys())
+    .map((presence) => ({ ...presence, status: presenceStatusOf(online, presence.userId) }));
 }
 
 function requireServerMember(database: VoxlyDatabase, serverId: string, userId: string, reply: FastifyReply) {
@@ -2097,25 +2164,45 @@ function requireServerInviter(database: VoxlyDatabase, serverId: string, userId:
   return membership;
 }
 
+/** Legacy rows carry no timeout, so the default is applied on read. */
+function afkTimeoutOf(stored: number | null | undefined): AfkTimeoutMinutes {
+  return isAfkTimeoutMinutes(stored) ? stored : DEFAULT_AFK_TIMEOUT_MINUTES;
+}
+
+const roomColumns = "id, server_id as serverId, name, kind, position, coalesce(is_afk, 0) as isAfkFlag";
+
+function publicRoom(row: RoomRow): RoomSummary {
+  return {
+    id: row.id,
+    serverId: row.serverId,
+    name: row.name,
+    kind: row.kind,
+    position: row.position,
+    isAfk: row.isAfkFlag === 1
+  };
+}
+
 function createServerRoom(
   database: VoxlyDatabase,
   serverId: string,
   name: string,
   kind: "text" | "voice",
-  position: number
+  position: number,
+  isAfk = false
 ) {
   const id = serverId === defaultServerId && name === "general" && kind === "text"
     ? "general"
     : serverId === defaultServerId && name === "Lobby" && kind === "voice"
       ? "lobby"
       : crypto.randomUUID();
-  const room = { id, serverId, name, kind, position };
-  run(database.sqlite, "insert into rooms (id, server_id, name, kind, position) values (?, ?, ?, ?, ?)", [
+  const room: RoomSummary = { id, serverId, name, kind, position, isAfk };
+  run(database.sqlite, "insert into rooms (id, server_id, name, kind, position, is_afk) values (?, ?, ?, ?, ?, ?)", [
     room.id,
     room.serverId,
     room.name,
     room.kind,
-    room.position
+    room.position,
+    room.isAfk ? 1 : 0
   ]);
   return room;
 }
@@ -2442,11 +2529,12 @@ const replyJoinClause = `left join messages quoted
       and quoted_members.user_id = quoted.user_id`;
 
 function roomById(sqlite: DatabaseSync, roomId: string) {
-  return one<RoomRow>(
+  const row = one<RoomRow>(
     sqlite,
-    "select id, server_id as serverId, name, kind, position from rooms where id = ?",
+    `select ${roomColumns} from rooms where id = ?`,
     [roomId]
   );
+  return row ? publicRoom(row) : null;
 }
 
 function ensureVoiceRoom(voiceMembership: Map<string, VoiceRoomMembership>, roomId: string) {

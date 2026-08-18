@@ -1,3 +1,4 @@
+import { afkRoomName } from "@voxly/shared";
 import { DatabaseSync } from "node:sqlite";
 
 type DbParam = string | number | bigint | Uint8Array | null;
@@ -16,6 +17,7 @@ export async function openDatabase(databasePath: string): Promise<VoxlyDatabase>
 
   migrate(sqlite);
   seedRooms(sqlite);
+  seedAfkRooms(sqlite);
 
   return {
     sqlite,
@@ -113,7 +115,8 @@ function migrate(sqlite: DatabaseSync) {
       server_id text,
       name text not null,
       kind text not null check (kind in ('text', 'voice')),
-      position integer not null
+      position integer not null,
+      is_afk integer not null default 0
     );
 
     create table if not exists messages (
@@ -141,7 +144,8 @@ function migrate(sqlite: DatabaseSync) {
       id text primary key,
       name text not null,
       created_by_user_id text,
-      created_at text not null
+      created_at text not null,
+      afk_timeout_minutes integer
     );
 
     create table if not exists server_members (
@@ -179,6 +183,8 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "messages", "deleted_by_user_id", "text");
   addColumnIfMissing(sqlite, "messages", "reply_to_message_id", "text");
   addColumnIfMissing(sqlite, "rooms", "server_id", "text");
+  addColumnIfMissing(sqlite, "rooms", "is_afk", "integer not null default 0");
+  addColumnIfMissing(sqlite, "servers", "afk_timeout_minutes", "integer");
   addColumnIfMissing(sqlite, "invites", "server_id", "text");
   addColumnIfMissing(sqlite, "invites", "max_uses", "integer default 1");
   addColumnIfMissing(sqlite, "audit_events", "server_id", "text");
@@ -255,6 +261,39 @@ function seedRooms(sqlite: DatabaseSync) {
     "voice",
     20
   ]);
+}
+
+/**
+ * Every server gets an AFK room, existing ones included — a deployment that
+ * upgrades into this feature would otherwise have nowhere to park idle members
+ * until each owner created a room by hand.
+ *
+ * Servers that already have one are skipped, so this is safe to re-run and an
+ * owner who deletes theirs is not given it back on the next restart.
+ */
+function seedAfkRooms(sqlite: DatabaseSync) {
+  const servers = all<{ id: string }>(
+    sqlite,
+    `select servers.id as id from servers
+     where not exists (
+       select 1 from rooms
+       where rooms.server_id = servers.id and rooms.is_afk = 1
+     )`
+  );
+  for (const server of servers) {
+    const position = one<{ position: number | null }>(
+      sqlite,
+      "select max(position) as position from rooms where server_id = ?",
+      [server.id]
+    )?.position ?? 0;
+    run(sqlite, "insert into rooms (id, server_id, name, kind, position, is_afk) values (?, ?, ?, ?, ?, 1)", [
+      `afk-${server.id}`,
+      server.id,
+      afkRoomName,
+      "voice",
+      position + 10
+    ]);
+  }
 }
 
 function addColumnIfMissing(sqlite: DatabaseSync, table: string, column: string, definition: string) {

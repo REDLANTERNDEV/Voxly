@@ -782,6 +782,71 @@ describe("Voxly realtime MVP", () => {
     assert.deepEqual(await unbannedChanged, { serverId: "the-basement" });
   });
 
+  it("mutes on entry to the AFK room, whatever the joiner asked for", async () => {
+    // A member parked by their own idle timer is not the one making the
+    // request, so the mute cannot be left to the client to apply.
+    const owner = await bootstrapOwner(app);
+    const socket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(socket);
+    const afkRoom = app.sqlite
+      .prepare("select id from rooms where server_id = ? and is_afk = 1")
+      .all("the-basement")[0] as { id: string } | undefined;
+    assert.ok(afkRoom, "the server has an AFK room");
+
+    const joined = await joinVoice(socket, afkRoom.id, { ...defaultJoinMedia, mic: true });
+
+    assert.equal(joined.ok, true);
+    assert.equal(joined.ok && joined.state.media.mic, false);
+  });
+
+  it("leaves an ordinary voice room's microphone request alone", async () => {
+    const owner = await bootstrapOwner(app);
+    const socket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(socket);
+
+    const joined = await joinVoice(socket, "lobby", { ...defaultJoinMedia, mic: true });
+
+    assert.equal(joined.ok && joined.state.media.mic, true);
+  });
+
+  it("publishes an away status to the server without dropping the member offline", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(ownerSocket, memberSocket);
+    await waitForSocketRoom(app, ownerSocket, "server:the-basement");
+
+    const idle = onceEvent<{ serverId: string; userId: string; status: string }>(ownerSocket, "presence:serverStatus");
+    memberSocket.emit("presence:setStatus", "idle");
+    assert.deepEqual(await idle, { serverId: "the-basement", userId: member.user.id, status: "idle" });
+
+    const back = onceEvent<{ status: string }>(ownerSocket, "presence:serverStatus");
+    memberSocket.emit("presence:setStatus", "online");
+    assert.equal((await back).status, "online");
+  });
+
+  it("keeps a member online while any of their connections is still active", async () => {
+    // Two tabs, one idle: the person is at the keyboard.
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const firstTab = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const secondTab = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(ownerSocket, firstTab, secondTab);
+    await waitForSocketRoom(app, ownerSocket, "server:the-basement");
+
+    let statuses: string[] = [];
+    ownerSocket.on("presence:serverStatus", (payload: { status: string }) => { statuses.push(payload.status); });
+    firstTab.emit("presence:setStatus", "idle");
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.deepEqual(statuses, [], "one idle tab does not make the member away");
+
+    const idle = onceEvent<{ status: string }>(ownerSocket, "presence:serverStatus");
+    secondTab.emit("presence:setStatus", "idle");
+    assert.equal((await idle).status, "idle", "every connection idle means the member is away");
+  });
+
   it("tells existing members about a new channel instead of waiting for their next reload", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");

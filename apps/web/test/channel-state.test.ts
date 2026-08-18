@@ -13,8 +13,8 @@ import {
   writeRoomHistory
 } from "../src/lib/channelState.js";
 
-const textRoom: RoomSummary = { id: "general", serverId: "alpha", name: "General", kind: "text", position: 10 };
-const voiceRoom: RoomSummary = { id: "lobby", serverId: "alpha", name: "Lobby", kind: "voice", position: 20 };
+const textRoom: RoomSummary = { id: "general", serverId: "alpha", name: "General", kind: "text", position: 10, isAfk: false };
+const voiceRoom: RoomSummary = { id: "lobby", serverId: "alpha", name: "Lobby", kind: "voice", position: 20, isAfk: false };
 
 describe("channel state", () => {
   it("remembers the last room independently by server and kind", () => {
@@ -36,7 +36,7 @@ describe("channel state", () => {
   });
 
   it("keeps visible and fallback rooms scoped to the active server", () => {
-    const betaText: RoomSummary = { id: "beta-general", serverId: "beta", name: "general", kind: "text", position: 10 };
+    const betaText: RoomSummary = { id: "beta-general", serverId: "beta", name: "general", kind: "text", position: 10, isAfk: false };
     const rooms = [textRoom, voiceRoom, betaText];
 
     assert.deepEqual(roomsForServer(rooms, "beta"), [betaText]);

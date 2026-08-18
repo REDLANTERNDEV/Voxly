@@ -22,7 +22,7 @@ type OwnerPanelProps = Pick<ShellModel,
   "roomHistory" | "language" | "t"
 > & Pick<ShellActions,
   "onNavigate" | "onCreateServer" |
-  "onUpdateServerName" | "onDeleteServer" | "onModerateMember" |
+  "onUpdateServerName" | "onSetAfkTimeout" | "onDeleteServer" | "onModerateMember" |
   "onVoiceModeration" | "onUpdateMemberNickname" | "onUpdateMemberPermissions"
 >;
 
@@ -418,6 +418,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
             onSelect={(serverId) => props.onNavigate(`/app/server/${encodeURIComponent(serverId)}/owner`)}
             onCreate={props.onCreateServer}
             onRename={props.onUpdateServerName}
+            onSetAfkTimeout={props.onSetAfkTimeout}
             onRequestDelete={() => setDeletingServer(true)}
           />
         ) : null}

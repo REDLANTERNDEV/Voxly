@@ -5,6 +5,8 @@ import {
   noiseGateOpenGain,
   noiseGateTargetGain,
   noiseGateTimeConstant,
+  noiseSuppressorModuleUrl,
+  noiseSuppressorProcessorName,
   stepNoiseGate
 } from "./noiseGate.js";
 import { voiceActivitySampleMs } from "./voiceActivity.js";
@@ -30,6 +32,8 @@ export interface MicrophoneInputOptions {
   noiseSuppression?: boolean;
   setInterval?: (handler: () => void, ms: number) => unknown;
   clearInterval?: (handle: unknown) => void;
+  /** Set false to keep the graph on the expander fallback, for tests. */
+  spectralSuppression?: boolean;
 }
 
 function createBrowserAudioContext() {
@@ -96,6 +100,7 @@ export function createMicrophoneInput(
   const samples = new Float32Array(analyser.fftSize);
   let gateState = createNoiseGateState();
   let appliedGain = noiseGateOpenGain;
+  let suppressor: AudioWorkletNode | null = null;
 
   const applyGateGain = (target: number, open: boolean) => {
     if (target === appliedGain) return;
@@ -110,7 +115,7 @@ export function createMicrophoneInput(
   };
 
   const timer = schedule(() => {
-    if (disposed) return;
+    if (disposed || suppressor) return;
     analyser.getFloatTimeDomainData(samples);
     let sum = 0;
     for (const value of samples) {
@@ -119,6 +124,32 @@ export function createMicrophoneInput(
     gateState = stepNoiseGate(gateState, Math.sqrt(sum / samples.length), Date.now());
     applyGateGain(noiseGateTargetGain(noiseSuppression, gateState.open), gateState.open);
   }, voiceActivitySampleMs);
+
+  // The worklet is loaded after the graph is already carrying audio, so capture
+  // is never delayed by it and a browser without one simply keeps the fallback.
+  // Until it resolves the expander is the active stage; once it does, the
+  // expander is pinned open and the spectral stage takes over.
+  if (options.spectralSuppression !== false && typeof context.audioWorklet?.addModule === "function") {
+    void context.audioWorklet.addModule(noiseSuppressorModuleUrl)
+      .then(() => {
+        if (disposed) return;
+        const node = new AudioWorkletNode(context, noiseSuppressorProcessorName, {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          outputChannelCount: [1]
+        });
+        node.port.postMessage({ enabled: noiseSuppression });
+        highPass.disconnect(gate);
+        highPass.connect(node);
+        node.connect(gate);
+        suppressor = node;
+        applyGateGain(noiseGateOpenGain, true);
+      })
+      .catch(() => {
+        // No worklet, a blocked module, or a browser that refuses it: the
+        // expander stays the active stage rather than the graph failing.
+      });
+  }
 
   void context.resume().catch(() => undefined);
 
@@ -137,6 +168,12 @@ export function createMicrophoneInput(
       } catch {
         highPass.frequency.value = noiseGateHighPassFrequency(enabled);
       }
+      if (suppressor) {
+        // Bypass is a flag inside the processor rather than a rewire, so the
+        // graph latency and the warm noise estimate both survive the toggle.
+        suppressor.port.postMessage({ enabled });
+        return;
+      }
       applyGateGain(noiseGateTargetGain(enabled, gateState.open), gateState.open);
     },
     dispose() {
@@ -145,6 +182,7 @@ export function createMicrophoneInput(
       unschedule(timer);
       source.disconnect();
       highPass.disconnect();
+      suppressor?.disconnect();
       analyser.disconnect();
       gate.disconnect();
       gain.disconnect();

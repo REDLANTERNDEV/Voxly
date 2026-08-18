@@ -15,7 +15,36 @@ export interface RoomSummary {
   name: string;
   kind: RoomKind;
   position: number;
+  /**
+   * Where idle members are parked. Exactly one voice room per server carries
+   * this, and it is otherwise an ordinary room: it can be renamed, moved, and
+   * joined by hand like any other.
+   */
+  isAfk: boolean;
 }
+
+/**
+ * How long a member may go without interacting before they are parked.
+ *
+ * Owner-selected per server rather than global: what counts as away depends on
+ * how the room is used, and the person who set the room up is the one who knows.
+ */
+export const afkTimeoutOptions = [15, 30, 60, 120, 240] as const;
+export type AfkTimeoutMinutes = (typeof afkTimeoutOptions)[number];
+export const DEFAULT_AFK_TIMEOUT_MINUTES: AfkTimeoutMinutes = 60;
+
+export function isAfkTimeoutMinutes(value: unknown): value is AfkTimeoutMinutes {
+  return afkTimeoutOptions.includes(value as AfkTimeoutMinutes);
+}
+
+/** Name every server's AFK room is seeded with. Owners may rename it. */
+export const afkRoomName = "AFK";
+
+/**
+ * Presence beyond connected/disconnected. Offline is the absence of an entry,
+ * so only the two present states are named.
+ */
+export type PresenceStatus = "online" | "idle";
 
 /**
  * The quoted excerpt shown above a reply. Resolved by the server at read time
@@ -60,6 +89,11 @@ export interface PresenceUser {
    * presence objects synthesised from the local session have no server context.
    */
   canInvite?: boolean;
+  /**
+   * Optional for the same reason; an absent status reads as online, so a
+   * synthesised entry never claims someone is away.
+   */
+  status?: PresenceStatus;
 }
 
 export interface ServerPresenceSnapshot {
@@ -133,6 +167,7 @@ export interface ServerToClientEvents {
   "presence:serverSnapshot": (snapshot: ServerPresenceSnapshot) => void;
   "presence:serverOnline": (payload: { serverId: string; user: PresenceUser }) => void;
   "presence:serverOffline": (payload: { serverId: string; userId: string }) => void;
+  "presence:serverStatus": (payload: { serverId: string; userId: string; status: PresenceStatus }) => void;
   "message:new": (message: ChatMessage) => void;
   "message:updated": (message: ChatMessage) => void;
   "message:deleted": (payload: { roomId: string; messageId: string }) => void;
@@ -149,6 +184,7 @@ export interface ServerToClientEvents {
   "server:directoryChanged": (payload: { serverId: string }) => void;
   "server:memberUpdated": (payload: { serverId: string; user: PresenceUser }) => void;
   "server:updated": (payload: { serverId: string; name: string }) => void;
+  "server:afkUpdated": (payload: { serverId: string; afkTimeoutMinutes: AfkTimeoutMinutes }) => void;
   /**
    * A server's room list changed. `deletedRoomId` is present only for a
    * deletion so viewers can move off a room that no longer exists; creation and
@@ -161,6 +197,7 @@ export interface ServerToClientEvents {
 
 export interface ClientToServerEvents {
   "connection:probe": (ack: () => void) => void;
+  "presence:setStatus": (status: PresenceStatus) => void;
   "room:join": (roomId: string) => void;
   "room:leave": (roomId: string) => void;
   "voice:join": (payload: VoiceJoinRequest, ack: (response: VoiceJoinAck) => void) => void;

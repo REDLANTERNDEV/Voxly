@@ -1,3 +1,4 @@
+import { afkTimeoutOptions,DEFAULT_AFK_TIMEOUT_MINUTES,isAfkTimeoutMinutes,type AfkTimeoutMinutes } from "@voxly/shared";
 import { useEffect,useState } from "react";
 import type { Translate } from "../../app/types.js";
 import { EditIcon,EyeIcon,PlusIcon,TrashIcon } from "../../components/ui/Icons.js";
@@ -23,6 +24,7 @@ export function OwnerServerContext({
   onSelect,
   onCreate,
   onRename,
+  onSetAfkTimeout,
   onRequestDelete
 }: {
   activeServerId: string;
@@ -31,8 +33,10 @@ export function OwnerServerContext({
   onSelect: (serverId: string) => void;
   onCreate: (name: string) => Promise<void>;
   onRename: (name: string) => Promise<ServerSummary>;
+  onSetAfkTimeout: (minutes: AfkTimeoutMinutes) => Promise<void>;
   onRequestDelete: () => void;
 }) {
+  const [afkStatus, setAfkStatus] = useState("");
   const [name, setName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -102,6 +106,30 @@ export function OwnerServerContext({
         <p className="muted small owner-server-rename-copy">{t("server.renameCopy")}</p>
         <p className="small owner-server-rename-status" aria-live="polite">{renameStatus}</p>
       </form>
+      <label className="form-field owner-server-afk" htmlFor="ownerServerAfkTimeout">
+        <span>{t("owner.afkTimeout")}</span>
+        <select
+          className="input"
+          id="ownerServerAfkTimeout"
+          value={activeServer?.afkTimeoutMinutes ?? DEFAULT_AFK_TIMEOUT_MINUTES}
+          onChange={(event) => {
+            const minutes = Number(event.currentTarget.value);
+            if (!isAfkTimeoutMinutes(minutes)) return;
+            setAfkStatus("");
+            void onSetAfkTimeout(minutes).catch(() => setAfkStatus(t("owner.afkTimeoutFailed")));
+          }}
+        >
+          {afkTimeoutOptions.map((minutes) => (
+            <option key={minutes} value={minutes}>
+              {minutes < 60
+                ? t("owner.afkTimeoutMinutes", { count: minutes })
+                : t("owner.afkTimeoutHours", { count: minutes / 60 })}
+            </option>
+          ))}
+        </select>
+        <span className="muted small">{t("owner.afkTimeoutHint")}</span>
+        <span className="small" aria-live="polite">{afkStatus}</span>
+      </label>
       {showCreate ? <form className="owner-server-create-form" id="owner-server-create-form" onSubmit={(event) => {
         event.preventDefault();
         const nextName = name.trim();

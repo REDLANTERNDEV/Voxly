@@ -6,9 +6,9 @@ import { translate } from "../src/lib/i18n.js";
 import type { ServerSummary } from "../src/types.js";
 
 const servers: ServerSummary[] = [
-  { id: "alpha", name: "Alpha", role: "owner", canInvite: true },
-  { id: "beta", name: "Beta", role: "member", canInvite: true },
-  { id: "gamma", name: "Gamma", role: "member", canInvite: false }
+  { id: "alpha", name: "Alpha", role: "owner", canInvite: true, afkTimeoutMinutes: 60 },
+  { id: "beta", name: "Beta", role: "member", canInvite: true, afkTimeoutMinutes: 60 },
+  { id: "gamma", name: "Gamma", role: "member", canInvite: false, afkTimeoutMinutes: 60 }
 ];
 
 describe("delegated invite permission", () => {

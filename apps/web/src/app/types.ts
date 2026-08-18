@@ -1,4 +1,4 @@
-import type { PresenceUser,PublicUser,RoomSummary,VisualTarget,VoiceModerationState,VoiceSnapshot } from "@voxly/shared";
+import type { AfkTimeoutMinutes, PresenceUser,PublicUser,RoomSummary,VisualTarget,VoiceModerationState,VoiceSnapshot } from "@voxly/shared";
 import { type AudioLevels } from "../lib/audioLevels.js";
 import type { RoomHistory } from "../lib/channelState.js";
 import { type LanguageCode,type TranslationKey } from "../lib/i18n.js";
@@ -73,6 +73,7 @@ export interface ShellActions {
   onSelectServer: (serverId: string) => Promise<void>;
   onCreateServer: (name: string) => Promise<void>;
   onUpdateServerName: (name: string) => Promise<ServerSummary>;
+  onSetAfkTimeout: (minutes: AfkTimeoutMinutes) => Promise<void>;
   onCreateRoom: (name: string, kind: "text" | "voice") => Promise<void>;
   onDeleteRoom: (roomId: string) => Promise<void>;
   onDeleteServer: () => Promise<void>;

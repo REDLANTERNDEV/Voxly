@@ -70,6 +70,19 @@ requirement.
   from the previously selected server must render no channel or message while
   the next server loads. Owner-panel navigation returns to that server's
   remembered text room or its first text room, never a hard-coded room ID.
+- Idle is measured in the browser, never from socket liveness: a tab that is
+  open, connected, and untouched is exactly the case AFK exists for, and the
+  server cannot tell that apart from someone listening. Speaking counts as
+  presence.
+- The idle window is the owner's setting for the server whose voice room the
+  member occupies, not the one they happen to be looking at — voice outlives
+  navigation.
+- Away status is reported independently of the move: the directory dot applies
+  to a member with no voice room to be moved out of. Send transitions only; the
+  socket is not a heartbeat.
+- Presence is three states in the member panel — online, idle, offline — each
+  with its own colour and an accessible name. Offline is the absence of a
+  presence entry, so a status update may only modify a member already listed.
 - Unread counts are browser-session state only. Ignore the current user's
   messages, increment only for inactive text rooms, and clear a room when it is
   opened. Do not add persistent read receipts without a separate design.
@@ -178,6 +191,30 @@ requirement.
   composer; Escape and the strip's own control both cancel it.
 - Jumping to a quoted message marks the destination as well as scrolling to it,
   and any selector built from a message id is escaped.
+
+## Idle and the AFK Room
+
+- Idle is measured in the browser, not from socket liveness. A tab that is open,
+  connected, and completely untouched is the case the feature exists for, and
+  the server cannot tell that apart from someone listening.
+- Pointer, keyboard, wheel, and touch interaction all count as presence, and so
+  does speaking: someone who talks for two hours without touching the mouse is
+  the opposite of away. Listen in the capture phase so a handler that stops
+  propagation cannot make a present person look absent.
+- Only a member already in voice is moved. Idling in a text channel is not a
+  state the AFK room can express, and joining voice on someone's behalf is an
+  action they never asked for.
+- Resolve the AFK room from the server whose voice room the member is connected
+  to, through the cross-server index rather than the active server's room list.
+  Voice outlives navigation here, so the active list is empty for anyone
+  browsing elsewhere while connected.
+- A server with no AFK room parks nobody; do not fall back to another room. The
+  index is rebuilt from each full room list so a deleted AFK room leaves no id
+  behind to aim at.
+- The move is an ordinary voice join through the direct path, not the
+  gesture-gated wrapper: an idle move has no user gesture to unlock output with,
+  and the session is already playing audio. A failed move must not retry every
+  tick.
 - Keep the header and composer stable. The message history is the only vertical
   scroll owner in the text room.
 - Auto-scroll appended messages only when the reader is already within the

@@ -2,7 +2,7 @@ import type { PresenceUser,PublicUser,RoomSummary,VoiceModerationState,VoiceSnap
 import { initial,memberRoleLabel } from "../../app/presentation.js";
 import type { MemberAction,Translate } from "../../app/types.js";
 import { UserPlusIcon } from "../ui/Icons.js";
-import { canOwnerVoiceModerate,currentServerPresence,groupDirectoryMembers } from "../../lib/memberDirectory.js";
+import { canOwnerVoiceModerate,currentServerPresence,groupDirectoryMembers,memberPresenceState } from "../../lib/memberDirectory.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
 import { MemberActionMenu,memberActionMenuHeight,openSidebarMenuFromPointer,type SidebarActionMenuController } from "./SidebarMenus.js";
 export function MemberPanel({
@@ -68,7 +68,14 @@ export function MemberPanel({
         key={user.userId}
         onContextMenu={hasActions ? (event) => openSidebarMenuFromPointer(event, actionMenu, menuKey, 220, menuHeight) : undefined}
       >
-        <span className={`avatar ${user.role === "owner" ? "owner" : ""}`}>{initial(user.nickname)}</span>
+        <span className={`avatar ${user.role === "owner" ? "owner" : ""}`}>
+          {initial(user.nickname)}
+          <span
+            className={`presence-dot is-${memberPresenceState(user, online)}`}
+            aria-label={t(`presence.${memberPresenceState(user, online)}` as const)}
+            role="img"
+          />
+        </span>
         <span className="member-copy">
           <strong>{user.nickname}</strong>
           <span>{detail}</span>

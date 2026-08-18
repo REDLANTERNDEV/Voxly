@@ -1,3 +1,4 @@
+import type { AfkTimeoutMinutes } from "@voxly/shared";
 import type { ChatMessage, PresenceUser, PublicUser, RoomSummary, VoiceModerationState } from "@voxly/shared";
 import type { AnalyticsSettings } from "./lib/analytics.js";
 
@@ -17,6 +18,8 @@ export interface ServerSummary {
   role: "owner" | "member";
   /** True for owners and for members the owner granted invite rights to. */
   canInvite: boolean;
+  /** Owner-set idle window before a member is parked in the AFK room. */
+  afkTimeoutMinutes: AfkTimeoutMinutes;
 }
 
 export interface ServersResponse {

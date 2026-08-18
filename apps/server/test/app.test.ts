@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { replyExcerptMaxLength } from "@voxly/shared";
+import { afkRoomName, DEFAULT_AFK_TIMEOUT_MINUTES, replyExcerptMaxLength } from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 import { hashToken } from "../src/auth/tokens.js";
 import { createOwnerClaim, createOwnerLoginClaim } from "../src/auth/ownerClaims.js";
@@ -982,6 +982,80 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(created.json().message.replyTo, null);
   });
 
+  it("gives every server an AFK room and a default timeout", async () => {
+    const owner = await bootstrapOwner(app);
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Fresh" }
+    });
+    const serverId = created.json().server.id as string;
+
+    const rooms = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${serverId}/rooms`,
+      cookies: owner.cookies
+    });
+    const afkRooms = rooms.json().rooms.filter((room: { isAfk: boolean }) => room.isAfk);
+    assert.equal(afkRooms.length, 1, "exactly one AFK room per server");
+    assert.equal(afkRooms[0].kind, "voice");
+
+    const servers = await app.server.inject({ method: "GET", url: "/api/servers", cookies: owner.cookies });
+    const fresh = servers.json().servers.find((server: { id: string }) => server.id === serverId);
+    assert.equal(fresh.afkTimeoutMinutes, DEFAULT_AFK_TIMEOUT_MINUTES);
+  });
+
+  it("lets the owner choose the AFK timeout and refuses values off the list", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+
+    const accepted = await app.server.inject({
+      method: "PATCH",
+      url: "/api/servers/the-basement/afk",
+      cookies: owner.cookies,
+      payload: { afkTimeoutMinutes: 15 }
+    });
+    assert.equal(accepted.statusCode, 200);
+
+    const rejected = await app.server.inject({
+      method: "PATCH",
+      url: "/api/servers/the-basement/afk",
+      cookies: owner.cookies,
+      payload: { afkTimeoutMinutes: 7 }
+    });
+    assert.equal(rejected.statusCode, 400);
+
+    // Every member runs their own idle clock, so all of them read the setting.
+    const asMember = await app.server.inject({ method: "GET", url: "/api/servers", cookies: member.cookies });
+    assert.equal(asMember.json().servers[0].afkTimeoutMinutes, 15);
+
+    const forbidden = await app.server.inject({
+      method: "PATCH",
+      url: "/api/servers/the-basement/afk",
+      cookies: member.cookies,
+      payload: { afkTimeoutMinutes: 30 }
+    });
+    assert.ok(forbidden.statusCode === 403 || forbidden.statusCode === 401);
+  });
+
+  it("keeps the chosen AFK timeout across a restart", async () => {
+    const owner = await bootstrapOwner(app);
+    await app.server.inject({
+      method: "PATCH",
+      url: "/api/servers/the-basement/afk",
+      cookies: owner.cookies,
+      payload: { afkTimeoutMinutes: 240 }
+    });
+
+    const stored = one<{ afk_timeout_minutes: number }>(
+      app.sqlite,
+      "select afk_timeout_minutes from servers where id = ?",
+      ["the-basement"]
+    );
+    assert.equal(stored?.afk_timeout_minutes, 240);
+  });
+
   it("lets message authors and server owners suppress individual embeds", async () => {
     const owner = await bootstrapOwner(app);
     const author = await acceptInvite(app, owner.cookies, "Author");
@@ -1811,6 +1885,108 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(JSON.stringify(claims).includes(secondToken), false);
   });
 
+  it("seeds every server with exactly one AFK voice room", async () => {
+    const owner = await bootstrapOwner(app);
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Second" }
+    });
+    const secondServerId = created.json().server.id as string;
+
+    for (const serverId of [defaultServerId, secondServerId]) {
+      const response = await app.server.inject({
+        method: "GET",
+        url: `/api/servers/${serverId}/rooms`,
+        cookies: owner.cookies
+      });
+      const afkRooms = response.json().rooms.filter((room: { isAfk: boolean }) => room.isAfk);
+      assert.equal(afkRooms.length, 1, `${serverId} has exactly one AFK room`);
+      assert.equal(afkRooms[0].kind, "voice");
+      assert.equal(afkRooms[0].name, afkRoomName);
+    }
+  });
+
+  it("backfills an AFK room into a database that predates the feature", async () => {
+    // The column is additive, so an upgraded deployment arrives with servers
+    // that have nowhere to park idle members until this runs.
+    const directory = await mkdtemp(join(tmpdir(), "voxly-afk-"));
+    const databasePath = join(directory, "legacy.sqlite");
+    try {
+      const legacy = new DatabaseSync(databasePath);
+      legacy.exec(`
+        create table servers (id text primary key, name text not null, created_by_user_id text, created_at text not null);
+        create table rooms (id text primary key, server_id text, name text not null, kind text not null check (kind in ('text', 'voice')), position integer not null);
+        insert into servers (id, name, created_at) values ('legacy-server', 'Legacy', '2020-01-01T00:00:00.000Z');
+        insert into rooms (id, server_id, name, kind, position) values ('legacy-general', 'legacy-server', 'general', 'text', 10);
+      `);
+      legacy.close();
+
+      const upgraded = await openDatabase(databasePath);
+      const afkRooms = upgraded.sqlite
+        .prepare("select id, kind from rooms where server_id = 'legacy-server' and is_afk = 1")
+        .all() as Array<{ id: string; kind: string }>;
+      assert.equal(afkRooms.length, 1);
+      assert.equal(afkRooms[0].kind, "voice");
+
+      // Re-opening must not hand out a second one.
+      upgraded.close();
+      const reopened = await openDatabase(databasePath);
+      const afterRestart = reopened.sqlite
+        .prepare("select count(*) as count from rooms where server_id = 'legacy-server' and is_afk = 1")
+        .get() as { count: number };
+      assert.equal(afterRestart.count, 1);
+      reopened.close();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not restore an AFK room the owner deliberately deleted", async () => {
+    const owner = await bootstrapOwner(app);
+    const rooms = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${defaultServerId}/rooms`,
+      cookies: owner.cookies
+    });
+    const afkRoomId = rooms.json().rooms.find((room: { isAfk: boolean }) => room.isAfk).id as string;
+
+    const deleted = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/${defaultServerId}/rooms/${afkRoomId}`,
+      cookies: owner.cookies
+    });
+    assert.equal(deleted.statusCode, 204);
+
+    const after = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${defaultServerId}/rooms`,
+      cookies: owner.cookies
+    });
+    assert.equal(after.json().rooms.some((room: { isAfk: boolean }) => room.isAfk), false);
+  });
+
+  it("treats the AFK room as an ordinary room the owner may rename", async () => {
+    const owner = await bootstrapOwner(app);
+    const rooms = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${defaultServerId}/rooms`,
+      cookies: owner.cookies
+    });
+    const afkRoom = rooms.json().rooms.find((room: { isAfk: boolean }) => room.isAfk);
+
+    // Ordinary rooms created afterwards must not inherit the flag.
+    const plain = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${defaultServerId}/rooms`,
+      cookies: owner.cookies,
+      payload: { name: "another", kind: "voice" }
+    });
+    assert.equal(plain.json().room.isAfk, false);
+    assert.equal(afkRoom.isAfk, true);
+  });
+
   it("lets only owners delete non-final channels and removes their messages", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");
@@ -1850,6 +2026,18 @@ describe("Voxly HTTP MVP", () => {
       cookies: owner.cookies
     });
     assert.equal(lobbyDelete.statusCode, 204);
+    // The AFK room is an ordinary room and counts towards the floor like any
+    // other, so it has to go before `general` becomes the last one.
+    const afkRoom = (app.dumpTables().rooms as Array<{ id: string; server_id: string; is_afk: number }>)
+      .find((room) => room.server_id === defaultServerId && room.is_afk === 1);
+    assert.ok(afkRoom, "every server is seeded with an AFK room");
+    const afkDelete = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/${defaultServerId}/rooms/${afkRoom.id}`,
+      cookies: owner.cookies
+    });
+    assert.equal(afkDelete.statusCode, 204);
+
     const lastRoom = await app.server.inject({
       method: "DELETE",
       url: `/api/servers/${defaultServerId}/rooms/general`,

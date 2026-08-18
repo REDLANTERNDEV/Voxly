@@ -4,6 +4,10 @@ import {
   type VoiceActivityState
 } from "./voiceActivity.js";
 
+/** Served as a static asset and loaded by URL into the AudioWorklet realm. */
+export const noiseSuppressorModuleUrl = "/noise-suppressor.worklet.js";
+export const noiseSuppressorProcessorName = "voxly-noise-suppressor";
+
 /**
  * Suppression that the application performs itself, in the capture graph.
  *
@@ -14,9 +18,14 @@ import {
  * meant releasing and reopening the device on every toggle. A stage we own
  * responds on the next audio block and is audible on every browser.
  *
- * The stage is a high-pass followed by a downward expander driven by the same
- * adaptive floor the speaking indicator uses, so what the gate considers speech
- * and what the ring shows can never disagree.
+ * The stage is a high-pass followed by spectral attenuation in an AudioWorklet:
+ * per-band noise tracking that pushes noise down whether or not anybody is
+ * speaking. A whole-signal gate cannot do that — it is silent on the noise
+ * inside every word, which is the noise people actually want removed.
+ *
+ * Where no AudioWorklet exists the graph falls back to a downward expander
+ * driven by the same adaptive floor the speaking indicator uses. That is
+ * strictly weaker, and it is a fallback rather than the design.
  */
 
 /**

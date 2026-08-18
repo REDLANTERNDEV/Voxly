@@ -10,6 +10,7 @@ import { useRealtimeSync } from "./app/useRealtimeSync.js";
 import { useSessionController } from "./app/useSessionController.js";
 import { useWorkspaceController } from "./app/useWorkspaceController.js";
 import { useChatController } from "./features/chat/useChatController.js";
+import { useIdleAfk } from "./app/useIdleAfk.js";
 import { AudioPlaybackRecovery,GlobalVoiceAudio,RemoteAudio } from "./features/voice/VoicePresentation.js";
 import { joinVoiceWithAudioUnlock } from "./features/voice/voiceActions.js";
 import { combineOutputVolume } from "./lib/audioLevels.js";
@@ -94,12 +95,14 @@ export function App() {
       presenceSnapshot: workspace.applyPresenceSnapshot,
       presenceOnline: workspace.applyPresenceOnline,
       presenceOffline: workspace.applyPresenceOffline,
+      presenceStatus: workspace.applyPresenceStatus,
       directoryChanged: (serverId) => { void workspace.refreshServerDirectory(serverId).catch(() => undefined); },
       memberUpdated: (serverId, user) => {
         workspace.applyMemberUpdate(serverId, user);
         chat.applyMemberRename(serverId, user);
       },
       serverUpdated: workspace.applyServerName,
+      afkUpdated: workspace.applyAfkTimeout,
       roomsChanged: (serverId, roomId) => { void workspace.refreshRooms(serverId, roomId).catch(() => undefined); },
       serverDeleted: (serverId) => { void workspace.refreshServersAfterDeletion(serverId).catch(() => undefined); },
       messageNew: (message) => { chat.applyNewMessage(message); notifyMessageRef.current(message); },
@@ -116,6 +119,23 @@ export function App() {
     activeVoiceRoomRef,
     leaveVoiceRef,
     activeTextRoomIdRef: chat.activeTextRoomIdRef
+  });
+
+  const localVoiceSpeaking = Boolean(
+    audio.voice.activeRoomId
+      && audio.voice.voiceSnapshots[audio.voice.activeRoomId]?.members
+        .find((member) => member.user.userId === session.user?.id)?.media.speaking
+  );
+  useIdleAfk({
+    roomServerIdsRef,
+    afkRoomIdsByServerRef: workspace.afkRoomIdsByServerRef,
+    afkTimeoutsByServerRef: workspace.afkTimeoutsByServerRef,
+    activeVoiceRoomId: audio.voice.activeRoomId,
+    speaking: localVoiceSpeaking,
+    // The direct join, not the gesture-gated wrapper: an idle move has no user
+    // gesture to unlock output with, and the session is already playing audio.
+    joinVoice: (roomId: string) => audio.voice.join(roomId, [], {}),
+    reportStatus: (status) => realtime.socket?.emit("presence:setStatus", status)
   });
 
   useEffect(() => {
@@ -187,6 +207,7 @@ export function App() {
     onSelectServer: workspace.actions.selectServer,
     onCreateServer: workspace.actions.createServer,
     onUpdateServerName: workspace.actions.updateServerName,
+    onSetAfkTimeout: workspace.actions.setAfkTimeout,
     onCreateRoom: workspace.actions.createRoom,
     onDeleteRoom: workspace.actions.deleteRoom,
     onDeleteServer: workspace.actions.deleteServer,

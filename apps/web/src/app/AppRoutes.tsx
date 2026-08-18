@@ -77,6 +77,7 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
     onNavigate={shellProps.onNavigate}
     onCreateServer={shellProps.onCreateServer}
     onUpdateServerName={shellProps.onUpdateServerName}
+    onSetAfkTimeout={shellProps.onSetAfkTimeout}
     onDeleteServer={shellProps.onDeleteServer}
     onModerateMember={shellProps.onModerateMember}
     onVoiceModeration={shellProps.onVoiceModeration}

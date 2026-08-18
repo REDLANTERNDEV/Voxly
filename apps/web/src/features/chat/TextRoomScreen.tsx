@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { useCallback,useLayoutEffect,useRef,useState } from "react";
 import { serverPath } from "../../app/navigation.js";
 import type { ShellActions,ShellModel } from "../../app/types.js";
-import { ArrowIcon, CloseIcon } from "../../components/ui/Icons.js";
+import { ArrowIcon, CloseIcon, ReplyIcon } from "../../components/ui/Icons.js";
 import { EmptyState,RoomHeader } from "../../components/ui/Primitives.js";
 import { resolveRememberedRoom } from "../../lib/channelState.js";
 import { isMessageListNearBottom,messageListUpdateAction,shouldSubmitComposer } from "../../lib/messages.js";
@@ -167,8 +167,9 @@ export function TextRoomScreen(props: TextRoomProps) {
         <footer className="composer">
           {replyTarget ? (
             <div className="composer-reply">
-              <span className="composer-reply-label">{props.t("room.replyingTo", { nickname: replyTarget.nickname })}</span>
-              <ReplyQuote reply={replyTarget} t={props.t} />
+              <span className="composer-reply-label" aria-hidden="true"><ReplyIcon /></span>
+              <span className="composer-reply-target">{props.t("room.replyingTo", { nickname: replyTarget.nickname })}</span>
+              <ReplyQuote reply={replyTarget} t={props.t} hideAuthor />
               <button
                 className="icon-btn"
                 type="button"
