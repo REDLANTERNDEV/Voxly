@@ -1,6 +1,6 @@
 import type { AfkTimeoutMinutes,PresenceStatus,PresenceUser,PublicUser,RoomSummary,VoiceModerationState } from "@voxly/shared";
 import { useCallback,useEffect,useMemo,useRef,useState,type RefObject } from "react";
-import { createServer,createServerRoom,deleteServer,deleteServerRoom,disconnectVoiceMember,fetchServerDirectory,fetchServerRooms,fetchServers,moderateServerMember,updateServer,updateServerAfkTimeout,updateServerMemberNickname,updateServerMemberPermissions,updateVoiceModeration } from "../api.js";
+import { createServer,createServerRoom,deleteServer,deleteServerRoom,disconnectVoiceMember,fetchServerDirectory,fetchServerRooms,fetchServers,moderateServerMember,moveVoiceMember,updateServer,updateServerAfkTimeout,updateServerMemberNickname,updateServerMemberPermissions,updateVoiceModeration } from "../api.js";
 import { resolveRememberedRoom,roomsForServer,type RoomHistory } from "../lib/channelState.js";
 import { currentServerPresence } from "../lib/memberDirectory.js";
 import { replacePresenceUser,replaceServerPresenceUserIfPresent } from "../lib/memberIdentity.js";
@@ -211,7 +211,10 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
       applyMemberUpdate(activeServerId, response.user);
       return response.user;
     },
-    disconnectMember: (roomId: string, userId: string) => disconnectVoiceMember(activeServerId, roomId, userId)
+    disconnectMember: (roomId: string, userId: string) => disconnectVoiceMember(activeServerId, roomId, userId),
+    // Fire and forget: the move is carried out by the target's own client, so
+    // there is no state here to reconcile — the voice snapshot reports it.
+    moveMember: (userId: string, roomId: string) => { void moveVoiceMember(activeServerId, userId, roomId).catch(() => undefined); }
   };
 
   return {

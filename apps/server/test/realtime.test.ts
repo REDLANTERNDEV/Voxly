@@ -799,6 +799,96 @@ describe("Voxly realtime MVP", () => {
     assert.equal(joined.ok && joined.state.media.mic, false);
   });
 
+  it("moves a member the owner sends to another voice channel", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(memberSocket);
+    await joinVoice(memberSocket, "lobby");
+
+    const moved = onceEvent<{ roomId: string }>(memberSocket, "voice:moveTo");
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/servers/the-basement/rooms",
+      cookies: owner.cookies,
+      payload: { name: "second", kind: "voice" }
+    });
+    const targetRoomId = created.json().room.id as string;
+    const response = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/the-basement/voice/members/${member.user.id}/move`,
+      cookies: owner.cookies,
+      payload: { roomId: targetRoomId }
+    });
+
+    assert.equal(response.statusCode, 204);
+    // The server cannot join for them, so the move arrives as an instruction.
+    assert.deepEqual(await moved, { roomId: targetRoomId });
+  });
+
+  it("refuses to move a member who is not in voice", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+
+    const response = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/the-basement/voice/members/${member.user.id}/move`,
+      cookies: owner.cookies,
+      payload: { roomId: "lobby" }
+    });
+
+    assert.equal(response.statusCode, 409);
+    assert.equal(response.json().error, "member_not_in_voice");
+  });
+
+  it("refuses a move for anyone but the server owner", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+    const other = await acceptInvite(app, owner.cookies, "Ada");
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(memberSocket);
+    await joinVoice(memberSocket, "lobby");
+
+    const response = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/the-basement/voice/members/${member.user.id}/move`,
+      cookies: other.cookies,
+      payload: { roomId: "lobby" }
+    });
+
+    assert.ok(response.statusCode === 403 || response.statusCode === 401);
+  });
+
+  it("refuses a move into another server's room", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(memberSocket);
+    await joinVoice(memberSocket, "lobby");
+    const otherServer = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Elsewhere" }
+    });
+    const otherServerId = otherServer.json().server.id as string;
+    const foreign = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${otherServerId}/rooms`,
+      cookies: owner.cookies,
+      payload: { name: "far", kind: "voice" }
+    });
+
+    const response = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/the-basement/voice/members/${member.user.id}/move`,
+      cookies: owner.cookies,
+      payload: { roomId: foreign.json().room.id }
+    });
+
+    assert.equal(response.statusCode, 404);
+  });
+
   it("refuses an unmute from inside the AFK room, including from the owner", async () => {
     // Regression: entry mute alone was not enough. `voice:setMediaState` let the
     // member turn the microphone straight back on, so the room muted nobody.

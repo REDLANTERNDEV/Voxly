@@ -164,6 +164,12 @@ queries across endpoints.
 - Server enforcement stops the indicator, not the sound: media flows peer to
   peer, so the client must also hold the local track closed. Neither half is
   sufficient alone.
+- An owner may move a member between voice rooms in their own server. The server
+  cannot join for them, so it emits `voice:moveTo` and the target's client uses
+  the ordinary join path — which carries the AFK mute and the previous room's
+  departure with it. Scope the target room to the server and require the member
+  to already be in voice there, so a move can never place someone in a room they
+  hold no membership for.
 - The AFK timeout is per server, owner-only, and restricted to the shared option
   list; legacy rows with no value read as the default. Changing it emits to the
   whole server room, because every member runs their own idle clock.

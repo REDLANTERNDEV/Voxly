@@ -16,6 +16,7 @@ export function MemberPanel({
   onMemberVolumeChange,
   onVoiceModeration,
   onUpdateMemberPermissions,
+  onMoveMember,
   onRequestNickname,
   onRequestMemberAction,
   actionMenu,
@@ -31,6 +32,7 @@ export function MemberPanel({
   onMemberVolumeChange: (userId: string, volume: number) => void;
   onVoiceModeration: (userId: string, moderation: Partial<VoiceModerationState>) => Promise<{ moderation: VoiceModerationState }>;
   onUpdateMemberPermissions: (userId: string, canInvite: boolean) => Promise<PresenceUser>;
+  onMoveMember: (userId: string, roomId: string) => void;
   onRequestNickname: (user: PresenceUser, returnFocus: HTMLButtonElement | null) => void;
   onRequestMemberAction: (user: PresenceUser, action: MemberAction, roomId?: string) => void;
   actionMenu: SidebarActionMenuController;
@@ -59,7 +61,8 @@ export function MemberPanel({
       canDisconnect: Boolean(voiceRoom && canModerateRemote),
       canModerate: canModerateRemote,
       canVoiceModerate: Boolean(voiceRoom && canModerateRemote),
-      canAssignRoles
+      canAssignRoles,
+      canMove: Boolean(voiceRoom && canModerateRemote && voiceRooms.length > 1)
     });
     const menuKey = `directory-member:${user.userId}`;
     return (
@@ -94,6 +97,8 @@ export function MemberPanel({
             moderation={voiceRoom && canModerateRemote ? voiceMember?.moderation : undefined}
             onVoiceModeration={voiceRoom && canModerateRemote ? (moderation) => { void onVoiceModeration(user.userId, moderation); } : undefined}
             onToggleInviteRole={canAssignRoles ? (canInvite) => { void onUpdateMemberPermissions(user.userId, canInvite); } : undefined}
+            moveTargets={canModerateRemote && voiceRoom ? voiceRooms.filter((room) => room.id !== voiceRoom.id) : undefined}
+            onMove={canModerateRemote && voiceRoom ? (roomId) => onMoveMember(user.userId, roomId) : undefined}
             onRename={(returnFocus) => onRequestNickname(user, returnFocus)}
             onRequestAction={(action) => onRequestMemberAction(user, action, action === "disconnect" ? voiceRoom?.id : undefined)}
             t={t}

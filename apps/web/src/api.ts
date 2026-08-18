@@ -265,6 +265,13 @@ export async function disconnectVoiceMember(serverId: string, roomId: string, us
   );
 }
 
+export async function moveVoiceMember(serverId: string, userId: string, roomId: string) {
+  await apiPost<void>(
+    `/api/servers/${encodeURIComponent(serverId)}/voice/members/${encodeURIComponent(userId)}/move`,
+    { roomId }
+  );
+}
+
 export async function revokeSession(sessionId: string) {
   await apiPost<void>(`/api/owner/sessions/${sessionId}/revoke`);
 }

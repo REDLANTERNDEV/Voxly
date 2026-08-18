@@ -180,6 +180,12 @@ export interface ServerToClientEvents {
     subscribedKinds: VisualMediaKind[];
   }) => void;
   "voice:forceLeave": (payload: { roomId: string; reason: VoiceForceLeaveReason }) => void;
+  /**
+   * An owner moved this member to another voice room. The server cannot join
+   * for them — the client owns the peer connections — so this is an instruction
+   * the recipient carries out through the ordinary join path.
+   */
+  "voice:moveTo": (payload: { roomId: string }) => void;
   "server:accessRevoked": (payload: { serverId: string; reason: "banned" | "kicked" }) => void;
   "server:directoryChanged": (payload: { serverId: string }) => void;
   "server:memberUpdated": (payload: { serverId: string; user: PresenceUser }) => void;

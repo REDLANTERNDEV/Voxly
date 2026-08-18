@@ -2,45 +2,43 @@ import { DEFAULT_AFK_TIMEOUT_MINUTES } from "@voxly/shared";
 import type { AfkTimeoutMinutes, RoomSummary } from "@voxly/shared";
 
 /**
- * Idle detection for the AFK room.
+ * Idle detection.
  *
  * Deliberately measured in the browser rather than from socket liveness: a tab
  * that is open, connected, and completely untouched is exactly the case this
  * exists for, and the server cannot tell that apart from someone listening.
+ *
+ * What it drives is a presence dot and nothing else. The browser sees only its
+ * own window, so a member playing a fullscreen game with a muted microphone is
+ * indistinguishable from one who walked away, and no threshold separates them.
+ * That makes this a signal to display, not one to act on.
  */
 
 /**
  * How often the threshold is re-checked. Long enough that a backgrounded tab's
- * throttled timers are not fighting it, short enough that the move lands within
+ * throttled timers are not fighting it, short enough that the dot turns within
  * a minute of the deadline.
  */
 export const afkIdleCheckIntervalMs = 60_000;
 
 /**
  * Anything that means a person is present. Pointer, keyboard, and touch cover
- * direct interaction; speaking is included because someone who talks for two
- * hours without touching the mouse is the opposite of away, and leaving it out
- * would park the most active person in the room.
+ * direct interaction; speaking is reported separately by the caller, because
+ * someone who talks for an hour without touching the mouse is the opposite of
+ * away.
  */
 export const afkActivityEvents = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
-
-export interface AfkMoveInput {
-  lastActivityAt: number;
-  now: number;
-  activeVoiceRoomId: string | null;
-  afkRoomId: string | null;
-  /** The owner's setting for the server the member is connected to. */
-  timeoutMinutes: AfkTimeoutMinutes;
-}
 
 export function afkTimeoutMs(minutes: AfkTimeoutMinutes) {
   return minutes * 60_000;
 }
 
 /**
- * The timeout belongs to the server whose voice room the member occupies, which
- * is not necessarily the one they are looking at. A member browsing elsewhere
- * while connected must still be measured against the room they are actually in.
+ * The threshold belongs to the server whose voice room the member occupies,
+ * which is not necessarily the one they are looking at — voice outlives
+ * navigation here. Resolution therefore goes through the accumulated
+ * cross-server index rather than the active server's room list, which would
+ * come up empty for anyone browsing elsewhere while connected.
  */
 export function afkTimeoutFor(
   roomServerIds: Record<string, string>,
@@ -53,38 +51,9 @@ export function afkTimeoutFor(
 }
 
 /**
- * Only someone already in voice is moved. Being idle in a text channel is not
- * a state the AFK room can express, and joining voice on their behalf would be
- * taking an action they never asked for.
- */
-export function shouldMoveToAfk(input: AfkMoveInput): boolean {
-  if (!input.activeVoiceRoomId || !input.afkRoomId) return false;
-  if (input.activeVoiceRoomId === input.afkRoomId) return false;
-  return input.now - input.lastActivityAt >= afkTimeoutMs(input.timeoutMinutes);
-}
-
-/**
- * The AFK room belongs to the server whose voice room the member is in, which
- * is not necessarily the server they are looking at — voice outlives navigation
- * here. Resolution therefore goes through the accumulated cross-server indexes
- * rather than the active server's room list, which would come up empty for
- * anyone browsing elsewhere while connected.
- */
-export function afkRoomIdFor(
-  roomServerIds: Record<string, string>,
-  afkRoomIdsByServer: Record<string, string>,
-  activeVoiceRoomId: string | null
-): string | null {
-  if (!activeVoiceRoomId) return null;
-  const serverId = roomServerIds[activeVoiceRoomId];
-  if (!serverId) return null;
-  return afkRoomIdsByServer[serverId] ?? null;
-}
-
-/**
  * Records one server's AFK room, or clears it when that server no longer has
- * one. Rebuilt from each full room list so a deleted AFK room does not leave an
- * id behind for the mover to aim at.
+ * one. Rebuilt from each full room list so a deleted AFK room leaves no id
+ * behind for the microphone lock to key off.
  */
 export function indexAfkRoom(
   afkRoomIdsByServer: Record<string, string>,

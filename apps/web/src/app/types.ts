@@ -84,6 +84,7 @@ export interface ShellActions {
   onUpdateMemberNickname: (userId: string, nickname: string) => Promise<PresenceUser>;
   onUpdateMemberPermissions: (userId: string, canInvite: boolean) => Promise<PresenceUser>;
   onDisconnectMember: (roomId: string, userId: string) => Promise<void>;
+  onMoveMember: (userId: string, roomId: string) => void;
   onDrawerChange: (drawer: Drawer) => void;
   onThemeChange: (theme: ThemeChoice) => void;
   onLanguageChange: (language: LanguageCode) => void;

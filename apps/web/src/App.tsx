@@ -10,7 +10,7 @@ import { useRealtimeSync } from "./app/useRealtimeSync.js";
 import { useSessionController } from "./app/useSessionController.js";
 import { useWorkspaceController } from "./app/useWorkspaceController.js";
 import { useChatController } from "./features/chat/useChatController.js";
-import { useIdleAfk } from "./app/useIdleAfk.js";
+import { useIdlePresence } from "./app/useIdlePresence.js";
 import { AudioPlaybackRecovery,GlobalVoiceAudio,RemoteAudio } from "./features/voice/VoicePresentation.js";
 import { joinVoiceWithAudioUnlock } from "./features/voice/voiceActions.js";
 import { combineOutputVolume } from "./lib/audioLevels.js";
@@ -30,6 +30,7 @@ export function App() {
   const roomServerIdsRef = useRef<Record<string, string>>({});
   const activeVoiceRoomRef = useRef<string | null>(null);
   const leaveVoiceRef = useRef<() => void>(() => undefined);
+  const moveVoiceRef = useRef<(roomId: string) => void>(() => undefined);
   const notifyMessageRef = useRef<(message: ChatMessage) => void>(() => undefined);
 
   const navigate = useCallback((path: string) => {
@@ -91,6 +92,7 @@ export function App() {
     route,
     activeVoiceRoomRef,
     leaveVoiceRef,
+    moveVoiceRef,
     handlers: {
       presenceSnapshot: workspace.applyPresenceSnapshot,
       presenceOnline: workspace.applyPresenceOnline,
@@ -127,17 +129,19 @@ export function App() {
       && audio.voice.voiceSnapshots[audio.voice.activeRoomId]?.members
         .find((member) => member.user.userId === session.user?.id)?.media.speaking
   );
-  useIdleAfk({
+  useIdlePresence({
     roomServerIdsRef,
-    afkRoomIdsByServerRef: workspace.afkRoomIdsByServerRef,
     afkTimeoutsByServerRef: workspace.afkTimeoutsByServerRef,
     activeVoiceRoomId: audio.voice.activeRoomId,
     speaking: localVoiceSpeaking,
-    // The direct join, not the gesture-gated wrapper: an idle move has no user
-    // gesture to unlock output with, and the session is already playing audio.
-    joinVoice: (roomId: string) => audio.voice.join(roomId, [], {}),
     reportStatus: (status) => realtime.socket?.emit("presence:setStatus", status)
   });
+
+  // The move arrives as an instruction, not a state change, so it runs through
+  // the same join the member would have performed themselves.
+  useEffect(() => {
+    moveVoiceRef.current = (roomId: string) => { void audio.voice.join(roomId, [], {}); };
+  }, [audio.voice.join]);
 
   useEffect(() => {
     if (route.name === "voice") audio.voice.requestSnapshot(route.roomId);
@@ -222,6 +226,7 @@ export function App() {
     },
     onUpdateMemberPermissions: workspace.actions.updateMemberPermissions,
     onDisconnectMember: workspace.actions.disconnectMember,
+    onMoveMember: workspace.actions.moveMember,
     onDrawerChange: setDrawer,
     onThemeChange: changeTheme,
     onLanguageChange: changeLanguage,

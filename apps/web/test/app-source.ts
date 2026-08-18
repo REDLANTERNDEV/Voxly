@@ -30,6 +30,7 @@ const declarations: Array<[string, string]> = [
   ["src/components/shell/ChannelRail.tsx", "ChannelDeleteControl"],
   ["src/components/shell/SidebarMenus.tsx", "memberActionMenuHeight"],
   ["src/components/shell/SidebarMenus.tsx", "MemberActionMenu"],
+  ["src/components/shell/SidebarMenus.tsx", "MemberMoveSubmenu"],
   ["src/components/shell/ChannelRail.tsx", "ChannelCreateControl"],
   ["src/components/shell/MemberPanel.tsx", "MemberPanel"],
   ["src/components/ui/Primitives.tsx", "RoomHeader"],
@@ -92,7 +93,13 @@ function declarationSource(path: string, name: string) {
   if (matchIndex < 0) throw new Error(`Missing ${name} in ${path}`);
   const start = starts[matchIndex].index ?? 0;
   const end = starts[matchIndex + 1]?.index ?? source.length;
-  return source.slice(start, end).replace(/^(?:export )/m, "").trim();
+  return source.slice(start, end)
+    // A doc comment introducing the next declaration sits before its `function`
+    // keyword, so the naive slice swallows it and moves the boundary these
+    // extracts are matched against.
+    .replace(/\n\/\*\*[\s\S]*?\*\/\s*$/, "")
+    .replace(/^(?:export )/m, "")
+    .trim();
 }
 
 export function readAppSource() {

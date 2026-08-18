@@ -20,12 +20,14 @@ interface RealtimeHandlers {
   accessRevoked(serverId: string): void;
 }
 
-export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, leaveVoiceRef }: {
+export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, leaveVoiceRef, moveVoiceRef }: {
   user: PublicUser | null;
   route: Route;
   handlers: RealtimeHandlers;
   activeVoiceRoomRef: RefObject<string | null>;
   leaveVoiceRef: RefObject<() => void>;
+  /** Carries out an owner's move through the ordinary join path. */
+  moveVoiceRef: RefObject<(roomId: string) => void>;
 }) {
   const [socket, setSocket] = useState<VoxlySocket | null>(null);
   const [socketState, setSocketState] = useState<"connecting" | "live" | "reconnecting" | "offline">("connecting");
@@ -54,6 +56,7 @@ export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, lea
     next.on("message:updated", (message) => handlersRef.current.messageUpdated(message));
     next.on("message:deleted", ({ roomId, messageId }) => handlersRef.current.messageDeleted(roomId, messageId));
     next.on("voice:forceLeave", ({ roomId }) => { if (activeVoiceRoomRef.current === roomId) leaveVoiceRef.current(); });
+    next.on("voice:moveTo", ({ roomId }) => moveVoiceRef.current(roomId));
     next.on("server:accessRevoked", ({ serverId }) => handlersRef.current.accessRevoked(serverId));
     return () => { next.disconnect(); setSocket(null); };
   }, [user]);

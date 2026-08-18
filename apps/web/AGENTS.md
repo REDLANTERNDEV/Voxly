@@ -74,6 +74,17 @@ requirement.
   explicit request, and the toggle refuses while the member is in it — the same
   guard owner mute uses. Show the control locked; an enabled control the server
   will not honour reads as a bug.
+- Idle marks a member; it never moves them. The browser sees input only inside
+  its own window, so a muted player in a fullscreen game and someone who walked
+  away produce the identical signal, and no threshold separates them. The costs
+  of confusing them are not symmetric: failing to flag an absent member leaves a
+  stale name in a list, while acting on a present one pulls them out of the
+  conversation and mutes them, in a window they are not looking at. A dot is the
+  only consequence that guess earns.
+- Moving a member between voice rooms is an owner action, taken deliberately,
+  and it reaches the target as an instruction rather than a state change: the
+  client owns the peer connections, so it carries the move out through the same
+  join it would have performed itself.
 - Idle is measured in the browser, never from socket liveness: a tab that is
   open, connected, and untouched is exactly the case AFK exists for, and the
   server cannot tell that apart from someone listening. Speaking counts as

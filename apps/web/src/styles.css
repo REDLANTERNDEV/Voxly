@@ -1518,6 +1518,57 @@ button.reply-quote:focus-visible .reply-quote-body {
    row's own layout and reads at a glance: green present, amber away, hollow
    grey gone. The ring matches the panel background so the dot never merges
    into the avatar behind it. */
+/* Flyout anchored to its row rather than portalled: the parent menu is already
+   viewport-clamped and moves with the pointer, so a second clamped layer would
+   have to track it. `right: 100%` flips it to the left when the parent sits
+   near the right edge, which is where these menus usually open. */
+.menu-submenu {
+  position: relative;
+}
+
+.menu-submenu-trigger {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.menu-submenu-caret {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.menu-submenu-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  display: none;
+  gap: 3px;
+  left: 100%;
+  max-height: 260px;
+  min-width: 160px;
+  overflow-y: auto;
+  padding: 5px;
+  position: absolute;
+  top: -5px;
+  z-index: 1;
+}
+
+.menu-submenu:hover .menu-submenu-panel,
+.menu-submenu:focus-within .menu-submenu-panel {
+  display: grid;
+}
+
+/* Near the right edge the parent menu is itself flipped, so the flyout follows. */
+@media (max-width: 720px) {
+  .menu-submenu-panel {
+    left: auto;
+    right: 100%;
+  }
+}
+
 .presence-dot {
   border: 2px solid var(--surface);
   border-radius: 50%;

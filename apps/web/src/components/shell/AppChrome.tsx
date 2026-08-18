@@ -102,6 +102,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           onThemeChange={props.onThemeChange}
           onToggleMicrophoneTest={props.onToggleMicrophoneTest}
           onUpdateMemberPermissions={props.onUpdateMemberPermissions}
+          onMoveMember={props.onMoveMember}
           onVoiceModeration={props.onVoiceModeration}
           onWatchLive={props.onWatchLive}
           actionMenu={actionMenu}
@@ -123,6 +124,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           onMemberVolumeChange={props.onMemberVolumeChange}
           onVoiceModeration={props.onVoiceModeration}
           onUpdateMemberPermissions={props.onUpdateMemberPermissions}
+          onMoveMember={props.onMoveMember}
           onRequestNickname={(member, returnFocus) => setNicknameTarget({ user: member, returnFocus })}
           onRequestMemberAction={(member, action, roomId) => {
             closeActionMenu();

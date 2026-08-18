@@ -32,7 +32,7 @@ type ChannelRailProps = Pick<ShellModel,
   "onMemberVolumeChange" | "onNavigate" | "onNoiseSuppressionChange" |
   "onNotificationSoundsChange" | "onOutputVolumeChange" |
   "onSelectServer" | "onThemeChange" | "onToggleMicrophoneTest" |
-  "onUpdateMemberPermissions" | "onVoiceModeration" | "onWatchLive"
+  "onUpdateMemberPermissions" | "onVoiceModeration" | "onWatchLive" | "onMoveMember"
 > & {
   actionMenu: SidebarActionMenuController;
   onRequestNickname: (user: PresenceUser, returnFocus: HTMLButtonElement | null) => void;
@@ -139,7 +139,8 @@ export function ChannelRail(props: ChannelRailProps) {
                       canDisconnect: canModerate,
                       canModerate,
                       canVoiceModerate,
-                      canAssignRoles
+                      canAssignRoles,
+                      canMove: canModerate && props.rooms.voice.length > 1
                     });
                     const hasActions = isRemote || canRename || canModerate || canAssignRoles;
                     const menuKey = `rail-member:${member.user.userId}`;
@@ -207,6 +208,8 @@ export function ChannelRail(props: ChannelRailProps) {
                           moderation={canVoiceModerate ? member.moderation : undefined}
                           onVoiceModeration={canVoiceModerate ? (moderation) => { void props.onVoiceModeration(member.user.userId, moderation); } : undefined}
                           onToggleInviteRole={canAssignRoles ? (canInviteMember) => { void props.onUpdateMemberPermissions(member.user.userId, canInviteMember); } : undefined}
+                          moveTargets={canModerate ? props.rooms.voice.filter((target) => target.id !== room.id) : undefined}
+                          onMove={canModerate ? (targetRoomId) => props.onMoveMember(member.user.userId, targetRoomId) : undefined}
                           onRename={(returnFocus) => props.onRequestNickname(member.user, returnFocus)}
                           onRequestAction={(action) => props.onRequestMemberAction(member.user, action, room.id)}
                           showTrigger={false}

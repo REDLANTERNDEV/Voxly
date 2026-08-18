@@ -147,6 +147,7 @@ type VisualSubscriptions = Map<string, Map<string, Set<VisualMediaKind>>>;
 
 interface RealtimeModeration {
   disconnectVoice: (serverId: string, roomId: string, userId: string) => boolean;
+  moveVoice: (serverId: string, userId: string, targetRoomId: string) => boolean;
   /** Evict every live socket for a user, across all servers. Used by the global ban. */
   disconnectUser: (userId: string) => void;
   deleteRoom: (serverId: string, roomId: string) => void;
@@ -1025,6 +1026,29 @@ function registerRoutes(
     return reply.code(204).send();
   });
 
+  server.post("/api/servers/:serverId/voice/members/:userId/move", async (request, reply) => {
+    const owner = requireOwner(database, request, reply, options.secureCookies);
+    if (!owner) return;
+    const { serverId, userId } = z.object({
+      serverId: z.string().min(1),
+      userId: z.string().uuid()
+    }).parse(request.params);
+    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const { roomId } = z.object({ roomId: z.string().min(1) }).parse(request.body);
+    const room = roomById(database.sqlite, roomId);
+    // Scoped to this server, so a move can never place a member in a room they
+    // have no membership for.
+    if (!room || room.serverId !== serverId || room.kind !== "voice") {
+      return reply.code(404).send({ error: "room_not_found" });
+    }
+    if (!realtime.moveVoice(serverId, userId, roomId)) {
+      return reply.code(409).send({ error: "member_not_in_voice" });
+    }
+    audit(database, owner.id, "voice.moved", userId, serverId);
+    database.save();
+    return reply.code(204).send();
+  });
+
   server.post("/api/servers/:serverId/members/:userId/access-links", async (request, reply) => {
     const owner = requireOwner(database, request, reply, options.secureCookies);
     if (!owner) return;
@@ -1691,6 +1715,20 @@ function registerRealtime(
       }
       leaveVoiceMember(io, database, roomId, userId, voiceMembership, visualSubscriptions);
       emitVoiceForceLeave(io, userId, roomId, "owner_disconnect");
+      return true;
+    },
+    moveVoice(serverId, userId, targetRoomId) {
+      // The server cannot join on a member's behalf: the client owns the peer
+      // connections and the capture. So the move is an instruction, and the
+      // ordinary join path carries it out — including the AFK room's forced
+      // mute and the automatic leave of the previous room.
+      const currentRoomId = [...voiceMembership.entries()]
+        .find(([roomId, members]) => members.has(userId) && roomById(database.sqlite, roomId)?.serverId === serverId)?.[0];
+      if (!currentRoomId || currentRoomId === targetRoomId) return false;
+      for (const socket of io.sockets.sockets.values()) {
+        const socketUser = socket.data.user as PresenceUser | undefined;
+        if (socketUser?.userId === userId) socket.emit("voice:moveTo", { roomId: targetRoomId });
+      }
       return true;
     },
     disconnectUser(userId) {
