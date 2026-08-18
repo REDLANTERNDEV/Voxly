@@ -1,4 +1,4 @@
-import type { ChatMessage,PublicUser } from "@voxly/shared";
+import type { ChatMessage,ChatMessageReply,PublicUser } from "@voxly/shared";
 import type { ReactNode } from "react";
 import { AppShellSkeleton } from "../components/AppShellSkeleton.js";
 import { AppChrome } from "../components/shell/AppChrome.js";
@@ -11,10 +11,11 @@ import { OwnerPanel } from "../features/owner/OwnerPanel.js";
 import { VoiceRoomScreen } from "../features/voice/VoiceRoomScreen.js";
 import type { AnalyticsSettings } from "../lib/analytics.js";
 import type { LanguageCode } from "../lib/i18n.js";
+import type { OutboxEntry } from "../lib/messageOutbox.js";
 import { startupSurface } from "../lib/startupSurface.js";
 import type { LoadState,Route,ShellActions,ShellModel,Translate } from "./types.js";
 
-export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, messages, language, t, renderSurface, turnstileSiteKey, analytics, completeAuthentication, loadAcceptedServer, onOwnerClaimed, onAccessClaimed, navigate, changeLanguage, textRoomActions }: {
+export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, messages, language, t, renderSurface, turnstileSiteKey, analytics, completeAuthentication, loadAcceptedServer, onOwnerClaimed, onAccessClaimed, navigate, changeLanguage, textRoomOutbox, textRoomActions }: {
   route: Route;
   user: PublicUser | null;
   authState: LoadState;
@@ -32,7 +33,8 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
   onAccessClaimed(user: PublicUser, serverId: string): void;
   navigate(path: string): void;
   changeLanguage(language: LanguageCode): void;
-  textRoomActions: { send(body: string): Promise<void>; update(messageId: string, body: string): Promise<void>; delete(messageId: string): Promise<void>; suppressEmbed(messageId: string, embedKey: string): Promise<void> } | null;
+  textRoomOutbox: OutboxEntry[];
+  textRoomActions: { send(body: string, replyTo: ChatMessageReply | null): void; retrySend(localId: string): void; discardSend(localId: string): void; update(messageId: string, body: string): Promise<void>; delete(messageId: string): Promise<void>; suppressEmbed(messageId: string, embedKey: string): Promise<void> } | null;
 }) {
   if (startupSurface(route.name, authState) === "shell-skeleton") return renderSurface(<AppShellSkeleton />);
   if (user && !rtcConfigReady && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<AppShellSkeleton />);
@@ -123,7 +125,10 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
       activeServerId={shellProps.activeServerId}
       onNavigate={shellProps.onNavigate}
       messages={messages}
+      outbox={textRoomOutbox}
       onSendMessage={textRoomActions.send}
+      onRetrySend={textRoomActions.retrySend}
+      onDiscardSend={textRoomActions.discardSend}
       onUpdateMessage={textRoomActions.update}
       onDeleteMessage={textRoomActions.delete}
       onSuppressEmbed={textRoomActions.suppressEmbed}

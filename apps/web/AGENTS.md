@@ -157,6 +157,27 @@ requirement.
 
 - Enter sends a non-empty draft; Shift+Enter inserts a newline; IME composition
   never sends. The send button uses the same guarded submission path.
+- Submission never waits on the network. The draft clears immediately, the
+  composer and send button stay enabled, and an in-flight message must not gate
+  the next Enter; a gated composer discards keystrokes instead of queueing them.
+- An unacknowledged message renders from the room outbox, not from history. It
+  carries a local id so it can never collide with the `message:new` broadcast
+  the author receives for their own write, and it is replaced by the server copy
+  on acknowledgement.
+- Deliveries are serial per room so composed order survives a slow link. A
+  failure marks that message alone; it stays visible with localized retry and
+  discard actions rather than disappearing or blocking the composer.
+- An unsent message has no server id, so it offers no edit, delete, link, or
+  rich-preview affordance.
+- Reply is available to every reader, from the hover control beside the ellipsis
+  and from the same permission-filtered menu. Edit and delete stay gated.
+- A reply renders its quote from `replyToMessageId`, not from `replyTo`. A
+  target that has been deleted keeps the strip and says so; silently demoting
+  the message to an ordinary one loses the fact that it was an answer.
+- The quote is one clipped line and never wraps. Starting a reply focuses the
+  composer; Escape and the strip's own control both cancel it.
+- Jumping to a quoted message marks the destination as well as scrolling to it,
+  and any selector built from a message id is escaped.
 - Keep the header and composer stable. The message history is the only vertical
   scroll owner in the text room.
 - Auto-scroll appended messages only when the reader is already within the
@@ -224,7 +245,17 @@ requirement.
 
 ## LIVE Watch and Voice Presentation
 
-- `LIVE` means screen sharing only; camera alone never shows it.
+- `LIVE` means screen sharing only; camera alone never shows it. A live camera
+  gets its own neutral rail status icon instead, beside mute and deafen.
+- Speaking is shown as a ring on the avatar, in the rail and on the call
+  surface alike, and never as a status chip. It changes several times a
+  sentence, so a chip appearing and disappearing at that rate reads as flicker
+  and a filled row arrives too abruptly to follow. Transition the ring.
+- Fullscreen removes the stage panel border. With no page behind it, that border
+  reads as a coloured line drawn around the video.
+- Rail status icons cover both moderation and media. Owner-enforced deafen
+  replaces the self mute and deafen icons, but not the camera icon: a camera is
+  a media fact rather than a moderation state.
 - The LIVE trigger remains a compact, high-contrast red badge. Its accessible
   hover/focus/touch card opens beside the trigger, is not clipped by the rail,
   and uses no captured or fabricated thumbnail.

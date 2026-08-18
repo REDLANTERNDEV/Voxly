@@ -55,6 +55,16 @@ export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, 
     setPreferences(user ? readNotificationSounds(user.id) : { ...DEFAULT_NOTIFICATION_SOUNDS });
   }, [user?.id]);
 
+  // Warm the cues as soon as there is a session rather than on the first one
+  // that fires. Building the element lazily meant the very first join, mute, or
+  // message cue waited on its own download before it could sound, which is the
+  // case where being late is most noticeable.
+  useEffect(() => {
+    if (!user) return;
+    playerRef.current ??= createNotificationSoundPlayer();
+    playerRef.current.prime();
+  }, [user?.id]);
+
   useEffect(() => () => {
     playerRef.current?.dispose();
     playerRef.current = null;

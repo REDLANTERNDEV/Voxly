@@ -42,12 +42,18 @@ describe("message permissions", () => {
 });
 
 describe("composer keyboard behavior", () => {
-  it("submits only an unmodified Enter key outside composition while idle", () => {
-    assert.equal(shouldSubmitComposer({ key: "Enter", shiftKey: false, isComposing: false, isSending: false }), true);
-    assert.equal(shouldSubmitComposer({ key: "Enter", shiftKey: true, isComposing: false, isSending: false }), false);
-    assert.equal(shouldSubmitComposer({ key: "Enter", shiftKey: false, isComposing: true, isSending: false }), false);
-    assert.equal(shouldSubmitComposer({ key: "a", shiftKey: false, isComposing: false, isSending: false }), false);
-    assert.equal(shouldSubmitComposer({ key: "Enter", shiftKey: false, isComposing: false, isSending: true }), false);
+  it("submits only an unmodified Enter key outside composition", () => {
+    assert.equal(shouldSubmitComposer({ key: "Enter", shiftKey: false, isComposing: false }), true);
+    assert.equal(shouldSubmitComposer({ key: "Enter", shiftKey: true, isComposing: false }), false);
+    assert.equal(shouldSubmitComposer({ key: "Enter", shiftKey: false, isComposing: true }), false);
+    assert.equal(shouldSubmitComposer({ key: "a", shiftKey: false, isComposing: false }), false);
+  });
+
+  it("keeps accepting Enter while an earlier message is still in flight", () => {
+    // Regression: an in-flight send used to gate submission, so every Enter
+    // pressed during the round trip was discarded instead of queued.
+    assert.equal(shouldSubmitComposer({ key: "Enter", shiftKey: false, isComposing: false }), true);
+    assert.equal(shouldSubmitComposer({ key: "Enter", shiftKey: false, isComposing: false }), true);
   });
 });
 

@@ -10,7 +10,7 @@ interface RealtimeHandlers {
   directoryChanged(serverId: string): void;
   memberUpdated(serverId: string, user: PresenceUser): void;
   serverUpdated(serverId: string, name: string): void;
-  roomsChanged(serverId: string, deletedRoomId: string): void;
+  roomsChanged(serverId: string, deletedRoomId: string | undefined): void;
   serverDeleted(serverId: string): void;
   messageNew(message: ChatMessage): void;
   messageUpdated(message: ChatMessage): void;

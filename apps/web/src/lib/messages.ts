@@ -32,13 +32,17 @@ export function messageDeleteFailureCopy<T extends string>(status: number | unde
   return t(key as T);
 }
 
+/**
+ * Submission is never gated on a previous send. An in-flight request used to
+ * swallow every Enter pressed while it was open, which lost keystrokes outright
+ * on a slow link; delivery is ordered by the outbox instead.
+ */
 export function shouldSubmitComposer(input: {
   key: string;
   shiftKey: boolean;
   isComposing: boolean;
-  isSending: boolean;
 }) {
-  return input.key === "Enter" && !input.shiftKey && !input.isComposing && !input.isSending;
+  return input.key === "Enter" && !input.shiftKey && !input.isComposing;
 }
 
 export function isMessageListNearBottom(

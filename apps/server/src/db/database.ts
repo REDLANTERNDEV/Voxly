@@ -125,7 +125,8 @@ function migrate(sqlite: DatabaseSync) {
       edited_at text,
       suppressed_embed_keys text not null default '[]',
       deleted_at text,
-      deleted_by_user_id text
+      deleted_by_user_id text,
+      reply_to_message_id text
     );
 
     create table if not exists audit_events (
@@ -176,6 +177,7 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "messages", "suppressed_embed_keys", "text not null default '[]'");
   addColumnIfMissing(sqlite, "messages", "deleted_at", "text");
   addColumnIfMissing(sqlite, "messages", "deleted_by_user_id", "text");
+  addColumnIfMissing(sqlite, "messages", "reply_to_message_id", "text");
   addColumnIfMissing(sqlite, "rooms", "server_id", "text");
   addColumnIfMissing(sqlite, "invites", "server_id", "text");
   addColumnIfMissing(sqlite, "invites", "max_uses", "integer default 1");

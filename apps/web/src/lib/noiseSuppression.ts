@@ -43,35 +43,43 @@ export interface MicrophoneProcessingSettings {
   echoCancellation: boolean;
 }
 
-// Only suppression follows the preference. Automatic gain control used to ride
-// with it, on the theory that gain left over an unsuppressed signal pumps and
-// that the manual input level covers what it provided. It does not: the level
-// tops out at +6 dB while browsers apply well past that, so turning suppression
-// off dropped the voice through the floor — and the drop took the raw noise
-// down with it, hiding the one difference the preference exists to make.
+// Capture processing is now fixed rather than following the preference.
 //
-// Echo cancellation stays on so speaker users never hear themselves back. Both
-// are stated rather than left implicit: browsers hand every capture of one
-// device the same processing pipeline, so two capture sites that request
-// different sets silently resolve to whichever opened first.
-export function microphoneProcessingConstraints(enabled: boolean): MicrophoneProcessingSettings {
-  return { noiseSuppression: enabled, autoGainControl: true, echoCancellation: true };
+// The constraint was never a control we could offer. Chrome runs one audio
+// processing module per capture and echo cancellation engages it, so
+// `noiseSuppression: false` does not reliably disengage the suppressor inside
+// it — the toggle changed nothing audible on the browser most people use. It
+// also cannot be changed on a live track, so honouring it meant releasing the
+// device and reopening it, which is why a toggle took seconds and could leave
+// the capture unrecoverable if the reopen failed.
+//
+// So the browser keeps its own baseline permanently on, and the preference
+// drives the suppression stage in the capture graph instead, where it applies
+// on the next audio block. See `noiseGate.ts`.
+//
+// Echo cancellation stays on so speaker users never hear themselves back.
+// Automatic gain control stays on because the manual input level tops out at
+// +6 dB while browsers apply well past that. All three are stated rather than
+// left implicit: browsers hand every capture of one device the same pipeline,
+// so two capture sites that request different sets silently resolve to
+// whichever opened first.
+export function microphoneProcessingConstraints(): MicrophoneProcessingSettings {
+  return { noiseSuppression: true, autoGainControl: true, echoCancellation: true };
 }
 
 export interface MicrophoneCaptureSettings {
   deviceId: string;
-  noiseSuppression: boolean;
 }
 
-export type MicrophoneCaptureChange = "none" | "device" | "processing";
+// Only the device can require a reopen now. Suppression is applied in the
+// capture graph, so changing it never disturbs the capture.
+export type MicrophoneCaptureChange = "none" | "device";
 
 export function microphoneCaptureChange(
   applied: MicrophoneCaptureSettings,
   next: MicrophoneCaptureSettings
 ): MicrophoneCaptureChange {
-  if (applied.deviceId !== next.deviceId) return "device";
-  if (applied.noiseSuppression !== next.noiseSuppression) return "processing";
-  return "none";
+  return applied.deviceId !== next.deviceId ? "device" : "none";
 }
 
 interface MicrophoneCaptureSource {
@@ -79,45 +87,40 @@ interface MicrophoneCaptureSource {
 }
 
 export interface MicrophoneCaptureOpenOptions {
-  // Stops the capture that currently holds the device. Required whenever only
-  // the processing changed, ignored when opening a device nothing holds yet.
+  // Stops the capture that currently holds the device, for the callers that
+  // have one. Ignored when opening a device nothing holds yet.
   release?: (() => void) | null;
   mediaDevices?: MicrophoneCaptureSource;
 }
 
-// Processing is fixed when the device is opened. Asking a live track to change
-// it is not reliable: `applyConstraints` resolves and `getSettings` then reports
-// the requested values whether or not the running capture was reconfigured, so
-// there is no answer to read back — the settings echo the request, not the
-// audio. Reopening is the only way to change processing, and it only works on a
-// device nothing else holds, because a second capture of an open device is
-// served from the pipeline already running and its constraints are dropped.
-// Releasing first is therefore part of opening rather than something each
-// caller is trusted to remember.
 export async function openMicrophoneCapture(
   settings: MicrophoneCaptureSettings,
   { release, mediaDevices = navigator.mediaDevices }: MicrophoneCaptureOpenOptions = {}
 ) {
   release?.();
   return mediaDevices.getUserMedia(
-    buildMicrophoneConstraints(settings.deviceId, microphoneProcessingConstraints(settings.noiseSuppression))
+    buildMicrophoneConstraints(settings.deviceId, microphoneProcessingConstraints())
   );
 }
 
+// Support now means "can we build the suppression stage", not "does this
+// browser advertise the capture constraint". The constraint is requested
+// unconditionally and its presence says nothing about whether the preference
+// can be honoured; a Web Audio graph is what actually carries it.
 export function supportsNoiseSuppression(
-  supported: Partial<MediaTrackSupportedConstraints> | null | undefined
+  audioContextAvailable: boolean
 ) {
-  return supported?.noiseSuppression === true;
+  return audioContextAvailable === true;
 }
 
-// `navigator.mediaDevices` is undefined on insecure origins and absent entirely
-// outside the browser, so probing support must never throw.
+// `window` is absent outside the browser, so probing support must never throw.
 export function browserSupportsNoiseSuppression() {
   try {
-    if (typeof navigator === "undefined") return false;
-    const getSupportedConstraints = navigator.mediaDevices?.getSupportedConstraints;
-    if (typeof getSupportedConstraints !== "function") return false;
-    return supportsNoiseSuppression(getSupportedConstraints.call(navigator.mediaDevices));
+    if (typeof window === "undefined") return false;
+    const candidate = window as unknown as { AudioContext?: unknown; webkitAudioContext?: unknown };
+    return supportsNoiseSuppression(
+      typeof candidate.AudioContext === "function" || typeof candidate.webkitAudioContext === "function"
+    );
   } catch {
     return false;
   }

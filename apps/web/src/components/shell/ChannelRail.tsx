@@ -6,13 +6,12 @@ import { serverPath } from "../../app/navigation.js";
 import { activeServerRole,canInviteToActiveServer,initial,voiceMembersForRoom } from "../../app/presentation.js";
 import type { MemberAction,ShellActions,ShellModel,Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
-import { HeadsetIcon,MicIcon,PlusIcon,ScreenIcon } from "../../components/ui/Icons.js";
+import { CameraIcon,HeadsetIcon,MicIcon,PlusIcon,ScreenIcon } from "../../components/ui/Icons.js";
 import { BrandLockup,NavLink } from "../../components/ui/Navigation.js";
 import { PreferencesCard } from "../../components/ui/Primitives.js";
-import { type TranslationKey } from "../../lib/i18n.js";
 import { canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
 import { voiceChannelActivation } from "../../lib/voiceChannelActivation.js";
-import { sidebarVoiceStatusKeys } from "../../lib/voiceControls.js";
+import { sidebarVoiceStatusKeys,sidebarVoiceStatusLabelKeys } from "../../lib/voiceControls.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
 import { AudioDeviceSettings } from "../AudioDeviceSettings.js";
 import { ContextMenu } from "../ContextMenu.js";
@@ -190,8 +189,8 @@ export function ChannelRail(props: ChannelRailProps) {
                         {member.moderation.deafened ? <span className="voice-channel-status is-enforced" aria-label={props.t("member.ownerDeafened")}><HeadsetIcon off /></span> : null}
                         {member.moderation.muted ? <span className="voice-channel-status is-enforced" aria-label={props.t("member.ownerMuted")}><MicIcon off /></span> : null}
                         {sidebarVoiceStatusKeys(member.media, member.moderation).map((status) => (
-                          <span className={`voice-channel-status is-${status} is-self`} aria-label={props.t(`common.${status}` as TranslationKey)} key={status}>
-                            {status === "deafened" ? <HeadsetIcon off /> : <MicIcon off />}
+                          <span className={`voice-channel-status is-${status} is-self`} aria-label={props.t(sidebarVoiceStatusLabelKeys[status])} key={status}>
+                            {status === "deafened" ? <HeadsetIcon off /> : status === "camera" ? <CameraIcon off={false} /> : <MicIcon off />}
                           </span>
                         ))}
                       </span>

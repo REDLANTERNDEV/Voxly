@@ -100,7 +100,7 @@ export function App() {
         chat.applyMemberRename(serverId, user);
       },
       serverUpdated: workspace.applyServerName,
-      roomsChanged: (serverId, roomId) => { void workspace.refreshRoomsAfterDeletion(serverId, roomId).catch(() => undefined); },
+      roomsChanged: (serverId, roomId) => { void workspace.refreshRooms(serverId, roomId).catch(() => undefined); },
       serverDeleted: (serverId) => { void workspace.refreshServersAfterDeletion(serverId).catch(() => undefined); },
       messageNew: (message) => { chat.applyNewMessage(message); notifyMessageRef.current(message); },
       messageUpdated: chat.applyUpdatedMessage,
@@ -244,6 +244,7 @@ export function App() {
     onAccessClaimed={handleAccessClaimed}
     navigate={navigate}
     changeLanguage={changeLanguage}
+    textRoomOutbox={route.name === "text" ? chat.outboxByRoom[route.roomId] ?? [] : []}
     textRoomActions={textActions}
   />;
 }

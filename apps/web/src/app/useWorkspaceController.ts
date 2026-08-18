@@ -42,7 +42,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
     setServerMembersByServer((current) => ({ ...current, [serverId]: response.members }));
   }), []);
 
-  const refreshRoomsAfterDeletion = useCallback(async (serverId: string, deletedRoomId: string) => {
+  const refreshRooms = useCallback(async (serverId: string, deletedRoomId?: string) => {
     const response = await fetchServerRooms(serverId);
     const currentRoute = routeRef.current;
     if ((currentRoute.name !== "text" && currentRoute.name !== "voice" && currentRoute.name !== "owner") || currentRoute.serverId !== serverId) return;
@@ -164,7 +164,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
       setRooms((current) => [...current, response.room].sort((a, b) => a.position - b.position));
       navigate(serverPath(activeServerId, response.room.kind, response.room.id));
     },
-    deleteRoom: async (roomId: string) => { await deleteServerRoom(activeServerId, roomId); await refreshRoomsAfterDeletion(activeServerId, roomId); },
+    deleteRoom: async (roomId: string) => { await deleteServerRoom(activeServerId, roomId); await refreshRooms(activeServerId, roomId); },
     deleteServer: async () => { await deleteServer(activeServerId); await refreshServersAfterDeletion(activeServerId); },
     moderateMember: async (userId: string, action: "ban" | "unban" | "kick") => { await moderateServerMember(activeServerId, userId, action); await refreshServerDirectory(activeServerId); },
     voiceModeration: (userId: string, moderation: Partial<VoiceModerationState>) => updateVoiceModeration(activeServerId, userId, moderation),
@@ -183,7 +183,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
 
   return {
     servers, rooms, serverListReady, activeServerId, onlineUsers, serverMembers, activeRooms, currentRoom, roomGroups, voiceRoomIds,
-    roomServerIdsRef, loadAcceptedServer, refreshServerDirectory, refreshRoomsAfterDeletion, refreshServersAfterDeletion, actions,
+    roomServerIdsRef, loadAcceptedServer, refreshServerDirectory, refreshRooms, refreshServersAfterDeletion, actions,
     setServers, setOnlineUsersByServer, setServerMembersByServer,
     applyPresenceSnapshot: (serverId: string, users: PresenceUser[]) => setOnlineUsersByServer((current) => ({ ...current, [serverId]: user ? includeCurrentPresence(users, user) : users })),
     applyPresenceOnline: (serverId: string, next: PresenceUser) => user && setOnlineUsersByServer((current) => ({ ...current, [serverId]: upsertPresence(current[serverId] ?? [presenceFromUser(user)], next, user) })),

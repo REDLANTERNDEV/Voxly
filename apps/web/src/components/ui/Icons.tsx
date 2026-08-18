@@ -29,3 +29,4 @@ export function ScreenIcon({ off }: { off: boolean }) {
     </svg>
   );
 }
+export function ReplyIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 8 5 12l4 4" /><path d="M5 12h8a6 6 0 0 1 6 6v1" /></svg>; }

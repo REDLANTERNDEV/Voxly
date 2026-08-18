@@ -227,49 +227,52 @@ describe("voice snapshot reconciliation", () => {
     const join = source.match(/const join = useCallback[\s\S]*?\n  }, \[([^\]]*)\]\);/) ?? [];
 
     assert.match(source, /const microphoneDeviceIdRef = useRef\(microphoneDeviceId\)/);
-    assert.match(join[0] ?? "", /openMicrophoneCapture\(\{\s*\n\s*deviceId: microphoneDeviceIdRef\.current,\s*\n\s*noiseSuppression: noiseSuppressionRef\.current\s*\n\s*\}\)/);
+    assert.match(join[0] ?? "", /openMicrophoneCapture\(\{ deviceId: microphoneDeviceIdRef\.current \}\)/);
     assert.doesNotMatch(join[1] ?? "", /\bmicrophoneDeviceId\b/);
     assert.doesNotMatch(join[1] ?? "", /\bnoiseSuppression\b/);
   });
 
-  it("re-captures the microphone when noise suppression changes", () => {
+  it("applies noise suppression to the live graph instead of re-capturing", () => {
+    // Regression: the preference used to release the device and reopen it,
+    // which took seconds, published silence in between, and could end with no
+    // microphone at all if the reopen failed.
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const effect = source.match(/useEffect\(\(\) => \{\n    noiseSuppressionRef\.current = noiseSuppression;[\s\S]*?\n  }, \[([^\]]*)\]\);/) ?? [];
+
+    assert.match(source, /const noiseSuppressionRef = useRef\(noiseSuppression\)/);
+    assert.match(effect[0] ?? "", /microphoneInputRef\.current\?\.setNoiseSuppression\(noiseSuppression\)/);
+    assert.equal((effect[1] ?? "").trim(), "noiseSuppression");
+    assert.doesNotMatch(source, /openMicrophoneCapture\([^)]*noiseSuppression/);
+  });
+
+  it("reopens the capture for a device change and for nothing else", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
     const effect = source.match(/useEffect\(\(\) => \{\n    const previousStream = localStreamsRef\.current\.mic;[\s\S]*?\n  }, \[([^\]]*)\]\);/) ?? [];
 
-    assert.match(source, /const noiseSuppressionRef = useRef\(noiseSuppression\)/);
-    assert.match(effect[1] ?? "", /\bnoiseSuppression\b/);
-    assert.match(effect[0] ?? "", /openMicrophoneCapture\(\{ deviceId: microphoneDeviceId, noiseSuppression \}, \{ release \}\)/);
+    assert.doesNotMatch(effect[1] ?? "", /\bnoiseSuppression\b/, "the preference no longer drives a re-capture");
+    assert.match(effect[0] ?? "", /openMicrophoneCapture\(\{ deviceId: microphoneDeviceId \}\)/);
     // The replacement track must inherit mute, deafen, and owner-mute state.
     assert.match(effect[0] ?? "", /nextTrack\.enabled = controlsRef\.current\.mic\.on && !controlsRef\.current\.deafen\.on/);
     assert.match(effect[0] ?? "", /replaceMicrophoneTrack\(peersRef\.current\.values\(\), nextTrack, previousTrack\)/);
-    // An unchanged capture must not reopen the device on unrelated dependency churn.
+    // An unchanged capture must not reopen the device on unrelated churn.
     assert.match(effect[0] ?? "", /if \(change === "none"\) return/);
   });
 
-  it("frees the device for a processing change but overlaps a device switch", () => {
+  it("keeps both captures alive across a device switch so one can be kept", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
     const effect = source.match(/useEffect\(\(\) => \{\n    const previousStream = localStreamsRef\.current\.mic;[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
 
-    // Reopening an already-held device is served from the running pipeline and
-    // keeps its processing, so only a device switch may overlap the captures.
-    assert.match(effect, /const release = change === "processing"\s*\n\s*\? \(\) => \{/);
-    // Releasing stops the raw capture, never the generated destination track
-    // the peers are still reading from.
-    assert.match(effect, /microphoneInputRef\.current\?\.rawStream\.getAudioTracks\(\)\.forEach\(\(track\) => track\.stop\(\)\)/);
-    // Our own release must not be reported to the user as an unplugged device.
-    assert.match(effect, /microphoneEndedCleanupRef\.current\?\.\(\);\s*\n\s*microphoneEndedCleanupRef\.current = null;/);
+    // Nothing releases the running capture any more, so a failed reopen always
+    // leaves the previous microphone to fall back to.
+    assert.doesNotMatch(effect, /const release =/);
+    assert.match(effect, /setError\("The microphone could not be reopened\. Using the previous microphone\."\)/);
+    assert.doesNotMatch(effect, /handleMicrophoneLost/, "no reopen path can now strand the user without a microphone");
     assert.doesNotMatch(source, /applyMicrophoneProcessing/);
   });
 
-  it("gives up the microphone when a released capture cannot be reopened", () => {
+  it("still reports a microphone that genuinely disappeared", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
-    const effect = source.match(/useEffect\(\(\) => \{\n    const previousStream = localStreamsRef\.current\.mic;[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
 
-    // A device switch still holds the previous capture and can keep using it.
-    assert.match(effect, /if \(change === "device"\) \{\s*\n\s*setError\("The microphone could not be reopened\. Using the previous microphone\."\);/);
-    // A processing change already let the device go, so there is nothing to
-    // keep and the mic state has to reflect that rather than look live.
-    assert.match(effect, /handleMicrophoneLost\("The microphone could not be reopened with the new noise suppression setting\."\)/);
     assert.match(source, /const handleMicrophoneLost = useCallback\(\(message: string\) => \{/);
     assert.match(source, /handleMicrophoneLost\("Microphone disconnected\."\)/);
   });

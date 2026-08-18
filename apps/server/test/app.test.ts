@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { replyExcerptMaxLength } from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 import { hashToken } from "../src/auth/tokens.js";
 import { createOwnerClaim, createOwnerLoginClaim } from "../src/auth/ownerClaims.js";
@@ -845,6 +846,140 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(messages[0].nickname, "Deniz");
     assert.equal(messages[0].editedAt, null);
     assert.deepEqual(messages[0].suppressedEmbedKeys, []);
+  });
+
+  it("resolves a reply's quote at read time so an edit and a rename both follow", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+    const original = await app.server.inject({
+      method: "POST",
+      url: "/api/rooms/general/messages",
+      cookies: member.cookies,
+      payload: { body: "the original" }
+    });
+    const originalId = original.json().message.id as string;
+
+    const answer = await app.server.inject({
+      method: "POST",
+      url: "/api/rooms/general/messages",
+      cookies: owner.cookies,
+      payload: { body: "the answer", replyToMessageId: originalId }
+    });
+    assert.equal(answer.statusCode, 201);
+    assert.equal(answer.json().message.replyToMessageId, originalId);
+    assert.equal(answer.json().message.replyTo.body, "the original");
+    assert.equal(answer.json().message.replyTo.nickname, "Deniz");
+
+    const edited = await app.server.inject({
+      method: "PATCH",
+      url: `/api/rooms/general/messages/${originalId}`,
+      cookies: member.cookies,
+      payload: { body: "the original, corrected" }
+    });
+    assert.equal(edited.statusCode, 200);
+
+    const history = await app.server.inject({
+      method: "GET",
+      url: "/api/rooms/general/messages",
+      cookies: owner.cookies
+    });
+    const reply = history.json().messages.find((message: { body: string }) => message.body === "the answer");
+    assert.equal(reply.replyTo.body, "the original, corrected", "the quote is not a copy taken at write time");
+  });
+
+  it("keeps a reply readable after its target is deleted", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+    const original = await app.server.inject({
+      method: "POST",
+      url: "/api/rooms/general/messages",
+      cookies: member.cookies,
+      payload: { body: "the original" }
+    });
+    const originalId = original.json().message.id as string;
+    await app.server.inject({
+      method: "POST",
+      url: "/api/rooms/general/messages",
+      cookies: owner.cookies,
+      payload: { body: "the answer", replyToMessageId: originalId }
+    });
+
+    const deleted = await app.server.inject({
+      method: "DELETE",
+      url: `/api/rooms/general/messages/${originalId}`,
+      cookies: member.cookies
+    });
+    assert.equal(deleted.statusCode, 204);
+
+    const history = await app.server.inject({
+      method: "GET",
+      url: "/api/rooms/general/messages",
+      cookies: owner.cookies
+    });
+    const reply = history.json().messages.find((message: { body: string }) => message.body === "the answer");
+    // The reply survives; only its excerpt goes. The two fields together are
+    // what let the client say the original was deleted.
+    assert.equal(reply.replyToMessageId, originalId);
+    assert.equal(reply.replyTo, null);
+  });
+
+  it("refuses to quote a message from another room", async () => {
+    const owner = await bootstrapOwner(app);
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/servers/the-basement/rooms",
+      cookies: owner.cookies,
+      payload: { name: "second", kind: "text" }
+    });
+    const otherRoomId = created.json().room.id as string;
+    const elsewhere = await app.server.inject({
+      method: "POST",
+      url: `/api/rooms/${otherRoomId}/messages`,
+      cookies: owner.cookies,
+      payload: { body: "not visible from general" }
+    });
+    const elsewhereId = elsewhere.json().message.id as string;
+
+    const crossRoom = await app.server.inject({
+      method: "POST",
+      url: "/api/rooms/general/messages",
+      cookies: owner.cookies,
+      payload: { body: "quoting across rooms", replyToMessageId: elsewhereId }
+    });
+
+    assert.equal(crossRoom.statusCode, 404);
+    assert.equal(crossRoom.json().error, "reply_target_not_found");
+  });
+
+  it("trims a quoted excerpt instead of echoing the whole message", async () => {
+    const owner = await bootstrapOwner(app);
+    const long = await app.server.inject({
+      method: "POST",
+      url: "/api/rooms/general/messages",
+      cookies: owner.cookies,
+      payload: { body: "x".repeat(2000) }
+    });
+    const answer = await app.server.inject({
+      method: "POST",
+      url: "/api/rooms/general/messages",
+      cookies: owner.cookies,
+      payload: { body: "short answer", replyToMessageId: long.json().message.id }
+    });
+
+    assert.ok(answer.json().message.replyTo.body.length <= replyExcerptMaxLength + 1);
+  });
+
+  it("leaves an ordinary message with no reply fields set", async () => {
+    const owner = await bootstrapOwner(app);
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/rooms/general/messages",
+      cookies: owner.cookies,
+      payload: { body: "plain" }
+    });
+
+    assert.equal(created.json().message.replyToMessageId, null);
+    assert.equal(created.json().message.replyTo, null);
   });
 
   it("lets message authors and server owners suppress individual embeds", async () => {

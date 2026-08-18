@@ -58,34 +58,32 @@ describe("noise suppression preference", () => {
     assert.doesNotThrow(() => writeNoiseSuppression("user-a", false, undefined));
   });
 
-  it("changes suppression alone", () => {
-    assert.deepEqual(microphoneProcessingConstraints(true), { noiseSuppression: true, autoGainControl: true, echoCancellation: true });
-    assert.deepEqual(microphoneProcessingConstraints(false), { noiseSuppression: false, autoGainControl: true, echoCancellation: true });
+  it("keeps capture processing fixed so the preference never reopens the device", () => {
+    // The constraint is not a control we can offer: Chrome runs one processing
+    // module per capture, echo cancellation engages it, and `noiseSuppression:
+    // false` does not reliably disengage the suppressor inside it. The
+    // preference drives the capture graph instead — see `noiseGate.ts`.
+    assert.deepEqual(microphoneProcessingConstraints(), {
+      noiseSuppression: true,
+      autoGainControl: true,
+      echoCancellation: true
+    });
   });
 
-  it("holds gain and echo cancellation steady across the preference", () => {
-    // Dropping gain with suppression costs far more than the +6 dB the input
-    // level can add back, and the drop hides the raw noise the preference is
-    // there to expose. Echo cancellation off would make speaker users echo.
-    for (const enabled of [true, false]) {
-      assert.equal(microphoneProcessingConstraints(enabled).autoGainControl, true);
-      assert.equal(microphoneProcessingConstraints(enabled).echoCancellation, true);
-    }
+  it("holds gain and echo cancellation on", () => {
+    // Dropping gain costs far more than the +6 dB the input level can add back.
+    // Echo cancellation off would make speaker users echo.
+    assert.equal(microphoneProcessingConstraints().autoGainControl, true);
+    assert.equal(microphoneProcessingConstraints().echoCancellation, true);
   });
 
-  it("separates a device change from a processing change", () => {
-    const settings = (deviceId: string, noiseSuppression: boolean) => ({ deviceId, noiseSuppression });
-
-    assert.equal(microphoneCaptureChange(settings("mic-a", true), settings("mic-a", true)), "none");
-    assert.equal(microphoneCaptureChange(settings("", false), settings("", false)), "none");
-    assert.equal(microphoneCaptureChange(settings("mic-a", true), settings("mic-a", false)), "processing");
-    assert.equal(microphoneCaptureChange(settings("mic-a", true), settings("mic-b", true)), "device");
-    // A device change already reopens the capture, so it carries the processing
-    // with it and must not be reported as the narrower change.
-    assert.equal(microphoneCaptureChange(settings("mic-a", true), settings("mic-b", false)), "device");
+  it("reopens for a device change and for nothing else", () => {
+    assert.equal(microphoneCaptureChange({ deviceId: "mic-a" }, { deviceId: "mic-a" }), "none");
+    assert.equal(microphoneCaptureChange({ deviceId: "" }, { deviceId: "" }), "none");
+    assert.equal(microphoneCaptureChange({ deviceId: "mic-a" }, { deviceId: "mic-b" }), "device");
   });
 
-  it("frees the device before reopening it so the new processing takes", async () => {
+  it("frees the device before reopening it so the reopen gets a new pipeline", async () => {
     const order: string[] = [];
     const stream = {} as MediaStream;
     let requested: MediaStreamConstraints | null = null;
@@ -98,7 +96,7 @@ describe("noise suppression preference", () => {
     };
 
     const opened = await openMicrophoneCapture(
-      { deviceId: "mic-a", noiseSuppression: false },
+      { deviceId: "mic-a" },
       { release: () => order.push("release"), mediaDevices }
     );
 
@@ -107,7 +105,7 @@ describe("noise suppression preference", () => {
     // is already open and silently keeps its processing.
     assert.deepEqual(order, ["release", "getUserMedia"]);
     assert.deepEqual(requested, {
-      audio: { deviceId: { exact: "mic-a" }, noiseSuppression: false, autoGainControl: true, echoCancellation: true },
+      audio: { deviceId: { exact: "mic-a" }, noiseSuppression: true, autoGainControl: true, echoCancellation: true },
       video: false
     });
   });
@@ -121,7 +119,7 @@ describe("noise suppression preference", () => {
       }
     };
 
-    await openMicrophoneCapture({ deviceId: "", noiseSuppression: true }, { mediaDevices });
+    await openMicrophoneCapture({ deviceId: "" }, { mediaDevices });
 
     assert.equal(calls, 1);
   });
@@ -136,17 +134,15 @@ describe("noise suppression preference", () => {
     assert.doesNotMatch(source, /\.getSettings\(/);
   });
 
-  it("detects support only from an explicit supported constraint", () => {
-    assert.equal(supportsNoiseSuppression({ noiseSuppression: true }), true);
-    assert.equal(supportsNoiseSuppression({ noiseSuppression: false }), false);
-    assert.equal(supportsNoiseSuppression({}), false);
-    assert.equal(supportsNoiseSuppression(null), false);
-    assert.equal(supportsNoiseSuppression(undefined), false);
+  it("ties support to the audio graph rather than to the capture constraint", () => {
+    // The constraint is requested unconditionally now, so advertising it says
+    // nothing about whether the preference can be honoured.
+    assert.equal(supportsNoiseSuppression(true), true);
+    assert.equal(supportsNoiseSuppression(false), false);
   });
 
-  it("probes the browser without throwing where mediaDevices is absent", () => {
-    // Insecure origins expose no `navigator.mediaDevices`, and the test runner
-    // has no `navigator` at all.
+  it("probes the browser without throwing where no audio context exists", () => {
+    // The test runner has no `window` at all.
     assert.equal(browserSupportsNoiseSuppression(), false);
   });
 });

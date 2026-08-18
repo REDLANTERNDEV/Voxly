@@ -146,29 +146,56 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   cleanup, logout, and stale async completion. Watch the raw device stream for
   disconnects; a generated destination track may remain live after its source
   ends.
-- Noise suppression and automatic gain control are one browser-native setting
-  and always travel together; gain control left riding an unsuppressed signal
-  pumps the voice itself. Request both as plain booleans so an unsupported
-  device degrades instead of rejecting the capture; never send an `exact` form.
-  Echo cancellation and screen-share audio stay unspecified and untouched, so
-  speaker users never lose echo control.
-- A processing change reconfigures the live capture track through
-  `applyConstraints` and treats it as applied only when the observed
-  `getSettings` values agree. Reopening the device resets the echo canceller and
-  is audible while monitoring, so it is the fallback, not the default. A device
-  change always re-captures.
-- The re-capture fallback reuses the microphone re-acquisition path: capture
-  again, replace the published track, and dispose the replaced graph through the
-  same generation guard, serialized queue, and rollback as a device change.
-  Record the settings each graph was opened with so an unchanged capture never
-  reopens the device. Preserve mute, deafen, and owner-mute on the replacement
-  track, and leave an absent or inactive microphone untouched until its next
-  capture.
+- Capture processing is fixed, not preference-driven: noise suppression, gain
+  control, and echo cancellation are all requested on, as plain booleans so an
+  unsupported device degrades instead of rejecting the capture. Never send an
+  `exact` form. Screen-share audio stays unspecified and untouched.
+- The browser constraint cannot carry the user's suppression preference. Chrome
+  runs one processing module per capture, echo cancellation engages it, and
+  `noiseSuppression: false` does not reliably disengage the suppressor inside
+  it, so the toggle was inaudible on the most common browser. The constraint
+  also cannot be changed on a live track, so honouring it meant releasing the
+  device and reopening it — seconds of delay, published silence in between, and
+  no fallback if the reopen failed.
+- The preference therefore drives a stage in the capture graph: a high-pass
+  followed by a downward expander gated by the shared adaptive-floor estimator.
+  It applies on the next audio block and never disturbs the capture. Turning it
+  off changes values on that graph rather than its shape — the filter is
+  bypassed and the expander held open, never unwired.
+- The expander closes to a floor, not to silence, and every gain change is
+  ramped rather than assigned. A gate that closes fully chops the room in and
+  out, and a stepped gain is a discontinuity, which is audible as a click.
+- The expander measures the filtered signal before its own gain, so its reading
+  never chases the reduction it just applied.
+- Only a device change re-captures. It holds both captures at once, so a failed
+  reopen always leaves the previous microphone to fall back to; record the
+  device each graph was opened with so unchanged settings never reopen it.
+  Preserve mute, deafen, and owner-mute on the replacement track.
+- Support means "can this browser build the graph", not "does it advertise the
+  constraint". Probe for an audio context.
 - The preference is stored per account in local storage, defaults on to match
   browser behavior, and applies to both voice publication and the microphone
-  test. The microphone test reconfigures or re-captures only when it owns its
-  capture; a shared monitor branch inherits the voice graph and must not open a
-  second device.
+  test. A microphone test that owns its capture applies the preference to its
+  own graph; a shared monitor branch inherits the voice graph, including its
+  suppression stage, and must not open a second device.
+
+## Speaking Detection
+
+- Speaking detection reads float time-domain samples, never the 8-bit view: one
+  step of that view is coarser than the levels a quiet speaker produces, so
+  quiet speech quantized to zero and never armed the gate.
+- The analysis window must be longer than the sampling interval, so consecutive
+  reads overlap. A short window sampled infrequently leaves most of the signal
+  unexamined and drops out between syllables.
+- The trigger is relative to a measured noise floor, not a fixed level: a level
+  that suits a loud headset mic never arms for a quiet or distant one. The floor
+  tracks minima — falling towards anything quieter within a couple of samples,
+  creeping up by a bounded fraction otherwise — so a noisy room raises the
+  trigger within a second while sustained speech cannot drag its own threshold
+  up behind it. An absolute floor still guards against arming on silence.
+- Keep hysteresis and a release window so a syllable gap does not flicker the
+  indicator, and keep the estimator shared with the suppression stage so what
+  the gate treats as speech and what the ring shows can never disagree.
 
 ## Remote Streams and Audio Output
 

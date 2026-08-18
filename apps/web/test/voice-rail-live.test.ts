@@ -38,8 +38,21 @@ describe("voice rail live controls", () => {
 
     assert.match(rail, /sidebarVoiceStatusKeys\(member\.media, member\.moderation\)/);
     assert.match(rail, /voice-channel-statuses/);
-    assert.match(rail, /aria-label=\{props\.t\(`common\.\$\{status\}` as TranslationKey\)\}/);
-    assert.match(rail, /status === "deafened" \? <HeadsetIcon off \/> : <MicIcon off \/>/);
+    assert.match(rail, /aria-label=\{props\.t\(sidebarVoiceStatusLabelKeys\[status\]\)\}/);
+    assert.match(rail, /status === "deafened" \? <HeadsetIcon off \/> : status === "camera" \? <CameraIcon off=\{false\} \/> : <MicIcon off \/>/);
+  });
+
+  it("gives a live camera its own neutral rail indicator without borrowing the LIVE badge", () => {
+    const app = readAppSource();
+    const styles = readFileSync("src/styles.css", "utf8");
+    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
+
+    assert.match(rail, /<CameraIcon off=\{false\} \/>/);
+    // LIVE stays reserved for screen sharing.
+    assert.doesNotMatch(rail, /member\.media\.camera[\s\S]{0,200}<LiveStreamPopover/);
+    // Neutral gray by default; only owner-enforced states take the danger color.
+    assert.match(styles, /\.voice-channel-status \{[^}]*color: var\(--muted\)/);
+    assert.match(styles, /\.voice-channel-status\.is-enforced \{[^}]*color: var\(--danger\)/);
   });
 
   it("uses a microphone icon for voice channels", () => {

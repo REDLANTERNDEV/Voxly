@@ -98,7 +98,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const microphoneDeviceIdRef = useRef(microphoneDeviceId);
   const microphoneVolumeRef = useRef(microphoneVolume);
   const noiseSuppressionRef = useRef(noiseSuppression);
-  const appliedMicrophoneCaptureRef = useRef({ deviceId: microphoneDeviceId, noiseSuppression });
+  const appliedMicrophoneCaptureRef = useRef({ deviceId: microphoneDeviceId });
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const remoteStreamKindsRef = useRef<Map<string, Map<string, RemoteMediaKind>>>(new Map());
   const viewerVisualSubscriptionsRef = useRef<Map<string, Set<VisualMediaKind>>>(new Map());
@@ -146,8 +146,14 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     microphoneInputRef.current?.setVolume(microphoneVolume);
   }, [microphoneVolume]);
 
+  // Suppression is a value on the live capture graph, so the preference reaches
+  // the audio on the next block. It used to require releasing the device and
+  // reopening it, which took seconds and could fail with nothing to fall back
+  // to. See `noiseSuppression.ts` for why the browser constraint cannot carry
+  // this instead.
   useEffect(() => {
     noiseSuppressionRef.current = noiseSuppression;
+    microphoneInputRef.current?.setNoiseSuppression(noiseSuppression);
   }, [noiseSuppression]);
 
   useEffect(() => {
@@ -204,8 +210,11 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       const context = new AudioContextClass();
       const source = context.createMediaStreamSource(stream);
       const analyser = context.createAnalyser();
-      analyser.fftSize = 512;
-      const samples = new Uint8Array(analyser.fftSize);
+      // The window has to be longer than the sampling interval, otherwise most
+      // of the signal is never examined and quiet speech is missed whenever the
+      // sampled slice happens to land between syllables.
+      analyser.fftSize = 2048;
+      const samples = new Float32Array(analyser.fftSize);
       let activity = createVoiceActivityState();
       source.connect(analyser);
 
@@ -216,11 +225,13 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           return;
         }
 
-        analyser.getByteTimeDomainData(samples);
+        // Float samples rather than the 8-bit view: one step of that view is
+        // ~0.008 RMS, which is coarser than the levels a quiet speaker produces,
+        // so quiet speech quantized to zero and never armed the gate.
+        analyser.getFloatTimeDomainData(samples);
         let sum = 0;
         for (const value of samples) {
-          const normalized = (value - 128) / 128;
-          sum += normalized * normalized;
+          sum += value * value;
         }
         activity = updateVoiceActivity(activity, Math.sqrt(sum / samples.length), Date.now());
         setLocalSpeaking(activity.speaking);
@@ -491,13 +502,12 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   }, [sendOffer, syncLocalTracks]);
 
   const prepareMicrophoneInput = useCallback((rawStream: MediaStream) => {
-    // Record the capture settings this graph was opened with so the switch
-    // effect can tell an already-applied change from a pending one.
-    appliedMicrophoneCaptureRef.current = {
-      deviceId: microphoneDeviceIdRef.current,
+    // Record the device this graph was opened with so the switch effect can
+    // tell an already-applied change from a pending one.
+    appliedMicrophoneCaptureRef.current = { deviceId: microphoneDeviceIdRef.current };
+    return createMicrophoneInput(rawStream, microphoneVolumeRef.current, {
       noiseSuppression: noiseSuppressionRef.current
-    };
-    return createMicrophoneInput(rawStream, microphoneVolumeRef.current);
+    });
   }, []);
 
   // Reached when the capture is gone and no replacement is coming: the device
@@ -627,10 +637,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (microphoneEnabled) {
       if (!mic) {
         try {
-          const rawStream = await openMicrophoneCapture({
-            deviceId: microphoneDeviceIdRef.current,
-            noiseSuppression: noiseSuppressionRef.current
-          });
+          const rawStream = await openMicrophoneCapture({ deviceId: microphoneDeviceIdRef.current });
           acquiredInput = prepareMicrophoneInput(rawStream);
           mic = acquiredInput.voiceStream;
         } catch {
@@ -712,29 +719,17 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   useEffect(() => {
     const previousStream = localStreamsRef.current.mic;
     if (!roomRef.current || !previousStream) return;
-    // The active graph may already carry these settings, either because the
-    // join capture picked them up or because an unrelated dependency changed.
-    const change = microphoneCaptureChange(appliedMicrophoneCaptureRef.current, { deviceId: microphoneDeviceId, noiseSuppression });
+    // The active graph may already carry this device, either because the join
+    // capture picked it up or because an unrelated dependency changed.
+    const change = microphoneCaptureChange(appliedMicrophoneCaptureRef.current, { deviceId: microphoneDeviceId });
     if (change === "none") return;
     const requestId = ++microphoneSwitchRef.current;
     let cancelled = false;
 
-    // Switching device can hold both captures at once, which keeps a live track
-    // published across the swap. Changing processing cannot: the device has to
-    // be free before the reopen, so the published track carries silence from
-    // the orphaned graph until the replacement lands. Nothing is left to fall
-    // back to if that reopen fails, hence the two failure paths below.
-    const release = change === "processing"
-      ? () => {
-          // Without this the end-of-stream watcher reads our own release as the
-          // microphone having been unplugged.
-          microphoneEndedCleanupRef.current?.();
-          microphoneEndedCleanupRef.current = null;
-          microphoneInputRef.current?.rawStream.getAudioTracks().forEach((track) => track.stop());
-        }
-      : null;
-
-    void openMicrophoneCapture({ deviceId: microphoneDeviceId, noiseSuppression }, { release })
+    // Switching device holds both captures at once, which keeps a live track
+    // published across the swap and leaves the previous capture to fall back to
+    // if the new one never opens.
+    void openMicrophoneCapture({ deviceId: microphoneDeviceId })
       .then((rawStream) => {
         const nextInput = prepareMicrophoneInput(rawStream);
         const nextTrack = nextInput.voiceStream.getAudioTracks()[0];
@@ -776,17 +771,13 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       })
       .catch(() => {
         if (cancelled || requestId !== microphoneSwitchRef.current) return;
-        if (change === "device") {
-          setError("The microphone could not be reopened. Using the previous microphone.");
-          return;
-        }
-        handleMicrophoneLost("The microphone could not be reopened with the new noise suppression setting.");
+        setError("The microphone could not be reopened. Using the previous microphone.");
       });
 
     return () => {
       cancelled = true;
     };
-  }, [activateMicrophoneInput, activeRoomId, handleMicrophoneLost, microphoneDeviceId, noiseSuppression, prepareMicrophoneInput, stopStream]);
+  }, [activateMicrophoneInput, activeRoomId, microphoneDeviceId, prepareMicrophoneInput, stopStream]);
 
   const leave = useCallback(() => {
     joinAttemptRef.current += 1;
@@ -840,10 +831,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (!stream) {
       setError("");
       try {
-        const rawStream = await openMicrophoneCapture({
-          deviceId: microphoneDeviceIdRef.current,
-          noiseSuppression: noiseSuppressionRef.current
-        });
+        const rawStream = await openMicrophoneCapture({ deviceId: microphoneDeviceIdRef.current });
         const input = prepareMicrophoneInput(rawStream);
         stream = input.voiceStream;
         activateMicrophoneInput(input);

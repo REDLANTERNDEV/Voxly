@@ -133,9 +133,9 @@ export function voiceStatusItems(media: VoiceMediaState | undefined, moderation:
   } else if (media.camera) {
     items.push({ label: t("status.cameraOn"), icon: <CameraIcon off={false} />, tone: "online" });
   }
-  if (media.speaking && media.mic && !media.deafened && !moderation?.muted) {
-    items.push({ label: t("status.speaking"), icon: <span className="status-dot speaking" />, tone: "live" });
-  }
+  // Speaking is deliberately absent. It is the one status that changes several
+  // times a sentence, and a chip appearing and disappearing at that rate reads
+  // as flicker; the avatar ring on the row carries it continuously instead.
   return items;
 }
 

@@ -43,6 +43,8 @@ const declarations: Array<[string, string]> = [
   ["src/features/auth/ClaimScreens.tsx", "OwnerClaimScreen"],
   ["src/features/auth/ClaimScreens.tsx", "AccessClaimScreen"],
   ["src/features/chat/MessageItem.tsx", "MessageItem"],
+  ["src/features/chat/PendingMessageItem.tsx", "PendingMessageItem"],
+  ["src/features/chat/ReplyQuote.tsx", "ReplyQuote"],
   ["src/features/chat/MessageItem.tsx", "embedProviderLabel"],
   ["src/components/ui/Primitives.tsx", "PreferencesCard"],
   ["src/components/ui/Primitives.tsx", "LanguageSwitch"],
@@ -79,7 +81,8 @@ const declarations: Array<[string, string]> = [
   ["src/components/ui/Icons.tsx", "MicIcon"],
   ["src/components/ui/Icons.tsx", "HeadsetIcon"],
   ["src/components/ui/Icons.tsx", "CameraIcon"],
-  ["src/components/ui/Icons.tsx", "ScreenIcon"]
+  ["src/components/ui/Icons.tsx", "ScreenIcon"],
+  ["src/components/ui/Icons.tsx", "ReplyIcon"]
 ];
 
 function declarationSource(path: string, name: string) {

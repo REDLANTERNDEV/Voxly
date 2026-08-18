@@ -6,23 +6,28 @@ describe("microphone test capture", () => {
   it("uses the selected input and shared input level for monitoring", () => {
     const source = readFileSync("src/lib/useMicrophoneTest.ts", "utf8");
 
-    assert.match(source, /openMicrophoneCapture\(\s*\{ deviceId: deviceIdRef\.current, noiseSuppression: noiseSuppressionRef\.current \},/);
-    assert.match(source, /createMicrophoneInput\(rawStream, volumeRef\.current\)/);
+    assert.match(source, /openMicrophoneCapture\(\s*\{ deviceId: deviceIdRef\.current \},/);
+    assert.match(source, /createMicrophoneInput\(rawStream, volumeRef\.current, \{\s*\n\s*noiseSuppression: noiseSuppressionRef\.current\s*\n\s*\}\)/);
     assert.match(source, /if \(sharedStreamRef\.current\) \{[\s\S]*setMonitorStream\(sharedStreamRef\.current\)/);
     assert.match(source, /setMonitorStream\(input\.monitorStream\)/);
     assert.match(source, /inputRef\.current\?\.setVolume\(volume\)/);
   });
 
-  it("restarts a self-owned capture for a device or a processing change", () => {
+  it("restarts a self-owned capture for a device change only", () => {
     const source = readFileSync("src/lib/useMicrophoneTest.ts", "utf8");
 
-    // Monitoring is where the setting is actually audible, so a processing
-    // change has to reopen the capture rather than keep the running one.
-    assert.match(source, /const change = microphoneCaptureChange\(/);
+    assert.match(source, /const change = microphoneCaptureChange\(\{ deviceId: deviceIdRef\.current \}, \{ deviceId \}\)/);
     // A test riding the shared voice monitor owns no input and must not open a
     // second device when the voice graph re-captures.
     assert.match(source, /if \(change === "none" \|\| !inputRef\.current\) return/);
     assert.match(source, /void start\(\);/);
+  });
+
+  it("hears a suppression change immediately, without reopening the device", () => {
+    const source = readFileSync("src/lib/useMicrophoneTest.ts", "utf8");
+
+    assert.match(source, /inputRef\.current\?\.setNoiseSuppression\(noiseSuppression\)/);
+    assert.doesNotMatch(source, /openMicrophoneCapture\([^)]*noiseSuppression/);
   });
 
   it("releases the running capture before reopening the device", () => {

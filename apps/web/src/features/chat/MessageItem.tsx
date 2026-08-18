@@ -5,11 +5,12 @@ import { ApiError } from "../../api.js";
 import { initial } from "../../app/presentation.js";
 import type { Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
-import { CloseIcon,MoreIcon } from "../../components/ui/Icons.js";
+import { CloseIcon,MoreIcon,ReplyIcon } from "../../components/ui/Icons.js";
 import { clampContextMenuPosition } from "../../lib/contextMenu.js";
 import { type LanguageCode } from "../../lib/i18n.js";
 import { messageContentSegments,messageEmbeds,type MessageEmbed } from "../../lib/messageEmbeds.js";
 import { formatMessageDateTime,formatMessageTimestamp,messageDeleteFailureCopy,messagePermissions } from "../../lib/messages.js";
+import { ReplyQuote } from "./ReplyQuote.js";
 export function MessageItem({
   message,
   user,
@@ -17,7 +18,9 @@ export function MessageItem({
   t,
   onUpdate,
   onDelete,
-  onSuppressEmbed
+  onSuppressEmbed,
+  onReply,
+  onJumpToMessage
 }: {
   message: ChatMessage;
   user: PublicUser;
@@ -26,6 +29,8 @@ export function MessageItem({
   onUpdate: (messageId: string, body: string) => Promise<void>;
   onDelete: (messageId: string) => Promise<void>;
   onSuppressEmbed: (messageId: string, embedKey: string) => Promise<void>;
+  onReply: (message: ChatMessage) => void;
+  onJumpToMessage: (messageId: string) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -42,7 +47,8 @@ export function MessageItem({
     messageUserId: message.userId
   });
   const isOwn = message.userId === user.id;
-  const hasActions = permissions.canEdit || permissions.canDelete;
+  // Anyone who can read a message can answer it, so every row has a menu.
+  const hasActions = true;
   const contentSegments = messageContentSegments(message.body);
   const embeds = messageEmbeds(message.body, message.suppressedEmbedKeys);
 
@@ -71,7 +77,7 @@ export function MessageItem({
       x,
       y,
       menuWidth: 160,
-      menuHeight: permissions.canEdit && permissions.canDelete ? 92 : 50,
+      menuHeight: 50 + (permissions.canEdit ? 42 : 0) + (permissions.canDelete ? 42 : 0),
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight
     }));
@@ -118,6 +124,7 @@ export function MessageItem({
 
   return (
     <article
+      data-message-id={message.id}
       className={`message ${isOwn ? "message-own" : ""}`}
       onContextMenu={hasActions ? (event) => {
         event.preventDefault();
@@ -138,6 +145,9 @@ export function MessageItem({
             ) : null}
           </span>
         </div>
+        {message.replyToMessageId ? (
+          <ReplyQuote reply={message.replyTo} t={t} onJump={onJumpToMessage} />
+        ) : null}
         {isEditing ? (
           <div className="message-edit">
             <textarea className="textarea" aria-label={t("common.edit")} value={draft} rows={2} onChange={(event) => setDraft(event.target.value)} />
@@ -184,6 +194,18 @@ export function MessageItem({
       </div>
       {!isEditing && hasActions ? (
         <button
+          className="message-reply-trigger"
+          type="button"
+          aria-label={t("room.replyTo", { nickname: message.nickname })}
+          title={t("room.reply")}
+          disabled={isBusy}
+          onClick={() => onReply(message)}
+        >
+          <ReplyIcon />
+        </button>
+      ) : null}
+      {hasActions ? (
+        <button
           ref={menuTriggerRef}
           className="message-menu-trigger"
           type="button"
@@ -207,6 +229,10 @@ export function MessageItem({
           aria-label={t("room.messageActions")}
           style={{ left: menuPosition.x, top: menuPosition.y }}
         >
+          <button role="menuitem" type="button" onClick={() => {
+            setMenuPosition(null);
+            onReply(message);
+          }}>{t("room.reply")}</button>
           {permissions.canEdit ? (
             <button role="menuitem" type="button" onClick={() => {
               setMenuPosition(null);

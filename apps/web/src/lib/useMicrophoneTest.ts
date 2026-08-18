@@ -45,13 +45,15 @@ export function useMicrophoneTest(
     }
     let rawStream: MediaStream | null = null;
     try {
-      // Releasing the running capture is what lets the requested processing
-      // take on the reopened device, so it is handed to the opener.
+      // The running capture is released first so the reopen is served by a new
+      // pipeline rather than the one already attached to the device.
       rawStream = await openMicrophoneCapture(
-        { deviceId: deviceIdRef.current, noiseSuppression: noiseSuppressionRef.current },
+        { deviceId: deviceIdRef.current },
         { release: () => previous?.dispose() }
       );
-      const input = createMicrophoneInput(rawStream, volumeRef.current);
+      const input = createMicrophoneInput(rawStream, volumeRef.current, {
+        noiseSuppression: noiseSuppressionRef.current
+      });
       if (generation !== generationRef.current) {
         input.dispose();
         return false;
@@ -74,22 +76,21 @@ export function useMicrophoneTest(
     inputRef.current?.setVolume(volume);
   }, [volume]);
 
-  // One effect for both capture inputs so a simultaneous device and suppression
-  // change restarts a self-owned capture once. A test riding the shared voice
-  // monitor has no input of its own and inherits the voice graph instead.
+  // Suppression is a value on the monitor's own graph, so the preference is
+  // audible immediately and only a device change reopens the capture. A test
+  // riding the shared voice monitor has no input of its own and inherits the
+  // voice graph, including its suppression stage.
   useEffect(() => {
-    const change = microphoneCaptureChange(
-      { deviceId: deviceIdRef.current, noiseSuppression: noiseSuppressionRef.current },
-      { deviceId, noiseSuppression }
-    );
-    deviceIdRef.current = deviceId;
     noiseSuppressionRef.current = noiseSuppression;
+    inputRef.current?.setNoiseSuppression(noiseSuppression);
+  }, [noiseSuppression]);
+
+  useEffect(() => {
+    const change = microphoneCaptureChange({ deviceId: deviceIdRef.current }, { deviceId });
+    deviceIdRef.current = deviceId;
     if (change === "none" || !inputRef.current) return;
-    // Both kinds of change reopen the device. Monitoring is the one place the
-    // suppression setting can actually be heard, so it has to reflect the
-    // preference rather than whatever the capture happened to open with.
     void start();
-  }, [deviceId, noiseSuppression, start]);
+  }, [deviceId, start]);
 
   useEffect(() => {
     const previousSharedStream = sharedStreamRef.current;

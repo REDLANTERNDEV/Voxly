@@ -782,6 +782,26 @@ describe("Voxly realtime MVP", () => {
     assert.deepEqual(await unbannedChanged, { serverId: "the-basement" });
   });
 
+  it("tells existing members about a new channel instead of waiting for their next reload", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ada");
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(memberSocket);
+    await waitForSocketRoom(app, memberSocket, "server:the-basement");
+
+    const changed = onceEvent<{ serverId: string; deletedRoomId?: string }>(memberSocket, "server:roomsChanged");
+    const response = await app.server.inject({
+      method: "POST",
+      url: "/api/servers/the-basement/rooms",
+      cookies: owner.cookies,
+      payload: { name: "announcements", kind: "text" }
+    });
+
+    assert.equal(response.statusCode, 201);
+    // Creation carries no room id: it is a refresh signal, not a forced move.
+    assert.deepEqual(await changed, { serverId: "the-basement" });
+  });
+
   it("forces members out and invalidates room lists when an active voice channel is deleted", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");

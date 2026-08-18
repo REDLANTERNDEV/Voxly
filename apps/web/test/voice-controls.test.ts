@@ -104,6 +104,38 @@ describe("voice control view state", () => {
     );
   });
 
+  it("shows a live camera in the rail, including alongside owner moderation", () => {
+    // A camera is a media fact rather than a moderation state, so the enforced
+    // deafen badge replaces the self mute/deafen icons but not this one.
+    assert.deepEqual(
+      sidebarVoiceStatusKeys({ mic: true, camera: true, screen: false, deafened: false, speaking: false }),
+      ["camera"]
+    );
+    assert.deepEqual(
+      sidebarVoiceStatusKeys({ mic: false, camera: true, screen: false, deafened: false, speaking: false }),
+      ["muted", "camera"]
+    );
+    assert.deepEqual(
+      sidebarVoiceStatusKeys(
+        { mic: false, camera: true, screen: false, deafened: true, speaking: false },
+        { muted: true, deafened: true }
+      ),
+      ["camera"]
+    );
+  });
+
+  it("keeps the camera indicator independent of screen sharing", () => {
+    // LIVE means screen sharing only; the two states are reported separately.
+    assert.deepEqual(
+      sidebarVoiceStatusKeys({ mic: true, camera: false, screen: true, deafened: false, speaking: false }),
+      []
+    );
+    assert.deepEqual(
+      sidebarVoiceStatusKeys({ mic: true, camera: true, screen: true, deafened: false, speaking: false }),
+      ["camera"]
+    );
+  });
+
   it("suppresses self indicators that duplicate owner moderation", () => {
     const selfDeafened = { mic: false, camera: false, screen: false, deafened: true, speaking: false };
 

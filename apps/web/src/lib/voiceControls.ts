@@ -1,4 +1,5 @@
 import type { VoiceMediaState,VoiceModerationState } from "@voxly/shared";
+import type { TranslationKey } from "./i18n.js";
 
 export type VoiceControlKey = "mic" | "deafen" | "camera" | "screenShare";
 
@@ -13,7 +14,18 @@ export type VoiceControlAction = "muteMic" | "unmuteMic" | "deafen" | "undeafen"
 
 export type VoiceControlTone = "neutral" | "danger";
 
-export type SidebarVoiceStatusKey = "deafened" | "muted";
+export type SidebarVoiceStatusKey = "deafened" | "muted" | "camera";
+
+/**
+ * Owner-enforced badges replace the self mute and deafen icons, but a live
+ * camera is an independent media fact rather than a moderation state, so it
+ * keeps its own neutral indicator regardless of moderation.
+ */
+export const sidebarVoiceStatusLabelKeys: Record<SidebarVoiceStatusKey, TranslationKey> = {
+  muted: "common.muted",
+  deafened: "common.deafened",
+  camera: "status.cameraOn"
+};
 
 export function createInitialVoiceControls(): VoiceControls {
   return {
@@ -97,9 +109,11 @@ export function voiceStatusLabels(media: VoiceMediaState) {
 }
 
 export function sidebarVoiceStatusKeys(media: VoiceMediaState, moderation?: VoiceModerationState): SidebarVoiceStatusKey[] {
-  if (moderation?.deafened) return [];
   const statuses: SidebarVoiceStatusKey[] = [];
-  if ((!media.mic || media.deafened) && !moderation?.muted) statuses.push("muted");
-  if (media.deafened) statuses.push("deafened");
+  if (!moderation?.deafened) {
+    if ((!media.mic || media.deafened) && !moderation?.muted) statuses.push("muted");
+    if (media.deafened) statuses.push("deafened");
+  }
+  if (media.camera) statuses.push("camera");
   return statuses;
 }

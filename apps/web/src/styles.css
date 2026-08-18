@@ -1339,6 +1339,155 @@ h3 {
   border-color: color-mix(in oklab, var(--accent), var(--bg) 72%);
 }
 
+/* An unacknowledged message reads as provisional without moving in the list, so
+   the row keeps its final geometry and only its weight changes on arrival. */
+.message-pending .message-body,
+.message-pending .avatar {
+  opacity: 0.6;
+}
+
+.message-pending.is-failed .message-body {
+  border-color: var(--danger);
+  opacity: 1;
+}
+
+.message-pending-state {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.message-pending.is-failed .message-pending-state {
+  color: var(--danger);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .message-pending:not(.is-failed) .message-pending-state {
+    animation: message-pending-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes message-pending-pulse {
+  50% { opacity: 0.45; }
+}
+
+/* Reply quote — one line, always. A quote that wraps competes with the message
+   it belongs to, so the excerpt is clipped rather than allowed to grow. */
+.reply-quote {
+  align-items: baseline;
+  background: none;
+  border: 0;
+  border-left: 2px solid color-mix(in oklab, var(--accent), var(--bg) 40%);
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-size: 0.8rem;
+  gap: 6px;
+  margin-bottom: 4px;
+  max-width: 100%;
+  padding: 1px 0 1px 8px;
+  text-align: start;
+}
+
+.reply-quote.is-missing {
+  border-left-color: var(--border);
+  cursor: default;
+  font-style: italic;
+}
+
+.reply-quote-author {
+  color: color-mix(in oklab, var(--accent), var(--text) 30%);
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.reply-quote-body {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.reply-quote:hover .reply-quote-body,
+button.reply-quote:focus-visible .reply-quote-body {
+  color: var(--text);
+}
+
+.composer-reply {
+  align-items: center;
+  background: color-mix(in oklab, var(--accent), var(--bg) 92%);
+  border-radius: var(--radius-sm, 8px);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+}
+
+.composer-reply-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.composer-reply .reply-quote {
+  margin-bottom: 0;
+}
+
+/* Sits beside the existing ellipsis and shares its reveal rules, so the pair
+   reads as one hover affordance rather than two competing ones. */
+.message-reply-trigger {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  opacity: 0;
+  padding: 0;
+  position: absolute;
+  right: 38px;
+  top: 3px;
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+  width: 28px;
+}
+
+.message:hover .message-reply-trigger,
+.message:focus-within .message-reply-trigger,
+.message-reply-trigger:focus-visible {
+  opacity: 1;
+}
+
+.message-reply-trigger:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.message-reply-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* A jump lands the reader somewhere they did not choose, so the destination
+   identifies itself briefly instead of leaving them to find the line. */
+.message.is-jump-target {
+  background: color-mix(in oklab, var(--accent), transparent 88%);
+  border-radius: var(--radius-sm, 8px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .message.is-jump-target {
+    animation: message-jump-target 1.6s ease-out forwards;
+  }
+}
+
+@keyframes message-jump-target {
+  to { background: transparent; }
+}
+
 .message-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1606,6 +1755,9 @@ h3 {
 
 .screen-stage:fullscreen {
   block-size: 100dvh;
+  /* The panel border is a seam against the page. In fullscreen there is no page
+     behind it, so it reads as a coloured line drawn around the video. */
+  border: 0;
   border-radius: 0;
   max-block-size: none;
   min-block-size: 100dvh;
@@ -1965,15 +2117,30 @@ h3 {
   z-index: var(--layer-popover);
 }
 
+/* Speaking is shown the way the left rail shows it: a ring that grows on the
+   avatar, not a filled row. The row itself only warms by a trace, so the state
+   fades in and out instead of the block of colour arriving all at once. */
 .participant-row.is-speaking {
-  background: var(--speaking-soft);
-  box-shadow: inset 3px 0 0 var(--speaking);
+  background: color-mix(in oklab, var(--speaking), transparent 94%);
+}
+
+.participant-row.is-speaking .call-avatar {
+  border-color: var(--speaking);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--speaking), transparent 68%);
 }
 
 .participant-row .call-avatar {
   font-size: 15px;
   height: 32px;
   width: 32px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .participant-row,
+  .voice-channel-user .avatar,
+  .participant-row .call-avatar {
+    transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+  }
 }
 
 .participant-copy {
@@ -3776,6 +3943,7 @@ h3 {
 
 @media (pointer: coarse) {
   .message-menu-trigger,
+  .message-reply-trigger,
   .sidebar-menu-trigger {
     opacity: 1;
   }

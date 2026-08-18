@@ -108,8 +108,10 @@ export async function fetchMessages(roomId: string, limit = 100) {
   return apiGet<MessagesResponse>(`/api/rooms/${roomId}/messages?limit=${encodeURIComponent(String(limit))}`);
 }
 
-export async function sendMessage(roomId: string, body: string) {
-  return apiPost<MessageResponse>(`/api/rooms/${roomId}/messages`, { body });
+export async function sendMessage(roomId: string, body: string, replyToMessageId?: string | null) {
+  return apiPost<MessageResponse>(`/api/rooms/${roomId}/messages`, replyToMessageId
+    ? { body, replyToMessageId }
+    : { body });
 }
 
 export async function updateMessage(roomId: string, messageId: string, body: string) {

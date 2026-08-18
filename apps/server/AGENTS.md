@@ -147,6 +147,20 @@ queries across endpoints.
   or treats client-side preview visibility as authorization.
 - Room and server deletion must remove or invalidate dependent live state and
   notify affected clients without leaking events to unrelated servers.
+- A reply stores only the id it answers. The quoted excerpt is resolved at read
+  time, joined on the same room and excluding deleted rows, so a quote can never
+  disclose a message the reader could not otherwise fetch, and an edit or a
+  rename is reflected without rewriting stored replies.
+- Reject a reply whose target is not a live message in the same room. Deleting
+  the target afterwards leaves the reply intact with a null quote; it does not
+  delete or rewrite the answer.
+- Excerpts are trimmed server-side. A full 2,000-character body must not be sent
+  again behind every reply to it.
+- Every change to a server's room list is announced on `server:roomsChanged` to
+  that server's room, creation included. Members hold a cached room list, so a
+  route that mutates rooms and stays silent leaves a new channel invisible until
+  each client reloads. Only a deletion carries `deletedRoomId`, which moves
+  viewers off a room that no longer exists.
 
 ## Atomic Voice and Realtime State
 

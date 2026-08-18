@@ -5,6 +5,7 @@ import staticPlugin from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { Server } from "socket.io";
 import { z } from "zod";
+import { replyExcerptMaxLength } from "@voxly/shared";
 import type {
   ChatMessage,
   ClientToServerEvents,
@@ -106,6 +107,10 @@ type MessageRow = {
   createdAt: string;
   editedAt: string | null;
   suppressedEmbedKeysJson: string | null;
+  replyToMessageId: string | null;
+  replyToUserId: string | null;
+  replyToNickname: string | null;
+  replyToBody: string | null;
 };
 
 type RoomRow = {
@@ -632,6 +637,10 @@ function registerRoutes(
     const room = createServerRoom(database, serverId, body.name, body.kind, position + 10);
     audit(database, owner.id, "room.created", null, serverId);
     database.save();
+    // Members already in the server hold a cached room list, so a new channel is
+    // invisible until they reload unless the same signal that covers deletion
+    // also covers creation.
+    io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
     return reply.code(201).send({ room });
   });
 
@@ -1148,13 +1157,16 @@ function registerRoutes(
           coalesce(server_members.nickname, users.nickname) as nickname,
           messages.body, messages.created_at as createdAt,
           messages.edited_at as editedAt,
-          messages.suppressed_embed_keys as suppressedEmbedKeysJson
+          messages.suppressed_embed_keys as suppressedEmbedKeysJson,
+          messages.reply_to_message_id as replyToMessageId,
+          ${replyJoinColumns}
          from messages
          join rooms on rooms.id = messages.room_id
          join server_members
            on server_members.server_id = rooms.server_id
           and server_members.user_id = messages.user_id
          join users on users.id = messages.user_id
+         ${replyJoinClause}
          where messages.room_id = ?
           and messages.deleted_at is null
          order by messages.created_at desc, messages.rowid desc
@@ -1173,7 +1185,10 @@ function registerRoutes(
       return;
     }
     const { roomId } = z.object({ roomId: z.string().min(1) }).parse(request.params);
-    const body = z.object({ body: z.string().trim().min(1).max(2000) }).parse(request.body);
+    const body = z.object({
+      body: z.string().trim().min(1).max(2000),
+      replyToMessageId: z.string().min(1).max(64).optional()
+    }).parse(request.body);
     const room = roomById(database.sqlite, roomId);
     if (!room) {
       return reply.code(404).send({ error: "room_not_found" });
@@ -1181,6 +1196,15 @@ function registerRoutes(
     if (!requireServerMember(database, room.serverId, user.id, reply)) return;
     if (room.kind !== "text") {
       return reply.code(400).send({ error: "messages_require_text_room" });
+    }
+
+    // Scoped to this room, so a reply can never quote a message the author
+    // could not otherwise read.
+    const replyTarget = body.replyToMessageId
+      ? messageById(database.sqlite, roomId, body.replyToMessageId)
+      : null;
+    if (body.replyToMessageId && !replyTarget) {
+      return reply.code(404).send({ error: "reply_target_not_found" });
     }
 
     const sender = serverPresenceUser(database.sqlite, room.serverId, user.id);
@@ -1193,13 +1217,22 @@ function registerRoutes(
       body: body.body,
       createdAt: new Date().toISOString(),
       editedAt: null,
-      suppressedEmbedKeys: []
+      suppressedEmbedKeys: [],
+      replyToMessageId: replyTarget?.id ?? null,
+      replyTo: replyTarget
+        ? {
+          messageId: replyTarget.id,
+          userId: replyTarget.userId,
+          nickname: replyTarget.nickname,
+          body: replyExcerpt(replyTarget.body)
+        }
+        : null
     };
 
     run(
       database.sqlite,
-      "insert into messages (id, room_id, user_id, body, created_at) values (?, ?, ?, ?, ?)",
-      [message.id, message.roomId, message.userId, message.body, message.createdAt]
+      "insert into messages (id, room_id, user_id, body, created_at, reply_to_message_id) values (?, ?, ?, ?, ?, ?)",
+      [message.id, message.roomId, message.userId, message.body, message.createdAt, message.replyToMessageId]
     );
     database.save();
     // Every active server member needs the lightweight notification so clients
@@ -2328,13 +2361,16 @@ function messageById(sqlite: DatabaseSync, roomId: string, messageId: string) {
       coalesce(server_members.nickname, users.nickname) as nickname,
       messages.body, messages.created_at as createdAt,
       messages.edited_at as editedAt,
-      messages.suppressed_embed_keys as suppressedEmbedKeysJson
+      messages.suppressed_embed_keys as suppressedEmbedKeysJson,
+      messages.reply_to_message_id as replyToMessageId,
+      ${replyJoinColumns}
      from messages
      join rooms on rooms.id = messages.room_id
      join server_members
        on server_members.server_id = rooms.server_id
       and server_members.user_id = messages.user_id
      join users on users.id = messages.user_id
+     ${replyJoinClause}
      where messages.room_id = ?
       and messages.id = ?
       and messages.deleted_at is null`,
@@ -2361,9 +2397,49 @@ function publicMessage(row: MessageRow): ChatMessage {
     body: row.body,
     createdAt: row.createdAt,
     editedAt: row.editedAt,
-    suppressedEmbedKeys
+    suppressedEmbedKeys,
+    replyToMessageId: row.replyToMessageId,
+    // Null while `replyToMessageId` is set means the quoted message has since
+    // been deleted. The reply itself stays; only the excerpt goes.
+    replyTo: row.replyToMessageId !== null && row.replyToUserId !== null
+      ? {
+        messageId: row.replyToMessageId,
+        userId: row.replyToUserId,
+        nickname: row.replyToNickname ?? "",
+        body: replyExcerpt(row.replyToBody ?? "")
+      }
+      : null
   };
 }
+
+/**
+ * The quote strip is one line. Trimming server-side keeps a 2,000-character
+ * message from being sent in full behind every reply to it.
+ */
+function replyExcerpt(body: string) {
+  const collapsed = body.replace(/\s+/g, " ").trim();
+  return collapsed.length > replyExcerptMaxLength
+    ? `${collapsed.slice(0, replyExcerptMaxLength)}…`
+    : collapsed;
+}
+
+/**
+ * A reply may only quote a live message in the same room, so the join is scoped
+ * to the room rather than trusting the stored id. A quote that escaped its room
+ * would disclose another room's content to someone who cannot read it.
+ */
+const replyJoinColumns = `quoted.user_id as replyToUserId,
+      coalesce(quoted_members.nickname, quoted_users.nickname) as replyToNickname,
+      quoted.body as replyToBody`;
+
+const replyJoinClause = `left join messages quoted
+       on quoted.id = messages.reply_to_message_id
+      and quoted.room_id = messages.room_id
+      and quoted.deleted_at is null
+     left join users quoted_users on quoted_users.id = quoted.user_id
+     left join server_members quoted_members
+       on quoted_members.server_id = rooms.server_id
+      and quoted_members.user_id = quoted.user_id`;
 
 function roomById(sqlite: DatabaseSync, roomId: string) {
   return one<RoomRow>(

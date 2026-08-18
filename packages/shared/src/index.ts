@@ -17,6 +17,22 @@ export interface RoomSummary {
   position: number;
 }
 
+/**
+ * The quoted excerpt shown above a reply. Resolved by the server at read time
+ * rather than copied at write time, so an edited original is quoted as it now
+ * reads and a nickname change follows the same rename path as every other
+ * message.
+ */
+export interface ChatMessageReply {
+  messageId: string;
+  userId: string;
+  nickname: string;
+  body: string;
+}
+
+/** Longest quoted excerpt the server will send for a reply. */
+export const replyExcerptMaxLength = 160;
+
 export interface ChatMessage {
   id: string;
   roomId: string;
@@ -26,6 +42,13 @@ export interface ChatMessage {
   createdAt: string;
   editedAt: string | null;
   suppressedEmbedKeys: string[];
+  /**
+   * Present whenever this message was composed as a reply, including when the
+   * message it answers has since been deleted. `replyTo` is what distinguishes
+   * the two: it is null for a reply whose target is gone.
+   */
+  replyToMessageId: string | null;
+  replyTo: ChatMessageReply | null;
 }
 
 export interface PresenceUser {
@@ -126,7 +149,12 @@ export interface ServerToClientEvents {
   "server:directoryChanged": (payload: { serverId: string }) => void;
   "server:memberUpdated": (payload: { serverId: string; user: PresenceUser }) => void;
   "server:updated": (payload: { serverId: string; name: string }) => void;
-  "server:roomsChanged": (payload: { serverId: string; deletedRoomId: string }) => void;
+  /**
+   * A server's room list changed. `deletedRoomId` is present only for a
+   * deletion so viewers can move off a room that no longer exists; creation and
+   * every other reordering carry no id and are a plain refresh signal.
+   */
+  "server:roomsChanged": (payload: { serverId: string; deletedRoomId?: string }) => void;
   "server:deleted": (payload: { serverId: string }) => void;
   "rtc:signal": (payload: { roomId: string; fromUserId: string; signal: RtcSignal }) => void;
 }

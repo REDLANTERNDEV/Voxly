@@ -48,4 +48,15 @@ describe("server and channel deletion UI", () => {
     assert.match(app, /next\.on\("server:deleted"/);
     assert.match(app, /deletedRoomId/);
   });
+
+  it("treats a room-list change without a deleted id as a plain refresh", () => {
+    // Channel creation reuses this event, so the handler must not assume a
+    // deletion and must leave the reader where they are.
+    const workspace = readFileSync("src/app/useWorkspaceController.ts", "utf8");
+    const realtime = readFileSync("src/app/useRealtimeSync.ts", "utf8");
+
+    assert.match(workspace, /refreshRooms = useCallback\(async \(serverId: string, deletedRoomId\?: string\)/);
+    assert.match(realtime, /roomsChanged\(serverId: string, deletedRoomId: string \| undefined\)/);
+    assert.match(workspace, /currentRoute\.roomId === deletedRoomId/);
+  });
 });
