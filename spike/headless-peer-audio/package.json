@@ -1,0 +1,25 @@
+{
+  "name": "@voxly/spike-headless-peer-audio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway proof that a headless Node peer can be heard in a Voxly voice room. Not part of the workspace; not for merging.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/*.test.js\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prove": "npm run build && node dist/src/prove.js",
+    "play": "npm run build && node dist/src/play.js",
+    "listen": "npm run build && node dist/src/listen.js"
+  },
+  "dependencies": {
+    "@voxly/shared": "file:../../packages/shared",
+    "opusscript": "^0.1.1",
+    "socket.io-client": "^4.8.1",
+    "werift": "^0.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "typescript": "^5.9.2"
+  }
+}
