@@ -17,17 +17,8 @@ import type {
   RoomSummary,
   ClientToServerEvents,
   PresenceUser,
-  RtcSignalAck,
   ServerToClientEvents,
-  VisualMediaKind,
-  VisualTarget,
-  VoiceJoinRequest,
-  VoiceSetVisualSubscriptionsAck,
-  VoiceMediaState,
-  VoiceMemberState,
-  VoiceModerationState,
-  VoiceSetMediaAck,
-  VoiceSnapshot
+  VoiceModerationState
 } from "@voxly/shared";
 import type { DatabaseSync } from "node:sqlite";
 import type { AnalyticsConfig } from "./analytics.js";
@@ -38,7 +29,6 @@ import { all, defaultServerId, dumpTables, one, openDatabase, run, type VoxlyDat
 import {
   activateServerMembership,
   activeServerIds,
-  activeServerMembership,
   hasActiveServerMembership,
   isServerOwner,
   mayCreateInvites,
@@ -51,9 +41,11 @@ import {
   serverPresenceUser,
   serverPresenceUserIncludingBanned,
   serverPresenceUsers,
-  type OnlineRegistry,
-  type ServerMemberRow
+  type OnlineRegistry
 } from "./members.js";
+import { publicRoom, roomColumns, roomById, type RoomRow } from "./rooms.js";
+import { roomIdPayloadSchema, safeSocketHandler, socketsForUser } from "./socket.js";
+import { createVoiceRealtime } from "./voice.js";
 import type { TurnstileConfig } from "./turnstile.js";
 import type { RtcConfigProvider } from "./rtcConfig.js";
 
@@ -134,19 +126,6 @@ type MessageRow = {
   replyToBody: string | null;
 };
 
-type RoomRow = {
-  id: string;
-  serverId: string;
-  name: string;
-  kind: "text" | "voice";
-  /** SQLite has no boolean; `publicRoom` is what turns this into the DTO. */
-  isAfkFlag: number;
-  position: number;
-};
-
-type VoiceRoomMembership = Map<string, VoiceMemberState>;
-type VisualSubscriptions = Map<string, Map<string, Set<VisualMediaKind>>>;
-
 interface RealtimeModeration {
   disconnectVoice: (serverId: string, roomId: string, userId: string) => boolean;
   moveVoice: (serverId: string, userId: string, targetRoomId: string) => boolean;
@@ -160,68 +139,11 @@ interface RealtimeModeration {
   updateVoiceModeration: (serverId: string, userId: string, moderation: VoiceModerationState) => void;
 }
 
-const visualSubscriptionsPayloadSchema = z.object({
-  roomId: z.string().min(1),
-  targets: z.array(z.object({
-    publisherUserId: z.string().min(1),
-    kind: z.enum(["camera", "screen"])
-  }).strict()).max(6)
-}).strict();
-
-/**
- * Socket payloads are attacker-controlled and arrive without Fastify's schema layer.
- *
- * A handler that dereferences an unvalidated payload — or calls an ack the client
- * simply omitted — throws inside a Socket.IO listener, which Socket.IO does not
- * catch. That terminates the process and drops every active call, so each event
- * validates its payload up front and treats the ack as optional.
- */
-const roomIdPayloadSchema = z.string().min(1);
-
-const setMediaStatePayloadSchema = z.object({
-  roomId: z.string().min(1),
-  media: z.object({
-    mic: z.boolean(),
-    camera: z.boolean(),
-    screen: z.boolean(),
-    deafened: z.boolean(),
-    speaking: z.boolean()
-  }).partial()
-}).strict();
-
-const rtcSignalPayloadSchema = z.object({
-  roomId: z.string().min(1),
-  toUserId: z.string().min(1),
-  signal: z.record(z.string(), z.unknown())
-}).strict();
-
-/**
- * Last-resort guard so one unhandled throw cannot end every user's session.
- *
- * Individual handlers still validate their own input; this exists so a future
- * handler that forgets cannot repeat the same outage.
- */
 /** Fastify attaches `statusCode` to framework errors; anything without one is a fault. */
 function errorStatusCode(error: unknown) {
   const candidate = (error as { statusCode?: unknown } | null)?.statusCode;
   return typeof candidate === "number" ? candidate : 500;
 }
-
-function safeSocketHandler<Args extends unknown[]>(event: string, handler: (...args: Args) => void) {
-  return (...args: Args) => {
-    try {
-      handler(...args);
-    } catch (cause) {
-      console.error(`socket handler failed for ${event}`, cause);
-    }
-  };
-}
-
-function callAck(ack: unknown, response: unknown) {
-  if (typeof ack === "function") (ack as (value: unknown) => void)(response);
-}
-
-const visualPublisherLimit = 3;
 
 /**
  * Resource ceilings.
@@ -1459,8 +1381,7 @@ function registerRealtime(
   database: VoxlyDatabase
 ): RealtimeModeration {
   const online: OnlineRegistry = new Map();
-  const voiceMembership = new Map<string, VoiceRoomMembership>();
-  const visualSubscriptions = new Map<string, VisualSubscriptions>();
+  const voice = createVoiceRealtime(io, database);
 
   io.use((socket, next) => {
     const sessionToken = parseCookieHeader(socket.handshake.headers.cookie ?? "")[sessionCookieName];
@@ -1532,149 +1453,10 @@ function registerRealtime(
       socket.leave(`room:${parsed.data}`);
     }));
 
-    socket.on("voice:join", safeSocketHandler("voice:join", (payload, ack) => {
-      if (typeof ack !== "function") return;
-
-      const candidate = payload as Partial<VoiceJoinRequest> | null;
-      const roomId = typeof candidate?.roomId === "string" ? candidate.roomId : "";
-      const room = roomById(database.sqlite, roomId);
-      if (!room || room.kind !== "voice") {
-        ack({ ok: false, error: "room_not_found" });
-        return;
-      }
-      const membership = activeServerMembership(database.sqlite, room.serverId, user.userId);
-      if (!membership) {
-        ack({ ok: false, error: "forbidden" });
-        return;
-      }
-      const roomUser = serverPresenceUser(database.sqlite, room.serverId, user.userId);
-      if (!roomUser) {
-        ack({ ok: false, error: "forbidden" });
-        return;
-      }
-
-      const requested = candidate?.media as Partial<VoiceMediaState> | undefined;
-      const moderation = voiceModeration(membership);
-      const media = normalizeVoiceMedia({
-        mic: requested?.mic === true,
-        camera: requested?.camera === true,
-        screen: requested?.screen === true,
-        deafened: requested?.deafened === true,
-        speaking: false
-      }, moderation, room);
-      const members = ensureVoiceRoom(voiceMembership, roomId);
-      if (visualPublisherCount(members, user.userId, media) > visualPublisherLimit) {
-        ack({ ok: false, error: "visual_limit_reached" });
-        return;
-      }
-
-      for (const [activeRoomId, members] of voiceMembership) {
-        if (activeRoomId !== roomId && members.has(user.userId)) {
-          leaveVoiceMember(io, database, activeRoomId, user.userId, voiceMembership, visualSubscriptions);
-        }
-      }
-      socket.join(`voice:${roomId}`);
-      const state: VoiceMemberState = { user: roomUser, media, moderation };
-      members.set(user.userId, state);
-      ack({ ok: true, state });
-      emitVoiceSnapshot(io, database, roomId, members);
-      socket.to(`server:${room.serverId}`).emit("voice:joined", { roomId, user: roomUser });
-    }));
-
-    socket.on("voice:leave", safeSocketHandler("voice:leave", (roomId) => {
-      const parsed = roomIdPayloadSchema.safeParse(roomId);
-      if (!parsed.success) return;
-      leaveVoice(io, database, socket, parsed.data, user.userId, voiceMembership, visualSubscriptions);
-    }));
-
-    socket.on("voice:snapshot", safeSocketHandler("voice:snapshot", (roomId, ack) => {
-      const parsed = roomIdPayloadSchema.safeParse(roomId);
-      if (!parsed.success) {
-        callAck(ack, { roomId: typeof roomId === "string" ? roomId : "", members: [] });
-        return;
-      }
-      const room = roomById(database.sqlite, parsed.data);
-      if (!room || !hasActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
-        callAck(ack, { roomId: parsed.data, members: [] });
-        return;
-      }
-      callAck(ack, voiceSnapshot(parsed.data, voiceMembership.get(parsed.data), socket.rooms.has(`voice:${parsed.data}`)));
-    }));
-
-    socket.on("voice:setMediaState", safeSocketHandler("voice:setMediaState", (payload, ack) => {
-      const parsed = setMediaStatePayloadSchema.safeParse(payload);
-      if (!parsed.success) {
-        callAck(ack, { ok: false, error: "room_not_found" });
-        return;
-      }
-      const room = roomById(database.sqlite, parsed.data.roomId);
-      if (!room || room.kind !== "voice") {
-        callAck(ack, { ok: false, error: "room_not_found" });
-        return;
-      }
-      const members = voiceMembership.get(parsed.data.roomId);
-      const current = members?.get(user.userId);
-      if (!members || !current) {
-        callAck(ack, { ok: false, error: "not_in_voice_room" });
-        return;
-      }
-      const membership = activeServerMembership(database.sqlite, room.serverId, user.userId);
-      if (!membership) {
-        callAck(ack, { ok: false, error: "not_in_voice_room" });
-        return;
-      }
-      const moderation = voiceModeration(membership);
-      const nextMedia = normalizeVoiceMedia({ ...current.media, ...parsed.data.media }, moderation, room);
-      if (visualPublisherCount(members, user.userId, nextMedia) > visualPublisherLimit) {
-        callAck(ack, { ok: false, error: "visual_limit_reached" });
-        return;
-      }
-      const nextState = { ...current, media: nextMedia, moderation };
-      members.set(user.userId, nextState);
-      clearUnavailableVisualSubscriptions(
-        io,
-        parsed.data.roomId,
-        user.userId,
-        nextMedia,
-        visualSubscriptions
-      );
-      emitVoiceSnapshot(io, database, parsed.data.roomId, members);
-      callAck(ack, { ok: true, state: nextState });
-    }));
-
-    socket.on("voice:setVisualSubscriptions", safeSocketHandler("voice:setVisualSubscriptions", (payload, ack) => {
-      const parsed = visualSubscriptionsPayloadSchema.safeParse(payload);
-      if (!parsed.success) {
-        callAck(ack, { ok: false, error: "invalid_payload" });
-        return;
-      }
-      const response = setVisualSubscriptions(
-        io,
-        database,
-        voiceMembership,
-        visualSubscriptions,
-        user.userId,
-        parsed.data
-      );
-      callAck(ack, response);
-    }));
-
-    socket.on("rtc:signal", safeSocketHandler("rtc:signal", (payload, ack) => {
-      const parsed = rtcSignalPayloadSchema.safeParse(payload);
-      if (!parsed.success) {
-        callAck(ack, { ok: false, error: "room_not_found" });
-        return;
-      }
-      const response = forwardRtcSignal(io, database, voiceMembership, user.userId, parsed.data);
-      callAck(ack, response);
-    }));
+    voice.registerHandlers(socket, user);
 
     socket.on("disconnect", () => {
-      for (const [roomId, members] of voiceMembership) {
-        if (members.has(user.userId)) {
-          leaveVoice(io, database, socket, roomId, user.userId, voiceMembership, visualSubscriptions);
-        }
-      }
+      voice.leaveAllRooms(socket, user.userId);
 
       const current = online.get(user.userId);
       if (!current) {
@@ -1699,48 +1481,21 @@ function registerRealtime(
   });
 
   return {
-    disconnectVoice(serverId, roomId, userId) {
-      const room = roomById(database.sqlite, roomId);
-      if (!room || room.serverId !== serverId || !voiceMembership.get(roomId)?.has(userId)) {
-        return false;
-      }
-      leaveVoiceMember(io, database, roomId, userId, voiceMembership, visualSubscriptions);
-      emitVoiceForceLeave(io, userId, roomId, "owner_disconnect");
-      return true;
-    },
-    moveVoice(serverId, userId, targetRoomId) {
-      // The server cannot join on a member's behalf: the client owns the peer
-      // connections and the capture. So the move is an instruction, and the
-      // ordinary join path carries it out — including the AFK room's forced
-      // mute and the automatic leave of the previous room.
-      const currentRoomId = [...voiceMembership.entries()]
-        .find(([roomId, members]) => members.has(userId) && roomById(database.sqlite, roomId)?.serverId === serverId)?.[0];
-      if (!currentRoomId || currentRoomId === targetRoomId) return false;
-      for (const socket of io.sockets.sockets.values()) {
-        const socketUser = socket.data.user as PresenceUser | undefined;
-        if (socketUser?.userId === userId) socket.emit("voice:moveTo", { roomId: targetRoomId });
-      }
-      return true;
-    },
+    // Routes speak the moderation vocabulary; voice.ts owns the implementation.
+    disconnectVoice: (serverId, roomId, userId) => voice.disconnectMember(serverId, roomId, userId),
+    moveVoice: (serverId, userId, targetRoomId) => voice.moveMember(serverId, userId, targetRoomId),
+    updateVoiceModeration: (serverId, userId, moderation) => voice.updateModeration(serverId, userId, moderation),
     disconnectUser(userId) {
-      for (const [roomId, members] of voiceMembership) {
-        if (members.has(userId)) {
-          leaveVoiceMember(io, database, roomId, userId, voiceMembership, visualSubscriptions);
-          emitVoiceForceLeave(io, userId, roomId, "server_access_revoked");
-        }
-      }
-      for (const socket of io.sockets.sockets.values()) {
-        const socketUser = socket.data.user as PresenceUser | undefined;
-        if (socketUser?.userId === userId) socket.disconnect(true);
-      }
+      voice.forceLeave(userId, "server_access_revoked");
+      for (const socket of socketsForUser(io, userId)) socket.disconnect(true);
     },
     deleteRoom(_serverId, roomId) {
-      deleteRealtimeVoiceRoom(io, roomId, voiceMembership, visualSubscriptions, "room_deleted");
+      voice.deleteRoom(roomId, "room_deleted");
       for (const socket of io.sockets.sockets.values()) socket.leave(`room:${roomId}`);
     },
     deleteServer(serverId, roomIds, affectedUserIds) {
       for (const roomId of roomIds) {
-        deleteRealtimeVoiceRoom(io, roomId, voiceMembership, visualSubscriptions, "server_deleted");
+        voice.deleteRoom(roomId, "server_deleted");
       }
       const affected = new Set(affectedUserIds);
       for (const socket of io.sockets.sockets.values()) {
@@ -1755,10 +1510,7 @@ function registerRealtime(
       const entry = online.get(userId);
       if (!entry) return;
 
-      const userSockets = [...io.sockets.sockets.values()].filter((socket) => {
-        const socketUser = socket.data.user as PresenceUser | undefined;
-        return socketUser?.userId === userId;
-      });
+      const userSockets = socketsForUser(io, userId);
       await Promise.all(userSockets.map((socket) => socket.join(`server:${serverId}`)));
 
       const users = serverPresenceUsers(database.sqlite, online, serverId);
@@ -1776,25 +1528,9 @@ function registerRealtime(
     refreshMemberIdentity(serverId, userId) {
       const updated = serverPresenceUserIncludingBanned(database.sqlite, serverId, userId);
       if (!updated) return null;
-      for (const [roomId, members] of voiceMembership) {
-        const room = roomById(database.sqlite, roomId);
-        const current = members.get(userId);
-        if (!room || room.serverId !== serverId || !current) continue;
-        members.set(userId, { ...current, user: updated });
-        emitVoiceSnapshot(io, database, roomId, members);
-      }
+      voice.refreshMemberIdentity(serverId, userId, updated);
       io.to(`server:${serverId}`).emit("server:memberUpdated", { serverId, user: updated });
       return updated;
-    },
-    updateVoiceModeration(serverId, userId, moderation) {
-      for (const [roomId, members] of voiceMembership) {
-        const room = roomById(database.sqlite, roomId);
-        const current = members.get(userId);
-        if (!room || room.serverId !== serverId || !current) continue;
-        const media = normalizeVoiceMedia(current.media, moderation, room);
-        members.set(userId, { ...current, media, moderation });
-        emitVoiceSnapshot(io, database, roomId, members);
-      }
     },
     revokeServerAccess(serverId, userId, reason) {
       const textRoomIds = all<{ id: string }>(
@@ -1802,16 +1538,8 @@ function registerRealtime(
         "select id from rooms where server_id = ? and kind = 'text'",
         [serverId]
       ).map((room) => room.id);
-      for (const [roomId, members] of voiceMembership) {
-        const room = roomById(database.sqlite, roomId);
-        if (room?.serverId === serverId && members.has(userId)) {
-          leaveVoiceMember(io, database, roomId, userId, voiceMembership, visualSubscriptions);
-          emitVoiceForceLeave(io, userId, roomId, "server_access_revoked");
-        }
-      }
-      for (const socket of io.sockets.sockets.values()) {
-        const socketUser = socket.data.user as PresenceUser | undefined;
-        if (socketUser?.userId !== userId) continue;
+      voice.forceLeave(userId, "server_access_revoked", serverId);
+      for (const socket of socketsForUser(io, userId)) {
         socket.leave(`server:${serverId}`);
         for (const roomId of textRoomIds) {
           socket.leave(`room:${roomId}`);
@@ -1821,242 +1549,6 @@ function registerRealtime(
       io.to(`server:${serverId}`).emit("presence:serverOffline", { serverId, userId });
     }
   };
-}
-
-function emitVoiceForceLeave(
-  io: Server<ClientToServerEvents, ServerToClientEvents>,
-  userId: string,
-  roomId: string,
-  reason: "joined_another_room" | "owner_disconnect" | "server_access_revoked" | "room_deleted" | "server_deleted"
-) {
-  for (const socket of io.sockets.sockets.values()) {
-    const socketUser = socket.data.user as PresenceUser | undefined;
-    if (socketUser?.userId === userId) socket.emit("voice:forceLeave", { roomId, reason });
-  }
-}
-
-function deleteRealtimeVoiceRoom(
-  io: Server<ClientToServerEvents, ServerToClientEvents>,
-  roomId: string,
-  voiceMembership: Map<string, VoiceRoomMembership>,
-  visualSubscriptions: Map<string, VisualSubscriptions>,
-  reason: "room_deleted" | "server_deleted"
-) {
-  const memberUserIds = new Set(voiceMembership.get(roomId)?.keys() ?? []);
-  voiceMembership.delete(roomId);
-  visualSubscriptions.delete(roomId);
-  for (const socket of io.sockets.sockets.values()) {
-    const socketUser = socket.data.user as PresenceUser | undefined;
-    socket.leave(`voice:${roomId}`);
-    if (socketUser && memberUserIds.has(socketUser.userId)) {
-      socket.emit("voice:forceLeave", { roomId, reason });
-    }
-  }
-}
-
-function leaveVoice(
-  io: Server<ClientToServerEvents, ServerToClientEvents>,
-  database: VoxlyDatabase,
-  socket: Parameters<Parameters<Server["on"]>[1]>[0],
-  roomId: string,
-  userId: string,
-  voiceMembership: Map<string, VoiceRoomMembership>,
-  visualSubscriptions: Map<string, VisualSubscriptions>
-) {
-  socket.leave(`voice:${roomId}`);
-  leaveVoiceMember(io, database, roomId, userId, voiceMembership, visualSubscriptions);
-}
-
-function leaveVoiceMember(
-  io: Server<ClientToServerEvents, ServerToClientEvents>,
-  database: VoxlyDatabase,
-  roomId: string,
-  userId: string,
-  voiceMembership: Map<string, VoiceRoomMembership>,
-  visualSubscriptions: Map<string, VisualSubscriptions>
-) {
-  const members = voiceMembership.get(roomId);
-  if (!members?.has(userId)) return;
-  clearViewerVisualSubscriptions(io, roomId, userId, visualSubscriptions);
-  clearPublisherVisualSubscriptions(roomId, userId, visualSubscriptions);
-  members.delete(userId);
-  if (members.size === 0) {
-    voiceMembership.delete(roomId);
-  }
-  for (const candidate of io.sockets.sockets.values()) {
-    const candidateUser = candidate.data.user as PresenceUser | undefined;
-    if (candidateUser?.userId === userId) candidate.leave(`voice:${roomId}`);
-  }
-  const room = roomById(database.sqlite, roomId);
-  if (!room) return;
-  emitVoiceSnapshot(io, database, roomId, members);
-  io.to(`server:${room.serverId}`).emit("voice:left", { roomId, userId });
-}
-
-function emitVoiceSnapshot(
-  io: Server<ClientToServerEvents, ServerToClientEvents>,
-  database: VoxlyDatabase,
-  roomId: string,
-  members: VoiceRoomMembership | undefined
-) {
-  const room = roomById(database.sqlite, roomId);
-  if (!room) return;
-  const voiceRoom = `voice:${roomId}`;
-  io.to(voiceRoom).emit("voice:snapshot", voiceSnapshot(roomId, members, true));
-  io.to(`server:${room.serverId}`).except(voiceRoom).emit("voice:snapshot", voiceSnapshot(roomId, members, false));
-}
-
-function setVisualSubscriptions(
-  io: Server<ClientToServerEvents, ServerToClientEvents>,
-  database: VoxlyDatabase,
-  voiceMembership: Map<string, VoiceRoomMembership>,
-  visualSubscriptions: Map<string, VisualSubscriptions>,
-  viewerUserId: string,
-  payload: { roomId: string; targets: VisualTarget[] }
-): VoiceSetVisualSubscriptionsAck {
-  const room = roomById(database.sqlite, payload.roomId);
-  if (!room || room.kind !== "voice") {
-    return { ok: false, error: "room_not_found" };
-  }
-  const members = voiceMembership.get(payload.roomId);
-  if (!members?.has(viewerUserId)) {
-    return { ok: false, error: "not_in_voice_room" };
-  }
-
-  const targets = uniqueVisualTargets(payload.targets);
-  for (const target of targets) {
-    const publisher = members.get(target.publisherUserId);
-    if (!publisher || target.publisherUserId === viewerUserId) {
-      return { ok: false, error: "target_not_in_voice_room" };
-    }
-    if (!publisher.media[target.kind]) {
-      return { ok: false, error: "target_visual_unavailable" };
-    }
-  }
-
-  const roomSubscriptions = visualSubscriptions.get(payload.roomId) ?? new Map<string, Map<string, Set<VisualMediaKind>>>();
-  const previous = roomSubscriptions.get(viewerUserId) ?? new Map<string, Set<VisualMediaKind>>();
-  const next = new Map<string, Set<VisualMediaKind>>();
-  for (const target of targets) {
-    const kinds = next.get(target.publisherUserId) ?? new Set<VisualMediaKind>();
-    kinds.add(target.kind);
-    next.set(target.publisherUserId, kinds);
-  }
-
-  const publishers = new Set([...previous.keys(), ...next.keys()]);
-  for (const publisherUserId of publishers) {
-    const previousKinds = previous.get(publisherUserId) ?? new Set<VisualMediaKind>();
-    const nextKinds = next.get(publisherUserId) ?? new Set<VisualMediaKind>();
-    if (!sameVisualKinds(previousKinds, nextKinds) || nextKinds.size > 0) {
-      emitVisualSubscriberState(io, payload.roomId, publisherUserId, viewerUserId, [...nextKinds]);
-    }
-  }
-
-  if (next.size === 0) {
-    roomSubscriptions.delete(viewerUserId);
-  } else {
-    roomSubscriptions.set(viewerUserId, next);
-  }
-  if (roomSubscriptions.size === 0) {
-    visualSubscriptions.delete(payload.roomId);
-  } else {
-    visualSubscriptions.set(payload.roomId, roomSubscriptions);
-  }
-
-  return { ok: true, targets };
-}
-
-function clearUnavailableVisualSubscriptions(
-  io: Server<ClientToServerEvents, ServerToClientEvents>,
-  roomId: string,
-  publisherUserId: string,
-  media: VoiceMediaState,
-  visualSubscriptions: Map<string, VisualSubscriptions>
-) {
-  const roomSubscriptions = visualSubscriptions.get(roomId);
-  if (!roomSubscriptions) return;
-
-  for (const [viewerUserId, subscriptions] of roomSubscriptions) {
-    const currentKinds = subscriptions.get(publisherUserId);
-    if (!currentKinds) continue;
-    const nextKinds = new Set([...currentKinds].filter((kind) => media[kind]));
-    if (sameVisualKinds(currentKinds, nextKinds)) continue;
-    if (nextKinds.size === 0) {
-      subscriptions.delete(publisherUserId);
-    } else {
-      subscriptions.set(publisherUserId, nextKinds);
-    }
-    emitVisualSubscriberState(io, roomId, publisherUserId, viewerUserId, [...nextKinds]);
-  }
-
-  cleanupVisualSubscriptions(roomId, visualSubscriptions);
-}
-
-function clearViewerVisualSubscriptions(
-  io: Server<ClientToServerEvents, ServerToClientEvents>,
-  roomId: string,
-  viewerUserId: string,
-  visualSubscriptions: Map<string, VisualSubscriptions>
-) {
-  const roomSubscriptions = visualSubscriptions.get(roomId);
-  const subscriptions = roomSubscriptions?.get(viewerUserId);
-  if (!roomSubscriptions || !subscriptions) return;
-  for (const publisherUserId of subscriptions.keys()) {
-    emitVisualSubscriberState(io, roomId, publisherUserId, viewerUserId, []);
-  }
-  roomSubscriptions.delete(viewerUserId);
-  cleanupVisualSubscriptions(roomId, visualSubscriptions);
-}
-
-function clearPublisherVisualSubscriptions(
-  roomId: string,
-  publisherUserId: string,
-  visualSubscriptions: Map<string, VisualSubscriptions>
-) {
-  const roomSubscriptions = visualSubscriptions.get(roomId);
-  if (!roomSubscriptions) return;
-  for (const subscriptions of roomSubscriptions.values()) {
-    subscriptions.delete(publisherUserId);
-  }
-  cleanupVisualSubscriptions(roomId, visualSubscriptions);
-}
-
-function cleanupVisualSubscriptions(roomId: string, visualSubscriptions: Map<string, VisualSubscriptions>) {
-  const roomSubscriptions = visualSubscriptions.get(roomId);
-  if (!roomSubscriptions) return;
-  for (const [viewerUserId, subscriptions] of roomSubscriptions) {
-    if (subscriptions.size === 0) roomSubscriptions.delete(viewerUserId);
-  }
-  if (roomSubscriptions.size === 0) visualSubscriptions.delete(roomId);
-}
-
-function emitVisualSubscriberState(
-  io: Server<ClientToServerEvents, ServerToClientEvents>,
-  roomId: string,
-  publisherUserId: string,
-  viewerUserId: string,
-  subscribedKinds: VisualMediaKind[]
-) {
-  for (const socket of io.sockets.sockets.values()) {
-    const user = socket.data.user as PresenceUser | undefined;
-    if (user?.userId === publisherUserId && socket.rooms.has(`voice:${roomId}`)) {
-      socket.emit("voice:visualSubscriberState", { roomId, viewerUserId, subscribedKinds });
-    }
-  }
-}
-
-function uniqueVisualTargets(targets: VisualTarget[]) {
-  const seen = new Set<string>();
-  return targets.filter((target) => {
-    const key = `${target.publisherUserId}:${target.kind}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function sameVisualKinds(left: Set<VisualMediaKind>, right: Set<VisualMediaKind>) {
-  return left.size === right.size && [...left].every((kind) => right.has(kind));
 }
 
 function createUser(database: VoxlyDatabase, nickname: string, role: "owner" | "member") {
@@ -2076,29 +1568,9 @@ function createUser(database: VoxlyDatabase, nickname: string, role: "owner" | "
   return user;
 }
 
-function voiceModeration(membership: ServerMemberRow): VoiceModerationState {
-  return {
-    muted: Boolean(membership.moderator_muted),
-    deafened: Boolean(membership.moderator_deafened)
-  };
-}
-
 /** Legacy rows carry no timeout, so the default is applied on read. */
 function afkTimeoutOf(stored: number | null | undefined): AfkTimeoutMinutes {
   return isAfkTimeoutMinutes(stored) ? stored : DEFAULT_AFK_TIMEOUT_MINUTES;
-}
-
-const roomColumns = "id, server_id as serverId, name, kind, position, coalesce(is_afk, 0) as isAfkFlag";
-
-function publicRoom(row: RoomRow): RoomSummary {
-  return {
-    id: row.id,
-    serverId: row.serverId,
-    name: row.name,
-    kind: row.kind,
-    position: row.position,
-    isAfk: row.isAfkFlag === 1
-  };
 }
 
 function createServerRoom(
@@ -2438,126 +1910,6 @@ const replyJoinClause = `left join messages quoted
      left join server_members quoted_members
        on quoted_members.server_id = rooms.server_id
       and quoted_members.user_id = quoted.user_id`;
-
-function roomById(sqlite: DatabaseSync, roomId: string) {
-  const row = one<RoomRow>(
-    sqlite,
-    `select ${roomColumns} from rooms where id = ?`,
-    [roomId]
-  );
-  return row ? publicRoom(row) : null;
-}
-
-function ensureVoiceRoom(voiceMembership: Map<string, VoiceRoomMembership>, roomId: string) {
-  let members = voiceMembership.get(roomId);
-  if (!members) {
-    members = new Map();
-    voiceMembership.set(roomId, members);
-  }
-  return members;
-}
-
-function voiceSnapshot(roomId: string, members: VoiceRoomMembership | undefined, includeSpeaking: boolean): VoiceSnapshot {
-  return {
-    roomId,
-    members: members
-      ? [...members.values()].map((member) => includeSpeaking
-        ? member
-        : { ...member, media: { ...member.media, speaking: false } })
-      : []
-  };
-}
-
-/**
- * `room` carries the room-level rules. Enforcement lives here rather than at
- * each call site so join, later media changes, and moderation recalculation all
- * apply the same constraints; an unmute request that reached only one of those
- * paths would let the microphone back on.
- */
-function normalizeVoiceMedia(
-  media: VoiceMediaState,
-  moderation: VoiceModerationState = { muted: false, deafened: false },
-  room: { isAfk: boolean } = { isAfk: false }
-): VoiceMediaState {
-  const next = {
-    mic: Boolean(media.mic),
-    camera: Boolean(media.camera),
-    screen: Boolean(media.screen),
-    deafened: Boolean(media.deafened),
-    speaking: Boolean(media.speaking)
-  };
-
-  if (next.deafened) {
-    next.mic = false;
-  }
-
-  if (moderation.muted) {
-    next.mic = false;
-  }
-
-  // The AFK room mutes everyone in it, and the mute cannot be lifted from
-  // inside. It is a property of the room rather than of the member: nobody in
-  // there is present, so nothing they transmit is wanted, and unlike owner
-  // moderation it applies to owners too. Leaving the room is how you get your
-  // microphone back.
-  if (room.isAfk) {
-    next.mic = false;
-  }
-
-  if (!next.mic || next.deafened || moderation.muted) {
-    next.speaking = false;
-  }
-
-  return next;
-}
-
-function visualPublisherCount(
-  members: VoiceRoomMembership,
-  currentUserId: string,
-  nextCurrentMedia: VoiceMediaState
-) {
-  let count = nextCurrentMedia.camera || nextCurrentMedia.screen ? 1 : 0;
-  for (const [userId, member] of members) {
-    if (userId === currentUserId) {
-      continue;
-    }
-    if (member.media.camera || member.media.screen) {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-function forwardRtcSignal(
-  io: Server<ClientToServerEvents, ServerToClientEvents>,
-  database: VoxlyDatabase,
-  voiceMembership: Map<string, VoiceRoomMembership>,
-  fromUserId: string,
-  payload: { roomId: string; toUserId: string; signal: Record<string, unknown> }
-): RtcSignalAck {
-  const room = roomById(database.sqlite, payload.roomId);
-  if (!room || room.kind !== "voice") {
-    return { ok: false, error: "room_not_found" };
-  }
-  const members = voiceMembership.get(payload.roomId);
-  if (!members?.has(fromUserId)) {
-    return { ok: false, error: "not_in_voice_room" };
-  }
-  if (!members.has(payload.toUserId)) {
-    return { ok: false, error: "target_not_in_voice_room" };
-  }
-  for (const socket of io.sockets.sockets.values()) {
-    const targetUser = socket.data.user as PresenceUser | undefined;
-    if (targetUser?.userId === payload.toUserId && socket.rooms.has(`voice:${payload.roomId}`)) {
-      socket.emit("rtc:signal", {
-        roomId: payload.roomId,
-        fromUserId,
-        signal: payload.signal
-      });
-    }
-  }
-  return { ok: true };
-}
 
 function audit(
   database: VoxlyDatabase,

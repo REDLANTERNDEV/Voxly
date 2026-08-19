@@ -16,6 +16,15 @@ web serving, and owner recovery CLIs.
 - `src/members.ts` owns membership lookups, the permission guards routes call,
   effective server identity, and presence status. Add an authorization rule
   there rather than inline in a route or socket handler.
+- `src/voice.ts` owns live voice state: who is in which voice room, who is
+  subscribed to whose camera or screen, media normalization, snapshot audience
+  scoping, force-leave, room teardown, and RTC signal forwarding. It registers
+  the `voice:*` and `rtc:signal` handlers itself; `app.ts` composes it and keeps
+  presence, text rooms, and the moderation surface routes call.
+- `src/rooms.ts` owns the room row shape and the lookup both routes and voice
+  authorize against.
+- `src/socket.ts` owns the plumbing every socket handler shares: the throwing
+  guard, the optional-ack helper, and the per-user socket lookup.
 - `src/rtcConfig.ts` produces authenticated browser ICE configuration.
 - `src/security.ts` builds the response header policy every route shares.
 - `src/analytics.ts` resolves the optional analytics provider and the origins
@@ -24,6 +33,8 @@ web serving, and owner recovery CLIs.
 - `test/realtime.test.ts` covers Socket.IO authorization and voice state.
 - `test/members.test.ts` covers membership, permission, and presence rules
   directly, without an HTTP or socket round trip.
+- `test/voice.test.ts` covers the media, moderation, and snapshot-redaction
+  rules the same way.
 
 Keep SQL explicit and server-scoped. Prefer a small helper for repeated
 authorization or normalization rules rather than duplicating subtly different

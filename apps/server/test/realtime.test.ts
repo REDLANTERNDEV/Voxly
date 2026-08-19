@@ -673,6 +673,51 @@ describe("Voxly realtime MVP", () => {
     assert.equal(afterBan.members.some((entry) => entry.user.userId === member.user.id), false);
   });
 
+  it("leaves another server's voice room alone when a member loses access to one server", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Selin");
+    const serverResponse = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Weekend Crew" }
+    });
+    const secondServerId = serverResponse.json().server.id as string;
+    const inviteResponse = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${secondServerId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "Selin weekend", expiresInMinutes: 1440 }
+    });
+    await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteToken: inviteResponse.json().invite.token }
+    });
+
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(ownerSocket, memberSocket);
+
+    // The member is talking in the default server, and holds no voice
+    // membership at all in the server they are about to be kicked from.
+    await joinVoice(memberSocket, "lobby");
+    await emitWithAck(memberSocket, "voice:snapshot", "lobby");
+
+    const stayedInVoice = expectNoEvent(memberSocket, "voice:forceLeave");
+    const kicked = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${secondServerId}/members/${member.user.id}/kick`,
+      cookies: owner.cookies
+    });
+    assert.equal(kicked.statusCode, 204);
+    await stayedInVoice;
+
+    const lobby = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(ownerSocket, "voice:snapshot", "lobby");
+    assert.equal(lobby.members.some((entry) => entry.user.userId === member.user.id), true);
+  });
+
   it("stops kicked and banned members from receiving future text-room messages", async () => {
     const owner = await bootstrapOwner(app);
     const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
