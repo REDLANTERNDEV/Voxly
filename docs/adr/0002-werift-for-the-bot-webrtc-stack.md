@@ -15,3 +15,16 @@ no-build-step deployment intact.
 `node-datachannel` is the fallback if JavaScript-side DTLS/SRTP ever becomes the
 bottleneck — it has the same encode-once property with a native binary and musl
 prebuilts.
+
+## One qualification, from proving it
+
+"The same encoded packets are written to every sender" means the same *bytes*,
+not the same *object*. werift's sender rewrites the packet it is handed — ssrc,
+payload type, sequence and timestamp offsets — and keeps that same object in its
+retransmission cache, so handing one object to several senders leaves each cache
+holding another listener's header. Each listener needs its own packet built from
+the shared payload.
+
+This costs an allocation per listener, not an encode, so the decision stands.
+Measured in the headless-peer-audio spike, kept on the
+`prototype/headless-peer-audio` branch; see its `spike/headless-peer-audio/FINDINGS.md`.
