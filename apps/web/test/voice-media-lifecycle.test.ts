@@ -5,6 +5,7 @@ import { createElement, type ComponentType, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AuthenticatedAppSurface } from "../src/app/AuthenticatedAppSurface.js";
 import { joinVoiceWithAudioUnlock } from "../src/features/voice/voiceActions.js";
+import { ensureOfferableAudioSection } from "../src/lib/voiceMedia.js";
 import { readAppSource } from "./app-source.js";
 
 describe("voice snapshot reconciliation", () => {
@@ -292,5 +293,70 @@ describe("voice snapshot reconciliation", () => {
     assert.match(source, /const offerGenerationsRef = useRef<Map<string, number>>/);
     assert.match(source, /offerGenerationsRef\.current\.get\(peerUserId\) !== offerGeneration/);
     assert.match(source, /shouldIgnoreIncomingOffer\([\s\S]{0,180}makingOfferPeersRef\.current\.has/);
+  });
+});
+
+/**
+ * Enough of `RTCPeerConnection` to see what an offer would carry. The headless
+ * peer spike measured the part that matters: `createOffer` writes one media
+ * section per transceiver, so a connection with no audio transceiver offers no
+ * audio section — in Chrome and in werift alike.
+ */
+function fakePeer(kinds: Array<{ kind: string; direction: RTCRtpTransceiverDirection }> = []) {
+  const transceivers = kinds.map(({ kind, direction }) => ({ direction, receiver: { track: { kind } } }));
+  return {
+    getTransceivers: () => transceivers,
+    addTransceiver(kind: "audio", init: { direction: "recvonly" }) {
+      const transceiver = { direction: init.direction as RTCRtpTransceiverDirection, receiver: { track: { kind } } };
+      transceivers.push(transceiver);
+      return transceiver;
+    },
+    offeredSections: () => transceivers.map((transceiver) => `${transceiver.receiver.track.kind}:${transceiver.direction}`)
+  };
+}
+
+describe("offers from a member who sends no audio", () => {
+  it("still carries an audio section, so a member who joined muted can still receive audio", () => {
+    const peer = fakePeer();
+
+    assert.deepEqual(peer.offeredSections(), []);
+    ensureOfferableAudioSection(peer);
+    assert.deepEqual(peer.offeredSections(), ["audio:recvonly"]);
+  });
+
+  it("adds one beside a camera, which an answerer could not have added itself", () => {
+    const peer = fakePeer([{ kind: "video", direction: "sendonly" }]);
+
+    ensureOfferableAudioSection(peer);
+    assert.deepEqual(peer.offeredSections(), ["video:sendonly", "audio:recvonly"]);
+  });
+
+  it("leaves a member who already sends audio alone", () => {
+    const peer = fakePeer([{ kind: "audio", direction: "sendrecv" }]);
+
+    ensureOfferableAudioSection(peer);
+    assert.deepEqual(peer.offeredSections(), ["audio:sendrecv"]);
+  });
+
+  it("does not stack another section onto every later offer", () => {
+    const peer = fakePeer();
+
+    ensureOfferableAudioSection(peer);
+    ensureOfferableAudioSection(peer);
+    assert.deepEqual(peer.offeredSections(), ["audio:recvonly"]);
+  });
+
+  it("replaces an audio section the far side rejected", () => {
+    const peer = fakePeer([{ kind: "audio", direction: "stopped" }]);
+
+    ensureOfferableAudioSection(peer);
+    assert.deepEqual(peer.offeredSections(), ["audio:stopped", "audio:recvonly"]);
+  });
+
+  it("runs on the one path every offer goes through", () => {
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+
+    assert.equal(source.match(/createOffer\(\)/g)?.length, 1);
+    assert.match(source, /ensureOfferableAudioSection\(peer\);[\s\S]{0,160}await peer\.createOffer\(\)/);
   });
 });

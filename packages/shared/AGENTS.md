@@ -7,8 +7,14 @@ root guidance.
 
 `@voxly/shared` is the dependency-light contract package used by the browser and
 server. It owns public DTOs, media state, Socket.IO event maps, acknowledgements,
-and stable error/reason unions. It must not import application code or browser-
-or server-only runtime modules.
+stable error/reason unions, and the few pure rules every peer must apply the
+same way. It must not import application code or browser- or server-only runtime
+modules.
+
+Keep it in the single `src/index.ts`. Consumers import the TypeScript source and
+Node strips its types at runtime, and Node does not resolve a relative `.js`
+specifier to a `.ts` file. A second module re-exported from the index would
+type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
 
 ## Contract Rules
 
@@ -64,11 +70,23 @@ or server-only runtime modules.
   moderation, and deleted resources without parsing messages.
 - Connection health uses the typed ACK-only `connection:probe` event; it must
   not carry application data or weaken authenticated socket setup.
+- `shouldInitiatePeerConnection` and `shouldIgnoreIncomingOffer` are defined
+  here and nowhere else. Every peer applies them to the same pair of user ids,
+  so a second copy that drifted would leave both sides waiting for an offer
+  neither sends, or both discarding the other's. Signaling state crosses the
+  boundary as `VoiceSignalingState`; do not narrow it back to the DOM's
+  `RTCSignalingState`, which a peer outside a browser cannot produce.
 
 ## Verification
 
-The package has type-checking but no standalone runtime test suite. After a
-shared contract change, run all consumers:
+Types are the contract, so most of this package is verified by type-checking its
+consumers. The exported rules are behavior and carry their own tests:
+
+```sh
+npm run test -w @voxly/shared
+```
+
+After a shared contract change, run all consumers:
 
 ```sh
 npm run typecheck

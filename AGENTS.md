@@ -30,7 +30,7 @@ Use the following files together:
 | React client and UI | `apps/web/AGENTS.md` |
 | Browser media and client helpers | `apps/web/src/lib/AGENTS.md` |
 | Fastify, SQLite, and realtime server | `apps/server/AGENTS.md` |
-| Shared DTO and Socket.IO contracts | `packages/shared/AGENTS.md` |
+| Shared contracts and cross-peer rules | `packages/shared/AGENTS.md` |
 
 Do not add feature-session notes under `docs/superpowers/`. That directory is
 intentionally ignored. Durable decisions belong in the applicable `AGENTS.md`,
@@ -52,6 +52,7 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | LIVE discovery and one-click watch | `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
 | Viewed-room participant scoping | `apps/web/src/lib/AGENTS.md` — Viewed-Room State |
 | Atomic joins and media normalization | Web library, server, and shared Voice sections |
+| Which peer offers, glare, and empty offers | `packages/shared/AGENTS.md` — Voice Contract Invariants; `apps/web/src/lib/AGENTS.md` — Peer Negotiation |
 | Voice activity privacy and owner voice enforcement | Server Atomic Voice; web Deafen and Remote Streams; shared Voice sections |
 | Reconnect retries and deafen restoration | `apps/web/src/lib/AGENTS.md` — Reconnect and Deafen sections |
 | Connection RTT and reconnect overlay | `apps/web/AGENTS.md` — Controls, Icons, and Accessibility |
@@ -69,7 +70,7 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 ```text
 apps/server       Fastify, Socket.IO, SQLite, static web serving, owner CLI
 apps/web          React 19 and Vite browser client
-packages/shared   Shared DTOs and typed Socket.IO event contracts
+packages/shared   Shared DTOs, typed Socket.IO contracts, cross-peer rules
 docs              Public self-hosting and operator documentation
 infra             Reverse-proxy and Coturn examples and helper scripts
 compose.yaml      Core application deployment
@@ -109,8 +110,10 @@ examples in `README.md`. Never commit a local `.env` or SQLite database.
 
 - Keep HTTP persistence and authorization in `apps/server`; the browser must
   not infer permissions that the server does not enforce.
-- Keep wire DTOs and event signatures in `packages/shared`. A contract change
-  is incomplete until both applications and their tests are updated.
+- Keep wire DTOs and event signatures in `packages/shared`, along with the few
+  pure rules every peer must apply identically for the wire to work at all. A
+  contract change is incomplete until both applications and their tests are
+  updated.
 - Prefer small pure helpers for state transitions, routing decisions, media
   calculations, and parsing. Keep React components focused on orchestration
   and rendering.

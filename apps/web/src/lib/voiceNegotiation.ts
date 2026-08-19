@@ -1,6 +1,10 @@
-export function shouldInitiatePeerConnection(currentUserId: string, peerUserId: string) {
-  return currentUserId !== peerUserId && currentUserId < peerUserId;
-}
+/**
+ * Who offers, and who yields when both offer at once. Defined once in
+ * `@voxly/shared` because every peer in a room applies them to the same pair of
+ * user ids: two copies that drifted apart would produce calls that fail
+ * silently, with each side certain the other was going to offer.
+ */
+export { shouldIgnoreIncomingOffer, shouldInitiatePeerConnection } from "@voxly/shared";
 
 export function staleVoicePeerUserIds(
   peerUserIds: Iterable<string>,
@@ -8,17 +12,6 @@ export function staleVoicePeerUserIds(
 ) {
   const activeMemberIds = new Set(activeMemberUserIds);
   return [...peerUserIds].filter((peerUserId) => !activeMemberIds.has(peerUserId));
-}
-
-export function shouldIgnoreIncomingOffer(
-  currentUserId: string,
-  peerUserId: string,
-  signalingState: RTCSignalingState,
-  makingOffer: boolean
-) {
-  const hasOfferCollision = makingOffer || signalingState !== "stable";
-  const isPolitePeer = currentUserId > peerUserId;
-  return hasOfferCollision && !isPolitePeer;
 }
 
 export type PeerConnectionState = "new" | "connecting" | "connected" | "failed";

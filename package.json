@@ -9,7 +9,7 @@
     "packages/shared"
   ],
   "scripts": {
-    "test": "npm run test -w @voxly/server && npm run test -w @voxly/web",
+    "test": "npm run test -w @voxly/shared && npm run test -w @voxly/server && npm run test -w @voxly/web",
     "typecheck": "npm run typecheck -w @voxly/server && npm run typecheck -w @voxly/web && npm run typecheck -w @voxly/shared",
     "build": "npm run build -w @voxly/server && npm run build -w @voxly/web"
   },

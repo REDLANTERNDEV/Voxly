@@ -38,6 +38,21 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   requires move confirmation. The UI must navigate only after a successful
   acknowledged join.
 
+## Peer Negotiation
+
+- Who offers, and who yields when both offer at once, come from `@voxly/shared`.
+  `voiceNegotiation.ts` re-exports them and must not define its own copy.
+- Every offer carries an audio section. A member who sends no audio adds a
+  `recvonly` transceiver first, because an answerer cannot add a section the
+  offer left out. With nothing else to publish the offer would carry no sections
+  at all and deadlock the pair — the answer is not applicable, the offerer stays
+  in `have-local-offer`, later offers collide with it, and recovery rebuilds the
+  same empty offer; with a camera it looks healthy and is simply never heard.
+  Keep the check on the one path that reaches `createOffer`.
+- Re-check the offer generation, the tracked peer, and the signaling state after
+  every `await` in the offer path. A peer's own offer can arrive during
+  `createOffer` and move the connection out from under the result.
+
 ## Reconnect and Recovery
 
 - Keep the voice resume window at ten minutes from the first disconnect. Saving

@@ -14,6 +14,7 @@ import { createInitialVoiceControls, toggleVoiceControl, type VoiceControlKey, t
 import {
   configureScreenTrack,
   effectiveVoiceMediaState,
+  ensureOfferableAudioSection,
   mediaConstraintsFor,
   preferScreenSenderResolution,
   replaceMicrophoneTrack,
@@ -392,6 +393,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     const offerGeneration = (offerGenerationsRef.current.get(peerUserId) ?? 0) + 1;
     offerGenerationsRef.current.set(peerUserId, offerGeneration);
     try {
+      // Inside the try so a closed peer cannot leave this one marked as forever
+      // making an offer.
+      ensureOfferableAudioSection(peer);
       const offer = await peer.createOffer();
       if (
         offerGenerationsRef.current.get(peerUserId) !== offerGeneration ||

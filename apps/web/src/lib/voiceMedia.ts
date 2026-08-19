@@ -107,6 +107,38 @@ export async function preferScreenSenderResolution(sender: RTCRtpSender, screenT
   }
 }
 
+interface PeerWithTransceivers {
+  getTransceivers(): ReadonlyArray<{ direction: RTCRtpTransceiverDirection; receiver: { track: { kind: string } } }>;
+  addTransceiver(kind: "audio", init: { direction: "recvonly" }): unknown;
+}
+
+/**
+ * Give an offer an audio section to carry when this member sends none.
+ *
+ * A member who joined with the microphone off has no audio track, so
+ * `createOffer` writes no audio section — and with nothing else to publish, no
+ * media sections at all. That connection can never carry anything: the answer
+ * to it is not applicable, this side stays in `have-local-offer`, every later
+ * offer collides with the stuck one, and recovery rebuilds the same empty
+ * offer. Whether a pair hits it is a coin flip on how the two user ids sort,
+ * which is why it has stayed invisible — the only room joined muted today is
+ * AFK, where nobody has anything to send.
+ *
+ * The narrower case matters too: the same member publishing a camera offers a
+ * video section and looks healthy, but an answerer cannot add an audio section
+ * the offer left out, so nobody in that pair is ever heard.
+ *
+ * A `recvonly` section costs nothing once a microphone does arrive: `addTrack`
+ * reuses an unused transceiver of the same kind and turns it into a sending one.
+ */
+export function ensureOfferableAudioSection(peer: PeerWithTransceivers) {
+  const carriesAudio = peer.getTransceivers().some(
+    (transceiver) => transceiver.receiver.track.kind === "audio" && transceiver.direction !== "stopped"
+  );
+  if (carriesAudio) return;
+  peer.addTransceiver("audio", { direction: "recvonly" });
+}
+
 interface PeerWithSenders {
   getSenders(): Array<{ track: MediaStreamTrack | null; replaceTrack(track: MediaStreamTrack | null): Promise<void> }>;
 }

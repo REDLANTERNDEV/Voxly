@@ -160,6 +160,50 @@ export type RtcSignalAck =
   | { ok: true }
   | { ok: false; error: "room_not_found" | "not_in_voice_room" | "target_not_in_voice_room" };
 
+/**
+ * How far a peer connection has got through an offer/answer exchange. Spelled
+ * out here rather than taken from the DOM so a peer that is not a browser can
+ * pass its own library's state through the same rules.
+ */
+export type VoiceSignalingState =
+  | "stable"
+  | "have-local-offer"
+  | "have-remote-offer"
+  | "have-local-pranswer"
+  | "have-remote-pranswer"
+  | "closed";
+
+/**
+ * Which of two members offers the connection between them. Comparing user ids
+ * gives both sides the same answer without a round trip, so exactly one offer
+ * is made however each side first learned the other was there.
+ */
+export function shouldInitiatePeerConnection(currentUserId: string, peerUserId: string): boolean {
+  return currentUserId !== peerUserId && currentUserId < peerUserId;
+}
+
+/**
+ * What to do with an offer that arrives while this side is making one of its
+ * own. The member that the rule above did not pick is the polite one: it drops
+ * its own attempt and answers. The other holds its offer and discards the
+ * incoming one, so the pair settles on a single exchange rather than cancelling
+ * each other out.
+ *
+ * `makingOffer` covers the window between `createOffer` and
+ * `setLocalDescription`, where signaling still reads `stable` although a local
+ * offer is already on its way.
+ */
+export function shouldIgnoreIncomingOffer(
+  currentUserId: string,
+  peerUserId: string,
+  signalingState: VoiceSignalingState,
+  makingOffer: boolean
+): boolean {
+  const hasOfferCollision = makingOffer || signalingState !== "stable";
+  const isPolitePeer = currentUserId > peerUserId;
+  return hasOfferCollision && !isPolitePeer;
+}
+
 export interface ServerToClientEvents {
   "presence:snapshot": (users: PresenceUser[]) => void;
   "presence:online": (user: PresenceUser) => void;

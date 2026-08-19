@@ -74,8 +74,10 @@ git diff --check
 For focused iteration:
 
 ```sh
+npm run test -w @voxly/shared
 npm run test -w @voxly/server
 npm run test -w @voxly/web
+npm run typecheck -w @voxly/shared
 npm run typecheck -w @voxly/server
 npm run typecheck -w @voxly/web
 ```
