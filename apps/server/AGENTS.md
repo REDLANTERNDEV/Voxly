@@ -13,12 +13,17 @@ web serving, and owner recovery CLIs.
 - `src/db/schema.ts` defines Drizzle table metadata.
 - `src/db/database.ts` initializes SQLite and performs compatibility migrations.
 - `src/auth` owns token hashing and owner-claim behavior.
+- `src/members.ts` owns membership lookups, the permission guards routes call,
+  effective server identity, and presence status. Add an authorization rule
+  there rather than inline in a route or socket handler.
 - `src/rtcConfig.ts` produces authenticated browser ICE configuration.
 - `src/security.ts` builds the response header policy every route shares.
 - `src/analytics.ts` resolves the optional analytics provider and the origins
   its policy needs.
 - `test/app.test.ts` covers HTTP, persistence, membership, and migrations.
 - `test/realtime.test.ts` covers Socket.IO authorization and voice state.
+- `test/members.test.ts` covers membership, permission, and presence rules
+  directly, without an HTTP or socket round trip.
 
 Keep SQL explicit and server-scoped. Prefer a small helper for repeated
 authorization or normalization rules rather than duplicating subtly different

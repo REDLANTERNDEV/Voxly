@@ -10,8 +10,7 @@ import {
   DEFAULT_AFK_TIMEOUT_MINUTES,
   isAfkTimeoutMinutes,
   replyExcerptMaxLength,
-  type AfkTimeoutMinutes,
-  type PresenceStatus
+  type AfkTimeoutMinutes
 } from "@voxly/shared";
 import type {
   ChatMessage,
@@ -37,10 +36,24 @@ import { helmetOptions } from "./security.js";
 import { consumeOwnerClaim } from "./auth/ownerClaims.js";
 import { all, defaultServerId, dumpTables, one, openDatabase, run, type VoxlyDatabase } from "./db/database.js";
 import {
+  activateServerMembership,
+  activeServerIds,
+  activeServerMembership,
+  hasActiveServerMembership,
+  isServerOwner,
+  mayCreateInvites,
+  presenceStatusOf,
+  publicPresence,
+  requireServerInviter,
+  requireServerMember,
+  requireServerOwner,
+  serverMembership,
   serverPresenceUser,
   serverPresenceUserIncludingBanned,
-  serverPresenceUsers as effectiveServerPresenceUsers
-} from "./serverNicknames.js";
+  serverPresenceUsers,
+  type OnlineRegistry,
+  type ServerMemberRow
+} from "./members.js";
 import type { TurnstileConfig } from "./turnstile.js";
 import type { RtcConfigProvider } from "./rtcConfig.js";
 
@@ -129,17 +142,6 @@ type RoomRow = {
   /** SQLite has no boolean; `publicRoom` is what turns this into the DTO. */
   isAfkFlag: number;
   position: number;
-};
-
-type ServerMemberRow = {
-  server_id: string;
-  user_id: string;
-  role: "owner" | "member";
-  banned_at: string | null;
-  removed_at: string | null;
-  moderator_muted: number;
-  moderator_deafened: number;
-  can_invite: number;
 };
 
 type VoiceRoomMembership = Map<string, VoiceMemberState>;
@@ -579,7 +581,7 @@ function registerRoutes(
     return {
       servers: memberships.map((membership) => ({
         ...membership,
-        canInvite: membership.role === "owner" || Boolean(membership.canInvite),
+        canInvite: mayCreateInvites(membership.role, membership.canInvite),
         afkTimeoutMinutes: afkTimeoutOf(membership.afkTimeoutMinutes)
       }))
     };
@@ -810,7 +812,7 @@ function registerRoutes(
     return {
       members: members.map(({ moderatorMuted, moderatorDeafened, canInvite, ...member }) => ({
         ...member,
-        canInvite: member.role === "owner" || Boolean(canInvite),
+        canInvite: mayCreateInvites(member.role, canInvite),
         moderation: { muted: Boolean(moderatorMuted), deafened: Boolean(moderatorDeafened) }
       }))
     };
@@ -1456,9 +1458,7 @@ function registerRealtime(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
   database: VoxlyDatabase
 ): RealtimeModeration {
-  // `idleSockets` is a subset of `sockets`: a member is away only when every
-  // one of their connections says so, so a second, active tab keeps them online.
-  const online = new Map<string, { user: PresenceUser; sockets: Set<string>; idleSockets: Set<string> }>();
+  const online: OnlineRegistry = new Map();
   const voiceMembership = new Map<string, VoiceRoomMembership>();
   const visualSubscriptions = new Map<string, VisualSubscriptions>();
 
@@ -1476,11 +1476,7 @@ function registerRealtime(
 
   io.on("connection", (socket) => {
     const user = socket.data.user as PresenceUser;
-    const serverIds = all<{ server_id: string }>(
-      database.sqlite,
-      "select server_id from server_members where user_id = ? and banned_at is null and removed_at is null",
-      [user.userId]
-    ).map((membership) => membership.server_id);
+    const serverIds = activeServerIds(database.sqlite, user.userId);
     for (const serverId of serverIds) {
       socket.join(`server:${serverId}`);
     }
@@ -1524,7 +1520,7 @@ function registerRealtime(
       const parsed = roomIdPayloadSchema.safeParse(roomId);
       if (!parsed.success) return;
       const room = roomById(database.sqlite, parsed.data);
-      if (!room || !serverMembership(database.sqlite, room.serverId, user.userId) || !requireActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
+      if (!room || !serverMembership(database.sqlite, room.serverId, user.userId) || !hasActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
         return;
       }
       socket.join(`room:${parsed.data}`);
@@ -1598,7 +1594,7 @@ function registerRealtime(
         return;
       }
       const room = roomById(database.sqlite, parsed.data);
-      if (!room || !requireActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
+      if (!room || !hasActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
         callAck(ack, { roomId: parsed.data, members: [] });
         return;
       }
@@ -1695,12 +1691,7 @@ function registerRealtime(
       }
       if (current.sockets.size === 0) {
         online.delete(user.userId);
-        const activeServerIds = all<{ server_id: string }>(
-          database.sqlite,
-          "select server_id from server_members where user_id = ? and banned_at is null and removed_at is null",
-          [user.userId]
-        ).map((membership) => membership.server_id);
-        for (const serverId of activeServerIds) {
+        for (const serverId of activeServerIds(database.sqlite, user.userId)) {
           socket.to(`server:${serverId}`).emit("presence:serverOffline", { serverId, userId: user.userId });
         }
       }
@@ -2085,117 +2076,11 @@ function createUser(database: VoxlyDatabase, nickname: string, role: "owner" | "
   return user;
 }
 
-function activateServerMembership(
-  database: VoxlyDatabase,
-  serverId: string,
-  userId: string,
-  role: "owner" | "member",
-  joinedAt: string
-) {
-  run(
-    database.sqlite,
-    `insert into server_members (server_id, user_id, role, joined_at)
-     values (?, ?, ?, ?)
-     on conflict(server_id, user_id) do update set removed_at = null`,
-    [serverId, userId, role, joinedAt]
-  );
-}
-
-function serverMembership(sqlite: DatabaseSync, serverId: string, userId: string) {
-  return one<ServerMemberRow>(
-    sqlite,
-    `select server_id, user_id, role, banned_at, removed_at,
-      moderator_muted, moderator_deafened, can_invite
-     from server_members where server_id = ? and user_id = ?`,
-    [serverId, userId]
-  );
-}
-
-/**
- * A global ban must reach live sockets, not just the next HTTP request.
- *
- * `authenticate()` re-reads `users.banned_at` per request, but Socket.IO runs its
- * middleware once per *connection* and freezes `socket.data.user`. Without this
- * check a banned user keeps reading messages, joins voice, and completes WebRTC
- * signalling for as long as the connection stays open. Fails closed on a missing
- * row.
- */
-function isGloballyBanned(sqlite: DatabaseSync, userId: string) {
-  const user = one<{ banned_at: string | null }>(sqlite, "select banned_at from users where id = ?", [userId]);
-  return !user || Boolean(user.banned_at);
-}
-
-function activeServerMembership(sqlite: DatabaseSync, serverId: string, userId: string) {
-  const membership = serverMembership(sqlite, serverId, userId);
-  if (!membership || membership.banned_at || membership.removed_at) return null;
-  return isGloballyBanned(sqlite, userId) ? null : membership;
-}
-
 function voiceModeration(membership: ServerMemberRow): VoiceModerationState {
   return {
     muted: Boolean(membership.moderator_muted),
     deafened: Boolean(membership.moderator_deafened)
   };
-}
-
-function isServerOwner(sqlite: DatabaseSync, serverId: string, userId: string) {
-  const membership = serverMembership(sqlite, serverId, userId);
-  return Boolean(membership && membership.role === "owner" && !membership.banned_at && !membership.removed_at);
-}
-
-function requireActiveServerMembership(sqlite: DatabaseSync, serverId: string, userId: string) {
-  return activeServerMembership(sqlite, serverId, userId) !== null;
-}
-
-type OnlineRegistry = Map<string, { user: PresenceUser; sockets: Set<string>; idleSockets: Set<string> }>;
-
-function presenceStatusOf(online: OnlineRegistry, userId: string): PresenceStatus {
-  const entry = online.get(userId);
-  if (!entry || entry.sockets.size === 0) return "online";
-  return entry.idleSockets.size >= entry.sockets.size ? "idle" : "online";
-}
-
-function serverPresenceUsers(
-  sqlite: DatabaseSync,
-  online: OnlineRegistry,
-  serverId: string
-) {
-  return effectiveServerPresenceUsers(sqlite, serverId, online.keys())
-    .map((presence) => ({ ...presence, status: presenceStatusOf(online, presence.userId) }));
-}
-
-function requireServerMember(database: VoxlyDatabase, serverId: string, userId: string, reply: FastifyReply) {
-  const membership = serverMembership(database.sqlite, serverId, userId);
-  if (!membership || membership.removed_at || membership.banned_at) {
-    reply.code(403).send({ error: "server_forbidden" });
-    return null;
-  }
-  return membership;
-}
-
-function requireServerOwner(database: VoxlyDatabase, serverId: string, userId: string, reply: FastifyReply) {
-  const membership = requireServerMember(database, serverId, userId, reply);
-  if (!membership) return null;
-  if (membership.role !== "owner") {
-    reply.code(403).send({ error: "forbidden" });
-    return null;
-  }
-  return membership;
-}
-
-/**
- * Invite creation is the one privileged action an owner can delegate. Listing
- * and revoking links stays owner-only: a delegated inviter can add people but
- * cannot audit or undo anyone else's links.
- */
-function requireServerInviter(database: VoxlyDatabase, serverId: string, userId: string, reply: FastifyReply) {
-  const membership = requireServerMember(database, serverId, userId, reply);
-  if (!membership) return null;
-  if (membership.role !== "owner" && !membership.can_invite) {
-    reply.code(403).send({ error: "forbidden" });
-    return null;
-  }
-  return membership;
 }
 
 /** Legacy rows carry no timeout, so the default is applied on read. */
@@ -2464,14 +2349,6 @@ function publicUser(user: AuthUser | { id: string; nickname: string; role: "owne
     nickname: user.nickname,
     role: user.role,
     bannedAt: user.bannedAt
-  };
-}
-
-function publicPresence(user: AuthUser): PresenceUser {
-  return {
-    userId: user.id,
-    nickname: user.nickname,
-    role: user.role
   };
 }
 
