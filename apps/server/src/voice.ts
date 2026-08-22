@@ -98,6 +98,13 @@ interface VoiceContext {
 export interface VoiceRealtime {
   /** Attach the voice and RTC signalling handlers to a newly connected socket. */
   registerHandlers: (socket: VoxlySocket, user: PresenceUser) => void;
+  /**
+   * Whether this user is currently in this voice room. Exposed because being in
+   * the room is a permission elsewhere — it is what entitles a member to summon
+   * the Music bot — and that answer must come from the live map rather than
+   * from a caller's own copy of it.
+   */
+  isVoiceMember: (roomId: string, userId: string) => boolean;
   /** Drop the voice membership a disconnecting socket still holds. */
   leaveAllRooms: (socket: VoxlySocket, userId: string) => void;
   /** Owner-initiated disconnect of one member from one voice room. */
@@ -129,6 +136,9 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
   return {
     registerHandlers(socket, user) {
       registerVoiceHandlers(context, socket, user);
+    },
+    isVoiceMember(roomId, userId) {
+      return context.membership.get(roomId)?.has(userId) === true;
     },
     leaveAllRooms(socket, userId) {
       for (const [roomId, members] of context.membership) {

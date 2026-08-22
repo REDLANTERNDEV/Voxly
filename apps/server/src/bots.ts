@@ -94,6 +94,16 @@ export function musicBotAccounts(sqlite: DatabaseSync): BotAccount[] {
   ).map((row) => ({ serverId: row.serverId, userId: row.userId, nickname: row.nickname }));
 }
 
+/** The one Music bot account a server has, or nothing if it has none. */
+export function musicBotAccountFor(sqlite: DatabaseSync, serverId: string): BotAccount | undefined {
+  const row = one<BotAccount & Record<string, unknown>>(
+    sqlite,
+    `${botAccountColumns} ${activeBotAccountClause} and server_members.server_id = ?`,
+    [serverId]
+  );
+  return row ? { serverId: row.serverId, userId: row.userId, nickname: row.nickname } : undefined;
+}
+
 export function isBotUser(sqlite: DatabaseSync, userId: string) {
   const user = one<{ is_bot: number }>(sqlite, "select is_bot from users where id = ?", [userId]);
   return user?.is_bot === 1;

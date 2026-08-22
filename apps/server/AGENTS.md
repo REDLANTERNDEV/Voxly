@@ -24,6 +24,8 @@ web serving, and owner recovery CLIs.
 - `src/bots.ts` owns the Music bot's account and the credential its process
   presents: the operator config, the constant-time token check, account seeding
   and creation, and bot session minting.
+- `src/music.ts` owns the Music bot's control plane: whether a member's request
+  reaches the bot, and nothing about what the bot then does.
 - `src/rooms.ts` owns the room row shape and the lookup both routes and voice
   authorize against.
 - `src/socket.ts` owns the plumbing every socket handler shares: the throwing
@@ -33,7 +35,8 @@ web serving, and owner recovery CLIs.
 - `src/analytics.ts` resolves the optional analytics provider and the origins
   its policy needs.
 - `test/app.test.ts` covers HTTP, persistence, membership, and migrations.
-- `test/realtime.test.ts` covers Socket.IO authorization and voice state.
+- `test/realtime.test.ts` covers Socket.IO authorization, voice state, and the
+  Music bot's presence and control relay.
 - `test/members.test.ts` covers membership, permission, and presence rules
   directly, without an HTTP or socket round trip.
 - `test/voice.test.ts` covers the media, moderation, and snapshot-redaction
@@ -180,6 +183,27 @@ credential there first.
   session cookie's name, and retires that account's earlier sessions, so at most
   one bot credential per account is live. Bot sessions are short-lived by design;
   the process re-authenticates rather than holding one open.
+
+`src/music.ts` is the bot's control plane: it decides whether a member's request
+reaches the bot, and nothing more. What the bot then does goes back through
+`voice:join`, `voice:setMediaState` and `rtc:signal`, where the ordinary checks
+apply to it unchanged.
+
+- `music:control` is authorized against *live voice membership*, not server
+  membership. Being in the room is the permission — it is what makes it the
+  asker's room to change — and the answer comes from `VoiceRealtime` rather than
+  from a second copy of the map.
+- Authorize once, here. A bot that re-decided who was allowed to ask would be a
+  second copy of a rule the server owns, and the one that drifted would be the
+  one nobody could audit.
+- Forward only to that server's bot account, never to the room. The command is
+  an instruction to one member, and the rest of the channel learns what happened
+  from the voice snapshot like they learn anything else.
+- Distinguish `no_music_bot` from `bot_offline`. Only the second is worth
+  waiting out, and a control whose entire output is sound in someone else's
+  headphones cannot afford to fail silently.
+- Refuse the AFK room. It mutes everyone in it, the bot included, so a Summon
+  there could only ever produce a silent participant.
 
 ## Messages and Rooms
 

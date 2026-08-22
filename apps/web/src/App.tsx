@@ -1,4 +1,4 @@
-import type { ChatMessage,PublicUser } from "@voxly/shared";
+import type { ChatMessage,MusicCommand,PublicUser } from "@voxly/shared";
 import { useCallback,useEffect,useRef,useState,type ReactNode } from "react";
 import { logout } from "./api.js";
 import { AppRoutes } from "./app/AppRoutes.js";
@@ -17,6 +17,7 @@ import { combineOutputVolume } from "./lib/audioLevels.js";
 import { releaseUnusedSharedAudioOutput,unlockSharedAudioOutput } from "./lib/audioOutput.js";
 import { readRoomHistory,type RoomHistory } from "./lib/channelState.js";
 import { readLanguageChoice,saveLanguageChoice,translate,type LanguageCode } from "./lib/i18n.js";
+import { requestMusicCommand } from "./lib/musicBot.js";
 import { defaultServerId } from "./lib/navigation.js";
 import { DEFAULT_VOLUME_PERCENT } from "./lib/voiceVolume.js";
 
@@ -235,6 +236,7 @@ export function App() {
     onLiveWatchHandled: () => audio.setPendingLiveWatch(null),
     onRequestVoiceSnapshot: audio.voice.requestSnapshot,
     onSetVisualSubscriptions: audio.voice.setVisualSubscriptions,
+    onMusicControl: (roomId: string, command: MusicCommand) => requestMusicCommand(realtime.socket, roomId, command),
     onMemberVolumeChange: audio.changeMemberVolume,
     onScreenVolumeChange: audio.changeScreenVolume,
     onInputVolumeChange: (volume: number) => audio.changeAudioLevel("input", volume),

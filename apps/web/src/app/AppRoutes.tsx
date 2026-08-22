@@ -111,6 +111,7 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
     onLiveWatchHandled={shellProps.onLiveWatchHandled}
     onRequestVoiceSnapshot={shellProps.onRequestVoiceSnapshot}
     onSetVisualSubscriptions={shellProps.onSetVisualSubscriptions}
+    onMusicControl={shellProps.onMusicControl}
     onMemberVolumeChange={shellProps.onMemberVolumeChange}
     onScreenVolumeChange={shellProps.onScreenVolumeChange}
   /></AppChrome>);

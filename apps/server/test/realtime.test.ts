@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
 import { musicBotNickname } from "@voxly/shared";
-import type { VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck } from "@voxly/shared";
+import type { MusicControlAck, VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck } from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 
 describe("Voxly realtime MVP", () => {
@@ -1276,6 +1276,130 @@ describe("music bot presence", () => {
     const online = await onlinePromise;
     assert.equal(online.user.userId, owner.user.id);
     assert.equal(online.user.isBot, false, "a person must never be presented as a bot");
+  });
+});
+
+describe("music bot control", () => {
+  const botToken = "test-bot-token-that-is-long-enough";
+  let app: VoxlyApp;
+  let baseUrl: string;
+  let sockets: Socket[] = [];
+
+  beforeEach(async () => {
+    app = await createVoxlyApp({
+      databasePath: ":memory:",
+      ownerBootstrapToken: "bootstrap-secret",
+      allowHttpOwnerBootstrap: true,
+      secureCookies: false,
+      bot: { token: botToken }
+    });
+    await app.server.listen({ host: "127.0.0.1", port: 0 });
+    baseUrl = `http://127.0.0.1:${(app.server.server.address() as { port: number }).port}`;
+  });
+
+  afterEach(async () => {
+    sockets.forEach((socket) => socket.disconnect());
+    sockets = [];
+    await app.close();
+  });
+
+  async function connectBot() {
+    const exchange = await app.server.inject({
+      method: "POST",
+      url: "/api/bot/sessions",
+      headers: { authorization: `Bearer ${botToken}` }
+    });
+    const [botSession] = exchange.json().sessions as Array<{ serverId: string; userId: string; token: string }>;
+    const botSocket = await connectSocket(baseUrl, botSession.token);
+    sockets.push(botSocket);
+    return { botSession, botSocket };
+  }
+
+  it("forwards a summon from a member who is in the voice room", async () => {
+    const owner = await bootstrapOwner(app);
+    const { botSocket } = await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    await joinVoice(ownerSocket, "lobby");
+
+    const commandPromise = onceEvent<{ roomId: string; command: string; requestedByUserId: string }>(botSocket, "music:command");
+    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: "play" });
+    const command = await commandPromise;
+
+    assert.deepEqual(ack, { ok: true });
+    assert.deepEqual(command, { roomId: "lobby", command: "play", requestedByUserId: owner.user.id });
+  });
+
+  it("refuses a member who is in the server but not in that voice room", async () => {
+    const owner = await bootstrapOwner(app);
+    const { botSocket } = await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+
+    const silence = expectNoEvent(botSocket, "music:command");
+    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: "play" });
+
+    assert.deepEqual(ack, { ok: false, error: "not_in_voice_room" });
+    await silence;
+  });
+
+  it("refuses the AFK room, where nothing the bot sent could be wanted", async () => {
+    const owner = await bootstrapOwner(app);
+    const { botSocket } = await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    const afkRoomId = "afk-the-basement";
+    await joinVoice(ownerSocket, afkRoomId);
+
+    const silence = expectNoEvent(botSocket, "music:command");
+    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: afkRoomId, command: "play" });
+
+    assert.deepEqual(ack, { ok: false, error: "afk_room" });
+    await silence;
+  });
+
+  it("says the bot is offline rather than dropping the request silently", async () => {
+    const owner = await bootstrapOwner(app);
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    await joinVoice(ownerSocket, "lobby");
+
+    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: "play" });
+
+    assert.deepEqual(ack, { ok: false, error: "bot_offline" });
+  });
+
+  it("refuses a command it does not know, and a room that is not voice", async () => {
+    const owner = await bootstrapOwner(app);
+    await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    await joinVoice(ownerSocket, "lobby");
+
+    assert.deepEqual(
+      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: "drop-the-bass" }),
+      { ok: false, error: "room_not_found" }
+    );
+    assert.deepEqual(
+      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "general", command: "play" }),
+      { ok: false, error: "room_not_found" }
+    );
+  });
+
+  it("delivers the command to the bot alone, never to the rest of the room", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ece");
+    await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(ownerSocket, memberSocket);
+    await joinVoice(ownerSocket, "lobby");
+    await joinVoice(memberSocket, "lobby");
+
+    const silence = expectNoEvent(memberSocket, "music:command");
+    await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: "play" });
+
+    await silence;
   });
 });
 

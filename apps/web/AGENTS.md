@@ -352,10 +352,20 @@ requirement.
   join, and require one localized confirmation before moving from another
   voice room. Navigate only after the acknowledged join succeeds.
 - The call surface is the sole voice-room scroll owner. Keep stage, available
-  sources, and participants in normal flow in that order; do not add nested
-  scrollbars, sticky sections, or absolute positioning.
+  sources, music, and participants in normal flow in that order; do not add
+  nested scrollbars, sticky sections, or absolute positioning.
 - Allow the stage to contract on short viewports without covering later
   sections. Fullscreen remains exempt from in-panel height bounds.
+- The Music panel is shown only when the viewed room is the active voice room.
+  Being in the channel is what entitles a member to summon, the server enforces
+  that, and a control that could only ever be refused is worse than no control.
+- Read whether the bot is playing from the room's voice snapshot, never from
+  local state left over from a press. The bot reports it through `speaking`, the
+  same self-report a person's microphone makes, so everyone in the channel —
+  including the people who pressed nothing — sees the same thing.
+- Every refusal from `music:control` gets its own localized sentence. The whole
+  output of this control is sound in someone else's headphones, so "nothing
+  happened" is the one answer it cannot give.
 
 ## Controls, Icons, and Accessibility
 

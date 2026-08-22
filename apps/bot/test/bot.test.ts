@@ -283,9 +283,64 @@ describe("bot presence", () => {
     });
     await presence.start();
 
-    presence.stop();
+    await presence.stop();
 
     assert.equal(doubles.every((double) => double.state.disconnected), true);
     assert.deepEqual(presence.connectedServerIds(), []);
+  });
+
+  it("lets whatever it attached finish before the socket goes", async () => {
+    // A Set says it is leaving over the socket it is leaving on: `speaking:
+    // false`, then `voice:leave`. Disconnecting first would leave the room's
+    // last word on the bot being that it was still playing.
+    const order: string[] = [];
+    let double: ReturnType<typeof socketDouble> | null = null;
+    const presence = createMusicBotPresence({
+      environment,
+      log: () => {},
+      requestCredentials: async () => ({ cookieName: "voxly_session", sessions: [session("one")] }),
+      connect: () => {
+        double = socketDouble();
+        const original = double.socket.disconnect.bind(double.socket);
+        double.socket.disconnect = () => {
+          order.push("disconnected");
+          return original();
+        };
+        return double.socket;
+      },
+      attach: () => async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        order.push("detached");
+      }
+    });
+    await presence.start();
+
+    await presence.stop();
+
+    assert.deepEqual(order, ["detached", "disconnected"]);
+  });
+
+  it("keeps stopping even when what it attached fails on the way out", async () => {
+    const messages: string[] = [];
+    const doubles: ReturnType<typeof socketDouble>[] = [];
+    const presence = createMusicBotPresence({
+      environment,
+      log: (message) => messages.push(message),
+      requestCredentials: async () => ({ cookieName: "voxly_session", sessions: [session("one")] }),
+      connect: () => {
+        const double = socketDouble();
+        doubles.push(double);
+        return double.socket;
+      },
+      attach: () => () => {
+        throw new Error("the Set fell over");
+      }
+    });
+    await presence.start();
+
+    await presence.stop();
+
+    assert.equal(doubles[0].state.disconnected, true);
+    assert.ok(messages.some((message) => message.includes("the Set fell over")));
   });
 });

@@ -72,13 +72,16 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | Sidebar voice status and stage layout | `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
 | Sidebar channel and participant-count presentation | `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
 | Music bot accounts and how the bot authenticates | `apps/server/AGENTS.md` — The Music Bot; ADR-0003 |
+| The bot's place in the voice mesh and what it must self-enforce | ADR-0001; `apps/bot/AGENTS.md` — Voice and Playback |
+| The bot's WebRTC library and its encode-once property | ADR-0002; `apps/bot/AGENTS.md` — Voice and Playback |
+| Summoning the Music bot and who may control it | `apps/server/AGENTS.md` — The Music Bot; `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
 
 ## Repository Map
 
 ```text
 apps/server       Fastify, Socket.IO, SQLite, static web serving, owner CLI
 apps/web          React 19 and Vite browser client
-apps/bot          Music bot process: authenticates and holds its connections
+apps/bot          Music bot process: joins voice rooms as a peer and plays audio
 packages/shared   Shared DTOs, typed Socket.IO contracts, cross-peer rules
 docs              Public self-hosting and operator documentation
 docs/adr          Architecture decision records: why a design is what it is
@@ -135,7 +138,11 @@ examples in `README.md`. Never commit a local `.env` or SQLite database.
   moderation, and realtime events.
 - Preserve the current peer-to-peer media architecture. Do not introduce an
   SFU, media recording, or server-side media processing as an incidental
-  change.
+  change. The rule protects a property rather than a topology — the operator's
+  server never holds anyone's conversation — so a peer that is a process rather
+  than a person is not an exception to it. The Music bot is one; see ADR-0001,
+  which also records what that costs, because media the server cannot see is
+  media the server cannot moderate.
 - Database evolution must be additive and compatible with existing SQLite
   installations unless a separately approved migration says otherwise.
 - Keep public operator documentation aligned with changes to environment

@@ -87,6 +87,18 @@ VOXLY_BOT_TOKEN=<the same value> \
   npm run start -w @voxly/bot
 ```
 
+Once it is running, anyone in a voice channel gets a Music panel there. Pressing
+play brings the bot into that channel and it plays for everyone in it; its row
+lights while it plays, the same as anyone speaking. Only someone already in the
+channel can summon it, and it will not play in the AFK channel.
+
+The bot connects to each Listener directly, exactly as members connect to each
+other, so it needs whatever the rest of your voice does — reachable peers, or
+Coturn when they are behind NAT. It reads its TURN credentials from the same
+endpoint the browser does. Its bandwidth grows with the number of people
+listening, so a channel it plays into costs roughly what one more talkative
+member would.
+
 ### Optional landing-page analytics
 
 Analytics are off unless you turn them on: a default deployment loads no

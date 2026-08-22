@@ -10,6 +10,7 @@ import { connectionStatusFor } from "../../lib/voiceNegotiation.js";
 import { replaceVisualTarget,toggleVisualTarget,visualTargetKey } from "../../lib/voiceResume.js";
 import { participantsForViewedRoom,remoteStreamKey } from "../../lib/voiceStreams.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
+import { MusicPanel } from "./MusicPanel.js";
 import { RemoteVideo,VisualStage,VoiceStatusBadges,type StageSource } from "./VoicePresentation.js";
 
 type VoiceRoomProps = Pick<ShellModel,
@@ -22,7 +23,7 @@ type VoiceRoomProps = Pick<ShellModel,
 > & Pick<ShellActions,
   "onNavigate" | "onJoinVoice" | "onWatchLive" | "onLiveWatchHandled" |
   "onRequestVoiceSnapshot" | "onSetVisualSubscriptions" | "onMemberVolumeChange" |
-  "onScreenVolumeChange"
+  "onScreenVolumeChange" | "onMusicControl"
 >;
 
 export function VoiceRoomScreen(props: VoiceRoomProps) {
@@ -221,6 +222,16 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
                   })}
                 </ul>
               </section>
+            ) : null}
+
+            {viewedRoomId && props.activeVoiceRoomId === viewedRoomId ? (
+              <MusicPanel
+                members={snapshotMembers}
+                roomId={viewedRoomId ?? null}
+                connected={props.socketState === "live"}
+                onMusicControl={props.onMusicControl}
+                t={props.t}
+              />
             ) : null}
 
             <section className="voice-participants" aria-labelledby="participantTitle">

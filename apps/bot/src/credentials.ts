@@ -84,6 +84,49 @@ export async function requestBotCredentials(
   return parseBotCredentials(await response.json());
 }
 
+export interface SessionHolder {
+  /** The token to present right now. Read it per request, not once. */
+  readonly token: string;
+  /** Trades the operator credential for a new session and returns its token. */
+  refresh: () => Promise<string>;
+}
+
+/**
+ * One bot account's session, replaceable without reconnecting.
+ *
+ * A socket is authorized at its handshake and never again, so it happily
+ * outlives the hour its session lasts. HTTP calls are not so lucky: the first
+ * one after that hour is refused, and for the Music bot that means a Set that
+ * quietly runs without TURN. Re-running the exchange is the same thing a
+ * reconnect would do, minus the reconnect.
+ *
+ * The exchange mints a session for every bot account and retires the previous
+ * ones, so refreshing here leaves a sibling account holding a stale token. That
+ * is fine and self-correcting: the sibling's next call is refused once and
+ * refreshes in turn.
+ */
+export function createSessionHolder(
+  environment: BotEnvironment,
+  session: BotSession,
+  requestCredentials: (environment: BotEnvironment) => Promise<BotCredentials> = requestBotCredentials
+): SessionHolder {
+  let token = session.token;
+  return {
+    get token() {
+      return token;
+    },
+    async refresh() {
+      const credentials = await requestCredentials(environment);
+      const replacement = credentials.sessions.find((entry) => entry.serverId === session.serverId);
+      if (!replacement) {
+        throw new Error(`The Voxly server no longer has a Music bot account for server ${session.serverId}.`);
+      }
+      token = replacement.token;
+      return token;
+    }
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }

@@ -75,7 +75,21 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   so a second copy that drifted would leave both sides waiting for an offer
   neither sends, or both discarding the other's. Signaling state crosses the
   boundary as `VoiceSignalingState`; do not narrow it back to the DOM's
-  `RTCSignalingState`, which a peer outside a browser cannot produce.
+  `RTCSignalingState`, which a peer outside a browser cannot produce. "Every
+  peer" includes the Music bot: it is a peer in the mesh, not a special case
+  (ADR-0001).
+
+## Music Contracts
+
+- `music:control` is one event carrying a `MusicCommand`, not one event per
+  verb. Every one of them is the same request — this room, this instruction —
+  and the transport rules do not vary between them. Extend the union rather than
+  adding an event beside it.
+- `music:command` is server-to-client and is only ever delivered to a Music bot
+  account. It carries the room the request names, so a command that raced a move
+  can be ignored rather than applied to the wrong Set.
+- `MusicControlAck` keeps `no_music_bot` and `bot_offline` distinct. Collapsing
+  them would tell a member to wait for a bot that does not exist.
 
 ## Verification
 

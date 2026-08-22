@@ -1,4 +1,4 @@
-import type { AfkTimeoutMinutes, PresenceUser,PublicUser,RoomSummary,VisualTarget,VoiceModerationState,VoiceSnapshot } from "@voxly/shared";
+import type { AfkTimeoutMinutes, MusicCommand,MusicControlAck,PresenceUser,PublicUser,RoomSummary,VisualTarget,VoiceModerationState,VoiceSnapshot } from "@voxly/shared";
 import { type AudioLevels } from "../lib/audioLevels.js";
 import type { RoomHistory } from "../lib/channelState.js";
 import { type LanguageCode,type TranslationKey } from "../lib/i18n.js";
@@ -93,6 +93,7 @@ export interface ShellActions {
   onLiveWatchHandled: () => void;
   onRequestVoiceSnapshot: (roomId: string) => void;
   onSetVisualSubscriptions: (targets: VisualTarget[]) => Promise<VisualSubscriptionResult>;
+  onMusicControl: (roomId: string, command: MusicCommand) => Promise<MusicControlAck>;
   onMemberVolumeChange: (userId: string, volume: number) => void;
   onScreenVolumeChange: (streamId: string, volume: number) => void;
   onInputVolumeChange: (volume: number) => void;

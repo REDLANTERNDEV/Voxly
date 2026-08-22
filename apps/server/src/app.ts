@@ -55,6 +55,7 @@ import {
 } from "./members.js";
 import { publicRoom, roomColumns, roomById, type RoomRow } from "./rooms.js";
 import { roomIdPayloadSchema, safeSocketHandler, socketsForUser } from "./socket.js";
+import { createMusicRealtime } from "./music.js";
 import { createVoiceRealtime } from "./voice.js";
 import type { TurnstileConfig } from "./turnstile.js";
 import type { RtcConfigProvider } from "./rtcConfig.js";
@@ -1453,6 +1454,7 @@ function registerRealtime(
 ): RealtimeModeration {
   const online: OnlineRegistry = new Map();
   const voice = createVoiceRealtime(io, database);
+  const music = createMusicRealtime(io, database, voice);
 
   io.use((socket, next) => {
     const sessionToken = parseCookieHeader(socket.handshake.headers.cookie ?? "")[sessionCookieName];
@@ -1525,6 +1527,7 @@ function registerRealtime(
     }));
 
     voice.registerHandlers(socket, user);
+    music.registerHandlers(socket, user);
 
     socket.on("disconnect", () => {
       voice.leaveAllRooms(socket, user.userId);

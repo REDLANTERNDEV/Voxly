@@ -1,0 +1,100 @@
+/**
+ * The Music bot as the browser sees it.
+ *
+ * The client never decides what the bot may do — the server authorizes a
+ * request and the bot carries it out. What lives here is only what the browser
+ * needs to draw the control: whether a bot is in the room, whether it is
+ * playing, and what to say when the server refuses.
+ */
+
+import type { MusicCommand, MusicControlAck, VoiceMemberState } from "@voxly/shared";
+import type { TranslationKey } from "./i18n.js";
+
+export type { MusicCommand };
+
+interface MusicSocket {
+  emit: (
+    event: "music:control",
+    payload: { roomId: string; command: MusicCommand },
+    ack: (response: MusicControlAck) => void
+  ) => void;
+}
+
+/**
+ * A server has at most one Music bot, so the first bot in the room is it.
+ * Presence marks service accounts; nothing here inspects a nickname, which an
+ * owner is free to change.
+ */
+export function musicBotIn(members: VoiceMemberState[]): VoiceMemberState | undefined {
+  return members.find((member) => member.user.isBot === true);
+}
+
+/**
+ * What the Music panel is looking at.
+ *
+ * `muted` is its own state rather than a kind of idle, and the distinction is
+ * not cosmetic. The server clamps `speaking` to false for a muted member, but
+ * media is peer-to-peer so the mute does not actually stop the bot's packets —
+ * it may well still be audible. Folding that into "idle" would offer Play for
+ * a bot that is already playing, and pressing it would do nothing at all.
+ */
+export type MusicPanelState = "absent" | "idle" | "playing" | "muted";
+
+export function musicPanelState(bot: VoiceMemberState | undefined): MusicPanelState {
+  if (!bot) return "absent";
+  if (bot.moderation.muted) return "muted";
+  return bot.media.speaking ? "playing" : "idle";
+}
+
+/**
+ * Whether the control should offer to stop rather than to start. A muted bot
+ * counts: stopping is the one request that is always safe to make and always
+ * takes effect, so it is what a member is offered when nobody can tell from
+ * here whether sound is still going out.
+ */
+export function offersStop(state: MusicPanelState) {
+  return state === "playing" || state === "muted";
+}
+
+export function requestMusicCommand(
+  socket: MusicSocket | null,
+  roomId: string | null,
+  command: MusicCommand
+): Promise<MusicControlAck> {
+  if (!socket || !roomId) {
+    return Promise.resolve({ ok: false, error: "not_in_voice_room" } as const);
+  }
+  return new Promise((resolve) => {
+    socket.emit("music:control", { roomId, command }, resolve);
+  });
+}
+
+/**
+ * Every refusal gets its own sentence. "Nothing happened" is the worst possible
+ * answer for a control whose whole output is sound somewhere else.
+ */
+export function musicErrorKey(error: MusicControlError): TranslationKey {
+  switch (error) {
+    case "bot_offline":
+      return "music.errorOffline";
+    case "no_music_bot":
+      return "music.errorMissing";
+    case "afk_room":
+      return "music.errorAfk";
+    case "not_in_voice_room":
+      return "music.errorNotInRoom";
+    case "room_not_found":
+      return "music.errorRoom";
+    default:
+      // Exhaustive on purpose rather than a catch-all: a refusal added to the
+      // contract should fail the build here, not quietly render the wrong
+      // sentence to someone wondering why nothing happened.
+      return assertNever(error);
+  }
+}
+
+type MusicControlError = Exclude<MusicControlAck, { ok: true }>["error"];
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled music control error: ${String(value)}`);
+}

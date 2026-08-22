@@ -217,6 +217,29 @@ export function shouldIgnoreIncomingOffer(
   return hasOfferCollision && !isPolitePeer;
 }
 
+/**
+ * What a member may ask the Music bot to do in the voice room they are in.
+ *
+ * One event rather than one per verb, because every one of them is the same
+ * request — this room, this instruction — and the transport rules (who may ask,
+ * which room, which bot) do not vary between them. The Queue's controls extend
+ * this union rather than adding events beside it.
+ */
+export const musicCommands = ["play", "stop", "leave"] as const;
+export type MusicCommand = (typeof musicCommands)[number];
+
+export type MusicControlAck =
+  | { ok: true }
+  | {
+    ok: false;
+    /**
+     * `no_music_bot` is a server without a bot account; `bot_offline` is an
+     * account whose process is not connected. They are distinct because only
+     * the second one is worth waiting out.
+     */
+    error: "room_not_found" | "not_in_voice_room" | "afk_room" | "no_music_bot" | "bot_offline";
+  };
+
 export interface ServerToClientEvents {
   "presence:snapshot": (users: PresenceUser[]) => void;
   "presence:online": (user: PresenceUser) => void;
@@ -256,6 +279,13 @@ export interface ServerToClientEvents {
   "server:roomsChanged": (payload: { serverId: string; deletedRoomId?: string }) => void;
   "server:deleted": (payload: { serverId: string }) => void;
   "rtc:signal": (payload: { roomId: string; fromUserId: string; signal: RtcSignal }) => void;
+  /**
+   * A member asked the Music bot for something. Only ever delivered to that
+   * server's bot account: the request has already been authorized against the
+   * room by the time it is forwarded, so the bot acts on it rather than
+   * re-deciding who was allowed to ask.
+   */
+  "music:command": (payload: { roomId: string; command: MusicCommand; requestedByUserId: string }) => void;
 }
 
 export interface ClientToServerEvents {
@@ -269,4 +299,10 @@ export interface ClientToServerEvents {
   "voice:setMediaState": (payload: { roomId: string; media: Partial<VoiceMediaState> }, ack: (response: VoiceSetMediaAck) => void) => void;
   "voice:setVisualSubscriptions": (payload: { roomId: string; targets: VisualTarget[] }, ack?: (response: VoiceSetVisualSubscriptionsAck) => void) => void;
   "rtc:signal": (payload: { roomId: string; toUserId: string; signal: RtcSignal }, ack?: (response: RtcSignalAck) => void) => void;
+  /**
+   * Summon the Music bot, or tell it what to do once it is here. Acknowledged
+   * so the asker learns that no bot answered, rather than watching a room where
+   * nothing happens.
+   */
+  "music:control": (payload: { roomId: string; command: MusicCommand }, ack: (response: MusicControlAck) => void) => void;
 }
