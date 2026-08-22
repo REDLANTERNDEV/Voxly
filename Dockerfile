@@ -6,6 +6,11 @@ ENV HUSKY=0
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json
+# The build stage builds every workspace, so the bot's manifest belongs in the
+# install layer too. Without it npm installs a different workspace set from the
+# one the lockfile describes, and the bot compiles only against whatever another
+# workspace happened to hoist. This image still runs only the application.
+COPY apps/bot/package.json apps/bot/package.json
 COPY packages/shared/package.json packages/shared/package.json
 
 RUN npm ci

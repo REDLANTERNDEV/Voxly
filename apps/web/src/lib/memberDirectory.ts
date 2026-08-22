@@ -4,6 +4,29 @@ export function canOwnerVoiceModerate(currentRole: UserRole | null, currentUserI
   return currentRole === "owner" && target.role === "member" && target.userId !== currentUserId;
 }
 
+/**
+ * Membership moderation is narrower than voice moderation, because a Bot is a
+ * member of exactly one server by construction.
+ *
+ * Kicking or banning it, delegating invites to it, or minting it a browser
+ * access link are all offers the server refuses; presenting them would be a
+ * menu of actions that only produce errors. Muting, deafening, disconnecting
+ * and moving are deliberately not in here — those mean the same thing for a Bot
+ * as for anyone else.
+ */
+export function canOwnerModerateMembership(currentRole: UserRole | null, currentUserId: string, target: PresenceUser) {
+  return canOwnerVoiceModerate(currentRole, currentUserId, target) && !target.isBot;
+}
+
+/**
+ * How many *people* are here. A Bot is always present and never joined, so
+ * counting it would inflate every figure a member reads as "how busy is it".
+ * It still appears in the list itself — this is the count, not the roster.
+ */
+export function countPeople(users: Array<{ isBot?: boolean }>) {
+  return users.filter((user) => !user.isBot).length;
+}
+
 export function currentServerPresence(currentUser: PublicUser, directory: PresenceUser[]): PresenceUser {
   return directory.find((user) => user.userId === currentUser.id) ?? {
     userId: currentUser.id,

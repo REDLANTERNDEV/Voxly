@@ -15,8 +15,13 @@ export function canInviteToActiveServer(props: Pick<ShellModel, "activeServerId"
   return Boolean(server && (server.role === "owner" || server.canInvite));
 }
 
-/** Owner outranks the delegated invite grant, which outranks a plain member. */
-export function memberRoleLabel(user: Pick<PresenceUser, "role" | "canInvite">, t: Translate) {
+/**
+ * Owner outranks the delegated invite grant, which outranks a plain member. A
+ * Bot is none of those: it is named for what it is, because "User" next to a
+ * service account is the one thing this label must never say.
+ */
+export function memberRoleLabel(user: Pick<PresenceUser, "role" | "canInvite" | "isBot">, t: Translate) {
+  if (user.isBot) return t("common.bot");
   if (user.role === "owner") return t("common.owner");
   return user.canInvite ? t("member.inviterRole") : t("common.user");
 }

@@ -1687,6 +1687,22 @@ button.reply-quote:focus-visible .reply-quote-body {
   display: inline-flex;
 }
 
+/* Text rather than an icon: the marker has to say what it is on its own, and a
+   glyph next to a nickname reads as decoration until you hover it. */
+.member-role-tag.is-bot {
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in oklab, var(--accent), transparent 55%);
+  border-radius: 999px;
+  color: var(--fg);
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  padding: 3px 6px;
+  text-transform: uppercase;
+}
+
 .member-row.is-offline > .avatar,
 .member-row.is-offline > .member-copy {
   filter: saturate(0.35);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
+import { musicBotNickname } from "@voxly/shared";
 import type { VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck } from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 
@@ -1207,6 +1208,74 @@ describe("Voxly realtime MVP", () => {
 
     const snapshot = await emitWithAck<{ roomId: string; members: unknown[] }>(memberSocket, "voice:snapshot", "lobby");
     assert.deepEqual(snapshot.members, []);
+  });
+});
+
+describe("music bot presence", () => {
+  const botToken = "test-bot-token-that-is-long-enough";
+  let app: VoxlyApp;
+  let baseUrl: string;
+  let sockets: Socket[] = [];
+
+  beforeEach(async () => {
+    app = await createVoxlyApp({
+      databasePath: ":memory:",
+      ownerBootstrapToken: "bootstrap-secret",
+      allowHttpOwnerBootstrap: true,
+      secureCookies: false,
+      bot: { token: botToken }
+    });
+    await app.server.listen({ host: "127.0.0.1", port: 0 });
+    baseUrl = `http://127.0.0.1:${(app.server.server.address() as { port: number }).port}`;
+  });
+
+  afterEach(async () => {
+    sockets.forEach((socket) => socket.disconnect());
+    sockets = [];
+    await app.close();
+  });
+
+  it("appears online to the rest of the server, marked as a bot", async () => {
+    const owner = await bootstrapOwner(app);
+    const exchange = await app.server.inject({
+      method: "POST",
+      url: "/api/bot/sessions",
+      headers: { authorization: `Bearer ${botToken}` }
+    });
+    const [botSession] = exchange.json().sessions as Array<{ serverId: string; userId: string; token: string }>;
+
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const onlinePromise = onceEvent<{ serverId: string; user: { userId: string; nickname: string; isBot?: boolean } }>(
+      ownerSocket,
+      "presence:serverOnline"
+    );
+    const botSocket = await connectSocket(baseUrl, botSession.token);
+    sockets.push(ownerSocket, botSocket);
+
+    const online = await onlinePromise;
+    assert.equal(online.serverId, botSession.serverId);
+    assert.equal(online.user.userId, botSession.userId);
+    assert.equal(online.user.nickname, musicBotNickname);
+    assert.equal(online.user.isBot, true);
+  });
+
+  it("marks the bot and no one else", async () => {
+    const owner = await bootstrapOwner(app);
+    const exchange = await app.server.inject({
+      method: "POST",
+      url: "/api/bot/sessions",
+      headers: { authorization: `Bearer ${botToken}` }
+    });
+    const [botSession] = exchange.json().sessions as Array<{ token: string }>;
+
+    const botSocket = await connectSocket(baseUrl, botSession.token);
+    const onlinePromise = onceEvent<{ user: { userId: string; isBot?: boolean } }>(botSocket, "presence:serverOnline");
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(botSocket, ownerSocket);
+
+    const online = await onlinePromise;
+    assert.equal(online.user.userId, owner.user.id);
+    assert.equal(online.user.isBot, false, "a person must never be presented as a bot");
   });
 });
 

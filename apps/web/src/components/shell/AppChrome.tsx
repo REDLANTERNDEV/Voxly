@@ -10,6 +10,7 @@ import { BrandLockup } from "../../components/ui/Navigation.js";
 import { Toast } from "../../components/ui/Primitives.js";
 import { contextMenuReducer,createContextMenuDescriptor } from "../../lib/contextMenu.js";
 import { type TranslationKey } from "../../lib/i18n.js";
+import { countPeople } from "../../lib/memberDirectory.js";
 import { ChannelRail } from "./ChannelRail.js";
 import { MemberPanel } from "./MemberPanel.js";
 import type { SidebarActionMenuController } from "./SidebarMenus.js";
@@ -35,7 +36,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
     close: closeActionMenu,
     open: openActionMenu
   }), [activeActionMenu, closeActionMenu, openActionMenu]);
-  const onlineCount = props.onlineUsers.length || 1;
+  const onlineCount = countPeople(props.onlineUsers) || 1;
   const voiceConnectedCount = props.activeVoiceRoomId && props.voiceSnapshots[props.activeVoiceRoomId]
     ? props.voiceSnapshots[props.activeVoiceRoomId].members.length
     : props.activeVoiceRoomId

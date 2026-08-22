@@ -51,6 +51,42 @@ ENABLE_HTTP_OWNER_BOOTSTRAP=false
 Keep `.env` readable only by trusted operators. Do not configure
 `OWNER_BOOTSTRAP_TOKEN` in production; create owner access from the CLI.
 
+### The Music bot account
+
+Every server carries a Music bot account, created with the server and added to
+existing servers the next time the application starts. It appears in the member
+list marked as a Bot, and it is offline until a Music bot process is running.
+
+The bot process cannot log in the way a person does, so it authenticates with a
+credential you generate and give to both processes:
+
+```sh
+openssl rand -base64 36
+```
+
+```dotenv
+VOXLY_BOT_TOKEN=<the generated value>
+```
+
+Leave `VOXLY_BOT_TOKEN` blank to run without the bot. The accounts still appear
+in the member list, offline, and the application registers no credential
+endpoint at all.
+
+Treat this value like the TURN secret: whoever holds it can act as every Music
+bot on the deployment. It grants no owner powers and no access to any server the
+bot is not already a member of. Rotate it by changing it in both places and
+restarting them; sessions the bot already holds expire within the hour.
+
+The Music bot process is not yet part of the Compose deployment. To run it
+alongside the application today, give it the same token and the address of the
+application:
+
+```sh
+VOXLY_SERVER_URL=https://chat.example.com \
+VOXLY_BOT_TOKEN=<the same value> \
+  npm run start -w @voxly/bot
+```
+
 ### Optional landing-page analytics
 
 Analytics are off unless you turn them on: a default deployment loads no

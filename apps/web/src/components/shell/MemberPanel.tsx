@@ -2,7 +2,7 @@ import type { PresenceUser,PublicUser,RoomSummary,VoiceModerationState,VoiceSnap
 import { initial,memberRoleLabel } from "../../app/presentation.js";
 import type { MemberAction,Translate } from "../../app/types.js";
 import { UserPlusIcon } from "../ui/Icons.js";
-import { canOwnerVoiceModerate,currentServerPresence,groupDirectoryMembers,memberPresenceState } from "../../lib/memberDirectory.js";
+import { canOwnerModerateMembership,canOwnerVoiceModerate,countPeople,currentServerPresence,groupDirectoryMembers,memberPresenceState } from "../../lib/memberDirectory.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
 import { MemberActionMenu,memberActionMenuHeight,openSidebarMenuFromPointer,type SidebarActionMenuController } from "./SidebarMenus.js";
 export function MemberPanel({
@@ -52,14 +52,15 @@ export function MemberPanel({
     const detail = voiceRoom ? `${roleLabel} · ${voiceRoom.name}` : roleLabel;
     const canRename = canModerate && (user.role === "member" || user.userId === currentUser.id);
     const canModerateRemote = canOwnerVoiceModerate(canModerate ? "owner" : null, currentUser.id, user);
-    const canAssignRoles = canModerate && user.role === "member";
+    const canRemoveMember = canOwnerModerateMembership(canModerate ? "owner" : null, currentUser.id, user);
+    const canAssignRoles = canModerate && user.role === "member" && !user.isBot;
     const hasRemoteActions = user.userId !== currentUser.id && Boolean(voiceRoom || canModerateRemote);
     const hasActions = hasRemoteActions || canRename || canAssignRoles;
     const menuHeight = memberActionMenuHeight({
       hasVolume: Boolean(voiceRoom && user.userId !== currentUser.id),
       canRename,
       canDisconnect: Boolean(voiceRoom && canModerateRemote),
-      canModerate: canModerateRemote,
+      canModerate: canRemoveMember,
       canVoiceModerate: Boolean(voiceRoom && canModerateRemote),
       canAssignRoles,
       canMove: Boolean(voiceRoom && canModerateRemote && voiceRooms.length > 1)
@@ -83,7 +84,8 @@ export function MemberPanel({
           <strong>{user.nickname}</strong>
           <span>{detail}</span>
         </span>
-        {user.role === "member" && user.canInvite ? <span className="member-role-tag" title={t("member.inviterRole")}><UserPlusIcon /></span> : null}
+        {user.isBot ? <span className="member-role-tag is-bot" title={t("member.botRole")}>{t("common.bot")}</span> : null}
+        {!user.isBot && user.role === "member" && user.canInvite ? <span className="member-role-tag" title={t("member.inviterRole")}><UserPlusIcon /></span> : null}
         {hasActions ? (
           <MemberActionMenu
             actionMenu={actionMenu}
@@ -93,7 +95,7 @@ export function MemberPanel({
             onVolumeChange={voiceRoom && user.userId !== currentUser.id ? (volume) => onMemberVolumeChange(user.userId, volume) : undefined}
             canRename={canRename}
             canDisconnect={Boolean(voiceRoom && canModerateRemote)}
-            canModerate={canModerateRemote}
+            canModerate={canRemoveMember}
             moderation={voiceRoom && canModerateRemote ? voiceMember?.moderation : undefined}
             onVoiceModeration={voiceRoom && canModerateRemote ? (moderation) => { void onVoiceModeration(user.userId, moderation); } : undefined}
             onToggleInviteRole={canAssignRoles ? (canInvite) => { void onUpdateMemberPermissions(user.userId, canInvite); } : undefined}
@@ -110,13 +112,13 @@ export function MemberPanel({
   return (
     <aside className="member-panel">
       <section className="member-section">
-        <div className="member-section-head"><span className="label">{t("common.online")}</span><span className="badge">{groupedMembers.online.length}</span></div>
+        <div className="member-section-head"><span className="label">{t("common.online")}</span><span className="badge">{countPeople(groupedMembers.online)}</span></div>
         {groupedMembers.online.length === 0 ? (
           <p className="muted small">{t("room.presenceWaiting")}</p>
         ) : renderMembers(groupedMembers.online, true)}
       </section>
       {groupedMembers.offline.length > 0 ? <section className="member-section member-section-offline">
-        <div className="member-section-head"><span className="label">{t("common.offline")}</span><span className="badge">{groupedMembers.offline.length}</span></div>
+        <div className="member-section-head"><span className="label">{t("common.offline")}</span><span className="badge">{countPeople(groupedMembers.offline)}</span></div>
         {renderMembers(groupedMembers.offline, false)}
       </section> : null}
     </aside>

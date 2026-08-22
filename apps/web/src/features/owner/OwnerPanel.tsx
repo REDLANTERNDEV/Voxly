@@ -95,12 +95,15 @@ export function OwnerPanel(props: OwnerPanelProps) {
 
   useEffect(() => closeMenu(), [closeMenu, section, props.activeServerId]);
 
-  const activeMembers = users.filter((member) => !member.bannedAt);
+  // Counted over people: the Music bot is a member of the server but not one of
+  // the members these figures are read as. It stays in the table below.
+  const people = users.filter((member) => !member.isBot);
+  const activeMembers = people.filter((member) => !member.bannedAt);
   const stats = [
     { key: "members", label: props.t("common.members"), value: activeMembers.length, icon: <UsersIcon /> },
-    { key: "inviters", label: props.t("owner.statInviters"), value: users.filter((member) => member.role === "member" && member.canInvite).length, icon: <UserPlusIcon /> },
+    { key: "inviters", label: props.t("owner.statInviters"), value: people.filter((member) => member.role === "member" && member.canInvite).length, icon: <UserPlusIcon /> },
     { key: "invites", label: props.t("owner.statActiveInvites"), value: invites.filter(isInviteRevocable).length, icon: <LinkIcon /> },
-    { key: "banned", label: props.t("common.banned"), value: users.length - activeMembers.length, icon: <ShieldIcon /> }
+    { key: "banned", label: props.t("common.banned"), value: people.length - activeMembers.length, icon: <ShieldIcon /> }
   ];
 
   const requestBan = (member: ServerMember) => {
@@ -297,13 +300,19 @@ export function OwnerPanel(props: OwnerPanelProps) {
               {users.map((member) => {
                 const menuKey = `owner-member:${member.id}`;
                 const canRename = member.role !== "owner" || member.id === props.user.id;
-                const isManageable = member.role !== "owner";
+                // Voice moderation reaches the Music bot the same way it reaches
+                // anyone; the membership actions below it do not apply to an
+                // account that cannot leave, be invited, or open a browser.
+                const canVoiceModerate = member.role !== "owner";
+                const canManageMembership = canVoiceModerate && !member.isBot;
                 return (
                   <div className="dash-table-row" role="row" key={member.id}>
                     <span className="dash-cell" role="cell">
                       <MemberRow
                         user={member.nickname}
-                        detail={member.role === "owner" ? props.t("shell.ownerSession") : props.t("shell.memberSession")}
+                        detail={member.isBot
+                          ? props.t("member.botRole")
+                          : member.role === "owner" ? props.t("shell.ownerSession") : props.t("shell.memberSession")}
                         owner={member.role === "owner"}
                       />
                     </span>
@@ -318,14 +327,14 @@ export function OwnerPanel(props: OwnerPanelProps) {
                       </StatusPill>
                     </span>
                     <span className="dash-cell is-actions" role="cell">
-                      {canRename || isManageable ? (
+                      {canRename || canVoiceModerate ? (
                         <>
                           <SidebarMenuTrigger
                             actionMenu={actionMenu}
                             menuKey={menuKey}
                             label={props.t("member.actionsFor", { nickname: member.nickname })}
                             menuWidth={memberMenuWidth}
-                            menuHeight={ownerMemberMenuHeight(canRename, isManageable, Boolean(member.bannedAt))}
+                            menuHeight={ownerMemberMenuHeight(canRename, canVoiceModerate, canManageMembership, Boolean(member.bannedAt))}
                           />
                           {actionMenu.active?.key === menuKey ? (
                             <ContextMenu
@@ -337,7 +346,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
                                 closeMenu();
                                 setNicknameTarget({ userId: member.id, nickname: member.nickname, role: member.role });
                               }}>{props.t("member.changeNickname")}</button> : null}
-                              {isManageable ? <>
+                              {canManageMembership ? (
                                 <button
                                   className={member.canInvite ? "is-active" : ""}
                                   type="button"
@@ -348,6 +357,8 @@ export function OwnerPanel(props: OwnerPanelProps) {
                                     await reload();
                                   }}
                                 >{member.canInvite ? props.t("member.revokeInviteRole") : props.t("member.grantInviteRole")}</button>
+                              ) : null}
+                              {canVoiceModerate ? <>
                                 <button
                                   className={member.moderation.muted ? "is-danger" : ""}
                                   type="button"
@@ -366,6 +377,8 @@ export function OwnerPanel(props: OwnerPanelProps) {
                                     setUsers((current) => current.map((item) => item.id === member.id ? { ...item, moderation: response.moderation } : item));
                                   }}
                                 >{member.moderation.deafened ? props.t("member.ownerUndeafen") : props.t("member.ownerDeafen")}</button>
+                              </> : null}
+                              {canManageMembership ? <>
                                 <button type="button" onClick={() => {
                                   closeMenu();
                                   void createMemberAccessLink(member);
@@ -470,6 +483,11 @@ export function OwnerPanel(props: OwnerPanelProps) {
 }
 
 /** Keeps the portaled member menu from being clamped to the wrong height. */
-function ownerMemberMenuHeight(canRename: boolean, isManageable: boolean, isBanned: boolean) {
-  return 20 + (canRename ? 40 : 0) + (isManageable ? 40 * (isBanned ? 4 : 5) : 0);
+function ownerMemberMenuHeight(
+  canRename: boolean,
+  canVoiceModerate: boolean,
+  canManageMembership: boolean,
+  isBanned: boolean
+) {
+  return 20 + (canRename ? 40 : 0) + (canVoiceModerate ? 80 : 0) + (canManageMembership ? 40 * (isBanned ? 2 : 3) : 0);
 }

@@ -31,6 +31,8 @@ export interface ServerMember {
   nickname: string;
   role: "owner" | "member";
   canInvite: boolean;
+  /** A service account rather than a person; see the shared `PresenceUser`. */
+  isBot: boolean;
   bannedAt: string | null;
   removedAt: string | null;
   joinedAt: string;

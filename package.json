@@ -6,12 +6,13 @@
   "workspaces": [
     "apps/server",
     "apps/web",
+    "apps/bot",
     "packages/shared"
   ],
   "scripts": {
-    "test": "npm run test -w @voxly/shared && npm run test -w @voxly/server && npm run test -w @voxly/web",
-    "typecheck": "npm run typecheck -w @voxly/server && npm run typecheck -w @voxly/web && npm run typecheck -w @voxly/shared",
-    "build": "npm run build -w @voxly/server && npm run build -w @voxly/web"
+    "test": "npm run test -w @voxly/shared && npm run test -w @voxly/server && npm run test -w @voxly/web && npm run test -w @voxly/bot",
+    "typecheck": "npm run typecheck -w @voxly/server && npm run typecheck -w @voxly/web && npm run typecheck -w @voxly/bot && npm run typecheck -w @voxly/shared",
+    "build": "npm run build -w @voxly/server && npm run build -w @voxly/web && npm run build -w @voxly/bot"
   },
   "engines": {
     "node": ">=22"

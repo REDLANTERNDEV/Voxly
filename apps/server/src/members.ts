@@ -135,17 +135,25 @@ export function requireServerInviter(database: VoxlyDatabase, serverId: string, 
   return membership;
 }
 
-interface PresenceUserRow extends Record<string, unknown>, Omit<PresenceUser, "canInvite"> {
+interface PresenceUserRow extends Record<string, unknown>, Omit<PresenceUser, "canInvite" | "isBot"> {
   canInvite: number;
+  isBot: number;
 }
 
 const presenceColumns = `select users.id as userId,
       coalesce(server_members.nickname, users.nickname) as nickname,
       server_members.role,
-      server_members.can_invite as canInvite`;
+      server_members.can_invite as canInvite,
+      users.is_bot as isBot`;
 
 function toPresenceUser(row: PresenceUserRow): PresenceUser {
-  return { userId: row.userId, nickname: row.nickname, role: row.role, canInvite: Boolean(row.canInvite) };
+  return {
+    userId: row.userId,
+    nickname: row.nickname,
+    role: row.role,
+    canInvite: Boolean(row.canInvite),
+    isBot: Boolean(row.isBot)
+  };
 }
 
 export function serverPresenceUser(
@@ -231,10 +239,11 @@ export function serverPresenceUsers(
  * authenticated session. It has no server context, so it carries neither the
  * per-server invite grant nor a status.
  */
-export function publicPresence(user: { id: string; nickname: string; role: UserRole }): PresenceUser {
+export function publicPresence(user: { id: string; nickname: string; role: UserRole; isBot: boolean }): PresenceUser {
   return {
     userId: user.id,
     nickname: user.nickname,
-    role: user.role
+    role: user.role,
+    isBot: user.isBot
   };
 }

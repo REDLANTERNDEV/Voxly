@@ -1,5 +1,6 @@
 import { resolveAnalyticsConfig } from "./analytics.js";
 import { createVoxlyApp } from "./app.js";
+import { resolveBotConfig } from "./bots.js";
 import { createRtcConfigProvider } from "./rtcConfig.js";
 import { resolveTurnstileConfig } from "./turnstile.js";
 
@@ -32,6 +33,7 @@ const app = await createVoxlyApp({
   trustProxy: process.env.TRUST_PROXY !== "false",
   logger: process.env.VOXLY_LOG !== "false",
   webDistPath: process.env.WEB_DIST_PATH,
+  bot: resolveBotConfig({ token: process.env.VOXLY_BOT_TOKEN }),
   turnstile: resolveTurnstileConfig({
     siteKey: process.env.TURNSTILE_SITE_KEY,
     secretKey: process.env.TURNSTILE_SECRET_KEY,

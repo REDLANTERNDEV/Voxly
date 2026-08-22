@@ -125,8 +125,22 @@ requirement.
   identity from the selected server directory before falling back to the global
   account nickname. Preserve the server-scoped self nickname while realtime is
   disconnected.
-- Member-safe directory data is limited to user ID, nickname, and server role.
-  Do not reuse owner moderation records as a public directory response.
+- Member-safe directory data is limited to user ID, nickname, server role, the
+  invite grant, and whether the account is a Bot. Do not reuse owner moderation
+  records as a public directory response.
+- A Bot is listed with the members it sits among, marked with a visible text
+  badge and a title that says what it is — not an icon alone, which reads as
+  decoration next to a nickname. It is named a Bot in the role line rather than
+  a user, and it carries no second role tag.
+- A Bot is left out of every member count, anywhere one is shown, while staying
+  in the list itself. It is always present and never joined, so counting it
+  inflates the one number a member reads as "how busy is it". A new surface that
+  counts members inherits this rule; the count is over people, the list is not.
+- Offer a Bot the voice actions (mute, deafen, disconnect, move) and withhold the
+  membership ones (kick, ban, invite grant, access link) in every surface that
+  presents them: both sidebars and the owner panel. The server refuses those
+  four for a Bot, so offering them would be a menu of guaranteed errors — and the
+  client hiding them is presentation, never the enforcement.
 - The normal server switcher is navigation for owners and members. Server
   creation and deletion belong in the selected owner-server context.
 - Reserve the top-left channel-rail lockup for the Voxly mark and application

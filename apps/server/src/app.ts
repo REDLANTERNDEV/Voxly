@@ -23,6 +23,16 @@ import type {
 import type { DatabaseSync } from "node:sqlite";
 import type { AnalyticsConfig } from "./analytics.js";
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
+import {
+  bearerToken,
+  createMusicBotAccount,
+  isBotTokenValid,
+  issueBotSession,
+  musicBotAccounts,
+  rejectBotTarget,
+  seedMusicBots,
+  type BotConfig
+} from "./bots.js";
 import { helmetOptions } from "./security.js";
 import { consumeOwnerClaim } from "./auth/ownerClaims.js";
 import { all, defaultServerId, dumpTables, one, openDatabase, run, type VoxlyDatabase } from "./db/database.js";
@@ -61,6 +71,12 @@ export interface CreateVoxlyAppOptions {
   secureCookies: boolean;
   rtc?: RtcConfigProvider;
   turnstile?: TurnstileConfig;
+  /**
+   * The credential the Music bot process presents to obtain its sessions. Left
+   * unset the exchange endpoint is never registered, and the bot accounts sit in
+   * their servers offline.
+   */
+  bot?: BotConfig;
   /** Optional landing-page analytics chosen by the operator. */
   analytics?: AnalyticsConfig;
   webDistPath?: string;
@@ -79,6 +95,8 @@ export interface AuthUser {
   nickname: string;
   role: "owner" | "member";
   bannedAt: string | null;
+  /** A service account rather than a person; see `bots.ts`. */
+  isBot: boolean;
   sessionId: string;
   sessionExpiresAt: string;
 }
@@ -96,6 +114,7 @@ type UserRow = {
   nickname: string;
   role: "owner" | "member";
   banned_at: string | null;
+  is_bot: number;
 };
 
 type SessionRow = {
@@ -173,6 +192,7 @@ const voiceModerationBodySchema = z.object({
 
 export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<VoxlyApp> {
   const database = await openDatabase(options.databasePath);
+  seedMusicBots(database);
   const server = Fastify({
     logger: options.logger ?? false,
     // Every supported Voxly topology terminates TLS in a reverse proxy, so the
@@ -328,6 +348,38 @@ function registerRoutes(
       setSessionCookie(reply, token, options.secureCookies);
 
       return reply.code(201).send({ user: publicUser(user) });
+    });
+  }
+
+  const botConfig = options.bot;
+  if (botConfig) {
+    /**
+     * The Music bot's way in. It holds the operator's credential, not a session,
+     * and trades it for one ordinary session per bot account — after which it is
+     * an ordinary member and every existing authorization check applies to it
+     * unchanged.
+     *
+     * Returning every account at once is what lets one bot process serve servers
+     * created after it started: it re-runs this on each reconnect and picks up
+     * whatever exists then.
+     */
+    server.post("/api/bot/sessions", { config: unauthenticatedWriteLimit }, async (request, reply) => {
+      if (!isBotTokenValid(botConfig.token, bearerToken(request.headers.authorization))) {
+        return reply.code(401).send({ error: "unauthorized" });
+      }
+      const sessions = musicBotAccounts(database.sqlite).map((account) => {
+        const session = issueBotSession(database, account.userId);
+        return {
+          serverId: account.serverId,
+          userId: account.userId,
+          nickname: account.nickname,
+          token: session.token,
+          expiresAt: session.expiresAt
+        };
+      });
+      // The cookie name is the server's to choose, and the bot is not a browser
+      // that was told one at sign-in. Naming it here keeps the two from drifting.
+      return reply.code(201).send({ cookieName: sessionCookieName, sessions });
     });
   }
 
@@ -533,7 +585,9 @@ function registerRoutes(
     createServerRoom(database, serverId, "general", "text", 10);
     createServerRoom(database, serverId, "Lobby", "voice", 20);
     createServerRoom(database, serverId, afkRoomName, "voice", 30, true);
+    const bot = createMusicBotAccount(database, serverId, now);
     audit(database, owner.id, "server.created", null, serverId);
+    audit(database, owner.id, "bot.created", bot.userId, serverId);
     database.save();
     await realtime.grantServerAccess(serverId, owner.id);
     return reply.code(201).send({ server: { id: serverId, name: body.name, role: "owner", canInvite: true } });
@@ -682,12 +736,13 @@ function registerRoutes(
     if (!user) return;
     const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
     if (!requireServerMember(database, serverId, user.id, reply)) return;
-    const members = all<{ userId: string; nickname: string; role: "owner" | "member"; canInvite: number }>(
+    const members = all<{ userId: string; nickname: string; role: "owner" | "member"; canInvite: number; isBot: number }>(
       database.sqlite,
       `select users.id as userId,
         coalesce(server_members.nickname, users.nickname) as nickname,
         server_members.role,
-        server_members.can_invite as canInvite
+        server_members.can_invite as canInvite,
+        users.is_bot as isBot
        from server_members
        join users on users.id = server_members.user_id
        where server_members.server_id = ?
@@ -696,7 +751,13 @@ function registerRoutes(
        order by nickname asc`,
       [serverId]
     );
-    return { members: members.map((member) => ({ ...member, canInvite: Boolean(member.canInvite) })) };
+    return {
+      members: members.map((member) => ({
+        ...member,
+        canInvite: Boolean(member.canInvite),
+        isBot: Boolean(member.isBot)
+      }))
+    };
   });
 
   server.get("/api/servers/:serverId/members", async (request, reply) => {
@@ -714,6 +775,7 @@ function registerRoutes(
       moderatorMuted: number;
       moderatorDeafened: number;
       canInvite: number;
+      isBot: number;
     }>(
       database.sqlite,
       `select users.id,
@@ -723,7 +785,8 @@ function registerRoutes(
         server_members.joined_at as joinedAt,
         server_members.moderator_muted as moderatorMuted,
         server_members.moderator_deafened as moderatorDeafened,
-        server_members.can_invite as canInvite
+        server_members.can_invite as canInvite,
+        users.is_bot as isBot
        from server_members
        join users on users.id = server_members.user_id
        where server_members.server_id = ?
@@ -732,9 +795,10 @@ function registerRoutes(
       [serverId]
     );
     return {
-      members: members.map(({ moderatorMuted, moderatorDeafened, canInvite, ...member }) => ({
+      members: members.map(({ moderatorMuted, moderatorDeafened, canInvite, isBot, ...member }) => ({
         ...member,
         canInvite: mayCreateInvites(member.role, canInvite),
+        isBot: Boolean(isBot),
         moderation: { muted: Boolean(moderatorMuted), deafened: Boolean(moderatorDeafened) }
       }))
     };
@@ -798,6 +862,7 @@ function registerRoutes(
     if (target.role === "owner") {
       return reply.code(409).send({ error: "cannot_change_owner_permissions" });
     }
+    if (rejectBotTarget(database, userId, reply)) return;
     database.sqlite.exec("begin immediate");
     try {
       run(
@@ -896,6 +961,7 @@ function registerRoutes(
     if (userId === owner.id) return reply.code(409).send({ error: "cannot_moderate_owner" });
     const member = serverMembership(database.sqlite, serverId, userId);
     if (!member) return reply.code(404).send({ error: "member_not_found" });
+    if (rejectBotTarget(database, userId, reply)) return;
     const now = new Date().toISOString();
     // Losing access also drops the invite grant, so a member who returns through
     // a later invite cannot silently resume issuing links.
@@ -980,6 +1046,7 @@ function registerRoutes(
     if (!requireServerOwner(database, serverId, owner.id, reply)) return;
     const member = serverMembership(database.sqlite, serverId, userId);
     if (!member || member.removed_at || member.banned_at) return reply.code(404).send({ error: "member_not_found" });
+    if (rejectBotTarget(database, userId, reply)) return;
     const token = createOpaqueToken();
     const now = new Date();
     const nowIso = now.toISOString();
@@ -1331,6 +1398,10 @@ function registerRoutes(
       return;
     }
     const { userId } = z.object({ userId: z.string().uuid() }).parse(request.params);
+    // A global ban has no undo — the only unban clears a server membership, not
+    // `users.banned_at` — and seeding will not replace an account whose
+    // membership row still exists. Banning a bot here is unrecoverable.
+    if (rejectBotTarget(database, userId, reply)) return;
     const now = new Date().toISOString();
     const target = one<{ role: "owner" | "member" }>(
       database.sqlite,
@@ -1726,7 +1797,7 @@ function authenticate(sqlite: DatabaseSync, sessionToken: string | undefined): A
     return null;
   }
 
-  const user = one<UserRow>(sqlite, "select id, nickname, role, banned_at from users where id = ?", [
+  const user = one<UserRow>(sqlite, "select id, nickname, role, banned_at, is_bot from users where id = ?", [
     session.user_id
   ]);
   if (!user || user.banned_at) {
@@ -1738,6 +1809,7 @@ function authenticate(sqlite: DatabaseSync, sessionToken: string | undefined): A
     nickname: user.nickname,
     role: user.role,
     bannedAt: user.banned_at,
+    isBot: user.is_bot === 1,
     sessionId: session.id,
     sessionExpiresAt: session.expires_at
   };

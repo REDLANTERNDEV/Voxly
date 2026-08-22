@@ -30,11 +30,18 @@ Use the following files together:
 | React client and UI | `apps/web/AGENTS.md` |
 | Browser media and client helpers | `apps/web/src/lib/AGENTS.md` |
 | Fastify, SQLite, and realtime server | `apps/server/AGENTS.md` |
+| Music bot process | `apps/bot/AGENTS.md` |
 | Shared contracts and cross-peer rules | `packages/shared/AGENTS.md` |
 
 Do not add feature-session notes under `docs/superpowers/`. That directory is
 intentionally ignored. Durable decisions belong in the applicable `AGENTS.md`,
 public operator documentation, tests, or a purpose-built design document.
+
+`AGENTS.md` owns how to change the code. `docs/adr/` owns why a hard-to-reverse
+design is what it is; where the two overlap, `AGENTS.md` wins on the how and the
+ADR wins on the why. Add an ADR when a decision would otherwise be re-litigated
+from scratch, and surface a conflict with an existing one rather than quietly
+overriding it.
 
 Decision ownership is intentionally scoped rather than repeated everywhere:
 
@@ -64,21 +71,26 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | Sidebar context menus and popover layering | `apps/web/AGENTS.md` — Context Menus and Layering |
 | Sidebar voice status and stage layout | `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
 | Sidebar channel and participant-count presentation | `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
+| Music bot accounts and how the bot authenticates | `apps/server/AGENTS.md` — The Music Bot; ADR-0003 |
 
 ## Repository Map
 
 ```text
 apps/server       Fastify, Socket.IO, SQLite, static web serving, owner CLI
 apps/web          React 19 and Vite browser client
+apps/bot          Music bot process: authenticates and holds its connections
 packages/shared   Shared DTOs, typed Socket.IO contracts, cross-peer rules
 docs              Public self-hosting and operator documentation
+docs/adr          Architecture decision records: why a design is what it is
 infra             Reverse-proxy and Coturn examples and helper scripts
 compose.yaml      Core application deployment
 compose.turn.yaml Optional Coturn deployment overlay
 ```
 
-Keep dependency direction simple: `apps/server` and `apps/web` may import
-`@voxly/shared`; `packages/shared` must not import either application.
+Keep dependency direction simple: `apps/server`, `apps/web`, and `apps/bot` may
+import `@voxly/shared`; `packages/shared` must not import any application, and
+the three applications must not import each other. The bot is a client of the
+server's public HTTP and Socket.IO surface, exactly like the browser is.
 
 ## Development Environment
 
@@ -98,10 +110,12 @@ Common commands:
 | --- | --- |
 | Run all tests | `npm test` |
 | Type-check all workspaces | `npm run typecheck` |
-| Build server and web | `npm run build` |
+| Build server, web, and bot | `npm run build` |
 | Start the web development server | `npm run dev -w @voxly/web` |
 | Build the server | `npm run build -w @voxly/server` |
 | Start the built server | `npm run start -w @voxly/server` |
+| Build the Music bot | `npm run build -w @voxly/bot` |
+| Start the built Music bot | `npm run start -w @voxly/bot` |
 
 The local server requires `DATABASE_PATH` and `VOXLY_PUBLIC_URL`; use the
 examples in `README.md`. Never commit a local `.env` or SQLite database.
@@ -189,6 +203,7 @@ workspace. For cross-package or release-sensitive changes, run the root suite.
 | Shared contract | `npm run typecheck && npm test` |
 | Server behavior or schema | `npm run test -w @voxly/server` |
 | Web behavior or styling | `npm run test -w @voxly/web` |
+| Music bot behavior | `npm run test -w @voxly/bot` |
 | Build/deployment path | `npm run build` and applicable Compose config check |
 | Documentation only | Link/command review and `git diff --check` |
 

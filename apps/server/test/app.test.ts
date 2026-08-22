@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { afkRoomName, DEFAULT_AFK_TIMEOUT_MINUTES, replyExcerptMaxLength } from "@voxly/shared";
+import { afkRoomName, DEFAULT_AFK_TIMEOUT_MINUTES, musicBotNickname, replyExcerptMaxLength } from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 import { hashToken } from "../src/auth/tokens.js";
 import { createOwnerClaim, createOwnerLoginClaim } from "../src/auth/ownerClaims.js";
@@ -193,8 +193,8 @@ describe("Voxly HTTP MVP", () => {
       });
 
       assert.equal(response.statusCode, 404);
-      const tables = lockedApp.dumpTables() as { users: unknown[] };
-      assert.equal(tables.users.length, 0);
+      const tables = lockedApp.dumpTables() as { users: Array<{ role: string }> };
+      assert.deepEqual(tables.users.filter((user) => user.role === "owner"), []);
     } finally {
       await lockedApp.close();
     }
@@ -1398,13 +1398,20 @@ describe("Voxly HTTP MVP", () => {
       cookies: member.cookies
     });
     assert.equal(visibleToMember.statusCode, 200);
+    const directoryKeys = ["canInvite", "isBot", "nickname", "role", "userId"];
     assert.deepEqual(
       visibleToMember.json().members.map((entry: Record<string, unknown>) => Object.keys(entry).sort()),
-      [["canInvite", "nickname", "role", "userId"], ["canInvite", "nickname", "role", "userId"]]
+      [directoryKeys, directoryKeys, directoryKeys]
     );
     assert.deepEqual(
       visibleToMember.json().members.map((entry: { nickname: string }) => entry.nickname),
-      ["Ada", owner.user.nickname]
+      ["Ada", musicBotNickname, owner.user.nickname]
+    );
+    assert.deepEqual(
+      visibleToMember.json().members
+        .filter((entry: { isBot: boolean }) => entry.isBot)
+        .map((entry: { nickname: string }) => entry.nickname),
+      [musicBotNickname]
     );
 
     const hiddenFromOutsider = await app.server.inject({
@@ -1424,7 +1431,10 @@ describe("Voxly HTTP MVP", () => {
       url: `/api/servers/${serverId}/directory`,
       cookies: owner.cookies
     });
-    assert.deepEqual(afterBan.json().members.map((entry: { nickname: string }) => entry.nickname), [owner.user.nickname]);
+    assert.deepEqual(
+      afterBan.json().members.map((entry: { nickname: string }) => entry.nickname),
+      [musicBotNickname, owner.user.nickname]
+    );
   });
 
   it("lets the owner delegate invite creation without delegating invite management", async () => {
@@ -1967,6 +1977,131 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(after.json().rooms.some((room: { isAfk: boolean }) => room.isAfk), false);
   });
 
+  it("gives every server its own Music bot account", async () => {
+    const owner = await bootstrapOwner(app);
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Second" }
+    });
+    const secondServerId = created.json().server.id as string;
+
+    const botsByServer = new Map<string, Array<{ userId: string; nickname: string }>>();
+    for (const serverId of [defaultServerId, secondServerId]) {
+      const directory = await app.server.inject({
+        method: "GET",
+        url: `/api/servers/${serverId}/directory`,
+        cookies: owner.cookies
+      });
+      botsByServer.set(serverId, directory.json().members.filter((member: { isBot: boolean }) => member.isBot));
+    }
+
+    for (const [serverId, bots] of botsByServer) {
+      assert.equal(bots.length, 1, `${serverId} has exactly one Music bot`);
+      assert.equal(bots[0].nickname, musicBotNickname);
+    }
+    assert.notEqual(
+      botsByServer.get(defaultServerId)?.[0].userId,
+      botsByServer.get(secondServerId)?.[0].userId,
+      "each server gets its own account rather than sharing one"
+    );
+  });
+
+  it("backfills a Music bot into a database that predates the feature", async () => {
+    // The column is additive, so an upgraded deployment arrives with servers
+    // whose members list has no bot in it until this runs.
+    const directory = await mkdtemp(join(tmpdir(), "voxly-bot-backfill-"));
+    const databasePath = join(directory, "legacy.sqlite");
+    try {
+      const legacy = new DatabaseSync(databasePath);
+      legacy.exec(`
+        create table users (id text primary key, nickname text not null, role text not null, banned_at text);
+        create table servers (id text primary key, name text not null, created_by_user_id text, created_at text not null);
+        insert into servers (id, name, created_at) values ('legacy-server', 'Legacy', '2020-01-01T00:00:00.000Z');
+      `);
+      legacy.close();
+
+      const upgraded = await createVoxlyApp({ databasePath, secureCookies: false });
+      const botCount = () => (upgraded.sqlite
+        .prepare(`select count(*) as count from server_members
+          join users on users.id = server_members.user_id
+          where server_members.server_id = 'legacy-server' and users.is_bot = 1`)
+        .get() as { count: number }).count;
+      assert.equal(botCount(), 1);
+      await upgraded.close();
+
+      // Re-opening must not hand out a second one.
+      const restarted = await createVoxlyApp({ databasePath, secureCookies: false });
+      assert.equal((restarted.sqlite
+        .prepare(`select count(*) as count from server_members
+          join users on users.id = server_members.user_id
+          where server_members.server_id = 'legacy-server' and users.is_bot = 1`)
+        .get() as { count: number }).count, 1);
+      await restarted.close();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not offer the owner moderation actions that presuppose a person", async () => {
+    const owner = await bootstrapOwner(app);
+    const directory = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${defaultServerId}/directory`,
+      cookies: owner.cookies
+    });
+    const botId = directory.json().members.find((member: { isBot: boolean }) => member.isBot).userId as string;
+
+    for (const request of [
+      { method: "POST" as const, url: `/api/servers/${defaultServerId}/members/${botId}/kick` },
+      { method: "POST" as const, url: `/api/servers/${defaultServerId}/members/${botId}/ban` },
+      { method: "POST" as const, url: `/api/servers/${defaultServerId}/members/${botId}/access-links` },
+      {
+        method: "PATCH" as const,
+        url: `/api/servers/${defaultServerId}/members/${botId}/permissions`,
+        payload: { canInvite: true }
+      }
+    ]) {
+      const response = await app.server.inject({ ...request, cookies: owner.cookies });
+      assert.equal(response.statusCode, 409, `${request.method} ${request.url}`);
+      assert.equal(response.json().error, "cannot_moderate_bot");
+    }
+
+    // The global ban is the one with no undo: the only unban clears a server
+    // membership, not `users.banned_at`, and seeding will not replace an account
+    // whose membership row survives. A bot banned here would be unrecoverable.
+    const globallyBanned = await app.server.inject({
+      method: "POST",
+      url: `/api/owner/users/${botId}/ban`,
+      cookies: owner.cookies
+    });
+    assert.equal(globallyBanned.statusCode, 409);
+    assert.equal(globallyBanned.json().error, "cannot_moderate_bot");
+    assert.equal(
+      (app.sqlite.prepare("select banned_at from users where id = ?").get(botId) as { banned_at: string | null }).banned_at,
+      null
+    );
+
+    // The bot is still an ordinary member of the room it plays in, so the voice
+    // controls an owner would reach for during a call keep working.
+    const muted = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${botId}/voice-moderation`,
+      cookies: owner.cookies,
+      payload: { muted: true }
+    });
+    assert.equal(muted.statusCode, 200);
+    assert.deepEqual(muted.json().moderation, { muted: true, deafened: false });
+
+    const stillListed = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${defaultServerId}/directory`,
+      cookies: owner.cookies
+    });
+    assert.equal(stillListed.json().members.some((member: { userId: string }) => member.userId === botId), true);
+  });
+
   it("treats the AFK room as an ordinary room the owner may rename", async () => {
     const owner = await bootstrapOwner(app);
     const rooms = await app.server.inject({
@@ -2309,6 +2444,140 @@ describe("Voxly invite lifecycle hardening", () => {
     });
     assert.equal(byOwner.statusCode, 201);
     assert.equal(byOwner.json().invite.expiresAt, null);
+  });
+});
+
+describe("music bot credentials", () => {
+  const botToken = "test-bot-token-that-is-long-enough";
+
+  async function createAppWithBot() {
+    return createVoxlyApp({ databasePath: ":memory:", secureCookies: false, bot: { token: botToken } });
+  }
+
+  it("does not register the exchange at all when no credential is configured", async () => {
+    const app = await createVoxlyApp({ databasePath: ":memory:", secureCookies: false });
+    try {
+      const response = await app.server.inject({
+        method: "POST",
+        url: "/api/bot/sessions",
+        headers: { authorization: `Bearer ${botToken}` }
+      });
+
+      assert.equal(response.statusCode, 404);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("refuses a missing, malformed, or wrong credential without saying which", async () => {
+    const app = await createAppWithBot();
+    try {
+      for (const headers of [
+        {},
+        { authorization: botToken },
+        { authorization: `Basic ${botToken}` },
+        { authorization: "Bearer wrong-token-that-is-also-long-enough" }
+      ]) {
+        const response = await app.server.inject({ method: "POST", url: "/api/bot/sessions", headers });
+
+        assert.equal(response.statusCode, 401, JSON.stringify(headers));
+        assert.deepEqual(response.json(), { error: "unauthorized" });
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("hands the bot one ordinary session per account, usable with no human step", async () => {
+    const app = await createAppWithBot();
+    try {
+      const response = await app.server.inject({
+        method: "POST",
+        url: "/api/bot/sessions",
+        headers: { authorization: `Bearer ${botToken}` }
+      });
+
+      assert.equal(response.statusCode, 201);
+      const body = response.json() as {
+        cookieName: string;
+        sessions: Array<{ serverId: string; userId: string; nickname: string; token: string; expiresAt: string }>;
+      };
+      assert.equal(body.sessions.length, 1);
+      const [session] = body.sessions;
+      assert.equal(session.serverId, defaultServerId);
+      assert.equal(session.nickname, musicBotNickname);
+
+      // The point of the exchange: what comes back is an ordinary session, so
+      // the bot needs no second authentication path anywhere else.
+      const identified = await app.server.inject({
+        method: "GET",
+        url: "/api/me",
+        cookies: { [body.cookieName]: session.token }
+      });
+      assert.equal(identified.statusCode, 200);
+      assert.equal(identified.json().user.id, session.userId);
+      assert.equal(identified.json().user.nickname, musicBotNickname);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("covers servers created after the bot process started", async () => {
+    const app = await createVoxlyApp({
+      databasePath: ":memory:",
+      ownerBootstrapToken: "bootstrap-secret",
+      allowHttpOwnerBootstrap: true,
+      secureCookies: false,
+      bot: { token: botToken }
+    });
+    try {
+      const owner = await bootstrapOwner(app);
+      await app.server.inject({
+        method: "POST",
+        url: "/api/servers",
+        cookies: owner.cookies,
+        payload: { name: "Later" }
+      });
+
+      const response = await app.server.inject({
+        method: "POST",
+        url: "/api/bot/sessions",
+        headers: { authorization: `Bearer ${botToken}` }
+      });
+
+      assert.equal(response.json().sessions.length, 2);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("retires the credential it replaced, so only one bot session is ever live", async () => {
+    const app = await createAppWithBot();
+    try {
+      const exchange = async () => (await app.server.inject({
+        method: "POST",
+        url: "/api/bot/sessions",
+        headers: { authorization: `Bearer ${botToken}` }
+      })).json() as { cookieName: string; sessions: Array<{ token: string }> };
+
+      const first = await exchange();
+      const second = await exchange();
+
+      const withOldToken = await app.server.inject({
+        method: "GET",
+        url: "/api/me",
+        cookies: { [first.cookieName]: first.sessions[0].token }
+      });
+      assert.equal(withOldToken.statusCode, 401);
+      const withNewToken = await app.server.inject({
+        method: "GET",
+        url: "/api/me",
+        cookies: { [second.cookieName]: second.sessions[0].token }
+      });
+      assert.equal(withNewToken.statusCode, 200);
+    } finally {
+      await app.close();
+    }
   });
 });
 

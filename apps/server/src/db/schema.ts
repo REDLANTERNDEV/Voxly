@@ -4,7 +4,8 @@ export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
   nickname: text("nickname").notNull(),
   role: text("role", { enum: ["owner", "member"] }).notNull(),
-  bannedAt: text("banned_at")
+  bannedAt: text("banned_at"),
+  isBot: integer("is_bot", { mode: "boolean" }).notNull().default(false)
 });
 
 export const invites = sqliteTable("invites", {

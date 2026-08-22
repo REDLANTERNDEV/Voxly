@@ -41,6 +41,12 @@ export function isAfkTimeoutMinutes(value: unknown): value is AfkTimeoutMinutes 
 export const afkRoomName = "AFK";
 
 /**
+ * Name every server's Music bot account is seeded with. Owners may rename it
+ * the same way they rename any other member.
+ */
+export const musicBotNickname = "Music";
+
+/**
  * Presence beyond connected/disconnected. Offline is the absence of an entry,
  * so only the two present states are named.
  */
@@ -94,6 +100,13 @@ export interface PresenceUser {
    * synthesised entry never claims someone is away.
    */
   status?: PresenceStatus;
+  /**
+   * A service account rather than a person: it is shown with a Bot marker, left
+   * out of member counts, and not offered the moderation actions that only make
+   * sense for someone who can be told to leave. Optional like the fields above,
+   * and an absent value reads as a person.
+   */
+  isBot?: boolean;
 }
 
 export interface ServerPresenceSnapshot {

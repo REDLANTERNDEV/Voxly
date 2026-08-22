@@ -257,9 +257,14 @@ describe("server membership", () => {
     });
 
     it("builds the socket identity from the authenticated session", () => {
-      const presence: PresenceUser = publicPresence({ id: "user-1", nickname: "Red Lantern", role: "owner" });
+      const presence: PresenceUser = publicPresence({
+        id: "user-1",
+        nickname: "Red Lantern",
+        role: "owner",
+        isBot: false
+      });
 
-      assert.deepEqual(presence, { userId: "user-1", nickname: "Red Lantern", role: "owner" });
+      assert.deepEqual(presence, { userId: "user-1", nickname: "Red Lantern", role: "owner", isBot: false });
     });
   });
 });

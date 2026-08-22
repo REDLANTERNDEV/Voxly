@@ -21,6 +21,9 @@ web serving, and owner recovery CLIs.
   scoping, force-leave, room teardown, and RTC signal forwarding. It registers
   the `voice:*` and `rtc:signal` handlers itself; `app.ts` composes it and keeps
   presence, text rooms, and the moderation surface routes call.
+- `src/bots.ts` owns the Music bot's account and the credential its process
+  presents: the operator config, the constant-time token check, account seeding
+  and creation, and bot session minting.
 - `src/rooms.ts` owns the room row shape and the lookup both routes and voice
   authorize against.
 - `src/socket.ts` owns the plumbing every socket handler shares: the throwing
@@ -35,6 +38,8 @@ web serving, and owner recovery CLIs.
   directly, without an HTTP or socket round trip.
 - `test/voice.test.ts` covers the media, moderation, and snapshot-redaction
   rules the same way.
+- `test/bots.test.ts` covers bot configuration, account seeding, and session
+  minting the same way.
 
 Keep SQL explicit and server-scoped. Prefer a small helper for repeated
 authorization or normalization rules rather than duplicating subtly different
@@ -48,6 +53,8 @@ queries across endpoints.
 - Do not drop or reinterpret audit-relevant rows as an incidental cleanup.
 - Keep schema metadata, runtime initialization, SQL queries, and migration tests
   synchronized.
+- Migrate `users.is_bot` additively with a `0` default, so every account in an
+  existing installation stays a person.
 - Migrate `invites.max_uses`, composite-keyed `invite_uses`, and membership
   `moderator_muted` / `moderator_deafened` / `can_invite` additively. Backfill legacy invite
   consumption once, retain the legacy first-use metadata, and preserve owner
@@ -144,6 +151,35 @@ queries across endpoints.
 - Every server-scoped directory, owner list, message, presence, and voice shape
   uses the effective membership nickname. After an update, refresh active voice
   snapshots and emit the typed member update only to that server room.
+
+## The Music Bot
+
+The decision behind this section is recorded in
+`docs/adr/0003-music-bot-service-account-credentials.md`. Change the shape of the
+credential there first.
+
+- Every server carries exactly one Music bot account: a `users` row with
+  `is_bot = 1` and an ordinary active `server_members` row with the `member`
+  role. Server creation makes one, and startup seeds one into every server that
+  has none — additively, so a deployment upgrading into the feature gets them.
+- Seeding is keyed on whether the server has *any* bot membership, banned and
+  removed ones included. That keeps it safe on every restart and stops an
+  operator who removed one by hand from being handed it back.
+- Give a bot account a UUID. Every server-scoped moderation route validates
+  `userId` as a UUID, so a readable id would make the bot unmuteable.
+- `is_bot` is presentation and moderation policy, never a permission. No
+  authorization decision may branch on it: the bot is authorized exactly like the
+  member it is.
+- Refuse kick, ban, the `can_invite` grant, and access-link creation for a bot
+  target with `cannot_moderate_bot`. Voice mute, deafen, disconnect, and move
+  stay available — they mean the same thing for a bot, and it honours them.
+- `VOXLY_BOT_TOKEN` is held in memory only, compared on digests with
+  `timingSafeEqual`, and never persisted or logged. Unset, `POST /api/bot/sessions`
+  is not registered at all and the bot accounts simply appear offline.
+- The exchange returns one freshly minted session per bot account plus the
+  session cookie's name, and retires that account's earlier sessions, so at most
+  one bot credential per account is live. Bot sessions are short-lived by design;
+  the process re-authenticates rather than holding one open.
 
 ## Messages and Rooms
 
