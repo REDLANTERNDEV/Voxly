@@ -77,6 +77,14 @@ bot on the deployment. It grants no owner powers and no access to any server the
 bot is not already a member of. Rotate it by changing it in both places and
 restarting them; sessions the bot already holds expire within the hour.
 
+### Running the Music bot
+
+The bot plays audio from YouTube. It fetches with **yt-dlp** and encodes with
+**ffmpeg**, and both must be installed wherever the bot runs — they are ordinary
+programs rather than npm packages, so `npm install` does not bring them. The
+ffmpeg build needs `libopus`; one without it cannot encode anything. No API key
+is required or used, by the bot or by you.
+
 The Music bot process is not yet part of the Compose deployment. To run it
 alongside the application today, give it the same token and the address of the
 application:
@@ -87,10 +95,32 @@ VOXLY_BOT_TOKEN=<the same value> \
   npm run start -w @voxly/bot
 ```
 
-Once it is running, anyone in a voice channel gets a Music panel there. Pressing
-play brings the bot into that channel and it plays for everyone in it; its row
-lights while it plays, the same as anyone speaking. Only someone already in the
-channel can summon it, and it will not play in the AFK channel.
+Three further values are optional:
+
+| Variable | Default | What it is for |
+| --- | --- | --- |
+| `VOXLY_YTDLP_PATH` | `yt-dlp` | Where yt-dlp is, if it is not on `PATH` |
+| `VOXLY_FFMPEG_PATH` | `ffmpeg` | Where ffmpeg is, if it is not on `PATH` |
+| `VOXLY_YTDLP_CLIENT` | yt-dlp's own choice | Which upstream client yt-dlp presents itself as |
+
+Once it is running, anyone in a voice channel gets a Music panel there. Paste a
+YouTube link and the bot joins that channel and plays it for everyone in it; its
+row lights while it plays, the same as anyone speaking. Only someone already in
+the channel can ask for music, and the bot will not play in the AFK channel. A
+link it cannot play — a playlist, a live stream, a video that is private,
+deleted or blocked where your server is — says so rather than doing nothing.
+
+**Expect this to break occasionally.** YouTube changes how it serves video
+several times a year, and yt-dlp stops working until it catches up. Fixes
+usually arrive in its nightly releases within days, so the repair is to update
+yt-dlp and restart the bot. `VOXLY_YTDLP_CLIENT` sometimes works around it
+sooner — yt-dlp's own documentation lists the client names it accepts. Nothing
+else in Voxly is affected while music is broken: chat, voice and screen sharing
+carry on.
+
+There is no account to ban, because the bot never signs in anywhere. The
+realistic failure is your server's address being rate-limited, which is
+temporary and clears on its own.
 
 The bot connects to each Listener directly, exactly as members connect to each
 other, so it needs whatever the rest of your voice does — reachable peers, or

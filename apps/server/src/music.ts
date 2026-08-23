@@ -16,19 +16,53 @@
  */
 
 import { z } from "zod";
-import { musicCommands, type MusicControlAck, type PresenceUser } from "@voxly/shared";
+import { musicLinkMaxLength, type MusicCommand, type MusicCommandAck, type MusicControlAck, type PresenceUser } from "@voxly/shared";
 import { musicBotAccountFor } from "./bots.js";
 import type { VoxlyDatabase } from "./db/database.js";
 import { roomById } from "./rooms.js";
 import { callAck, safeSocketHandler, socketsForUser, type VoxlyIoServer, type VoxlySocket } from "./socket.js";
 import type { VoiceRealtime } from "./voice.js";
 
+/**
+ * The commands, as the wire carries them. A discriminated union rather than a
+ * bare verb because `add` names a link and the rest name nothing; the server
+ * does not interpret the link beyond its shape, because which links are
+ * playable is the bot's knowledge and belongs in one place.
+ */
+const musicCommandSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("add"), url: z.string().min(1).max(musicLinkMaxLength) }).strict(),
+  z.object({ kind: z.literal("play") }).strict(),
+  z.object({ kind: z.literal("stop") }).strict(),
+  z.object({ kind: z.literal("leave") }).strict()
+]);
+
+/**
+ * The join between the shared vocabulary and this validator.
+ *
+ * A verb added to `MusicCommand` with no branch added here would otherwise be
+ * accepted by the bot and rejected at this door, which is the failure that is
+ * hardest to see: the member gets a refusal and nothing in either process looks
+ * wrong. This stops the build instead.
+ */
+const coversEveryCommand: MusicCommand extends z.infer<typeof musicCommandSchema> ? true : never = true;
+void coversEveryCommand;
+
 const musicControlPayloadSchema = z.object({
   roomId: z.string().min(1),
-  // The vocabulary is the shared one, so a verb added there is accepted here
-  // without a second list to keep in step.
-  command: z.enum(musicCommands)
+  command: musicCommandSchema
 }).strict();
+
+/**
+ * How long the bot gets to answer before the member is told it did not.
+ *
+ * Generous, because the slow part is the extractor asking the source about a
+ * link — a network round trip to somebody else's servers, occasionally several
+ * seconds. It must stay comfortably **longer** than the bot's own
+ * `resolveTimeoutMs` plus the join that follows it: a bot cut off mid-sentence
+ * reports `bot_timeout` in place of the real reason it gave up, which is the
+ * one answer that tells the member nothing.
+ */
+export const botAckTimeoutMs = 25_000;
 
 export interface MusicRealtime {
   registerHandlers: (socket: VoxlySocket, user: PresenceUser) => void;
@@ -42,19 +76,26 @@ export function createMusicRealtime(
   return {
     registerHandlers(socket, user) {
       socket.on("music:control", safeSocketHandler("music:control", (payload, ack) => {
-        callAck(ack, forwardMusicCommand(io, database, voice, user.userId, payload));
+        void forwardMusicCommand(io, database, voice, user.userId, payload)
+          .then((response) => callAck(ack, response))
+          // The request is now in flight to another process, so a fault here is
+          // not something the asker can be left hanging on.
+          .catch((cause: unknown) => {
+            console.error("music:control failed", cause);
+            callAck(ack, { ok: false, error: "bot_timeout" } satisfies MusicControlAck);
+          });
       }));
     }
   };
 }
 
-function forwardMusicCommand(
+async function forwardMusicCommand(
   io: VoxlyIoServer,
   database: VoxlyDatabase,
   voice: Pick<VoiceRealtime, "isVoiceMember">,
   requestedByUserId: string,
   payload: unknown
-): MusicControlAck {
+): Promise<MusicControlAck> {
   const parsed = musicControlPayloadSchema.safeParse(payload);
   if (!parsed.success) {
     return { ok: false, error: "room_not_found" };
@@ -83,11 +124,37 @@ function forwardMusicCommand(
   }
 
   const sockets = socketsForUser(io, account.userId);
-  if (sockets.length === 0) {
+  const botSocket = sockets.at(-1);
+  if (!botSocket) {
     return { ok: false, error: "bot_offline" };
   }
-  for (const botSocket of sockets) {
-    botSocket.emit("music:command", { roomId: room.id, command: parsed.data.command, requestedByUserId });
+  // The most recently connected socket, and only that one. An account may
+  // briefly hold two — a reconnect whose predecessor has not dropped yet — and
+  // delivering to both would summon two Sets into the same room, each unaware
+  // of the other. The newest is the one whose process is certainly still there.
+  return await askBot(botSocket, { roomId: room.id, command: parsed.data.command, requestedByUserId });
+}
+
+/**
+ * Puts the request to the bot and waits for its answer.
+ *
+ * The bot's answer is relayed rather than absorbed because only the bot can
+ * tell whether a link resolves to something playable, and the member who pasted
+ * it is owed that. What the server does *not* do is re-interpret it: every
+ * refusal the bot can give is already a member-facing reason in the shared
+ * contract.
+ */
+async function askBot(
+  botSocket: VoxlySocket,
+  payload: { roomId: string; command: MusicCommand; requestedByUserId: string }
+): Promise<MusicControlAck> {
+  try {
+    const response: MusicCommandAck = await botSocket.timeout(botAckTimeoutMs).emitWithAck("music:command", payload);
+    return response.ok ? { ok: true, track: response.track } : response;
+  } catch {
+    // A bot that has the request and has not answered is a different problem
+    // from one that is not running, and only one of the two is worth waiting
+    // out, so they do not share a message.
+    return { ok: false, error: "bot_timeout" };
   }
-  return { ok: true };
 }

@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
+import type { BotEnvironment } from "../src/config.js";
 import { describe, it } from "node:test";
 import { createSessionHolder } from "../src/credentials.js";
 import { fetchIceServers, type FetchJson } from "../src/voxly.js";
 
-const environment = { serverUrl: "http://127.0.0.1:3000", token: "a-bot-token-that-is-long-enough" };
+const environment: BotEnvironment = {
+  serverUrl: "http://127.0.0.1:3000",
+  token: "a-bot-token-that-is-long-enough",
+  extractorPath: "yt-dlp",
+  encoderPath: "ffmpeg",
+  extractorClient: ""
+};
 
 function session(serverId: string, token: string) {
   return { serverId, userId: `user-${serverId}`, nickname: "Music", token, expiresAt: "2026-01-01T01:00:00.000Z" };

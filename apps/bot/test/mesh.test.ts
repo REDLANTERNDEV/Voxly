@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { VoiceSnapshot } from "@voxly/shared";
 import type { RtpPacket } from "werift";
-import { readOggOpus, bundledTrackPath } from "../src/audio.js";
+import { TrackBuffer } from "../src/audio.js";
+import { readOggOpus } from "./ogg.js";
 import { VoiceMesh } from "../src/mesh.js";
 import { TrackPlayer } from "../src/player.js";
 import { FakeListener, SignalRelay, until } from "./listener.js";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /**
  * These are real peer connections: real DTLS, real SRTP, real Opus payloads
@@ -18,7 +20,12 @@ import { readFileSync } from "node:fs";
  */
 
 const roomId = "lobby";
-const track = readOggOpus(readFileSync(bundledTrackPath));
+/**
+ * A real encoder's Opus packets to push through real peer connections. Which
+ * file they came from is beside the point here — what these tests are about is
+ * the negotiation — so a checked-in fixture beats waiting on an extractor.
+ */
+const track = readOggOpus(readFileSync(fileURLToPath(new URL("../../test/assets/chime.opus", import.meta.url))));
 
 /** Ids chosen so the shared tie-break sends the offer the way each test needs. */
 const botBelow = "aaaa-bot";
@@ -59,21 +66,31 @@ interface Harness {
   player: TrackPlayer;
   relay: SignalRelay;
   listeners: FakeListener[];
+  /** Who the transport is actually up for. Writes before this land nowhere. */
+  connected: Set<string>;
   close: () => Promise<void>;
 }
 
 function startBot(selfUserId: string): Harness {
   const relay = new SignalRelay(roomId);
-  const player = new TrackPlayer(track.packets);
+  const player = new TrackPlayer();
+  player.load(TrackBuffer.of(track.packets));
   const listeners: FakeListener[] = [];
+  const connected = new Set<string>();
   const mesh = new VoiceMesh({
     signalling: relay.endpointFor(selfUserId),
     roomId,
     selfUserId,
     iceServers: [],
     createOutput: (peerUserId) => player.outputFor(peerUserId),
-    onListenerConnected: (peerUserId) => player.startTalkspurt(peerUserId),
-    onPeerRemoved: (peerUserId) => player.release(peerUserId)
+    onListenerConnected: (peerUserId) => {
+      connected.add(peerUserId);
+      player.startTalkspurt(peerUserId);
+    },
+    onPeerRemoved: (peerUserId) => {
+      connected.delete(peerUserId);
+      player.release(peerUserId);
+    }
   });
   mesh.start();
   return {
@@ -81,6 +98,7 @@ function startBot(selfUserId: string): Harness {
     player,
     relay,
     listeners,
+    connected,
     async close() {
       player.close();
       await mesh.stop();
@@ -161,6 +179,12 @@ describe("more than one Listener", () => {
     try {
       bot.mesh.applySnapshot(snapshotOf(botBelow, listenerMiddle, secondListenerMiddle));
       await Promise.all([first.announce(), second.announce()]);
+      // Both transports up *before* the first frame goes out. Two connections
+      // come up milliseconds apart, and a frame written before one of them is
+      // ready simply lands nowhere — so starting earlier would leave the two
+      // Listeners holding different stretches of the Track, with no shared
+      // reference left to line them up by.
+      await until(() => bot.connected.size === 2, "both transports to come up");
       bot.player.start();
 
       await until(() => first.received.length > 20 && second.received.length > 20, "audio at both Listeners");
@@ -168,9 +192,11 @@ describe("more than one Listener", () => {
 
       // Both are fed from one encoded Track, so the payloads they receive are
       // the same bytes even though the RTP headers around them are not. Matched
-      // on the RTP timestamp rather than on arrival order: the two connections
-      // come up moments apart, so the nth packet each received is not the same
-      // frame of the Track.
+      // on the RTP timestamp rather than on arrival order, because werift gives
+      // each sender its own sequence numbering; the timestamps still advance in
+      // step, so the offset from each Listener's first frame identifies the
+      // same frame of the Track — which holds only because playback started
+      // after both were connected.
       const shared = matchingFrames(first.received, second.received);
       assert.ok(shared.length > 10, `expected overlapping frames, got ${shared.length}`);
       for (const [a, b] of shared) {

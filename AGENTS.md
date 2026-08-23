@@ -43,6 +43,11 @@ ADR wins on the why. Add an ADR when a decision would otherwise be re-litigated
 from scratch, and surface a conflict with an existing one rather than quietly
 overriding it.
 
+`CONTEXT.md` owns the words. Where it names a term, use that term in code,
+comments, copy and commit messages, and avoid the alternatives it lists — the
+point is that one thing has one name everywhere, not that the chosen name is the
+only defensible one. Propose a change there rather than introducing a synonym.
+
 Decision ownership is intentionally scoped rather than repeated everywhere:
 
 | Decision area | Authoritative guidance |
@@ -75,6 +80,8 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | The bot's place in the voice mesh and what it must self-enforce | ADR-0001; `apps/bot/AGENTS.md` — Voice and Playback |
 | The bot's WebRTC library and its encode-once property | ADR-0002; `apps/bot/AGENTS.md` — Voice and Playback |
 | Summoning the Music bot and who may control it | `apps/server/AGENTS.md` — The Music Bot; `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
+| How a pasted link becomes audio, and what happens when the fetch falls behind | ADR-0004; `apps/bot/AGENTS.md` — Sources and Fetching |
+| The music command vocabulary and how a refusal reaches the member | `packages/shared/AGENTS.md` — Music Contracts |
 
 ## Repository Map
 
@@ -85,6 +92,8 @@ apps/bot          Music bot process: joins voice rooms as a peer and plays audio
 packages/shared   Shared DTOs, typed Socket.IO contracts, cross-peer rules
 docs              Public self-hosting and operator documentation
 docs/adr          Architecture decision records: why a design is what it is
+docs/designs      Feature designs: the problem, the stories, and what was ruled out
+CONTEXT.md        The domain glossary: agreed words, and what they are not called
 infra             Reverse-proxy and Coturn examples and helper scripts
 compose.yaml      Core application deployment
 compose.turn.yaml Optional Coturn deployment overlay

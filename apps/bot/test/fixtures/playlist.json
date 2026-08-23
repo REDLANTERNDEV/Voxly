@@ -1,0 +1,12 @@
+{
+  "id": "PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "title": "Everything I have ever liked",
+  "_type": "playlist",
+  "extractor": "youtube:tab",
+  "webpage_url": "https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "playlist_count": 412,
+  "entries": [
+    { "id": "aB3dE5gH7jK", "title": "Nocturne in E-flat major", "duration": 273, "_type": "url" },
+    { "id": "zY9xW7vU5tS", "title": "Gymnopedie No.1", "duration": 201, "_type": "url" }
+  ]
+}

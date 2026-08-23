@@ -87,6 +87,10 @@ Rejected as disproportionate: a whole Chromium per deployment, with its own
 memory footprint, sandbox requirements and upgrade treadmill, inside a product
 that currently ships as one small Node container.
 
+**A fabricated participant with no account behind it.** Cheapest of all to draw.
+Not viable: a member with no socket holds no peer connection, so it would appear
+in the sidebar and be permanently silent.
+
 ## Consequences
 
 - The bot's upstream bandwidth grows with the number of Listeners, exactly like
@@ -99,6 +103,10 @@ that currently ships as one small Node container.
   the library for.
 - The bot needs TURN on the same terms as anyone else, and obtains its
   credentials from the same authenticated `/api/rtc/config` endpoint.
+- It inherits the one-voice-room-per-account limit that applies to everyone,
+  which is why each server gets its own bot account rather than one account
+  serving them all: a single account could only ever be in one room, in one
+  server, at a time.
 - Moderation of the bot's *media* depends on the bot behaving. An operator who
   runs a modified bot can make it ignore a mute — which is true of a modified
   browser client too, and is a property of peer-to-peer media rather than of

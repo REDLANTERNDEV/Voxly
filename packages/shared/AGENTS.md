@@ -85,11 +85,36 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   verb. Every one of them is the same request — this room, this instruction —
   and the transport rules do not vary between them. Extend the union rather than
   adding an event beside it.
+- `MusicCommand` is a discriminated union on `kind`, because `add` carries the
+  link it names and the others carry nothing. Do not flatten it back to a verb
+  plus an optional `url`: that makes the field optional everywhere in order to
+  be absent in three cases out of four, and nothing then stops a `stop` arriving
+  with a link on it. A new verb that needs data is a new member here.
 - `music:command` is server-to-client and is only ever delivered to a Music bot
   account. It carries the room the request names, so a command that raced a move
-  can be ignored rather than applied to the wrong Set.
-- `MusicControlAck` keeps `no_music_bot` and `bot_offline` distinct. Collapsing
-  them would tell a member to wait for a bot that does not exist.
+  can be ignored rather than applied to the wrong Set. It is delivered to one
+  socket, the most recent, rather than to every socket the account holds —
+  two deliveries would summon two Sets into the same room.
+- **The bot's answer is relayed to the member, not absorbed.** `music:command`
+  is acknowledged, the server waits for that acknowledgement, and
+  `MusicControlAck` carries whichever answer came back. Only the bot can tell
+  whether a link resolves to something playable, and the alternative for someone
+  who pasted a dead one is silence — the worst possible answer from a control
+  whose only output is sound somewhere else.
+- Every refusal in `MusicControlError` gets its own sentence in both languages,
+  and the browser's mapping is exhaustive on purpose: adding a member here
+  should fail the build rather than quietly render the wrong sentence. Keep the
+  ones that lead somewhere different apart — `no_music_bot` from `bot_offline`,
+  `unsupported_link` from `track_unavailable` from `extractor_failed` — because
+  only some of them are worth waiting out and only some of them mean the link
+  was the problem.
+- A successful `MusicControlAck` carries `track`, explicitly `null` for a
+  request that produces none. Not optional: a consumer that forgets to handle
+  "there is no Track" should have to say so.
+- Which links are playable is the bot's knowledge and lives in `apps/bot`. The
+  server bounds the link's length and nothing else, and the browser checks only
+  that the field is not empty. A second opinion in either place would be the
+  copy that drifts, refusing a form the bot has since learned to accept.
 
 ## Verification
 

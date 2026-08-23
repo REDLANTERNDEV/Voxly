@@ -23,6 +23,7 @@ import type {
   VoiceSnapshot
 } from "@voxly/shared";
 import { VoiceMesh, type MeshSignalling } from "./mesh.js";
+import type { TrackBuffer } from "./audio.js";
 import { TrackPlayer } from "./player.js";
 import type { IceServer } from "./voxly.js";
 
@@ -68,8 +69,8 @@ export interface MusicSetOptions {
   roomId: string;
   selfUserId: string;
   iceServers: IceServer[];
-  /** The Track, already encoded. One copy, however many Listeners there are. */
-  packets: Buffer[];
+  /** The Track that was playing ended of its own accord. */
+  onTrackEnded?: () => void;
   log?: (message: string) => void;
 }
 
@@ -79,6 +80,11 @@ export interface MusicSet {
   readonly listenerUserIds: string[];
   /** Joins the room. Rejects if the server refuses, so the Summon can report it. */
   begin: () => Promise<void>;
+  /**
+   * Play this Track from its beginning. The buffer may still be filling; the
+   * player waits for it rather than the Set waiting to be handed a whole Track.
+   */
+  loadTrack: (audio: TrackBuffer) => void;
   play: () => void;
   stop: () => void;
   /** Ends the Set. Safe to call twice; the second call does nothing. */
@@ -91,8 +97,12 @@ export function createMusicSet(options: MusicSetOptions): MusicSet {
   let joined = false;
   let ended = false;
 
-  const player = new TrackPlayer(options.packets, {
-    onPlayingChange: (playing) => publishSpeaking(playing)
+  const player = new TrackPlayer({
+    onPlayingChange: (playing) => publishSpeaking(playing),
+    onEnded: () => {
+      log("the Track ended");
+      options.onTrackEnded?.();
+    }
   });
 
   const mesh = new VoiceMesh({
@@ -153,6 +163,10 @@ export function createMusicSet(options: MusicSetOptions): MusicSet {
       }
       joined = true;
       log(`joined voice room ${roomId}`);
+    },
+    loadTrack(audio) {
+      if (ended) return;
+      player.load(audio);
     },
     play() {
       if (ended) return;

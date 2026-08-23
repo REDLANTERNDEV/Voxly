@@ -6,6 +6,13 @@
  * SRTP encryption, not another encoder. What is deliberately *not* shared is
  * the packet object — see `toRtpPacket`.
  *
+ * A Track now arrives while it plays rather than all at once (ADR-0004), so the
+ * player pulls frames from a buffer that is still filling and has to answer for
+ * the case where the next frame is not there yet. It stalls: the playback clock
+ * stops rather than the frames being skipped. Skipping would mean the music
+ * silently loses whatever the extractor was late by, and nobody would ever
+ * learn which part of the Track they did not hear.
+ *
  * The player also owns the answer to "is the bot making a sound right now",
  * because it is the only thing that knows. Nothing on the receiving side
  * measures incoming audio: the speaking indicator everyone renders comes from
@@ -15,6 +22,7 @@
 
 import { MediaStreamTrack } from "werift";
 import {
+  TrackBuffer,
   framesDueBy,
   opusFrameMs,
   randomRtpOrigin,
@@ -30,17 +38,21 @@ export interface TrackPlayerOptions {
   clearInterval?: (timer: NodeJS.Timeout) => void;
   /** Called when playback starts or stops, so the Set can publish `speaking`. */
   onPlayingChange?: (playing: boolean) => void;
+  /** The Track reached its end. Whoever owns the Queue decides what follows. */
+  onEnded?: () => void;
 }
 
 export class TrackPlayer {
   /**
    * `markerSent` records whether this Listener has had the marker bit that
-   * opens a talkspurt. It is cleared when the Listener's transport comes up and
-   * when playback starts, which are the two moments audio begins arriving after
-   * silence — the only two the marker bit means anything at.
+   * opens a talkspurt. It is cleared when the Listener's transport comes up,
+   * when playback starts, and when a stall ends — the three moments audio
+   * begins arriving after silence, and the only ones the marker bit means
+   * anything at.
    */
   private readonly tracks = new Map<string, { track: MediaStreamTrack; markerSent: boolean }>();
-  private readonly options: Required<Omit<TrackPlayerOptions, "onPlayingChange">> & Pick<TrackPlayerOptions, "onPlayingChange">;
+  private readonly options: Required<Omit<TrackPlayerOptions, "onPlayingChange" | "onEnded">> &
+    Pick<TrackPlayerOptions, "onPlayingChange" | "onEnded">;
   private timer?: NodeJS.Timeout;
   /**
    * Tracked separately from the timer handle rather than derived from it. What
@@ -50,16 +62,29 @@ export class TrackPlayer {
    */
   private isPlaying = false;
   private startedAt = 0;
+  /** Position within the current Track. Resets when another one is loaded. */
   private sentFrames = 0;
+  /**
+   * Frames written to the wire since the Set began, which is what the sequence
+   * numbers and timestamps are derived from. Deliberately *not* the same
+   * counter as `sentFrames`: a Listener receives one continuous RTP stream for
+   * as long as it is connected, and restarting its sequence numbering at the
+   * start of every Track would look to the receiver like a flood of very old
+   * packets arriving out of order.
+   */
+  private streamFrames = 0;
+  private stalled = false;
+  private ended = false;
+  private source: TrackBuffer | null = null;
   private readonly origin: RtpOrigin;
 
-  constructor(private readonly packets: Buffer[], options: TrackPlayerOptions = {}) {
-    if (packets.length === 0) throw new Error("The Track has no audio packets");
+  constructor(options: TrackPlayerOptions = {}) {
     this.options = {
       now: options.now ?? (() => performance.now()),
       setInterval: options.setInterval ?? ((callback, milliseconds) => setInterval(callback, milliseconds)),
       clearInterval: options.clearInterval ?? ((timer) => clearInterval(timer)),
-      onPlayingChange: options.onPlayingChange
+      onPlayingChange: options.onPlayingChange,
+      onEnded: options.onEnded
     };
     this.origin = randomRtpOrigin();
   }
@@ -92,17 +117,37 @@ export class TrackPlayer {
     entry.track.stop();
   }
 
+  /**
+   * The Track to play from here. Replaces whatever was loaded, from its
+   * beginning, without disturbing the RTP stream the Listeners are receiving.
+   */
+  load(source: TrackBuffer) {
+    this.source = source;
+    this.sentFrames = 0;
+    this.ended = false;
+    this.stalled = false;
+    this.rebaseClock();
+    // A new Track after another one is a new talkspurt, even without a gap.
+    this.reopenTalkspurts();
+  }
+
   start() {
-    if (this.isPlaying) return;
+    if (this.isPlaying || !this.source) return;
+    // Play on a Track that already finished plays it again, from the start.
+    // The alternative is a control that is visible, enabled, and does nothing —
+    // which from the outside is indistinguishable from a broken one. The audio
+    // is still buffered, so this costs no second fetch.
+    if (this.ended) {
+      this.ended = false;
+      this.sentFrames = 0;
+    }
     this.isPlaying = true;
-    // Offset by what has already gone out, so a stop/start resumes rather than
-    // asking for every frame since zero all at once.
-    this.startedAt = this.options.now() - this.sentFrames * opusFrameMs;
+    this.rebaseClock();
     // Tick faster than the frame rate and send whatever is due. A 20 ms
     // interval drifts; catching up against the clock does not.
     this.timer = this.options.setInterval(() => this.flush(), Math.floor(opusFrameMs / 4));
     // Resuming after a stop is a new talkspurt for everyone still listening.
-    for (const entry of this.tracks.values()) entry.markerSent = false;
+    this.reopenTalkspurts();
     this.options.onPlayingChange?.(true);
   }
 
@@ -124,20 +169,81 @@ export class TrackPlayer {
     return this.isPlaying;
   }
 
+  /**
+   * Whether playback is waiting on audio that has not been fetched yet. It is
+   * not a kind of stopped: the bot is still playing this Track and still says
+   * so, it just has nothing to send this instant.
+   */
+  get waiting() {
+    return this.stalled;
+  }
+
   /** Exposed so a test can advance playback without waiting for a timer. */
   flush() {
-    if (!this.isPlaying) return;
+    const source = this.source;
+    if (!this.isPlaying || !source) return;
+    // Nothing goes out until the prebuffer is met, and while it is not, the
+    // clock does not run either — otherwise the wait would be owed back as a
+    // burst of frames the moment audio arrived.
+    if (!source.readyToStart) {
+      this.enterStall();
+      return;
+    }
     const due = framesDueBy(this.options.now() - this.startedAt);
     while (this.sentFrames < due) {
-      const frame = rtpFrameAt(this.packets, this.sentFrames, this.origin);
+      const payload = source.packetAt(this.sentFrames);
+      if (payload === undefined) {
+        if (source.complete) {
+          this.finish();
+          return;
+        }
+        this.enterStall();
+        return;
+      }
+      if (this.stalled) this.leaveStall();
+      const frame = rtpFrameAt(payload, this.streamFrames, this.origin);
+      // The Track's own first frame opens a talkspurt; so does the first frame
+      // a Listener can actually receive, for one that arrived mid-Track and
+      // whose jitter buffer has nothing else to sync to.
+      const marker = this.sentFrames === 0;
       for (const entry of this.tracks.values()) {
-        // A Listener who arrived mid-Track still needs a marker on the first
-        // packet it can actually receive, or its jitter buffer has no start of
-        // talkspurt to sync to.
-        entry.track.writeRtp(toRtpPacket({ ...frame, marker: frame.marker || !entry.markerSent }));
+        entry.track.writeRtp(toRtpPacket({ ...frame, marker: marker || !entry.markerSent }));
         entry.markerSent = true;
       }
       this.sentFrames++;
+      this.streamFrames++;
     }
+  }
+
+  /**
+   * Stops the clock where playback got to, so the stalled stretch is never owed
+   * back. `speaking` deliberately does not change: the bot is still playing
+   * this Track, and flickering the room's indicator off and on for a
+   * half-second of buffering would report a state nobody is in.
+   */
+  private enterStall() {
+    this.rebaseClock();
+    this.stalled = true;
+  }
+
+  private leaveStall() {
+    this.stalled = false;
+    // Audio resuming after silence is a new talkspurt, exactly as it is after a
+    // stop; the receiving jitter buffer has nothing else to resynchronise on.
+    this.reopenTalkspurts();
+  }
+
+  private finish() {
+    this.ended = true;
+    this.stop();
+    this.options.onEnded?.();
+  }
+
+  private rebaseClock() {
+    this.startedAt = this.options.now() - this.sentFrames * opusFrameMs;
+  }
+
+  private reopenTalkspurts() {
+    for (const entry of this.tracks.values()) entry.markerSent = false;
   }
 }

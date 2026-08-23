@@ -7,7 +7,7 @@
  * playing, and what to say when the server refuses.
  */
 
-import type { MusicCommand, MusicControlAck, VoiceMemberState } from "@voxly/shared";
+import type { MusicCommand, MusicControlAck, MusicControlError, MusicTrackSummary, VoiceMemberState } from "@voxly/shared";
 import type { TranslationKey } from "./i18n.js";
 
 export type { MusicCommand };
@@ -70,6 +70,33 @@ export function requestMusicCommand(
 }
 
 /**
+ * Whether a pasted link is worth sending at all.
+ *
+ * Deliberately only "is there something here": which links are playable is the
+ * bot's knowledge, and a second opinion in the browser would be the copy that
+ * drifts — refusing a form the bot has since learned to accept, with no way for
+ * anyone to tell why.
+ */
+export function isSendableLink(input: string) {
+  return input.trim().length > 0;
+}
+
+/** A Track's length as a person reads it: 3:42, or 1:04:11 for a long one. */
+export function trackLength(seconds: number) {
+  const whole = Math.max(0, Math.round(seconds));
+  const parts = [Math.floor(whole / 3_600), Math.floor(whole / 60) % 60, whole % 60];
+  return parts
+    .slice(parts[0] === 0 ? 1 : 0)
+    .map((part, index) => (index === 0 ? String(part) : String(part).padStart(2, "0")))
+    .join(":");
+}
+
+/** What the panel says once a Track has been accepted. */
+export function trackAddedMessage(track: MusicTrackSummary, t: (key: TranslationKey, values?: Record<string, string | number>) => string) {
+  return t("music.added", { title: track.title, length: trackLength(track.durationSeconds) });
+}
+
+/**
  * Every refusal gets its own sentence. "Nothing happened" is the worst possible
  * answer for a control whose whole output is sound somewhere else.
  */
@@ -85,6 +112,18 @@ export function musicErrorKey(error: MusicControlError): TranslationKey {
       return "music.errorNotInRoom";
     case "room_not_found":
       return "music.errorRoom";
+    case "unsupported_link":
+      return "music.errorLink";
+    case "track_unavailable":
+      return "music.errorUnavailable";
+    case "live_stream":
+      return "music.errorLive";
+    case "extractor_failed":
+      return "music.errorSource";
+    case "bot_timeout":
+      return "music.errorTimeout";
+    case "bot_failed":
+      return "music.errorBot";
     default:
       // Exhaustive on purpose rather than a catch-all: a refusal added to the
       // contract should fail the build here, not quietly render the wrong
@@ -92,8 +131,6 @@ export function musicErrorKey(error: MusicControlError): TranslationKey {
       return assertNever(error);
   }
 }
-
-type MusicControlError = Exclude<MusicControlAck, { ok: true }>["error"];
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled music control error: ${String(value)}`);

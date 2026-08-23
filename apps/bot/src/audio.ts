@@ -6,72 +6,174 @@
  * architecture rests on — see `docs/adr/0002-werift-for-the-bot-webrtc-stack.md` —
  * and it is why this module deals in packets rather than in samples.
  *
- * The Ogg reader is hand-rolled rather than taken from a library because it is
- * the shape the extractor path needs anyway: ffmpeg hands over encoded Opus and
- * this packetises it. werift's own file player accepts only MP4 and WebM.
+ * The Ogg reader is hand-rolled rather than taken from a library because
+ * werift's own file player accepts only MP4 and WebM. It reads incrementally
+ * because a fetched Track arrives over seconds rather than all at once, and
+ * because the encoder is asked for Ogg Opus (ADR-0004) precisely so that a
+ * fetched Track and a file on disk take the same path through here. A second
+ * framing path is a second place for lacing to be got subtly wrong, and the
+ * symptom of that is noise that sounds like a broken library.
  */
 
-import { fileURLToPath } from "node:url";
 import { RtpHeader, RtpPacket } from "werift";
 
-/** 20 ms at 48 kHz: the frame size the bundled Track was encoded with. */
+/** 20 ms at 48 kHz: the frame size everything here assumes. */
 export const opusFrameSamples = 960;
 export const opusFrameMs = opusFrameSamples / 48;
 
+/** The fixed length of an Ogg page header before its lacing table. */
+const oggHeaderBytes = 27;
+
 /**
- * The Track that ships with the bot. Synthesised rather than licensed, and
- * resolved from this module so it is found the same way from `dist` and from a
- * test.
+ * An Ogg Opus stream arriving in pieces.
+ *
+ * Fed whatever the encoder happened to write, it hands back the Opus packets
+ * that are now complete and keeps the rest. Two kinds of incompleteness matter
+ * and they are different: a page that has not finished arriving, which is held
+ * in `pending` until it has, and a packet laced across a page boundary, which
+ * is held in `carried` until its final segment turns up. Getting the second one
+ * wrong is the classic Ogg mistake — it yields fragments that are individually
+ * plausible and collectively noise.
  */
-export const bundledTrackPath = fileURLToPath(new URL("../../assets/chime.opus", import.meta.url));
+export class OggOpusReader {
+  private pending: Buffer = Buffer.alloc(0);
+  private carried: Buffer[] = [];
+  private head: Buffer | null = null;
 
-export interface OggOpusFile {
-  channels: number;
-  /** Samples libopus needs to discard at the start; reported, not applied. */
-  preSkip: number;
-  /** One Opus packet per entry, header packets removed. */
-  packets: Buffer[];
-}
+  /** Whatever became complete because of this chunk. Often nothing. */
+  push(chunk: Buffer): Buffer[] {
+    this.pending = this.pending.length === 0 ? chunk : Buffer.concat([this.pending, chunk]);
+    const packets: Buffer[] = [];
 
-export function readOggOpus(file: Buffer): OggOpusFile {
-  const packets: Buffer[] = [];
-  let carried: Buffer[] = [];
-  let at = 0;
-
-  while (at < file.length) {
-    if (file.toString("ascii", at, at + 4) !== "OggS") {
-      throw new Error(`Expected an OggS page at byte ${at}`);
+    for (;;) {
+      const page = this.takePage();
+      if (!page) break;
+      for (const packet of page) {
+        const magic = packet.subarray(0, 8).toString("ascii");
+        if (magic === "OpusHead") {
+          this.head ??= packet;
+          continue;
+        }
+        if (magic === "OpusTags") continue;
+        packets.push(packet);
+      }
     }
-    const segmentCount = file.readUInt8(at + 26);
-    const table = file.subarray(at + 27, at + 27 + segmentCount);
-    let body = at + 27 + segmentCount;
+    return packets;
+  }
 
+  /** The identification header, once a page carrying it has arrived. */
+  get identification(): { channels: number; preSkip: number } | null {
+    const head = this.head;
+    return head && head.length >= 12 ? { channels: head.readUInt8(9), preSkip: head.readUInt16LE(10) } : null;
+  }
+
+  /**
+   * Whether anything is still held back. A stream that ends here has been
+   * truncated mid-page or mid-packet, which is worth saying rather than
+   * treating as a clean end.
+   */
+  get incomplete() {
+    return this.pending.length > 0 || this.carried.length > 0;
+  }
+
+  /**
+   * Consumes one whole page from `pending`, returning the packets it completed,
+   * or `null` when there is not yet a whole page there to consume.
+   */
+  private takePage(): Buffer[] | null {
+    // The magic is checked as soon as there is enough to check it. Waiting for
+    // a whole header would let a stream of something else accumulate first, and
+    // the report would then name the wrong problem.
+    if (this.pending.length < 4) return null;
+    if (this.pending.toString("ascii", 0, 4) !== "OggS") {
+      throw new Error("Expected an OggS page");
+    }
+    if (this.pending.length < oggHeaderBytes) return null;
+    const segmentCount = this.pending.readUInt8(26);
+    const tableEnd = oggHeaderBytes + segmentCount;
+    if (this.pending.length < tableEnd) return null;
+
+    const table = this.pending.subarray(oggHeaderBytes, tableEnd);
+    let bodyBytes = 0;
+    for (const size of table) bodyBytes += size;
+    if (this.pending.length < tableEnd + bodyBytes) return null;
+
+    const packets: Buffer[] = [];
+    let at = tableEnd;
     for (const size of table) {
-      carried.push(file.subarray(body, body + size));
-      body += size;
+      this.carried.push(this.pending.subarray(at, at + size));
+      at += size;
       // A lacing value below 255 terminates a packet. A run of 255s means the
       // packet continues, possibly onto the next page.
       if (size < 255) {
-        packets.push(Buffer.concat(carried));
-        carried = [];
+        packets.push(Buffer.concat(this.carried));
+        this.carried = [];
       }
     }
-    at = body;
+    this.pending = this.pending.subarray(at);
+    return packets;
+  }
+}
+
+/**
+ * How much audio to have in hand before the first note.
+ *
+ * Two seconds. The extractor runs many times faster than realtime once it is
+ * running, so what this actually buys is cover for the pause between its first
+ * byte and its steady state — and it is short enough that a member who pasted a
+ * link does not notice it on top of the fetch they are already waiting through.
+ * Raising it trades time-to-first-note for fewer stalls on a slow line.
+ */
+export const prebufferFrames = 100;
+
+/**
+ * Encoded audio accumulating: what the fetch fills and the player reads.
+ *
+ * It lives here rather than beside the player because both ends of the pipe
+ * need it and neither owns it — the fetch would otherwise have to reach into
+ * playback for the shape of its own output.
+ *
+ * `complete` is the difference between "the next frame has not arrived yet" and
+ * "there are no more frames", which are the same absence and want opposite
+ * responses: wait, or finish.
+ */
+export class TrackBuffer {
+  private readonly packets: Buffer[] = [];
+  private done = false;
+
+  /** A Track that is already whole — a file on disk, or a test fixture. */
+  static of(packets: Buffer[]) {
+    const buffer = new TrackBuffer();
+    buffer.append(packets);
+    buffer.finish();
+    return buffer;
   }
 
-  const head = packets[0];
-  if (!head || head.subarray(0, 8).toString("ascii") !== "OpusHead") {
-    throw new Error("Expected the first packet to be an OpusHead identification header");
+  append(packets: Buffer[]) {
+    for (const packet of packets) this.packets.push(packet);
   }
 
-  return {
-    channels: head.readUInt8(9),
-    preSkip: head.readUInt16LE(10),
-    packets: packets.filter((packet) => {
-      const magic = packet.subarray(0, 8).toString("ascii");
-      return magic !== "OpusHead" && magic !== "OpusTags";
-    })
-  };
+  /** No more audio is coming. Whatever is here is the whole Track. */
+  finish() {
+    this.done = true;
+  }
+
+  packetAt(index: number): Buffer | undefined {
+    return this.packets[index];
+  }
+
+  get length() {
+    return this.packets.length;
+  }
+
+  get complete() {
+    return this.done;
+  }
+
+  /** Whether there is enough in hand to start without stalling immediately. */
+  get readyToStart() {
+    return this.done || this.packets.length >= prebufferFrames;
+  }
 }
 
 /**
@@ -105,13 +207,17 @@ export function randomRtpOrigin(): RtpOrigin {
   };
 }
 
-/** The `index`th frame of playback, looping the Track when it runs out. */
-export function rtpFrameAt(packets: Buffer[], index: number, origin: RtpOrigin): RtpFrame {
+/**
+ * The `index`th frame of playback, carrying an Opus packet the caller already
+ * has. Nothing here loops: a Track ends, and what happens then belongs to
+ * whatever owns the Queue rather than to the arithmetic.
+ */
+export function rtpFrameAt(payload: Buffer, index: number, origin: RtpOrigin): RtpFrame {
   return {
     sequenceNumber: (origin.sequenceNumber + index) & 0xffff,
     timestamp: (origin.timestamp + index * opusFrameSamples) >>> 0,
     marker: index === 0,
-    payload: packets[index % packets.length]!
+    payload
   };
 }
 

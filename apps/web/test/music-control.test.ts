@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import type { MusicControlAck, VoiceMemberState } from "@voxly/shared";
+import type { MusicCommand, MusicControlAck, VoiceMemberState } from "@voxly/shared";
 import { translate } from "../src/lib/i18n.js";
-import { musicBotIn, musicErrorKey, musicPanelState, offersStop, requestMusicCommand } from "../src/lib/musicBot.js";
+import {
+  isSendableLink,
+  musicBotIn,
+  musicErrorKey,
+  musicPanelState,
+  offersStop,
+  requestMusicCommand,
+  trackAddedMessage,
+  trackLength
+} from "../src/lib/musicBot.js";
 
 const musicPanel = readFileSync("src/features/voice/MusicPanel.tsx", "utf8");
 const voiceRoom = readFileSync("src/features/voice/VoiceRoomScreen.tsx", "utf8");
@@ -58,33 +67,99 @@ describe("what the panel is looking at", () => {
 });
 
 describe("asking for music", () => {
-  it("sends the command for the named room and resolves with the answer", async () => {
-    const sent: Array<{ roomId: string; command: string }> = [];
-    const socket = {
-      emit(_event: "music:control", payload: { roomId: string; command: "play" | "stop" | "leave" }, ack: (response: MusicControlAck) => void) {
-        sent.push(payload);
-        ack({ ok: true });
+  const track = { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 };
+
+  function socketDouble(answer: MusicControlAck = { ok: true, track: null }) {
+    const sent: Array<{ roomId: string; command: MusicCommand }> = [];
+    return {
+      sent,
+      socket: {
+        emit(_event: "music:control", payload: { roomId: string; command: MusicCommand }, ack: (response: MusicControlAck) => void) {
+          sent.push(payload);
+          ack(answer);
+        }
       }
     };
+  }
 
-    const response = await requestMusicCommand(socket, "lobby", "play");
+  it("sends the pasted link for the named room and resolves with the Track", async () => {
+    const { sent, socket } = socketDouble({ ok: true, track });
+    const command = { kind: "add", url: "https://youtu.be/aB3dE5gH7jK" } as const;
 
-    assert.deepEqual(sent, [{ roomId: "lobby", command: "play" }]);
-    assert.deepEqual(response, { ok: true });
+    const response = await requestMusicCommand(socket, "lobby", command);
+
+    assert.deepEqual(sent, [{ roomId: "lobby", command }]);
+    assert.deepEqual(response, { ok: true, track });
+  });
+
+  it("sends the commands that carry no link the same way", async () => {
+    const { sent, socket } = socketDouble();
+
+    for (const kind of ["play", "stop", "leave"] as const) {
+      assert.deepEqual(await requestMusicCommand(socket, "lobby", { kind }), { ok: true, track: null });
+    }
+    assert.deepEqual(sent.map((entry) => entry.command.kind), ["play", "stop", "leave"]);
   });
 
   it("answers without a round trip when there is no socket or no room", async () => {
-    assert.deepEqual(await requestMusicCommand(null, "lobby", "play"), { ok: false, error: "not_in_voice_room" });
     assert.deepEqual(
-      await requestMusicCommand({ emit: () => assert.fail("must not emit") }, null, "play"),
+      await requestMusicCommand(null, "lobby", { kind: "play" }),
       { ok: false, error: "not_in_voice_room" }
     );
+    assert.deepEqual(
+      await requestMusicCommand({ emit: () => assert.fail("must not emit") }, null, { kind: "play" }),
+      { ok: false, error: "not_in_voice_room" }
+    );
+  });
+
+  it("does not send a link that is only whitespace", () => {
+    // The browser holds no opinion about which links are playable — that is the
+    // bot's knowledge and a second copy of it here would be the one that drifts.
+    // "Is there anything here at all" is the whole check.
+    assert.equal(isSendableLink(""), false);
+    assert.equal(isSendableLink("   \n "), false);
+    assert.equal(isSendableLink("https://youtu.be/aB3dE5gH7jK"), true);
+    assert.equal(isSendableLink("probably not a link"), true, "the bot gets to answer that one");
+  });
+});
+
+describe("naming the Track that started", () => {
+  it("writes a length the way a person reads one", () => {
+    assert.equal(trackLength(273), "4:33");
+    assert.equal(trackLength(9), "0:09");
+    assert.equal(trackLength(600), "10:00");
+    assert.equal(trackLength(3_851), "1:04:11", "an hour-long mix does not read as 64 minutes");
+    assert.equal(trackLength(0), "0:00");
+  });
+
+  it("says what is playing, in both languages", () => {
+    const track = { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 };
+    const english = trackAddedMessage(track, (key, values) => translate("en", key, values));
+    const turkish = trackAddedMessage(track, (key, values) => translate("tr", key, values));
+
+    for (const message of [english, turkish]) {
+      assert.match(message, /Nocturne in E-flat major/, "the title is not translated, and must survive");
+      assert.match(message, /4:33/);
+    }
+    assert.notEqual(english, turkish);
   });
 });
 
 describe("what a refusal says", () => {
   it("gives every refusal its own sentence, in both languages", () => {
-    const errors = ["bot_offline", "no_music_bot", "afk_room", "not_in_voice_room", "room_not_found"] as const;
+    const errors = [
+      "bot_offline",
+      "no_music_bot",
+      "afk_room",
+      "not_in_voice_room",
+      "room_not_found",
+      "unsupported_link",
+      "track_unavailable",
+      "live_stream",
+      "extractor_failed",
+      "bot_timeout",
+      "bot_failed"
+    ] as const;
     const english = errors.map((error) => translate("en", musicErrorKey(error)));
     const turkish = errors.map((error) => translate("tr", musicErrorKey(error)));
 
@@ -96,7 +171,20 @@ describe("what a refusal says", () => {
   });
 
   it("translates the controls themselves in both languages", () => {
-    const keys = ["music.title", "music.play", "music.stop", "music.leave", "music.playing", "music.idle", "music.muted"] as const;
+    const keys = [
+      "music.title",
+      "music.copy",
+      "music.linkLabel",
+      "music.linkPlaceholder",
+      "music.add",
+      "music.play",
+      "music.stop",
+      "music.leave",
+      "music.playing",
+      "music.idle",
+      "music.muted",
+      "music.summoning"
+    ] as const;
     for (const key of keys) {
       assert.notEqual(translate("en", key), translate("tr", key), `${key} must be translated`);
     }
@@ -117,8 +205,25 @@ describe("the control's placement", () => {
     assert.match(musicPanel, /const state = musicPanelState\(bot\);/);
   });
 
-  it("offers sending the bot away only once it is here", () => {
+  it("offers the transport controls only once the bot is here", () => {
+    // Before that there is nothing to stop and nothing to resume, and a Play
+    // button that did nothing would look exactly like a broken one.
     assert.match(musicPanel, /\{bot \? \(/);
+  });
+
+  it("takes the link through a form, so Enter submits it", () => {
+    assert.match(musicPanel, /<form\s+className="music-panel-link"/);
+    assert.match(musicPanel, /type="submit"/);
+    assert.match(musicPanel, /event\.preventDefault\(\);/);
+  });
+
+  it("labels the link field and refuses to send an empty one", () => {
+    assert.match(musicPanel, /aria-label=\{t\("music\.linkLabel"\)\}/);
+    assert.match(musicPanel, /disabled=\{busy \|\| !isSendableLink\(link\)\}/);
+  });
+
+  it("keeps a refused link in the field rather than making it be retyped", () => {
+    assert.match(musicPanel, /if \(command\.kind === "add"\) setLink\(""\);/);
   });
 
   it("announces status changes to a screen reader", () => {

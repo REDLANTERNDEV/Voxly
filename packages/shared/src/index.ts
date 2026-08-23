@@ -224,20 +224,107 @@ export function shouldIgnoreIncomingOffer(
  * request — this room, this instruction — and the transport rules (who may ask,
  * which room, which bot) do not vary between them. The Queue's controls extend
  * this union rather than adding events beside it.
+ *
+ * A discriminated union rather than a bare string, because `add` carries the
+ * link it names and the others carry nothing. The alternative — one string plus
+ * an optional `url` — would make the field optional everywhere in order to be
+ * absent in three cases out of four, and nothing would stop a `stop` arriving
+ * with a link on it.
  */
-export const musicCommands = ["play", "stop", "leave"] as const;
-export type MusicCommand = (typeof musicCommands)[number];
+export type MusicCommand =
+  /** Play what this link points at, Summoning the bot if it is not here yet. */
+  | { kind: "add"; url: string }
+  | { kind: "play" }
+  | { kind: "stop" }
+  | { kind: "leave" };
+
+/**
+ * The union is the only declaration of the vocabulary — deliberately not a
+ * union plus a list of names beside it, because the two would drift and the
+ * one that drifted would be a verb one side accepts and the other ignores.
+ * Consumers that need to enumerate the verbs derive them from here, and the
+ * server asserts at compile time that its validator covers every one.
+ */
+export type MusicCommandKind = MusicCommand["kind"];
+
+/** The longest link the control plane will carry. Generous; not unbounded. */
+export const musicLinkMaxLength = 2_048;
+
+/**
+ * The longest Track title the wire will carry. The source chooses the title, so
+ * it is somebody else's string arriving unbidden and being relayed to everyone
+ * in the room; the link a member typed is bounded and this should be too.
+ */
+export const musicTitleMaxLength = 200;
+
+/**
+ * A Track, as much of it as anyone outside the bot needs to name it. The bot
+ * knows more — the stream it came from, how to fetch it again — and none of
+ * that belongs on the wire.
+ */
+export interface MusicTrackSummary {
+  /** The source's own identity for it, stable across two people pasting it. */
+  id: string;
+  title: string;
+  durationSeconds: number;
+}
+
+/**
+ * Why a music request could not be carried out.
+ *
+ * The first five are the server's answer and are known before the bot is
+ * involved at all. The rest are the bot's, relayed back through the same
+ * acknowledgement, because the alternative for a member who pasted a dead link
+ * is silence — and silence is the worst possible answer from a control whose
+ * only output is sound somewhere else.
+ */
+export type MusicControlError =
+  /** `no_music_bot` is a server without a bot account; `bot_offline` is an
+   * account whose process is not connected. They are distinct because only the
+   * second one is worth waiting out. */
+  | "room_not_found"
+  | "not_in_voice_room"
+  | "afk_room"
+  | "no_music_bot"
+  | "bot_offline"
+  /** Not a link to something this bot can play: a playlist, a channel, another
+   * site, or not a link at all. */
+  | "unsupported_link"
+  /** A real video that will not play: private, deleted, blocked, or age-gated. */
+  | "track_unavailable"
+  /** A broadcast rather than a Track. It has no end, so it cannot be queued. */
+  | "live_stream"
+  /** The extractor itself failed — missing, crashed, or being refused by the
+   * source. Distinct from the two above because nothing about the link is
+   * wrong and trying again later may well work. */
+  | "extractor_failed"
+  /** The bot has the request and has not answered. Distinct from `bot_offline`:
+   * something is running, it is just not finishing. */
+  | "bot_timeout"
+  /** The bot could not carry the request out, for a reason that is not the
+   * link's fault — it could not join the channel, or something under it broke.
+   * Kept apart from `extractor_failed` because that one sends a member away to
+   * wait for YouTube, which would be the wrong thing to wait for. */
+  | "bot_failed";
 
 export type MusicControlAck =
-  | { ok: true }
+  /**
+   * `track` is the Track the request produced, or `null` for a request that
+   * produces none. Explicitly null rather than absent: a caller that forgets to
+   * handle "there is no Track" should be made to say so.
+   */
+  | { ok: true; track: MusicTrackSummary | null }
+  | { ok: false; error: MusicControlError };
+
+/** What the bot answers the server. The server's own refusals never reach it. */
+export type MusicCommandAck =
+  | { ok: true; track: MusicTrackSummary | null }
   | {
     ok: false;
-    /**
-     * `no_music_bot` is a server without a bot account; `bot_offline` is an
-     * account whose process is not connected. They are distinct because only
-     * the second one is worth waiting out.
-     */
-    error: "room_not_found" | "not_in_voice_room" | "afk_room" | "no_music_bot" | "bot_offline";
+    error: Extract<
+      MusicControlError,
+      "unsupported_link" | "track_unavailable" | "live_stream" | "extractor_failed" | "bot_failed"
+    >;
   };
 
 export interface ServerToClientEvents {
@@ -284,8 +371,15 @@ export interface ServerToClientEvents {
    * server's bot account: the request has already been authorized against the
    * room by the time it is forwarded, so the bot acts on it rather than
    * re-deciding who was allowed to ask.
+   *
+   * Acknowledged, because only the bot can tell whether a pasted link is
+   * playable, and the member who pasted it is owed that answer rather than a
+   * room where nothing happens.
    */
-  "music:command": (payload: { roomId: string; command: MusicCommand; requestedByUserId: string }) => void;
+  "music:command": (
+    payload: { roomId: string; command: MusicCommand; requestedByUserId: string },
+    ack: (response: MusicCommandAck) => void
+  ) => void;
 }
 
 export interface ClientToServerEvents {

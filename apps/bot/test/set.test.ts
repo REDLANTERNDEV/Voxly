@@ -8,11 +8,13 @@ import type {
   VoiceSetMediaAck,
   VoiceSnapshot
 } from "@voxly/shared";
+import { TrackBuffer } from "../src/audio.js";
 import { createMusicSet, musicBotMedia, type SetSocket } from "../src/set.js";
 
 const roomId = "lobby";
 const botUserId = "aaaa-bot";
 const packets = [Buffer.from([1, 1]), Buffer.from([2, 2])];
+const track = () => TrackBuffer.of(packets);
 
 interface Recorder {
   socket: SetSocket;
@@ -96,8 +98,7 @@ function newSet(recorder: Recorder) {
     socket: recorder.socket,
     roomId,
     selfUserId: botUserId,
-    iceServers: [],
-    packets
+    iceServers: []
   });
 }
 
@@ -150,6 +151,7 @@ describe("the speaking indicator", () => {
     const set = newSet(recorder);
     await set.begin();
 
+    set.loadTrack(track());
     set.play();
     set.stop();
 
@@ -161,6 +163,7 @@ describe("the speaking indicator", () => {
     const recorder = recordingSocket();
     const set = newSet(recorder);
     await set.begin();
+    set.loadTrack(track());
     set.play();
 
     await set.end();
@@ -177,6 +180,18 @@ describe("the speaking indicator", () => {
     await set.end();
 
     assert.deepEqual(recorder.mediaUpdates, []);
+  });
+
+  it("stays dark when there is no Track to play", async () => {
+    // A Summon that resolved nothing must not light the bot's row in the room.
+    const recorder = recordingSocket();
+    const set = newSet(recorder);
+    await set.begin();
+
+    set.play();
+
+    assert.deepEqual(recorder.mediaUpdates, []);
+    await set.end();
   });
 });
 

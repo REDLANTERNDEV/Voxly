@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { bundledTrackPath, readOggOpus } from "./audio.js";
 import { resolveBotEnvironment } from "./config.js";
 import { createSessionHolder } from "./credentials.js";
 import { createMusicResponder } from "./music.js";
@@ -21,12 +19,6 @@ try {
   process.exit(1);
 }
 
-/**
- * Read and packetised once for the whole process, not once per server or once
- * per Set. It is the same bytes every Listener everywhere receives.
- */
-const track = readOggOpus(readFileSync(bundledTrackPath));
-
 process.on("uncaughtException", (error) => {
   console.error("uncaught exception", error);
 });
@@ -42,7 +34,7 @@ const presence = createMusicBotPresence({
     const responder = createMusicResponder({
       socket: setSocketFor(socket),
       selfUserId: session.userId,
-      packets: track.packets,
+      environment,
       loadIceServers: () => fetchIceServers({
         serverUrl: environment.serverUrl,
         cookieName,
@@ -51,8 +43,12 @@ const presence = createMusicBotPresence({
       }),
       log: (message) => console.log(`[${session.serverId}] ${message}`)
     });
-    socket.on("music:command", (payload) => {
-      void responder.handle(payload.command, payload.roomId);
+    socket.on("music:command", (payload, ack) => {
+      // Answered rather than fired: the member who asked is waiting on this,
+      // and it is the only route by which "that link will not play" reaches
+      // them. `handle` resolves to an answer for every outcome, including the
+      // ones it had to log.
+      void responder.handle(payload.command, payload.roomId).then(ack);
     });
     return () => responder.close();
   }

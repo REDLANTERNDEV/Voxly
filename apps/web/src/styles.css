@@ -2098,6 +2098,30 @@ button.reply-quote:focus-visible .reply-quote-body {
   overflow: hidden;
 }
 
+.music-panel-link {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 12px 0;
+}
+
+.music-panel-link input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: inherit;
+  flex: 1 1 16ch;
+  font: inherit;
+  min-inline-size: 0;
+  padding: 7px 10px;
+}
+
+.music-panel-link input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .music-panel-controls {
   align-items: center;
   display: flex;
@@ -2115,7 +2139,8 @@ button.reply-quote:focus-visible .reply-quote-body {
   border-color: color-mix(in oklch, var(--accent), var(--border) 28%);
 }
 
-.music-panel-controls .btn:disabled {
+.music-panel-controls .btn:disabled,
+.music-panel-link .btn:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }

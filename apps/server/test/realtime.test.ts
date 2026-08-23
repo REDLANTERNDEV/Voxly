@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
 import { musicBotNickname } from "@voxly/shared";
-import type { MusicControlAck, VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck } from "@voxly/shared";
+import type { MusicCommand, MusicCommandAck, MusicControlAck, VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck } from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 
 describe("Voxly realtime MVP", () => {
@@ -1303,7 +1303,12 @@ describe("music bot control", () => {
     await app.close();
   });
 
-  async function connectBot() {
+  /**
+   * A bot double. It answers every command, because the real one does and the
+   * member's acknowledgement is now relayed from that answer — a double that
+   * stayed silent would make every test here wait out the bot timeout.
+   */
+  async function connectBot(answer: MusicCommandAck = { ok: true, track: null }) {
     const exchange = await app.server.inject({
       method: "POST",
       url: "/api/bot/sessions",
@@ -1311,23 +1316,64 @@ describe("music bot control", () => {
     });
     const [botSession] = exchange.json().sessions as Array<{ serverId: string; userId: string; token: string }>;
     const botSocket = await connectSocket(baseUrl, botSession.token);
+    const received: Array<{ roomId: string; command: MusicCommand; requestedByUserId: string }> = [];
+    botSocket.on("music:command", (payload: typeof received[number], ack: (response: MusicCommandAck) => void) => {
+      received.push(payload);
+      ack(answer);
+    });
     sockets.push(botSocket);
-    return { botSession, botSocket };
+    return { botSession, botSocket, received };
   }
 
-  it("forwards a summon from a member who is in the voice room", async () => {
+  it("forwards a pasted link from a member who is in the voice room", async () => {
     const owner = await bootstrapOwner(app);
-    const { botSocket } = await connectBot();
+    const track = { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 };
+    const { received } = await connectBot({ ok: true, track });
     const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
-    const commandPromise = onceEvent<{ roomId: string; command: string; requestedByUserId: string }>(botSocket, "music:command");
-    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: "play" });
-    const command = await commandPromise;
+    const command = { kind: "add", url: "https://www.youtube.com/watch?v=aB3dE5gH7jK" } as const;
+    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command });
 
-    assert.deepEqual(ack, { ok: true });
-    assert.deepEqual(command, { roomId: "lobby", command: "play", requestedByUserId: owner.user.id });
+    // The link travels through untouched: which links are playable is the
+    // bot's knowledge, and the server holds no second opinion about it.
+    assert.deepEqual(received, [{ roomId: "lobby", command, requestedByUserId: owner.user.id }]);
+    assert.deepEqual(ack, { ok: true, track }, "and the Track it resolved comes back to the asker");
+  });
+
+  it("relays the bot's refusal rather than reporting a success it did not have", async () => {
+    // Only the bot can tell that a link resolves to nothing. Absorbing that
+    // answer would leave the member watching a room where nothing happens.
+    const owner = await bootstrapOwner(app);
+    await connectBot({ ok: false, error: "track_unavailable" });
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    await joinVoice(ownerSocket, "lobby");
+
+    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", {
+      roomId: "lobby",
+      command: { kind: "add", url: "https://www.youtube.com/watch?v=G0n3F0r3v3r" }
+    });
+
+    assert.deepEqual(ack, { ok: false, error: "track_unavailable" });
+  });
+
+  it("forwards the commands that carry no link", async () => {
+    const owner = await bootstrapOwner(app);
+    const { received } = await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    await joinVoice(ownerSocket, "lobby");
+
+    for (const kind of ["play", "stop", "leave"] as const) {
+      assert.deepEqual(
+        await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: { kind } }),
+        { ok: true, track: null },
+        kind
+      );
+    }
+    assert.deepEqual(received.map((entry) => entry.command.kind), ["play", "stop", "leave"]);
   });
 
   it("refuses a member who is in the server but not in that voice room", async () => {
@@ -1337,7 +1383,7 @@ describe("music bot control", () => {
     sockets.push(ownerSocket);
 
     const silence = expectNoEvent(botSocket, "music:command");
-    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: "play" });
+    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: { kind: "play" } });
 
     assert.deepEqual(ack, { ok: false, error: "not_in_voice_room" });
     await silence;
@@ -1352,7 +1398,7 @@ describe("music bot control", () => {
     await joinVoice(ownerSocket, afkRoomId);
 
     const silence = expectNoEvent(botSocket, "music:command");
-    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: afkRoomId, command: "play" });
+    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: afkRoomId, command: { kind: "play" } });
 
     assert.deepEqual(ack, { ok: false, error: "afk_room" });
     await silence;
@@ -1364,12 +1410,12 @@ describe("music bot control", () => {
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
-    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: "play" });
+    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: { kind: "play" } });
 
     assert.deepEqual(ack, { ok: false, error: "bot_offline" });
   });
 
-  it("refuses a command it does not know, and a room that is not voice", async () => {
+  it("refuses a command it does not know, a link that is not a string, and a room that is not voice", async () => {
     const owner = await bootstrapOwner(app);
     await connectBot();
     const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
@@ -1377,12 +1423,25 @@ describe("music bot control", () => {
     await joinVoice(ownerSocket, "lobby");
 
     assert.deepEqual(
-      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: "drop-the-bass" }),
+      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: { kind: "drop-the-bass" } }),
       { ok: false, error: "room_not_found" }
     );
     assert.deepEqual(
-      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "general", command: "play" }),
+      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "general", command: { kind: "play" } }),
       { ok: false, error: "room_not_found" }
+    );
+    assert.deepEqual(
+      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: { kind: "add" } }),
+      { ok: false, error: "room_not_found" },
+      "an add with no link is not an add"
+    );
+    assert.deepEqual(
+      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", {
+        roomId: "lobby",
+        command: { kind: "add", url: "x".repeat(4_000) }
+      }),
+      { ok: false, error: "room_not_found" },
+      "and a link is bounded before it reaches another process"
     );
   });
 
@@ -1397,7 +1456,7 @@ describe("music bot control", () => {
     await joinVoice(memberSocket, "lobby");
 
     const silence = expectNoEvent(memberSocket, "music:command");
-    await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: "play" });
+    await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: { kind: "play" } });
 
     await silence;
   });

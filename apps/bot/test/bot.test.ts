@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { resolveBotEnvironment } from "../src/config.js";
+import { resolveBotEnvironment, type BotEnvironment } from "../src/config.js";
 import { parseBotCredentials, requestBotCredentials, type BotSession, type FetchLike } from "../src/credentials.js";
 import { createMusicBotPresence, retryDelayMs, type BotSocket } from "../src/presence.js";
 
-const environment = { serverUrl: "http://127.0.0.1:3000", token: "a-bot-token-that-is-long-enough" };
+const environment: BotEnvironment = {
+  serverUrl: "http://127.0.0.1:3000",
+  token: "a-bot-token-that-is-long-enough",
+  extractorPath: "yt-dlp",
+  encoderPath: "ffmpeg",
+  extractorClient: ""
+};
 
 function session(serverId: string): BotSession {
   return {
@@ -77,7 +83,45 @@ describe("bot environment", () => {
   it("stores one normalized form of the server address", () => {
     assert.deepEqual(
       resolveBotEnvironment({ VOXLY_SERVER_URL: " https://chat.example.com/ ", VOXLY_BOT_TOKEN: " secret " }),
-      { serverUrl: "https://chat.example.com", token: "secret" }
+      {
+        serverUrl: "https://chat.example.com",
+        token: "secret",
+        extractorPath: "yt-dlp",
+        encoderPath: "ffmpeg",
+        extractorClient: ""
+      }
+    );
+  });
+
+  it("finds the extractor and the encoder on PATH unless told otherwise", () => {
+    // The default is a bare command name on purpose. An absolute path baked in
+    // here would be a path that works on whichever machine wrote it.
+    const base = { VOXLY_SERVER_URL: "https://chat.example.com", VOXLY_BOT_TOKEN: "secret" };
+
+    assert.deepEqual(
+      [resolveBotEnvironment(base).extractorPath, resolveBotEnvironment(base).encoderPath],
+      ["yt-dlp", "ffmpeg"]
+    );
+    const configured = resolveBotEnvironment({
+      ...base,
+      VOXLY_YTDLP_PATH: " /opt/bin/yt-dlp ",
+      VOXLY_FFMPEG_PATH: "/opt/bin/ffmpeg"
+    });
+    assert.equal(configured.extractorPath, "/opt/bin/yt-dlp");
+    assert.equal(configured.encoderPath, "/opt/bin/ffmpeg");
+  });
+
+  it("carries the upstream client the operator chose, and refuses a strange one", () => {
+    // It reaches yt-dlp as an argument. The value is the operator's, and the
+    // vocabulary is yt-dlp's, so what is checked is the shape rather than the
+    // meaning.
+    const base = { VOXLY_SERVER_URL: "https://chat.example.com", VOXLY_BOT_TOKEN: "secret" };
+
+    assert.equal(resolveBotEnvironment(base).extractorClient, "");
+    assert.equal(resolveBotEnvironment({ ...base, VOXLY_YTDLP_CLIENT: "web_safari,tv" }).extractorClient, "web_safari,tv");
+    assert.throws(
+      () => resolveBotEnvironment({ ...base, VOXLY_YTDLP_CLIENT: "web; rm -rf /" }),
+      /VOXLY_YTDLP_CLIENT/
     );
   });
 });

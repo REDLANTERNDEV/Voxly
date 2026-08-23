@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { RtpPacket } from "werift";
+import { TrackBuffer, prebufferFrames } from "../src/audio.js";
 import { TrackPlayer } from "../src/player.js";
 
 /**
@@ -9,19 +10,35 @@ import { TrackPlayer } from "../src/player.js";
  * anything took.
  */
 
-const packets = [Buffer.from([1, 1]), Buffer.from([2, 2]), Buffer.from([3, 3])];
+/**
+ * Long enough to get past the prebuffer without a stall, so a test that is not
+ * about buffering does not have to think about it. `packetAt` is deterministic
+ * per index, which is what lets an assertion name the frame it expects.
+ */
+const packets = Array.from({ length: prebufferFrames + 20 }, (_, index) => Buffer.from([index & 0xff, 1]));
 
-function testPlayer(options: { onPlayingChange?: (playing: boolean) => void } = {}) {
+function testPlayer(
+  options: {
+    onPlayingChange?: (playing: boolean) => void;
+    onEnded?: () => void;
+    /** A partly-fetched Track, still filling. Complete by default. */
+    source?: TrackBuffer;
+  } = {}
+) {
   let clock = 0;
-  const player = new TrackPlayer(packets, {
+  const source = options.source ?? TrackBuffer.of(packets);
+  const player = new TrackPlayer({
     now: () => clock,
     // Playback is stepped by hand; the interval must never fire on its own.
     setInterval: () => 0 as unknown as NodeJS.Timeout,
     clearInterval: () => undefined,
-    onPlayingChange: options.onPlayingChange
+    onPlayingChange: options.onPlayingChange,
+    onEnded: options.onEnded
   });
+  player.load(source);
   return {
     player,
+    source,
     advance(milliseconds: number) {
       clock += milliseconds;
       player.flush();
@@ -55,7 +72,7 @@ describe("one Track, many Listeners", () => {
     assert.equal(second.length, 5);
     for (let index = 0; index < first.length; index += 1) {
       assert.equal(first[index]?.payload, second[index]?.payload, `frame ${index} must be one buffer, shared`);
-      assert.equal(first[index]?.payload, packets[index % packets.length], "and it must be the Track's own buffer");
+      assert.equal(first[index]?.payload, packets[index], "and it must be the Track's own buffer");
     }
   });
 
@@ -158,7 +175,222 @@ describe("playback state", () => {
     assert.deepEqual(changes, [true, false]);
   });
 
-  it("refuses a Track with no audio in it", () => {
-    assert.throws(() => new TrackPlayer([]), /no audio packets/);
+  it("plays nothing at all until a Track is loaded", () => {
+    const changes: boolean[] = [];
+    const player = new TrackPlayer({ onPlayingChange: (playing) => changes.push(playing) });
+    const written = capture(player.outputFor("ada"));
+
+    player.start();
+
+    assert.equal(player.playing, false, "there is nothing to play");
+    assert.deepEqual(changes, [], "and nothing to report to the room");
+    assert.deepEqual(written, []);
+  });
+});
+
+describe("a Track that is still being fetched", () => {
+  /** A Track arriving in pieces, as the extractor actually delivers one. */
+  function filling(initial = 0) {
+    const source = new TrackBuffer();
+    source.append(packets.slice(0, initial));
+    return source;
+  }
+
+  it("waits for the prebuffer before the first note", () => {
+    // Starting on the first frame that arrives would put the music one hiccup
+    // away from a gap for its whole length.
+    const source = filling(prebufferFrames - 1);
+    const { player, advance } = testPlayer({ source });
+    const written = capture(player.outputFor("ada"));
+
+    player.start();
+    advance(200);
+
+    assert.equal(written.length, 0, "nothing goes out on a half-filled buffer");
+    assert.equal(player.waiting, true);
+    assert.equal(player.playing, true, "waiting is not stopped: this Track is still the one playing");
+
+    source.append(packets.slice(prebufferFrames - 1, prebufferFrames));
+    advance(20);
+
+    assert.equal(written.length, 1, "and it starts at the beginning, not part-way in");
+    assert.equal(written[0]?.payload, packets[0]);
+  });
+
+  it("does not owe back the time it spent waiting", () => {
+    // The whole point of stopping the clock. A player that kept counting would
+    // dump every frame of the wait onto the wire the instant audio arrived,
+    // which the receiving jitter buffer would discard as a flood.
+    const source = filling();
+    const { player, advance } = testPlayer({ source });
+    const written = capture(player.outputFor("ada"));
+
+    player.start();
+    advance(5_000);
+    source.append(packets);
+    advance(100);
+
+    assert.equal(written.length, 5, "five frames for 100 ms, not 255 for the wait as well");
+  });
+
+  it("stalls mid-Track when the extractor falls behind, then carries on where it stopped", () => {
+    const source = filling(prebufferFrames);
+    const { player, advance } = testPlayer({ source });
+    const written = capture(player.outputFor("ada"));
+
+    player.start();
+    advance(prebufferFrames * 20);
+    assert.equal(written.length, prebufferFrames);
+    assert.equal(player.waiting, false);
+
+    advance(1_000);
+    assert.equal(written.length, prebufferFrames, "there is nothing to send, so nothing is sent");
+    assert.equal(player.waiting, true);
+    assert.equal(player.playing, true);
+
+    source.append(packets.slice(prebufferFrames));
+    advance(40);
+
+    assert.equal(written.length, prebufferFrames + 2, "resumes at two frames per 40 ms");
+    assert.equal(written[prebufferFrames]?.payload, packets[prebufferFrames], "and at the frame it stopped on");
+    assert.equal(player.waiting, false);
+  });
+
+  it("opens a new talkspurt when a stall ends", () => {
+    // Audio resuming after silence needs a marker, or the receiver's jitter
+    // buffer has nothing to resynchronise on.
+    const source = filling(prebufferFrames);
+    const { player, advance } = testPlayer({ source });
+    const written = capture(player.outputFor("ada"));
+
+    player.start();
+    advance(prebufferFrames * 20 + 1_000);
+    source.append(packets.slice(prebufferFrames));
+    advance(40);
+
+    assert.equal(written[prebufferFrames]?.header.marker, true, "the frame that ends the silence opens a talkspurt");
+    assert.equal(written[prebufferFrames + 1]?.header.marker, false, "the one after it is ordinary");
+  });
+
+  it("does not tell the room it stopped speaking merely because it is buffering", () => {
+    // The indicator would flicker off and on for half a second of buffering,
+    // reporting a state the bot is not in. It is still playing this Track.
+    const changes: boolean[] = [];
+    const source = filling(prebufferFrames);
+    const { player, advance } = testPlayer({ source, onPlayingChange: (playing) => changes.push(playing) });
+    player.outputFor("ada");
+
+    player.start();
+    advance(prebufferFrames * 20 + 2_000);
+
+    assert.deepEqual(changes, [true]);
+  });
+
+  it("ends the Track when the fetch finishes and the last frame has gone out", () => {
+    const ended: number[] = [];
+    const source = filling(3);
+    const { player, advance } = testPlayer({ source, onEnded: () => ended.push(1) });
+    const written = capture(player.outputFor("ada"));
+
+    player.start();
+    advance(1_000);
+    assert.equal(ended.length, 0, "still fetching: an absent frame is a wait, not an end");
+
+    source.finish();
+    advance(100);
+
+    assert.deepEqual(ended, [1]);
+    assert.equal(written.length, 3, "every frame that was fetched is played first");
+    assert.equal(player.playing, false, "and the room stops seeing the bot as speaking");
+  });
+
+  it("does not report the end twice for one pass of a Track", () => {
+    const ended: number[] = [];
+    const { player, advance } = testPlayer({ source: TrackBuffer.of(packets.slice(0, 2)), onEnded: () => ended.push(1) });
+
+    player.start();
+    advance(1_000);
+    advance(1_000);
+
+    assert.deepEqual(ended, [1]);
+  });
+
+  it("plays a finished Track again rather than doing nothing", () => {
+    // The bot is still in the room after a Track ends, so the control is still
+    // there and still enabled. A start that silently did nothing would be
+    // indistinguishable from a broken button — and the audio is still buffered,
+    // so replaying costs no second fetch.
+    const ended: number[] = [];
+    const { player, advance } = testPlayer({ source: TrackBuffer.of(packets.slice(0, 2)), onEnded: () => ended.push(1) });
+    const written = capture(player.outputFor("ada"));
+
+    player.start();
+    advance(1_000);
+    assert.equal(player.playing, false);
+
+    player.start();
+    advance(40);
+
+    assert.equal(player.playing, true);
+    assert.equal(written.length, 4, "two frames again, from the beginning");
+    assert.equal(written[2]?.payload, packets[0]);
+    assert.equal(written[2]?.header.marker, true, "and it opens a talkspurt of its own");
+    assert.equal(
+      written[2]?.header.sequenceNumber,
+      (written[1]!.header.sequenceNumber + 1) & 0xffff,
+      "while the Listener's stream carries straight on"
+    );
+  });
+});
+
+describe("one Set, several Tracks", () => {
+  it("keeps the Listener's RTP stream running forward across a Track change", () => {
+    // A Listener receives one continuous stream for as long as it is connected.
+    // Restarting the sequence numbering at each Track would look to the
+    // receiver like a flood of very old packets arriving out of order.
+    const { player, advance } = testPlayer();
+    const written = capture(player.outputFor("ada"));
+
+    player.start();
+    advance(100);
+    player.load(TrackBuffer.of(packets));
+    player.start();
+    advance(100);
+
+    const sequence = written.map((packet) => packet.header.sequenceNumber);
+    for (let index = 1; index < sequence.length; index += 1) {
+      assert.equal(sequence[index], (sequence[index - 1]! + 1) & 0xffff, `frame ${index} must follow the one before`);
+    }
+    assert.ok(written.length > 5, "the second Track really did play");
+  });
+
+  it("plays the next Track from its own beginning", () => {
+    const { player, advance } = testPlayer();
+    const written = capture(player.outputFor("ada"));
+
+    player.start();
+    advance(100);
+    player.load(TrackBuffer.of(packets));
+    player.start();
+    advance(20);
+
+    assert.equal(written[5]?.payload, packets[0], "the new Track starts at its first frame");
+    assert.equal(written[5]?.header.marker, true, "and opens a talkspurt of its own");
+  });
+
+  it("plays again after a Track that had already ended", () => {
+    const { player, advance } = testPlayer({ source: TrackBuffer.of(packets.slice(0, 2)) });
+    const written = capture(player.outputFor("ada"));
+
+    player.start();
+    advance(1_000);
+    assert.equal(player.playing, false);
+
+    player.load(TrackBuffer.of(packets));
+    player.start();
+    advance(40);
+
+    assert.equal(player.playing, true, "loading a Track clears the end of the previous one");
+    assert.equal(written.length, 4);
   });
 });
