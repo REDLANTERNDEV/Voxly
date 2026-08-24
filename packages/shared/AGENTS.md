@@ -115,6 +115,27 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   server bounds the link's length and nothing else, and the browser checks only
   that the field is not empty. A second opinion in either place would be the
   copy that drifts, refusing a form the bot has since learned to accept.
+- **The Queue travels one way and whole.** `music:publish` is the bot asking the
+  server to give a room its Queue; `music:queue` is the server giving it. Both
+  carry the entire `MusicQueueState`, never a delta — a room where two members
+  disagree about what is coming next is the failure this contract prevents, and
+  a delta that went missing is exactly how that happens. The Queue is bounded
+  (`musicQueueMaxEntries`) so sending all of it stays cheap. ADR-0005 records
+  why the shape is a request the server authorizes rather than a relay.
+- `MusicQueueEntry.requestedByUserId` is an id, and no nickname belongs beside
+  it. The bot is handed ids and never sees a member list; every browser already
+  holds the room's members and renders their current names. A nickname copied on
+  here is the copy that goes stale when somebody renames themselves.
+- `entryId` identifies the entry, not the Track. Two members queueing the same
+  link are two entries, and either can be skipped or removed without the other
+  going with it. It is meaningless outside the Set that minted it.
+- One bound for every opaque identifier on this wire (`musicIdentifierMaxLength`)
+  — the `entryId`, the source's id for a Track, the Requester's user id. They
+  are the same kind of thing to everyone handling them, and a second constant
+  beside it is the one that drifts.
+- `MusicQueueState.playing` is what says whether the head of the Queue is
+  sounding. A consumer that renders the first entry as playing without reading
+  it announces a Track into a silent room.
 
 ## Verification
 

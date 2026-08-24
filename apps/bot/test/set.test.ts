@@ -93,13 +93,25 @@ function okJoin(): VoiceJoinAck {
   return { ok: true, state: memberState() };
 }
 
-function newSet(recorder: Recorder) {
+function newSet(recorder: Recorder, onListenersChanged?: () => void) {
   return createMusicSet({
     socket: recorder.socket,
     roomId,
     selfUserId: botUserId,
-    iceServers: []
+    iceServers: [],
+    onListenersChanged
   });
+}
+
+function snapshotOf(userIds: string[], speaking = false): VoiceSnapshot {
+  return {
+    roomId,
+    members: userIds.map((userId) => ({
+      user: { userId, nickname: userId, role: "member" as const },
+      media: { mic: true, camera: false, screen: false, deafened: false, speaking },
+      moderation: { muted: false, deafened: false }
+    }))
+  };
 }
 
 describe("joining a voice room", () => {
@@ -191,6 +203,51 @@ describe("the speaking indicator", () => {
     set.play();
 
     assert.deepEqual(recorder.mediaUpdates, []);
+    await set.end();
+  });
+});
+
+describe("who is in the room", () => {
+  it("reports every arrival and every departure", async () => {
+    let reported = 0;
+    const recorder = recordingSocket();
+    const set = newSet(recorder, () => { reported += 1; });
+    await set.begin();
+
+    recorder.publish(snapshotOf([botUserId, "ada"]));
+    recorder.publish(snapshotOf([botUserId, "ada", "bob"]));
+    recorder.publish(snapshotOf([botUserId, "bob"]));
+
+    assert.equal(reported, 3);
+    await set.end();
+  });
+
+  it("says nothing when a snapshot only reports somebody talking", async () => {
+    // A snapshot lands on every media change, and whoever is listening for this
+    // wants the roster. Republishing the Queue on every speaking flicker would
+    // be a broadcast per syllable.
+    let reported = 0;
+    const recorder = recordingSocket();
+    const set = newSet(recorder, () => { reported += 1; });
+    await set.begin();
+
+    recorder.publish(snapshotOf([botUserId, "ada"]));
+    recorder.publish(snapshotOf([botUserId, "ada"], true));
+    recorder.publish(snapshotOf(["ada", botUserId]));
+
+    assert.equal(reported, 1, "the same people talking, or listed in another order, are the same people");
+    await set.end();
+  });
+
+  it("ignores another room's snapshot", async () => {
+    let reported = 0;
+    const recorder = recordingSocket();
+    const set = newSet(recorder, () => { reported += 1; });
+    await set.begin();
+
+    recorder.publish({ ...snapshotOf([botUserId, "ada"]), roomId: "studio" });
+
+    assert.equal(reported, 0);
     await set.end();
   });
 });

@@ -205,6 +205,24 @@ apply to it unchanged.
 - Refuse the AFK room. It mutes everyone in it, the bot included, so a Summon
   there could only ever produce a silent participant.
 
+`music:publish` is the one thing that travels the other way, and it is
+authorized rather than relayed. Read `docs/adr/0005-the-bot-publishes-the-queue.md`
+before changing it.
+
+- The publisher must **be that server's own Music bot account** and must **still
+  be in the voice room**. Both answers come from the server — the account from
+  the database, the membership from `VoiceRealtime` — so neither is a claim the
+  publisher makes about itself. A member publishing a Queue, or another server's
+  bot publishing into this one, is `not_authorized`.
+- Validate and bound the payload like any other input. It is relayed to every
+  member of the room and its strings came from YouTube, not from anyone Voxly
+  authenticated.
+- Deliver to `voice:<roomId>`, never to the server room. Who queued what is the
+  business of the people listening, on the same footing as speaking state.
+- **Store nothing.** The bot is the single source of truth and republishes when
+  the room's roster changes, so a member joining mid-Set is told by the bot. A
+  server-side copy would be a second Queue that can differ from the Queue.
+
 ## Messages and Rooms
 
 - Persist messages only in text rooms and enforce server membership before

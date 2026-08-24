@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
 import { musicBotNickname } from "@voxly/shared";
-import type { MusicCommand, MusicCommandAck, MusicControlAck, VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck } from "@voxly/shared";
+import type { MusicCommand, MusicCommandAck, MusicControlAck, MusicPublishAck, VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck } from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 
 describe("Voxly realtime MVP", () => {
@@ -1443,6 +1443,150 @@ describe("music bot control", () => {
       { ok: false, error: "room_not_found" },
       "and a link is bounded before it reaches another process"
     );
+  });
+
+  it("gives the whole room the Queue the bot published", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ece");
+    const { botSocket } = await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(ownerSocket, memberSocket);
+    await joinVoice(ownerSocket, "lobby");
+    await joinVoice(memberSocket, "lobby");
+    await joinVoice(botSocket, "lobby");
+
+    const state = {
+      playing: true,
+      entries: [{
+        entryId: "entry-1",
+        requestedByUserId: owner.user.id,
+        track: { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 }
+      }]
+    };
+    const seen = Promise.all([
+      onceEvent<{ roomId: string; state: typeof state }>(ownerSocket, "music:queue"),
+      onceEvent<{ roomId: string; state: typeof state }>(memberSocket, "music:queue")
+    ]);
+    const ack = await emitWithAck<MusicPublishAck>(botSocket, "music:publish", { roomId: "lobby", state });
+
+    assert.deepEqual(ack, { ok: true });
+    // The member who pasted nothing sees exactly what the member who pasted
+    // the link sees. That is the whole point of the Queue being published.
+    for (const delivery of await seen) {
+      assert.deepEqual(delivery, { roomId: "lobby", state });
+    }
+  });
+
+  it("refuses a Queue from a member who is not the Music bot", async () => {
+    const owner = await bootstrapOwner(app);
+    await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    await joinVoice(ownerSocket, "lobby");
+
+    const silence = expectNoEvent(ownerSocket, "music:queue");
+    const ack = await emitWithAck<MusicPublishAck>(ownerSocket, "music:publish", {
+      roomId: "lobby",
+      state: { playing: true, entries: [] }
+    });
+
+    assert.deepEqual(ack, { ok: false, error: "not_authorized" });
+    await silence;
+  });
+
+  it("refuses a Queue from a bot that is not in the room", async () => {
+    // An owner who has just disconnected the bot must not have it go on
+    // narrating a Set it is no longer part of.
+    const owner = await bootstrapOwner(app);
+    const { botSocket } = await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    await joinVoice(ownerSocket, "lobby");
+
+    const silence = expectNoEvent(ownerSocket, "music:queue");
+    const ack = await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
+      roomId: "lobby",
+      state: { playing: false, entries: [] }
+    });
+
+    assert.deepEqual(ack, { ok: false, error: "not_authorized" });
+    await silence;
+  });
+
+  it("refuses a Queue that is not the shape everyone agreed on", async () => {
+    const owner = await bootstrapOwner(app);
+    const { botSocket } = await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    await joinVoice(ownerSocket, "lobby");
+    await joinVoice(botSocket, "lobby");
+
+    const entry = {
+      entryId: "entry-1",
+      requestedByUserId: owner.user.id,
+      track: { id: "aB3dE5gH7jK", title: "Nocturne", durationSeconds: 273 }
+    };
+    assert.deepEqual(
+      await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
+        roomId: "lobby",
+        state: { playing: true, entries: [{ ...entry, track: { ...entry.track, title: "x".repeat(500) } }] }
+      }),
+      { ok: false, error: "invalid_state" },
+      "a title is somebody else's string on its way to every browser in the room"
+    );
+    assert.deepEqual(
+      await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
+        roomId: "lobby",
+        state: { playing: true, entries: Array.from({ length: 200 }, () => entry) }
+      }),
+      { ok: false, error: "invalid_state" },
+      "and the Queue is bounded before it is broadcast"
+    );
+    assert.deepEqual(
+      await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
+        roomId: "lobby",
+        state: { playing: true, entries: [{ ...entry, nickname: "Owner" }] }
+      }),
+      { ok: false, error: "invalid_state" },
+      "a field nobody agreed on must not ride along"
+    );
+  });
+
+  it("refuses a Queue for a text channel or a channel that is not there", async () => {
+    const { botSocket } = await connectBot();
+
+    for (const roomId of ["general", "no-such-room"]) {
+      assert.deepEqual(
+        await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
+          roomId,
+          state: { playing: false, entries: [] }
+        }),
+        { ok: false, error: "room_not_found" },
+        roomId
+      );
+    }
+  });
+
+  it("keeps the Queue inside the voice room, not the whole server", async () => {
+    // Who queued what is the business of the people listening, exactly as the
+    // room's speaking state is.
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ece");
+    const { botSocket } = await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const outsiderSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(ownerSocket, outsiderSocket);
+    await joinVoice(ownerSocket, "lobby");
+    await joinVoice(botSocket, "lobby");
+
+    const silence = expectNoEvent(outsiderSocket, "music:queue");
+    await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
+      roomId: "lobby",
+      state: { playing: false, entries: [] }
+    });
+
+    await silence;
   });
 
   it("delivers the command to the bot alone, never to the rest of the room", async () => {

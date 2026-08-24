@@ -17,7 +17,7 @@ type VoiceRoomProps = Pick<ShellModel,
   "user" | "currentNickname" | "route" | "activeServerId" | "rooms" | "socketState" |
   "roomHistory" | "t" | "currentRoom"
 > & Pick<VoiceChromeModel,
-  "activeVoiceRoomId" | "controls" | "visualTargets" | "voiceSnapshots" | "remoteStreams" |
+  "activeVoiceRoomId" | "controls" | "visualTargets" | "voiceSnapshots" | "musicQueues" | "remoteStreams" |
   "peerConnectionStates" | "localPreviews" | "memberVolumes" | "screenVolumes" |
   "pendingLiveWatch" | "audioLevels"
 > & Pick<ShellActions,
@@ -224,16 +224,6 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
               </section>
             ) : null}
 
-            {viewedRoomId && props.activeVoiceRoomId === viewedRoomId ? (
-              <MusicPanel
-                members={snapshotMembers}
-                roomId={viewedRoomId ?? null}
-                connected={props.socketState === "live"}
-                onMusicControl={props.onMusicControl}
-                t={props.t}
-              />
-            ) : null}
-
             <section className="voice-participants" aria-labelledby="participantTitle">
               <header className="compact-section-head"><div><p className="label" id="participantTitle">{props.t("common.members")}</p><span>{props.t("room.pushToMute", { count: connectedCount })}</span></div></header>
               <ul className="participant-list">
@@ -261,6 +251,17 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
                 })}
               </ul>
             </section>
+
+            {viewedRoomId && props.activeVoiceRoomId === viewedRoomId ? (
+              <MusicPanel
+                members={snapshotMembers}
+                queues={props.musicQueues}
+                roomId={viewedRoomId ?? null}
+                connected={props.socketState === "live"}
+                onMusicControl={props.onMusicControl}
+                t={props.t}
+              />
+            ) : null}
             {stageStatus ? <p className="voice-stage-status" aria-live="polite">{stageStatus}</p> : null}
           </section>
         ) : (

@@ -6,10 +6,17 @@
  * is one account with one voice membership, so being summoned somewhere else is
  * a move rather than a second Set.
  *
+ * This is the imperative half of the feature. What the Queue *is* — appending
+ * rather than interrupting, advancing when a Track ends, what a pause leaves
+ * behind — is decided by `playback.ts`, which is pure. Everything here is the
+ * part that cannot be: joining a room, spawning an extractor, writing frames,
+ * and telling the room what the answer was.
+ *
  * Commands are handled one at a time. They arrive from a socket, which does not
  * wait for the previous one to finish, and joining a room is several round
  * trips long — two overlapping Summons would otherwise race to own the same
- * membership.
+ * membership. A Track ending goes through the same chain, so it cannot land
+ * halfway through a command that was already changing the Queue.
  *
  * Every request is answered. The answer travels back through the server to the
  * member who made it, because only this process can tell whether a pasted link
@@ -17,8 +24,18 @@
  * sentence rather than a room where nothing happens.
  */
 
-import type { MusicCommand, MusicCommandAck, VoiceForceLeaveReason } from "@voxly/shared";
+import { randomUUID } from "node:crypto";
+import type { MusicCommand, MusicCommandAck, MusicQueueState, VoiceForceLeaveReason } from "@voxly/shared";
 import type { BotEnvironment } from "./config.js";
+import {
+  additionRefusal,
+  advancePlayback,
+  emptyPlayback,
+  publishedQueue,
+  type PlaybackEffect,
+  type PlaybackEvent,
+  type PlaybackState
+} from "./playback.js";
 import { createMusicSet, type MusicSet, type SetSocket } from "./set.js";
 import { fetchTrackAudio, resolveTrack, type TrackAudio } from "./stream.js";
 import { youtubeVideoUrl, type Track } from "./track.js";
@@ -28,16 +45,24 @@ export interface MusicResponderOptions {
   socket: SetSocket;
   selfUserId: string;
   environment: BotEnvironment;
+  /**
+   * Hands the Queue to the server, which gives it to everyone in the room. The
+   * bot cannot emit to a room itself — it is an ordinary member — so this is a
+   * request the server authorizes rather than a broadcast. See ADR-0005.
+   */
+  publish: (payload: { roomId: string; state: MusicQueueState }) => void;
   /** Re-read per Set: TURN credentials are short-lived and minted per user. */
   loadIceServers: () => Promise<IceServer[]>;
   createSet?: typeof createMusicSet;
   resolve?: typeof resolveTrack;
   fetch?: typeof fetchTrackAudio;
+  /** Injected so a test does not have to match a UUID it cannot predict. */
+  mintEntryId?: () => string;
   log?: (message: string) => void;
 }
 
 export interface MusicResponder {
-  handle: (command: MusicCommand, roomId: string) => Promise<MusicCommandAck>;
+  handle: (command: MusicCommand, roomId: string, requestedByUserId: string) => Promise<MusicCommandAck>;
   /** Ends any Set in progress. Used when the connection goes away. */
   close: () => Promise<void>;
   currentRoomId: () => string | null;
@@ -53,8 +78,10 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
   // Not named `fetch`: the global of that name is a very different thing to
   // find shadowed halfway down a file.
   const fetchAudio = options.fetch ?? fetchTrackAudio;
+  const mintEntryId = options.mintEntryId ?? (() => randomUUID());
   let set: MusicSet | null = null;
   let audio: TrackAudio | null = null;
+  let playback: PlaybackState = emptyPlayback();
   let queue: Promise<void> = Promise.resolve();
 
   /**
@@ -67,11 +94,89 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
     audio = null;
   }
 
+  function publishTo(roomId: string) {
+    options.publish({ roomId, state: publishedQueue(playback) });
+  }
+
+  /**
+   * Carries out what the pure module decided. Nothing here makes a decision;
+   * the order is the one it returned, and the order matters — `publish` comes
+   * last on a change so the room is told about a Queue that is already true,
+   * and comes before the Set is torn down so the bot is still a member of the
+   * room it is publishing into.
+   */
+  function applyEffects(current: MusicSet, effects: PlaybackEffect[]) {
+    for (const effect of effects) {
+      switch (effect.kind) {
+        case "load":
+          startFetch(current, effect.track);
+          break;
+        case "unload":
+          releaseAudio();
+          break;
+        case "play":
+          current.play();
+          break;
+        case "stop":
+          current.stop();
+          break;
+        case "publish":
+          publishTo(current.roomId);
+          break;
+        default:
+          // Exhaustive: an effect added to the vocabulary should stop the build
+          // rather than be silently dropped, which would look like the Queue
+          // deciding something and nothing happening.
+          assertNever(effect);
+      }
+    }
+  }
+
+  /**
+   * Runs one event through the Queue and carries out the result.
+   *
+   * The fetch for the next Track starts here, when the previous one ended —
+   * not before it. Prefetching would cost a second extractor run against a
+   * source that rate-limits by address, for a Track that a skip or a removal
+   * may mean nobody ever hears; and the gap it would close is the prebuffer
+   * ADR-0004 already accepted as the price of starting early. By the code a
+   * boundary should be silence rather than lost music, because the player
+   * stalls instead of skipping ahead while the prebuffer fills — but nobody
+   * has heard one yet, so how long that silence runs to is unmeasured.
+   */
+  function advance(current: MusicSet, event: PlaybackEvent) {
+    const step = advancePlayback(playback, event);
+    playback = step.state;
+    applyEffects(current, step.effects);
+    return step;
+  }
+
+  function startFetch(current: MusicSet, track: Track) {
+    releaseAudio();
+    audio = fetchAudio(options.environment, track, log);
+    current.loadTrack(audio.buffer);
+    log(`playing ${track.id} (${track.title}), ${track.durationSeconds}s`);
+  }
+
   async function endCurrentSet() {
     const current = set;
     set = null;
+    if (current) {
+      // Before the membership goes, not after: a publish from a member the
+      // server has already seen leave is a publish the server refuses, and the
+      // room would be left holding the Queue of a Set that is over.
+      advance(current, { kind: "cleared" });
+      // Belt and braces. `cleared` returns `unload` for every Queue that had
+      // anything in it, so this is normally a second call on an empty hand —
+      // but the subprocess pair is this half's to own, and a Set that ended
+      // while somehow still holding one would leak yt-dlp and ffmpeg for as
+      // long as the process lives.
+      releaseAudio();
+      await current.end();
+      return;
+    }
+    playback = emptyPlayback();
     releaseAudio();
-    if (current) await current.end();
   }
 
   /**
@@ -114,7 +219,20 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
       roomId,
       selfUserId: options.selfUserId,
       iceServers,
-      onTrackEnded: () => releaseAudio(),
+      onTrackEnded: () => {
+        // Through the same chain as a command: a Track ending while a Summon is
+        // half-finished must not advance a Queue that is still being changed.
+        queue = queue.then(() => {
+          if (set === started) advance(started, { kind: "ended" });
+        }).catch(() => undefined);
+      },
+      // Somebody arrived or left. Whoever just walked in has no Queue yet, and
+      // the server keeps no copy to hand them, so the bot says it again. This
+      // is what makes "everyone sees the same list" true for a member who
+      // joined after the music started.
+      onListenersChanged: () => {
+        if (set === started) publishTo(roomId);
+      },
       log
     });
     set = started;
@@ -123,16 +241,26 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
   }
 
   /**
-   * A pasted link, from the paste to the first note.
+   * A pasted link, from the paste to its place in the Queue.
    *
-   * The order matters. The link is checked before anything is spawned, and the
-   * Track is resolved before the bot joins: a member who pasted something
-   * unplayable should get told so without the bot appearing in the channel,
-   * playing nothing, and having to be sent away again.
+   * The order matters. The link is checked before anything is spawned, a full
+   * Queue is refused before anything is spawned, and the Track is resolved
+   * before the bot joins: a member who pasted something unplayable should get
+   * told so without the bot appearing in the channel, playing nothing, and
+   * having to be sent away again.
    */
-  async function add(roomId: string, url: string): Promise<MusicCommandAck> {
+  async function add(roomId: string, url: string, requestedByUserId: string): Promise<MusicCommandAck> {
     const canonical = youtubeVideoUrl(url);
     if (!canonical) return { ok: false, error: "unsupported_link" };
+    // Only when this is the Queue the Track would join. A paste into a
+    // *different* room summons the bot away, which ends that Set and takes its
+    // Queue with it — so refusing on the strength of a Queue that is about to
+    // stop existing would turn somebody else's full evening into this member's
+    // refusal.
+    if (set?.roomId === roomId) {
+      const full = additionRefusal(playback);
+      if (full) return { ok: false, error: full };
+    }
 
     const resolved = await resolveDetails(options.environment, canonical);
     if (!resolved.ok) {
@@ -141,31 +269,27 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
     }
 
     const current = await summon(roomId);
-    startTrack(current, resolved.track);
+    const step = advance(current, {
+      kind: "added",
+      entry: { entryId: mintEntryId(), track: resolved.track, requestedByUserId }
+    });
+    if (step.refusal) return { ok: false, error: step.refusal };
     return { ok: true, track: summaryOf(resolved.track) };
   }
 
-  function startTrack(current: MusicSet, track: Track) {
-    releaseAudio();
-    audio = fetchAudio(options.environment, track, log);
-    current.loadTrack(audio.buffer);
-    current.play();
-    log(`playing ${track.id} (${track.title}), ${track.durationSeconds}s`);
-  }
-
-  async function apply(command: MusicCommand, roomId: string): Promise<MusicCommandAck> {
-    if (command.kind === "add") return add(roomId, command.url);
+  async function apply(command: MusicCommand, roomId: string, requestedByUserId: string): Promise<MusicCommandAck> {
+    if (command.kind === "add") return add(roomId, command.url, requestedByUserId);
     // The rest name the room they mean, so a command that raced a move does not
-    // silence a Set the asker was never in. They are also about a Track that is
+    // silence a Set the asker was never in. They are also about a Queue that is
     // already here: with nothing loaded there is nothing for them to do, and
     // that is a request that succeeded at doing nothing rather than a failure.
     if (!set || set.roomId !== roomId) return acknowledged;
     switch (command.kind) {
       case "play":
-        set.play();
+        advance(set, { kind: "resumed" });
         return acknowledged;
       case "stop":
-        set.stop();
+        advance(set, { kind: "paused" });
         return acknowledged;
       case "leave":
         await endCurrentSet();
@@ -179,8 +303,8 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
   }
 
   return {
-    handle(command, roomId) {
-      const answered = queue.then(() => apply(command, roomId)).catch(async (cause: unknown) => {
+    handle(command, roomId, requestedByUserId) {
+      const answered = queue.then(() => apply(command, roomId, requestedByUserId)).catch(async (cause: unknown) => {
         // A failed Summon must not take the process down, and must not leave a
         // half-built Set behind for the next command to trip over.
         log(`the ${command.kind} request for room ${roomId} failed: ${String(cause)}`);

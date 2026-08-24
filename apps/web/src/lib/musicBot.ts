@@ -7,7 +7,14 @@
  * playing, and what to say when the server refuses.
  */
 
-import type { MusicCommand, MusicControlAck, MusicControlError, MusicTrackSummary, VoiceMemberState } from "@voxly/shared";
+import type {
+  MusicCommand,
+  MusicControlAck,
+  MusicControlError,
+  MusicQueueState,
+  MusicTrackSummary,
+  VoiceMemberState
+} from "@voxly/shared";
 import type { TranslationKey } from "./i18n.js";
 
 export type { MusicCommand };
@@ -91,9 +98,111 @@ export function trackLength(seconds: number) {
     .join(":");
 }
 
-/** What the panel says once a Track has been accepted. */
-export function trackAddedMessage(track: MusicTrackSummary, t: (key: TranslationKey, values?: Record<string, string | number>) => string) {
-  return t("music.added", { title: track.title, length: trackLength(track.durationSeconds) });
+/**
+ * What the panel says once a Track has been accepted.
+ *
+ * "Added to the queue" whether it starts now or waits its turn: the Queue row
+ * beneath says which, and one sentence that is always true beats two that have
+ * to be chosen between. It exists for the live region — the link field clearing
+ * is feedback a sighted member gets for free and a screen-reader user does not.
+ */
+export function trackAddedMessage(
+  track: MusicTrackSummary,
+  t: (key: TranslationKey, values?: Record<string, string | number>) => string
+) {
+  return t("music.queued", { title: track.title, length: trackLength(track.durationSeconds) });
+}
+
+/**
+ * One row of the Queue, ready to render.
+ *
+ * A pure function over the Queue the bot published and the members the browser
+ * already has, following the pattern the voice controls and member selectors
+ * already use: the component arranges these, it does not compute them.
+ */
+export interface MusicQueueRow {
+  entryId: string;
+  title: string;
+  /** The Track's length as a person reads it. */
+  length: string;
+  /** The Requester's current nickname, or a stand-in if they are not here. */
+  requester: string;
+  /** Whether this is the Track the bot is playing or has paused. */
+  isCurrent: boolean;
+  /** 1-based place in the Queue. */
+  position: number;
+  /**
+   * The row's own words for where it is — "Now playing", "Up next", "#4 in the
+   * queue". Computed rather than styled, so the Track that is sounding is told
+   * apart by something a member who cannot separate two greys can still read.
+   */
+  positionLabel: string;
+}
+
+/**
+ * Resolves each Requester here, at the end that knows names.
+ *
+ * The bot publishes user ids: it is handed one with every request and never
+ * sees the member list a person sees, while the browser is already holding this
+ * room's members and rendering their current nicknames everywhere else. A name
+ * copied onto the wire by the bot would be the copy that goes stale the moment
+ * somebody renames themselves.
+ *
+ * A Requester who has left the room since is named by a stand-in rather than by
+ * their id. Their id would be true and useless; the Track is still theirs and
+ * nobody in the room can read a UUID.
+ */
+export function musicQueueRows(
+  state: MusicQueueState | null,
+  members: VoiceMemberState[],
+  t: (key: TranslationKey, values?: Record<string, string | number>) => string
+): MusicQueueRow[] {
+  const nicknames = new Map(members.map((member) => [member.user.userId, member.user.nickname]));
+  return (state?.entries ?? []).map((entry, index) => ({
+    entryId: entry.entryId,
+    title: entry.track.title,
+    length: trackLength(entry.track.durationSeconds),
+    requester: nicknames.get(entry.requestedByUserId) ?? t("music.requesterUnknown"),
+    isCurrent: index === 0,
+    position: index + 1,
+    positionLabel: positionLabelFor(index, state?.playing ?? false, t)
+  }));
+}
+
+/**
+ * "Now playing" for the head of the Queue and "Up next" for the one behind it,
+ * because those are the two a member is actually asking about. Everything after
+ * that is numbered, which is what answers "how long until mine".
+ *
+ * The head reads "Paused" when the bot has stopped. That is what `playing` on
+ * the published Queue is for, and without reading it here the panel would
+ * announce a Track as playing while the room sat in silence.
+ */
+function positionLabelFor(
+  index: number,
+  playing: boolean,
+  t: (key: TranslationKey, values?: Record<string, string | number>) => string
+) {
+  if (index === 0) return playing ? t("music.nowPlaying") : t("music.pausedTrack");
+  if (index === 1) return t("music.upNext");
+  return t("music.queuePosition", { position: index + 1 });
+}
+
+/**
+ * The Queue for the room being looked at, or nothing.
+ *
+ * Nothing is the answer whenever the bot is not in the room: it is the bot that
+ * owns the Queue, and a list left over from a Set that ended is a list of
+ * Tracks nobody is going to hear. The room's own snapshot is what settles that,
+ * exactly as it settles whether the bot is playing.
+ */
+export function musicQueueFor(
+  queues: Record<string, MusicQueueState>,
+  roomId: string | null,
+  bot: VoiceMemberState | undefined
+): MusicQueueState | null {
+  if (!roomId || !bot) return null;
+  return queues[roomId] ?? null;
 }
 
 /**
@@ -122,6 +231,8 @@ export function musicErrorKey(error: MusicControlError): TranslationKey {
       return "music.errorSource";
     case "bot_timeout":
       return "music.errorTimeout";
+    case "queue_full":
+      return "music.errorQueueFull";
     case "bot_failed":
       return "music.errorBot";
     default:

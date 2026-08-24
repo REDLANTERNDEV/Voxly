@@ -20,10 +20,15 @@ no HTTP surface, and no authority over anything.
   responder onto every connection, and installs the process-level handlers.
 - `src/socket.ts` narrows a live socket to the events a Set may use.
 - `src/music.ts` decides what a `music:command` means: it owns at most one Set,
-  serialises the requests that change it, and answers every one of them.
+  serialises the requests that change it, and answers every one of them. It is
+  the imperative half of the Queue — joining, spawning, playing, publishing —
+  and holds no rule about what the Queue does.
+- `src/playback.ts` is the other half and is pure: a state and one event in, the
+  next state and a list of effects out. Every rule the Queue has lives here.
 - `src/set.ts` is one Set — voice membership, mesh and player started and
   stopped together — and publishes the bot's own `speaking` state. A Set
-  outlives any one Track.
+  outlives any one Track. It also reports when the room's *roster* changes,
+  which is not the same as a snapshot arriving.
 - `src/mesh.ts` is the negotiation, applying `@voxly/shared`'s rules unchanged.
 - `src/player.ts` turns one encoded Track into one output per Listener, reading
   from a `TrackBuffer` that may still be filling.
@@ -37,7 +42,9 @@ no HTTP surface, and no authority over anything.
   wrong is a flag meaning something other than what was intended. Only the real
   binaries can say. Put anything testable in `track.ts` instead.
 - `src/voxly.ts` reads the HTTP endpoints a browser reads, with the bot session.
-- `test/` covers each of those. `test/mesh.test.ts` is the slow one on purpose:
+- `test/` covers each of those. `test/playback.test.ts` is where the Queue's
+  rules are asserted; a rule proved there should not be proved again through the
+  responder. `test/mesh.test.ts` is the slow one on purpose:
   it runs real peer connections against a stand-in Listener that behaves like
   the browser client, because every interesting failure in this feature lives in
   the negotiation rather than in the arithmetic.
@@ -112,6 +119,63 @@ for a library feature.
   `voice:forceLeave` — ends the Set, because holding one for a membership the
   server has dropped leaves peer connections open and makes the next Summon
   play into nothing.
+
+## The Queue
+
+`src/playback.ts` is the design's primary test seam and the reason ticket 08's
+rules can be asserted without a socket, a subprocess or a peer connection. Keep
+it that way.
+
+- **It performs no input or output.** No timers, no `crypto`, no logging, no
+  awaiting. Anything a transition needs that the module cannot compute — an
+  `entryId`, the Track a resolver produced — arrives on the event. Anything it
+  wants done comes back as an effect for `music.ts` to carry out.
+- **Effects are named in the product's words, not the library's.** `load` means
+  "this Track should be fetched and handed to the player", not "spawn yt-dlp".
+  Swapping the media path must not reach this vocabulary.
+- **Effect order is part of the answer.** `publish` comes last on a change, so
+  the room is told about a Queue that is already true; and it comes before the
+  Set is torn down, so the bot is still a member of the room it publishes into.
+- **Adding appends.** A link pasted while something is playing goes on the end.
+  Nothing but an empty Queue starts a Track, and a paused Queue is not an empty
+  one.
+- **A Track that ends advances to the next**, and an empty Queue is not the end
+  of the Set — the bot stays in the room with nothing queued, which is a state
+  it really is in.
+- **Nothing is prefetched.** The next Track's fetch starts when the previous one
+  ends, not before it. Prefetching would cost a second concurrent extractor run
+  against a source that rate-limits by address — the failure the design already
+  names as realistic — for audio a skip or a removal may mean nobody hears. What
+  it would buy is closing the gap while the prebuffer fills, and ADR-0004
+  already accepted that gap as the price of starting early. By the code a
+  boundary should be silence rather than lost music, because the player stalls
+  instead of skipping ahead — but **nobody has heard one**, so how long that
+  silence runs to is unmeasured. This is the first thing to re-read against a
+  real Set, and the measurement is what should decide it rather than this
+  argument.
+- **The Queue is bounded** (`musicQueueMaxEntries`) because it is broadcast
+  whole on every change. Ask `additionRefusal` before spending a link on the
+  extractor; do not write a second bound beside it. Ask it only about the Queue
+  the Track would actually join — a paste into a *different* room summons the
+  bot away and takes the old Queue with it, so pre-checking the one that is
+  about to stop existing refuses a member for somebody else's full evening.
+- The Queue lives in memory and dies with the Set. Not persisted, by design.
+
+Publishing the Queue belongs to `music.ts` and goes through the server, which
+authorizes it rather than relaying it. Read
+`docs/adr/0005-the-bot-publishes-the-queue.md` before changing that path.
+
+- The bot cannot emit to a room. `music:publish` is a request; the server checks
+  that the publisher is that room's Music bot and is still in the room, and only
+  then gives the room the Queue.
+- **Publish the Requester as an id.** The bot is handed one with every request
+  and never sees a member list; the browser resolves the name. A nickname the
+  bot copied would be the copy that goes stale on a rename.
+- **Republish when the roster changes.** The server keeps no copy to hand a
+  newcomer, so whoever just walked in would otherwise be the one person in the
+  room looking at an empty panel. Roster, not snapshot: a snapshot lands every
+  time anyone starts or stops talking, and republishing per syllable is a
+  broadcast storm.
 
 ## Sources and Fetching
 

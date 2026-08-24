@@ -13,10 +13,29 @@
  * that re-decided who was allowed to ask would be a second copy of a rule the
  * server already owns, and the one that drifted would be the one nobody could
  * audit.
+ *
+ * Traffic goes the other way too, and only here. The bot is the single source
+ * of truth for the Queue but is an ordinary member with no authority to emit to
+ * a room, so it *asks* the server to give the room its Queue and the server
+ * decides whether to. See `docs/adr/0005-the-bot-publishes-the-queue.md`; the
+ * short version is that the publisher must be that room's own Music bot account
+ * and must still be in the room, and that nothing here is stored — the server
+ * is the wire, not a second copy of the Queue.
  */
 
 import { z } from "zod";
-import { musicLinkMaxLength, type MusicCommand, type MusicCommandAck, type MusicControlAck, type PresenceUser } from "@voxly/shared";
+import {
+  musicIdentifierMaxLength,
+  musicLinkMaxLength,
+  musicQueueMaxEntries,
+  musicTitleMaxLength,
+  type MusicCommand,
+  type MusicCommandAck,
+  type MusicControlAck,
+  type MusicPublishAck,
+  type MusicQueueState,
+  type PresenceUser
+} from "@voxly/shared";
 import { musicBotAccountFor } from "./bots.js";
 import type { VoxlyDatabase } from "./db/database.js";
 import { roomById } from "./rooms.js";
@@ -64,6 +83,34 @@ const musicControlPayloadSchema = z.object({
  */
 export const botAckTimeoutMs = 25_000;
 
+/**
+ * The Queue, as the bot is allowed to state it.
+ *
+ * Everything here is bounded, because this payload is relayed to every member
+ * of the room and the strings in it originate at YouTube rather than at anyone
+ * Voxly authenticated. `strict()` throughout: a field nobody agreed on must not
+ * ride along to every browser in the channel.
+ */
+const trackDurationMaxSeconds = 24 * 60 * 60;
+
+const musicQueueStateSchema = z.object({
+  entries: z.array(z.object({
+    entryId: z.string().min(1).max(musicIdentifierMaxLength),
+    track: z.object({
+      id: z.string().min(1).max(musicIdentifierMaxLength),
+      title: z.string().max(musicTitleMaxLength),
+      durationSeconds: z.number().int().min(0).max(trackDurationMaxSeconds)
+    }).strict(),
+    requestedByUserId: z.string().min(1).max(musicIdentifierMaxLength)
+  }).strict()).max(musicQueueMaxEntries),
+  playing: z.boolean()
+}).strict();
+
+const musicPublishPayloadSchema = z.object({
+  roomId: z.string().min(1),
+  state: musicQueueStateSchema
+}).strict();
+
 export interface MusicRealtime {
   registerHandlers: (socket: VoxlySocket, user: PresenceUser) => void;
 }
@@ -84,6 +131,9 @@ export function createMusicRealtime(
             console.error("music:control failed", cause);
             callAck(ack, { ok: false, error: "bot_timeout" } satisfies MusicControlAck);
           });
+      }));
+      socket.on("music:publish", safeSocketHandler("music:publish", (payload, ack) => {
+        callAck(ack, publishQueue(io, database, voice, user.userId, payload));
       }));
     }
   };
@@ -157,4 +207,45 @@ async function askBot(
     // out, so they do not share a message.
     return { ok: false, error: "bot_timeout" };
   }
+}
+
+/**
+ * The bot saying what the Queue is, on its way to everyone in the room.
+ *
+ * Authorized rather than relayed. Three things are checked and each of them is
+ * the reason a different attack or accident does nothing: the publisher must be
+ * *this server's* Music bot account, so no member — and no other server's bot —
+ * can put a Queue in front of a room; and it must still be in the room, so a
+ * bot an owner has just disconnected cannot go on narrating a Set it is no
+ * longer part of.
+ *
+ * Nothing is stored. The bot is the single source of truth and republishes when
+ * the room's roster changes, so a member who joins mid-Set is told by the bot
+ * rather than handed the server's guess at what the bot last said.
+ */
+function publishQueue(
+  io: VoxlyIoServer,
+  database: VoxlyDatabase,
+  voice: Pick<VoiceRealtime, "isVoiceMember">,
+  publisherUserId: string,
+  payload: unknown
+): MusicPublishAck {
+  const parsed = musicPublishPayloadSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false, error: "invalid_state" };
+
+  const room = roomById(database.sqlite, parsed.data.roomId);
+  if (!room || room.kind !== "voice") return { ok: false, error: "room_not_found" };
+
+  const account = musicBotAccountFor(database.sqlite, room.serverId);
+  if (!account || account.userId !== publisherUserId) return { ok: false, error: "not_authorized" };
+  if (!voice.isVoiceMember(room.id, publisherUserId)) return { ok: false, error: "not_authorized" };
+
+  // To the voice room, not the server room. Who queued what is the business of
+  // the people listening, and a member idling in a text channel elsewhere has
+  // no more claim on it than they have on the room's speaking state.
+  io.to(`voice:${room.id}`).emit("music:queue", {
+    roomId: room.id,
+    state: parsed.data.state satisfies MusicQueueState
+  });
+  return { ok: true };
 }

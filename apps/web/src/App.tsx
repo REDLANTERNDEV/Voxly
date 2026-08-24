@@ -18,6 +18,7 @@ import { releaseUnusedSharedAudioOutput,unlockSharedAudioOutput } from "./lib/au
 import { readRoomHistory,type RoomHistory } from "./lib/channelState.js";
 import { readLanguageChoice,saveLanguageChoice,translate,type LanguageCode } from "./lib/i18n.js";
 import { requestMusicCommand } from "./lib/musicBot.js";
+import { useMusicQueue } from "./lib/useMusicQueue.js";
 import { defaultServerId } from "./lib/navigation.js";
 import { DEFAULT_VOLUME_PERCENT } from "./lib/voiceVolume.js";
 
@@ -125,6 +126,8 @@ export function App() {
     activeTextRoomIdRef: chat.activeTextRoomIdRef
   });
 
+  const musicQueues = useMusicQueue(realtime.socket);
+
   const localVoiceSpeaking = Boolean(
     audio.voice.activeRoomId
       && audio.voice.voiceSnapshots[audio.voice.activeRoomId]?.members
@@ -190,6 +193,7 @@ export function App() {
     voiceError: audio.voice.error || session.rtcConfigError,
     visualTargets: audio.voice.visualTargets,
     voiceSnapshots: audio.voice.voiceSnapshots,
+    musicQueues,
     remoteStreams: audio.voice.remoteStreams,
     peerConnectionStates: audio.voice.peerConnectionStates,
     localPreviews: audio.voice.localPreviews,

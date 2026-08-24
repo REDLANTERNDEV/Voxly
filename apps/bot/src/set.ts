@@ -71,6 +71,16 @@ export interface MusicSetOptions {
   iceServers: IceServer[];
   /** The Track that was playing ended of its own accord. */
   onTrackEnded?: () => void;
+  /**
+   * Who is in the voice room changed — somebody arrived or left. Media changes
+   * are deliberately not this: a snapshot lands every time anyone starts or
+   * stops talking, and this is about the roster.
+   *
+   * It carries nothing, because nothing needs it to. The roster is already in
+   * the snapshots its listener receives; passing a copy here would be data
+   * whose shape nobody has had a reason to get right yet.
+   */
+  onListenersChanged?: () => void;
   log?: (message: string) => void;
 }
 
@@ -119,9 +129,22 @@ export function createMusicSet(options: MusicSetOptions): MusicSet {
     log
   });
 
+  /**
+   * The room's roster as of the last snapshot, so a snapshot that only says
+   * somebody started talking is not reported as somebody arriving. Sorted and
+   * joined rather than compared as a set, because the comparison happens on
+   * every snapshot and the rooms are small.
+   */
+  let roster = "";
+
   const onSnapshot = (snapshot: VoiceSnapshot) => {
     if (ended) return;
     mesh.applySnapshot(snapshot);
+    if (snapshot.roomId !== roomId) return;
+    const next = snapshot.members.map((member) => member.user.userId).sort().join(",");
+    if (next === roster) return;
+    roster = next;
+    options.onListenersChanged?.();
   };
 
   /**

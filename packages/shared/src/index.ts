@@ -270,6 +270,87 @@ export interface MusicTrackSummary {
 }
 
 /**
+ * How many Tracks the Queue will hold.
+ *
+ * A bound rather than a courtesy: the whole Queue is broadcast to everyone in
+ * the room on every change, so an unbounded Queue is an unbounded message sent
+ * to every Listener. A hundred Tracks is several hours of music, which is more
+ * than an evening needs and far less than an accident costs.
+ */
+export const musicQueueMaxEntries = 100;
+
+/**
+ * One Track in the Queue, with the member who put it there.
+ *
+ * The Requester is an id, not a nickname. The bot knows ids — it is told one
+ * with every request and never sees the member list as a person does — while
+ * every browser already holds the room's members and renders their current
+ * names. A nickname copied onto the wire here would be a second copy of
+ * identity the server already publishes, stale from the moment somebody renames
+ * themselves.
+ */
+export interface MusicQueueEntry {
+  /**
+   * This entry, as distinct from the Track it names. Two members queueing the
+   * same link are two entries, and either can be skipped or removed without the
+   * other going with it. Stable for as long as the entry is in the Queue, and
+   * meaningless outside the Set that produced it.
+   */
+  entryId: string;
+  track: MusicTrackSummary;
+  requestedByUserId: string;
+}
+
+/**
+ * The longest any opaque identifier on the Queue wire may be — an `entryId` the
+ * bot minted, a source's own id for a Track, a Requester's user id. One bound
+ * rather than three, because they are the same kind of thing to everyone
+ * handling them: a short token nobody parses. The server validates against it
+ * before the Queue is relayed to a room.
+ */
+export const musicIdentifierMaxLength = 64;
+
+/**
+ * The Queue and what is happening to it, as everyone in the room sees it.
+ *
+ * The bot is the single source of truth for this and publishes the whole thing
+ * on every change rather than a delta. A room where two members disagree about
+ * what is coming next is the failure this contract exists to prevent, and a
+ * missed delta is exactly how that happens; the Queue is bounded, so sending
+ * all of it costs little.
+ */
+export interface MusicQueueState {
+  /**
+   * In playing order. `entries[0]` is the Track the bot is playing or has
+   * paused; everything after it is waiting. An empty list is a Set with nothing
+   * queued, which is a state the bot really is in — between the last Track
+   * ending and the next link being pasted.
+   */
+  entries: MusicQueueEntry[];
+  /**
+   * Whether `entries[0]` is being played right now. Separate from the list
+   * because a paused Queue is not an empty one.
+   */
+  playing: boolean;
+}
+
+/** What the server answers a bot that published the Queue. */
+export type MusicPublishAck =
+  | { ok: true }
+  | {
+    ok: false;
+    /**
+     * `not_authorized` is a publisher that is not this room's Music bot, or is
+     * one that has since left the room — an eviction the bot has not noticed
+     * yet arrives this way. `room_not_found` is a room that is gone or was
+     * never a voice room. `invalid_state` is a payload that did not survive
+     * validation, which is a fault in the bot rather than anything a member
+     * did. They are distinct because only the last is a bug.
+     */
+    error: "not_authorized" | "room_not_found" | "invalid_state";
+  };
+
+/**
  * Why a music request could not be carried out.
  *
  * The first five are the server's answer and are known before the bot is
@@ -301,6 +382,9 @@ export type MusicControlError =
   /** The bot has the request and has not answered. Distinct from `bot_offline`:
    * something is running, it is just not finishing. */
   | "bot_timeout"
+  /** The Queue is full. The link was fine and the bot is fine; there is simply
+   * no room for another Track until some of them have played. */
+  | "queue_full"
   /** The bot could not carry the request out, for a reason that is not the
    * link's fault — it could not join the channel, or something under it broke.
    * Kept apart from `extractor_failed` because that one sends a member away to
@@ -323,7 +407,12 @@ export type MusicCommandAck =
     ok: false;
     error: Extract<
       MusicControlError,
-      "unsupported_link" | "track_unavailable" | "live_stream" | "extractor_failed" | "bot_failed"
+      | "unsupported_link"
+      | "track_unavailable"
+      | "live_stream"
+      | "extractor_failed"
+      | "queue_full"
+      | "bot_failed"
     >;
   };
 
@@ -380,6 +469,16 @@ export interface ServerToClientEvents {
     payload: { roomId: string; command: MusicCommand; requestedByUserId: string },
     ack: (response: MusicCommandAck) => void
   ) => void;
+  /**
+   * The Queue, as the room's Music bot says it now is. Delivered to everyone in
+   * the voice room, so the member who pasted a link and the four people who did
+   * not are looking at the same list.
+   *
+   * It carries the whole Queue rather than what changed. A room where two
+   * members disagree about what is coming next is the failure this exists to
+   * prevent, and a delta that went missing is exactly how that happens.
+   */
+  "music:queue": (payload: { roomId: string; state: MusicQueueState }) => void;
 }
 
 export interface ClientToServerEvents {
@@ -399,4 +498,21 @@ export interface ClientToServerEvents {
    * nothing happens.
    */
   "music:control": (payload: { roomId: string; command: MusicCommand }, ack: (response: MusicControlAck) => void) => void;
+  /**
+   * The Music bot saying what the Queue now is, for the server to hand to
+   * everyone in the room.
+   *
+   * The bot is an ordinary member and cannot emit to a room; this is the one
+   * thing it says that reaches more than one person, and the server authorizes
+   * it rather than relaying it blind. The publisher must *be* that room's Music
+   * bot account and must still be in the room. Nothing here is stored: the bot
+   * is the single source of truth and the server is the wire.
+   *
+   * Acknowledged so a bot publishing into a room it has been evicted from
+   * learns that, rather than believing a Queue nobody can see.
+   */
+  "music:publish": (
+    payload: { roomId: string; state: MusicQueueState },
+    ack?: (response: MusicPublishAck) => void
+  ) => void;
 }

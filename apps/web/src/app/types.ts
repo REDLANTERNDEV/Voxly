@@ -1,4 +1,4 @@
-import type { AfkTimeoutMinutes, MusicCommand,MusicControlAck,PresenceUser,PublicUser,RoomSummary,VisualTarget,VoiceModerationState,VoiceSnapshot } from "@voxly/shared";
+import type { AfkTimeoutMinutes, MusicCommand,MusicControlAck,MusicQueueState,PresenceUser,PublicUser,RoomSummary,VisualTarget,VoiceModerationState,VoiceSnapshot } from "@voxly/shared";
 import { type AudioLevels } from "../lib/audioLevels.js";
 import type { RoomHistory } from "../lib/channelState.js";
 import { type LanguageCode,type TranslationKey } from "../lib/i18n.js";
@@ -48,6 +48,12 @@ export interface ShellModel {
   voiceError: string;
   visualTargets: VisualTarget[];
   voiceSnapshots: Record<string, VoiceSnapshot>;
+  /**
+   * The Queue each voice room's Music bot last published, keyed by room. The
+   * bot is the single source of truth for it; nothing in the browser writes
+   * here except the delivery of `music:queue`.
+   */
+  musicQueues: Record<string, MusicQueueState>;
   remoteStreams: RemoteStreamState[];
   peerConnectionStates: Record<string, PeerConnectionState>;
   localPreviews: Array<{ kind: "camera" | "screen"; stream: MediaStream }>;
@@ -109,7 +115,7 @@ export interface ShellActions {
 
 export interface VoiceChromeModel extends Pick<ShellModel,
   "activeVoiceRoomId" | "controls" | "voiceModeration" | "voiceError" |
-  "visualTargets" | "voiceSnapshots" | "remoteStreams" | "peerConnectionStates" |
+  "visualTargets" | "voiceSnapshots" | "musicQueues" | "remoteStreams" | "peerConnectionStates" |
   "localPreviews" | "memberVolumes" | "screenVolumes" | "pendingLiveWatch" |
   "audioDevices" | "audioLevels" | "microphoneTestActive" | "microphoneTestError"
 > {}

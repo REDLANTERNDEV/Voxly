@@ -95,6 +95,7 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
     controls={shellProps.controls}
     visualTargets={shellProps.visualTargets}
     voiceSnapshots={shellProps.voiceSnapshots}
+    musicQueues={shellProps.musicQueues}
     remoteStreams={shellProps.remoteStreams}
     peerConnectionStates={shellProps.peerConnectionStates}
     localPreviews={shellProps.localPreviews}

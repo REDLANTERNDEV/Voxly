@@ -2122,6 +2122,79 @@ button.reply-quote:focus-visible .reply-quote-body {
   opacity: 0.55;
 }
 
+/*
+ * The Queue grows the panel, which grows the call surface — the one scroll
+ * owner on this screen. No `max-block-size` and no `overflow` here on purpose:
+ * a scroll region of its own would put a second scrollbar inside the page and,
+ * worse, would make the panel a fixed height that the stage above has to be
+ * squeezed to accommodate.
+ */
+.music-queue {
+  display: grid;
+  gap: 6px;
+  padding: 12px 12px 0;
+}
+
+.music-queue-list {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.music-queue-row {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 4px 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 6px 8px;
+}
+
+/*
+ * The Track that is sounding right now, told apart by a border, a background
+ * and its own line of text — never by colour alone.
+ */
+.music-queue-row.is-current {
+  background: color-mix(in oklab, var(--accent), var(--bg) 90%);
+  border-color: color-mix(in oklch, var(--accent), var(--border) 30%);
+}
+
+.music-queue-position {
+  color: var(--muted);
+  font-size: 11px;
+  grid-column: 1 / -1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.music-queue-row.is-current .music-queue-position {
+  color: var(--accent);
+}
+
+.music-queue-copy {
+  display: grid;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.music-queue-copy strong {
+  overflow-wrap: anywhere;
+}
+
+.music-queue-copy span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.music-queue-length {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .music-panel-controls {
   align-items: center;
   display: flex;

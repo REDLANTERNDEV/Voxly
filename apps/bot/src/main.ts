@@ -2,7 +2,7 @@ import { resolveBotEnvironment } from "./config.js";
 import { createSessionHolder } from "./credentials.js";
 import { createMusicResponder } from "./music.js";
 import { createMusicBotPresence } from "./presence.js";
-import { setSocketFor } from "./socket.js";
+import { publishQueueVia, setSocketFor } from "./socket.js";
 import { fetchIceServers } from "./voxly.js";
 
 /**
@@ -31,24 +31,26 @@ const presence = createMusicBotPresence({
   environment,
   attach: ({ socket, session, cookieName }) => {
     const credentials = createSessionHolder(environment, session);
+    const log = (message: string) => console.log(`[${session.serverId}] ${message}`);
     const responder = createMusicResponder({
       socket: setSocketFor(socket),
       selfUserId: session.userId,
       environment,
+      publish: publishQueueVia(socket, log),
       loadIceServers: () => fetchIceServers({
         serverUrl: environment.serverUrl,
         cookieName,
         sessionToken: credentials.token,
         refreshSession: () => credentials.refresh()
       }),
-      log: (message) => console.log(`[${session.serverId}] ${message}`)
+      log
     });
     socket.on("music:command", (payload, ack) => {
       // Answered rather than fired: the member who asked is waiting on this,
       // and it is the only route by which "that link will not play" reaches
       // them. `handle` resolves to an answer for every outcome, including the
       // ones it had to log.
-      void responder.handle(payload.command, payload.roomId).then(ack);
+      void responder.handle(payload.command, payload.roomId, payload.requestedByUserId).then(ack);
     });
     return () => responder.close();
   }

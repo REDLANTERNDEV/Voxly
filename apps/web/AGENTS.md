@@ -352,8 +352,17 @@ requirement.
   join, and require one localized confirmation before moving from another
   voice room. Navigate only after the acknowledged join succeeds.
 - The call surface is the sole voice-room scroll owner. Keep stage, available
-  sources, music, and participants in normal flow in that order; do not add
+  sources, participants, and music in normal flow in that order; do not add
   nested scrollbars, sticky sections, or absolute positioning.
+- Music comes **after** the participants, not before them. The panel used to
+  precede them, when it was two controls and a status line; it now carries the
+  Queue, and a list that grows with every paste sitting above the roster pushes
+  the people in the room off the screen. The design and ticket 08 both place it
+  after the participant list.
+- The Queue grows the panel and the panel grows the page. A scroll region inside
+  it would also make it a fixed-height block the stage has to shrink for, which
+  is the one thing adding music must not do to somebody who was already sharing
+  a screen.
 - Allow the stage to contract on short viewports without covering later
   sections. Fullscreen remains exempt from in-panel height bounds.
 - The Music panel is shown only when the viewed room is the active voice room.
@@ -363,6 +372,16 @@ requirement.
   local state left over from a press. The bot reports it through `speaking`, the
   same self-report a person's microphone makes, so everyone in the channel —
   including the people who pressed nothing — sees the same thing.
+- Render the Queue from what the bot published to the room (`music:queue`),
+  never from a Track remembered out of an acknowledgement. The acknowledgement
+  reaches the one member who asked; the Queue is what the other four are owed.
+- Resolve each Requester's nickname here, from the room's members. The bot
+  publishes ids on purpose — see ADR-0005 — and a Requester who has left is
+  named by a stand-in sentence rather than by an id nobody can read.
+- Show no Queue when no bot is in the room. The bot owns it, and a list left
+  over from a Set that ended is a list of Tracks nobody is going to hear.
+- Tell the playing Track apart by words as well as by styling. "Now playing" is
+  a row anyone can read; a differently shaded background is not.
 - Every refusal from `music:control` gets its own localized sentence. The whole
   output of this control is sound in someone else's headphones, so "nothing
   happened" is the one answer it cannot give.
