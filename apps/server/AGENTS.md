@@ -12,7 +12,16 @@ web serving, and owner recovery CLIs.
 - `src/app.ts` is the HTTP and realtime composition root.
 - `src/db/schema.ts` defines Drizzle table metadata.
 - `src/db/database.ts` initializes SQLite and performs compatibility migrations.
-- `src/auth` owns token hashing and owner-claim behavior.
+- `src/auth` owns token hashing, owner-claim behavior, and sessions.
+- `src/auth/sessions.ts` owns what a session is and how it is judged: minting a
+  browser session, authenticating an HTTP request or a Socket.IO handshake,
+  renewing one that is running down, revoking one or all of an account's, and
+  every read and write of the session cookie. `bots.ts` mints the bot's own
+  short-lived session, but it revokes through here and its sessions are read
+  back by the same authentication, so the two remain one model (ADR-0003). Add
+  a rule about sessions here rather than beside the route that noticed it.
+  `app.ts` registers `@fastify/cookie` and composes the routes; it decides
+  nothing about sessions.
 - `src/members.ts` owns membership lookups, the permission guards routes call,
   effective server identity, and presence status. Add an authorization rule
   there rather than inline in a route or socket handler.
@@ -43,6 +52,8 @@ web serving, and owner recovery CLIs.
   rules the same way.
 - `test/bots.test.ts` covers bot configuration, account seeding, and session
   minting the same way.
+- `test/sessions.test.ts` covers session creation, authentication, renewal,
+  revocation, and cookie attributes the same way.
 
 Keep SQL explicit and server-scoped. Prefer a small helper for repeated
 authorization or normalization rules rather than duplicating subtly different
@@ -74,6 +85,11 @@ queries across endpoints.
 
 - Invite, session, access-claim, and owner-claim tokens are stored only as
   hashes. Do not log or persist raw values.
+- A browser session lasts 180 days and is renewed on use once it is within 30
+  days of expiring. Renewal writes the row and the cookie together, so an
+  answer already handed to a caller can never disagree with the stored expiry.
+  A caller ending its session authenticates without renewing; setting a fresh
+  cookie on the way out would race the one the response clears.
 - Invite expiry and capacity are independent nullable limits. Count one use per
   account in `invite_uses`; preserve the legacy first-use columns as metadata.
 - When supplied, invite expiry accepts only 30, 60, 360, 720, 1440, 10080, or

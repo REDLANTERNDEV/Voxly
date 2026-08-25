@@ -17,6 +17,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { FastifyReply } from "fastify";
 import type { DatabaseSync } from "node:sqlite";
 import { musicBotNickname } from "@voxly/shared";
+import { revokeSessionsForUser } from "./auth/sessions.js";
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import { all, one, run, type VoxlyDatabase } from "./db/database.js";
 import { activateServerMembership } from "./members.js";
@@ -185,11 +186,7 @@ export function issueBotSession(database: VoxlyDatabase, userId: string) {
   const expiresAt = new Date(now.getTime() + botSessionMinutes * 60 * 1000).toISOString();
   database.sqlite.exec("begin immediate");
   try {
-    run(
-      database.sqlite,
-      "update sessions set revoked_at = ? where user_id = ? and revoked_at is null",
-      [nowIso, userId]
-    );
+    revokeSessionsForUser(database.sqlite, userId, nowIso);
     run(
       database.sqlite,
       "insert into sessions (id, token_hash, user_id, created_at, expires_at) values (?, ?, ?, ?, ?)",

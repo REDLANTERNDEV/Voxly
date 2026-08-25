@@ -22,6 +22,21 @@ import type {
 } from "@voxly/shared";
 import type { DatabaseSync } from "node:sqlite";
 import type { AnalyticsConfig } from "./analytics.js";
+import {
+  allSessions,
+  authenticateHttp,
+  authenticateSocket,
+  authenticateWithoutRenewal,
+  clearSessionCookie,
+  createSession,
+  requireOwner,
+  requireUser,
+  revokeSession,
+  revokeSessionsForUser,
+  sessionCookieName,
+  setSessionCookie,
+  type AuthUser
+} from "./auth/sessions.js";
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import {
   bearerToken,
@@ -60,10 +75,6 @@ import { createVoiceRealtime } from "./voice.js";
 import type { TurnstileConfig } from "./turnstile.js";
 import type { RtcConfigProvider } from "./rtcConfig.js";
 
-const sessionCookieName = "voxly_session";
-const sessionDays = 180;
-const sessionRenewWindowDays = 30;
-
 export interface CreateVoxlyAppOptions {
   databasePath: string;
   publicUrl?: string;
@@ -91,17 +102,6 @@ export interface CreateVoxlyAppOptions {
   logger?: boolean;
 }
 
-export interface AuthUser {
-  id: string;
-  nickname: string;
-  role: "owner" | "member";
-  bannedAt: string | null;
-  /** A service account rather than a person; see `bots.ts`. */
-  isBot: boolean;
-  sessionId: string;
-  sessionExpiresAt: string;
-}
-
 export interface VoxlyApp {
   server: FastifyInstance;
   io: Server<ClientToServerEvents, ServerToClientEvents>;
@@ -115,14 +115,6 @@ type UserRow = {
   nickname: string;
   role: "owner" | "member";
   banned_at: string | null;
-  is_bot: number;
-};
-
-type SessionRow = {
-  id: string;
-  user_id: string;
-  expires_at: string;
-  revoked_at: string | null;
 };
 
 interface IceServer {
@@ -525,15 +517,12 @@ function registerRoutes(
   });
 
   server.post("/api/logout", async (request, reply) => {
-    const user = authenticate(database.sqlite, request.cookies[sessionCookieName]);
+    const user = authenticateWithoutRenewal(database.sqlite, request);
     if (user) {
-      run(database.sqlite, "update sessions set revoked_at = ? where id = ?", [
-        new Date().toISOString(),
-        user.sessionId
-      ]);
+      revokeSession(database.sqlite, user.sessionId);
       database.save();
     }
-    reply.clearCookie(sessionCookieName, { path: "/" });
+    clearSessionCookie(reply);
     return reply.code(204).send();
   });
 
@@ -1165,15 +1154,7 @@ function registerRoutes(
     }
 
     return {
-      sessions: all(
-        database.sqlite,
-        `select sessions.id, sessions.user_id as userId, users.nickname,
-          sessions.created_at as createdAt, sessions.expires_at as expiresAt,
-          sessions.revoked_at as revokedAt
-         from sessions
-         join users on users.id = sessions.user_id
-         order by sessions.created_at desc`
-      )
+      sessions: allSessions(database.sqlite)
     };
   });
 
@@ -1425,11 +1406,7 @@ function registerRoutes(
     // otherwise keeps serving messages and WebRTC signalling on the connection
     // that was already open. Owners are exempt above, so skip the cascade for them.
     if (target && target.role !== "owner") {
-      run(
-        database.sqlite,
-        "update sessions set revoked_at = ? where user_id = ? and revoked_at is null",
-        [now, userId]
-      );
+      revokeSessionsForUser(database.sqlite, userId, now);
     }
     audit(database, owner.id, "user.banned", userId);
     database.save();
@@ -1445,10 +1422,7 @@ function registerRoutes(
       return;
     }
     const { sessionId } = z.object({ sessionId: z.string().uuid() }).parse(request.params);
-    run(database.sqlite, "update sessions set revoked_at = ? where id = ?", [
-      new Date().toISOString(),
-      sessionId
-    ]);
+    revokeSession(database.sqlite, sessionId);
     audit(database, owner.id, "session.revoked", sessionId);
     database.save();
     return reply.code(204).send();
@@ -1464,8 +1438,7 @@ function registerRealtime(
   const music = createMusicRealtime(io, database, voice);
 
   io.use((socket, next) => {
-    const sessionToken = parseCookieHeader(socket.handshake.headers.cookie ?? "")[sessionCookieName];
-    const user = authenticate(database.sqlite, sessionToken);
+    const user = authenticateSocket(database.sqlite, socket.handshake.headers.cookie);
     if (!user) {
       next(new Error("unauthorized"));
       return;
@@ -1780,123 +1753,6 @@ function inviteUseCount(sqlite: DatabaseSync, inviteId: string) {
   return one<{ count: number }>(sqlite, "select count(*) as count from invite_uses where invite_id = ?", [inviteId])?.count ?? 0;
 }
 
-function createSession(database: VoxlyDatabase, userId: string) {
-  const token = createOpaqueToken();
-  const now = new Date();
-  const expiresAt = sessionExpiry(now).toISOString();
-  run(
-    database.sqlite,
-    "insert into sessions (id, token_hash, user_id, created_at, expires_at) values (?, ?, ?, ?, ?)",
-    [crypto.randomUUID(), hashToken(token), userId, now.toISOString(), expiresAt]
-  );
-  database.save();
-  return token;
-}
-
-function authenticate(sqlite: DatabaseSync, sessionToken: string | undefined): AuthUser | null {
-  if (!sessionToken) {
-    return null;
-  }
-
-  const session = one<SessionRow>(
-    sqlite,
-    "select id, user_id, expires_at, revoked_at from sessions where token_hash = ?",
-    [hashToken(sessionToken)]
-  );
-  if (!session || session.revoked_at || isExpired(session.expires_at)) {
-    return null;
-  }
-
-  const user = one<UserRow>(sqlite, "select id, nickname, role, banned_at, is_bot from users where id = ?", [
-    session.user_id
-  ]);
-  if (!user || user.banned_at) {
-    return null;
-  }
-
-  return {
-    id: user.id,
-    nickname: user.nickname,
-    role: user.role,
-    bannedAt: user.banned_at,
-    isBot: user.is_bot === 1,
-    sessionId: session.id,
-    sessionExpiresAt: session.expires_at
-  };
-}
-
-function authenticateHttp(
-  database: VoxlyDatabase,
-  request: FastifyRequest,
-  reply: FastifyReply,
-  secureCookies: boolean
-) {
-  const sessionToken = request.cookies[sessionCookieName];
-  const user = authenticate(database.sqlite, sessionToken);
-  if (user && sessionToken) {
-    renewSessionIfNeeded(database, user, sessionToken, reply, secureCookies);
-  }
-  return user;
-}
-
-function requireUser(database: VoxlyDatabase, request: FastifyRequest, reply: FastifyReply, secureCookies: boolean) {
-  const user = authenticateHttp(database, request, reply, secureCookies);
-  if (!user) {
-    reply.code(401).send({ error: "unauthorized" });
-    return null;
-  }
-  return user;
-}
-
-function requireOwner(database: VoxlyDatabase, request: FastifyRequest, reply: FastifyReply, secureCookies: boolean) {
-  const user = requireUser(database, request, reply, secureCookies);
-  if (!user) {
-    return null;
-  }
-  if (user.role !== "owner") {
-    reply.code(403).send({ error: "forbidden" });
-    return null;
-  }
-  return user;
-}
-
-function renewSessionIfNeeded(
-  database: VoxlyDatabase,
-  user: AuthUser,
-  sessionToken: string,
-  reply: FastifyReply,
-  secure: boolean
-) {
-  const currentExpiresAt = new Date(user.sessionExpiresAt);
-  const renewalThreshold = Date.now() + sessionRenewWindowDays * 24 * 60 * 60 * 1000;
-  if (currentExpiresAt.getTime() > renewalThreshold) {
-    return;
-  }
-
-  const nextExpiresAt = sessionExpiry();
-  run(database.sqlite, "update sessions set expires_at = ? where id = ?", [
-    nextExpiresAt.toISOString(),
-    user.sessionId
-  ]);
-  database.save();
-  user.sessionExpiresAt = nextExpiresAt.toISOString();
-  setSessionCookie(reply, sessionToken, secure, nextExpiresAt);
-}
-
-function setSessionCookie(reply: FastifyReply, token: string, secure: boolean, expires = sessionExpiry()) {
-  reply.setCookie(sessionCookieName, token, {
-    httpOnly: true,
-    secure,
-    sameSite: "lax",
-    path: "/",
-    expires
-  });
-}
-
-function sessionExpiry(now = new Date()) {
-  return new Date(now.getTime() + sessionDays * 24 * 60 * 60 * 1000);
-}
-
 function publicUser(user: AuthUser | { id: string; nickname: string; role: "owner" | "member"; bannedAt: string | null }) {
   return {
     id: user.id,
@@ -2004,39 +1860,6 @@ function audit(
     database.sqlite,
     "insert into audit_events (id, actor_user_id, action, target_user_id, server_id, created_at) values (?, ?, ?, ?, ?, ?)",
     [crypto.randomUUID(), actorUserId, action, targetUserId, serverId, new Date().toISOString()]
-  );
-}
-
-/**
- * A malformed percent-escape must not be fatal.
- *
- * `decodeURIComponent` throws `URIError` on input like `%ZZ`, and this parser runs
- * inside the Socket.IO handshake middleware before any session exists. Socket.IO
- * invokes that middleware from an async caller, so a throw here surfaces as an
- * unhandled rejection and takes the process down — an unauthenticated remote kill.
- * `@fastify/cookie` on the HTTP path is lenient and yields the raw value, so
- * degrading the same way keeps the two paths reading a header identically.
- */
-function safeDecodeCookieComponent(value: string) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-function parseCookieHeader(header: string) {
-  return Object.fromEntries(
-    header
-      .split(";")
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map((part) => {
-        const index = part.indexOf("=");
-        return index === -1
-          ? [part, ""]
-          : [safeDecodeCookieComponent(part.slice(0, index)), safeDecodeCookieComponent(part.slice(index + 1))];
-      })
   );
 }
 
