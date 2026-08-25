@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import type { MusicCommand, MusicControlAck, MusicQueueState, VoiceMemberState } from "@voxly/shared";
+import type {
+  MusicCommand,
+  MusicControlAck,
+  MusicQueueState,
+  MusicSetLogAction,
+  VoiceMemberState
+} from "@voxly/shared";
 import { translate, type TranslationKey } from "../src/lib/i18n.js";
 import {
   isSendableInput,
@@ -11,6 +17,7 @@ import {
   musicQueueRows,
   musicRestingKey,
   musicSearchRows,
+  musicSetLogRows,
   musicTransport,
   requestMusicCommand,
   trackAddedMessage,
@@ -53,8 +60,8 @@ describe("what the transport controls are looking at", () => {
     requestedByUserId: "ada",
     track: { id: entryId, title: `Track ${entryId}`, durationSeconds: 60 }
   });
-  const sounding: MusicQueueState = { playing: true, entries: [entry("a"), entry("b")] };
-  const halted: MusicQueueState = { playing: false, entries: [entry("a")] };
+  const sounding: MusicQueueState = { playing: true, entries: [entry("a"), entry("b")], log: [] };
+  const halted: MusicQueueState = { playing: false, entries: [entry("a")], log: [] };
   const mutedBot = { ...bot, moderation: { muted: true, deafened: false } };
 
   it("reads whether the music is playing from the Queue, not from the bot's speaking flag", () => {
@@ -70,13 +77,13 @@ describe("what the transport controls are looking at", () => {
   it("names the entry Play, Pause and Skip act on", () => {
     assert.equal(musicTransport(bot, sounding).currentEntryId, "a", "the head, which is what a skip targets");
     assert.equal(musicTransport(bot, null).currentEntryId, null);
-    assert.equal(musicTransport(bot, { playing: false, entries: [] }).currentEntryId, null);
+    assert.equal(musicTransport(bot, { playing: false, entries: [], log: [] }).currentEntryId, null);
   });
 
   it("never calls an empty Queue playing, whatever it was told", () => {
     // A Queue with nothing in it and `playing` true is not a state the bot
     // produces, and the panel must not offer Pause for it either way.
-    assert.equal(musicTransport(bot, { playing: true, entries: [] }).playing, false);
+    assert.equal(musicTransport(bot, { playing: true, entries: [], log: [] }).playing, false);
   });
 
   it("says whether a bot is here at all", () => {
@@ -283,10 +290,43 @@ describe("what a refusal says", () => {
       "music.chooseResult",
       "music.chooseResultUnknown",
       "music.chooseClosest",
-      "music.closest"
+      "music.closest",
+      "music.log",
+      "music.logAdded",
+      "music.logSkipped",
+      "music.logRemoved",
+      "music.logPaused",
+      "music.logResumed",
+      "music.logTrackUnknown"
     ] as const;
     for (const key of keys) {
       assert.notEqual(translate("en", key), translate("tr", key), `${key} must be translated`);
+    }
+  });
+
+  it("says each thing a member can have done differently, in both languages", () => {
+    // A log whose five verbs read alike explains nothing. Asserted per language
+    // because Turkish builds these sentences in its own word order rather than
+    // by substituting words into English's.
+    const actions = ["added", "skipped", "removed", "paused", "resumed"] as const;
+    for (const language of ["en", "tr"] as const) {
+      const said = musicSetLogRows(
+        {
+          playing: true,
+          entries: [],
+          log: actions.map((action, index) => ({
+            lineId: `line-${index}`,
+            action,
+            requestedByUserId: "ada",
+            trackTitle: "Nocturne"
+          }))
+        },
+        [member("ada", { user: { userId: "ada", nickname: "Ada", role: "member" } })],
+        (key, values) => translate(language, key, values)
+      ).map((row) => row.message);
+
+      assert.equal(new Set(said).size, actions.length, `${language}: no two verbs may read the same`);
+      for (const message of said) assert.match(message, /Ada/, `${language}: every line names who did it`);
     }
   });
 });
@@ -304,7 +344,8 @@ describe("the Queue as the panel reads it", () => {
         entryId,
         requestedByUserId,
         track: { id: entryId, title, durationSeconds }
-      }))
+      })),
+      log: []
     };
   }
 
@@ -405,6 +446,99 @@ describe("the Queue as the panel reads it", () => {
 
     assert.equal(musicQueueFor(queues, "lobby", undefined), null);
     assert.equal(musicQueueFor(queues, null, bot), null);
+  });
+});
+
+/**
+ * The Set log as the panel reads it. The same shape of helper as the Queue's
+ * rows and for the same reason: the component arranges these, it does not
+ * compute them — and the sentence is built here so each language owns its own
+ * word order rather than having it assembled out of fragments in JSX.
+ */
+describe("the Set log as the panel reads it", () => {
+  const t = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+    translate("en", key, values);
+  const ada = member("ada", { user: { userId: "ada", nickname: "Ada", role: "member" } });
+  const ece = member("ece", { user: { userId: "ece", nickname: "Ece", role: "member" } });
+
+  function logOf(lines: Array<[MusicSetLogAction, string, string | null]>): MusicQueueState {
+    return {
+      playing: true,
+      entries: [],
+      log: lines.map(([action, requestedByUserId, trackTitle], index) => ({
+        lineId: `line-${index}`,
+        action,
+        requestedByUserId,
+        trackTitle
+      }))
+    };
+  }
+
+  it("says who did what, in one sentence per line", () => {
+    const rows = musicSetLogRows(
+      logOf([
+        ["skipped", "ece", "Nocturne"],
+        ["paused", "ada", null],
+        ["added", "ada", "Nocturne"]
+      ]),
+      [ada, ece],
+      t
+    );
+
+    assert.deepEqual(rows.map((row) => row.message), [
+      "Ece skipped Nocturne",
+      "Ada paused the music",
+      "Ada added Nocturne"
+    ]);
+  });
+
+  it("tells a removal apart from a skip", () => {
+    // Two verbs on purpose (ADR-0006), and the log is where the difference is
+    // visible to a member: one moved past what was playing, the other took a
+    // Track out of the list somebody was waiting for.
+    const rows = musicSetLogRows(logOf([["removed", "ada", "Nocturne"], ["skipped", "ada", "Nocturne"]]), [ada], t);
+
+    assert.notEqual(rows[0].message, rows[1].message);
+    assert.match(rows[0].message, /removed/);
+  });
+
+  it("resolves the member's current nickname rather than one copied onto the wire", () => {
+    // The same rule as the Queue's Requester and for the same reason: the bot
+    // publishes ids, and a nickname it had copied would be the one that went
+    // stale the moment somebody renamed themselves. ADR-0005.
+    const renamed = member("ada", { user: { userId: "ada", nickname: "Ada Lovelace", role: "member" } });
+
+    const [row] = musicSetLogRows(logOf([["paused", "ada", null]]), [renamed], t);
+
+    assert.match(row.message, /Ada Lovelace/);
+  });
+
+  it("names a member who has left rather than showing their id", () => {
+    const [row] = musicSetLogRows(logOf([["skipped", "ada", "Nocturne"]]), [ece], t);
+
+    assert.match(row.message, new RegExp(translate("en", "music.requesterUnknown")));
+    assert.doesNotMatch(row.message, /\bada\b/, "an id is true and useless to everyone reading it");
+  });
+
+  it("gives every line its own key, so two identical pauses are two rows", () => {
+    const rows = musicSetLogRows(logOf([["paused", "ada", null], ["paused", "ada", null]]), [ada], t);
+
+    assert.equal(new Set(rows.map((row) => row.lineId)).size, 2);
+    assert.equal(rows[0].message, rows[1].message, "and they really are identical to read");
+  });
+
+  it("has no rows at all when the bot has published nothing", () => {
+    assert.deepEqual(musicSetLogRows(null, [ada], t), []);
+    assert.deepEqual(musicSetLogRows(logOf([]), [ada], t), []);
+  });
+
+  it("still reads as a sentence if a line arrives naming no Track", () => {
+    // The contract allows a null title, for a pause and a resume. A verb that
+    // should have carried one and did not is somebody else's bug, and the
+    // answer to it is a line that still reads rather than a blank.
+    const [row] = musicSetLogRows(logOf([["skipped", "ada", null]]), [ada], t);
+
+    assert.match(row.message, /Ada skipped \S/);
   });
 });
 
@@ -615,7 +749,7 @@ describe("the Queue on the page", () => {
     // The call surface is the sole scroll owner. A Queue with its own scrollbar
     // would also be a fixed-height block the screen-share stage has to shrink
     // to make room for, which is the one thing the panel must not do.
-    for (const selector of ["music-panel", "music-queue", "music-queue-list"]) {
+    for (const selector of ["music-panel", "music-queue", "music-queue-list", "music-log", "music-log-list"]) {
       const rule = styles.match(new RegExp(`\\.${selector}\\s*\\{[^}]+\\}`))?.[0];
       // Found, not merely absent: a rule this test cannot see is a rule it
       // cannot hold, and a renamed class would pass silently.
@@ -623,6 +757,53 @@ describe("the Queue on the page", () => {
       assert.doesNotMatch(rule, /overflow(?:-y|-block)?:\s*(?:auto|scroll)/, selector);
       assert.doesNotMatch(rule, /(?:max-)?(?:block-size|height):/, selector);
     }
+  });
+});
+
+/**
+ * The Set log on the page. Everything here reads the room's published Queue —
+ * which is what the log arrives on — so a member who pressed nothing is given
+ * the same explanation as the member who pressed something.
+ */
+describe("the Set log on the page", () => {
+  it("renders the log the bot published, and holds none of its own", () => {
+    assert.match(musicPanel, /const logRows = musicSetLogRows\(queue, members, t\);/);
+    assert.doesNotMatch(musicPanel, /useState<MusicSetLog/, "nothing here remembers a line");
+  });
+
+  it("gives the log a role, so the heading labelling it is not dropped", () => {
+    assert.match(musicPanel, /<section className="music-log" aria-labelledby="musicLogTitle">/);
+    assert.match(musicPanel, /<p className="label" id="musicLogTitle">\{t\("music\.log"\)\}<\/p>/);
+  });
+
+  it("shows nothing at all until somebody has done something", () => {
+    // Unlike the Queue, which says it is empty because an empty Queue is a
+    // state the room is in. A Set nobody has touched yet has no story to tell,
+    // and a heading over nothing is a heading that grows the page for nothing.
+    assert.match(musicPanel, /\{logRows\.length > 0 \? \(/);
+  });
+
+  it("comes last, after the controls, because it is the part that grows", () => {
+    // The Queue grows when a member adds; the log grows on every press anyone
+    // makes, including a pause that changes nothing else on the page. Putting
+    // it above the buttons would move them down under the pointer while
+    // somebody else was acting.
+    assert.ok(
+      musicPanel.indexOf('className="music-panel-controls"') < musicPanel.indexOf('className="music-log"'),
+      "the transport controls keep their place whatever the log does"
+    );
+  });
+
+  it("is not a second live region competing with the status line", () => {
+    // One `aria-live` in this panel, and it is the one that answers the member
+    // who just pressed something. Announcing every other member's action over
+    // the top of it would talk across the answer they were waiting for.
+    assert.equal((musicPanel.match(/aria-live=/g) ?? []).length, 1);
+  });
+
+  it("keys each line by its own id rather than by what it says", () => {
+    // Two members pausing in turn produce two identical sentences.
+    assert.match(musicPanel, /key=\{row\.lineId\}/);
   });
 });
 
@@ -718,7 +899,11 @@ describe("the control's placement", () => {
     const buttons = musicPanel.match(/<button/g) ?? [];
     const typed = musicPanel.match(/type="(?:button|submit)"/g) ?? [];
 
-    assert.equal(buttons.length, 6, "add, one per result, play/pause, skip, send away, and one per Queue row");
+    assert.equal(
+      buttons.length,
+      6,
+      "add, one per result, play/pause, skip, send away, and one per Queue row — a Set log line is not a control"
+    );
     assert.equal(typed.length, buttons.length);
     assert.doesNotMatch(musicPanel, /<(?:div|span|li)[^>]*onClick/);
   });

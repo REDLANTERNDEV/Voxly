@@ -151,6 +151,24 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   a delta that went missing is exactly how that happens. The Queue is bounded
   (`musicQueueMaxEntries`) so sending all of it stays cheap. ADR-0005 records
   why the shape is a request the server authorizes rather than a relay.
+- **The Set log travels on `MusicQueueState`, not beside it.** Every line is
+  produced by a change that was already publishing the Queue, so a second
+  payload would add no message and would buy the failure this contract exists to
+  prevent: a line saying a Track was skipped, delivered to a room still holding
+  it. `musicSetLogMaxLines` bounds the count and `musicTitleMaxLength` bounds the
+  title on each line, for the same reason the Queue's are bounded — it is the
+  source's string, relayed whole to every browser in the channel. ADR-0008.
+- `MusicSetLogLine.requestedByUserId` is an id, resolved at the browser's end,
+  under exactly the rule the Queue entry below states — and it names the member
+  who asked for *that* action, not the Requester of the Track it was about. The
+  Track is carried as a **title** rather than an `entryId`, because the point of
+  most lines is that the entry has gone and there is nothing left to look it up
+  in. `trackTitle` is explicitly `null` for a pause and a resume rather than
+  absent, as `MusicAnswer`'s `track` is.
+- `MusicSetLogAction` is the closed list of things a member can be said to have
+  done. A Track ending is not one of them — the log names who did something, and
+  nobody did that. A verb added here must be added to the server's validator and
+  to the browser's mapping; both are exhaustive so the build says so.
 - `MusicQueueEntry.requestedByUserId` is an id, and no nickname belongs beside
   it. The bot is handed ids and never sees a member list; every browser already
   holds the room's members and renders their current names. A nickname copied on

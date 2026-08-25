@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
-import { musicBotNickname, musicIdentifierMaxLength } from "@voxly/shared";
+import { musicBotNickname, musicIdentifierMaxLength, musicSetLogMaxLines } from "@voxly/shared";
 import type { MusicCommand, MusicCommandAck, MusicControlAck, MusicPublishAck, VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck } from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 
@@ -1524,6 +1524,14 @@ describe("music bot control", () => {
         entryId: "entry-1",
         requestedByUserId: owner.user.id,
         track: { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 }
+      }],
+      // The Set log travels with the Queue it describes, so the member who
+      // pressed nothing is given the same explanation as the member who did.
+      log: [{
+        lineId: "line-1",
+        action: "added",
+        requestedByUserId: owner.user.id,
+        trackTitle: "Nocturne in E-flat major"
       }]
     };
     const seen = Promise.all([
@@ -1550,7 +1558,7 @@ describe("music bot control", () => {
     const silence = expectNoEvent(ownerSocket, "music:queue");
     const ack = await emitWithAck<MusicPublishAck>(ownerSocket, "music:publish", {
       roomId: "lobby",
-      state: { playing: true, entries: [] }
+      state: { playing: true, entries: [], log: [] }
     });
 
     assert.deepEqual(ack, { ok: false, error: "not_authorized" });
@@ -1569,7 +1577,7 @@ describe("music bot control", () => {
     const silence = expectNoEvent(ownerSocket, "music:queue");
     const ack = await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
       roomId: "lobby",
-      state: { playing: false, entries: [] }
+      state: { playing: false, entries: [], log: [] }
     });
 
     assert.deepEqual(ack, { ok: false, error: "not_authorized" });
@@ -1592,7 +1600,7 @@ describe("music bot control", () => {
     assert.deepEqual(
       await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
         roomId: "lobby",
-        state: { playing: true, entries: [{ ...entry, track: { ...entry.track, title: "x".repeat(500) } }] }
+        state: { playing: true, entries: [{ ...entry, track: { ...entry.track, title: "x".repeat(500) } }], log: [] }
       }),
       { ok: false, error: "invalid_state" },
       "a title is somebody else's string on its way to every browser in the room"
@@ -1600,7 +1608,7 @@ describe("music bot control", () => {
     assert.deepEqual(
       await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
         roomId: "lobby",
-        state: { playing: true, entries: Array.from({ length: 200 }, () => entry) }
+        state: { playing: true, entries: Array.from({ length: 200 }, () => entry), log: [] }
       }),
       { ok: false, error: "invalid_state" },
       "and the Queue is bounded before it is broadcast"
@@ -1608,11 +1616,83 @@ describe("music bot control", () => {
     assert.deepEqual(
       await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
         roomId: "lobby",
-        state: { playing: true, entries: [{ ...entry, nickname: "Owner" }] }
+        state: { playing: true, entries: [{ ...entry, nickname: "Owner" }], log: [] }
       }),
       { ok: false, error: "invalid_state" },
       "a field nobody agreed on must not ride along"
     );
+    assert.deepEqual(
+      await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
+        roomId: "lobby",
+        state: {
+          playing: true,
+          entries: [entry],
+          log: [{ lineId: "line-1", action: "added", requestedByUserId: owner.user.id, trackTitle: "x".repeat(500) }]
+        }
+      }),
+      { ok: false, error: "invalid_state" },
+      "a Track's title is somebody else's string wherever on this payload it sits"
+    );
+    assert.deepEqual(
+      await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
+        roomId: "lobby",
+        state: {
+          playing: true,
+          entries: [entry],
+          log: Array.from({ length: musicSetLogMaxLines + 1 }, (_unused, index) => ({
+            lineId: `line-${index}`,
+            action: "paused",
+            requestedByUserId: owner.user.id,
+            trackTitle: null
+          }))
+        }
+      }),
+      { ok: false, error: "invalid_state" },
+      "and the Set log is bounded before it is broadcast, exactly as the Queue is"
+    );
+    assert.deepEqual(
+      await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
+        roomId: "lobby",
+        state: {
+          playing: true,
+          entries: [entry],
+          log: [{ lineId: "line-1", action: "danced", requestedByUserId: owner.user.id, trackTitle: null }]
+        }
+      }),
+      { ok: false, error: "invalid_state" },
+      "a verb nobody agreed on is not a thing a member can be said to have done"
+    );
+  });
+
+  it("never writes the Set log down, anywhere", async () => {
+    // An acceptance criterion, and this is where it is enforced rather than
+    // merely not violated: the server is the wire for the Queue and keeps no
+    // copy of it (ADR-0005), and there is no table for a log line to go in.
+    // Asserted against every table the schema has rather than a list this test
+    // keeps, so a table added later is covered without anybody remembering to.
+    const owner = await bootstrapOwner(app);
+    const { botSocket } = await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    await joinVoice(ownerSocket, "lobby");
+    await joinVoice(botSocket, "lobby");
+    const marker = "Nocturne-that-must-not-be-written-down";
+
+    const ack = await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
+      roomId: "lobby",
+      state: {
+        playing: true,
+        entries: [],
+        log: [{ lineId: "line-1", action: "skipped", requestedByUserId: owner.user.id, trackTitle: marker }]
+      }
+    });
+
+    assert.deepEqual(ack, { ok: true }, "it was relayed");
+    const stored = everyTable(app);
+    // The control: this test is only saying anything if it can see what the
+    // database *does* hold. A nickname is written down; a Set log line is not.
+    assert.equal(stored.includes(owner.user.nickname), true, "the nickname is there to be found");
+    assert.equal(stored.includes(marker), false, "and the Set log is not");
   });
 
   it("refuses a Queue for a text channel or a channel that is not there", async () => {
@@ -1622,7 +1702,7 @@ describe("music bot control", () => {
       assert.deepEqual(
         await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
           roomId,
-          state: { playing: false, entries: [] }
+          state: { playing: false, entries: [], log: [] }
         }),
         { ok: false, error: "room_not_found" },
         roomId
@@ -1645,7 +1725,7 @@ describe("music bot control", () => {
     const silence = expectNoEvent(outsiderSocket, "music:queue");
     await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
       roomId: "lobby",
-      state: { playing: false, entries: [] }
+      state: { playing: false, entries: [], log: [] }
     });
 
     await silence;
@@ -1667,6 +1747,23 @@ describe("music bot control", () => {
     await silence;
   });
 });
+
+/**
+ * Everything the database is holding, as one string.
+ *
+ * Read from `sqlite_master` rather than from a list of tables kept here,
+ * because the assertion this serves is "it is written nowhere" — and a list
+ * would quietly stop covering a table somebody adds later, which is exactly
+ * when it would matter.
+ */
+function everyTable(app: VoxlyApp) {
+  const tables = app.sqlite
+    .prepare("select name from sqlite_master where type = 'table' and name not like 'sqlite_%'")
+    .all() as Array<{ name: string }>;
+  return tables
+    .map((table) => JSON.stringify(app.sqlite.prepare(`select * from "${table.name}"`).all()))
+    .join("");
+}
 
 async function bootstrapOwner(app: VoxlyApp) {
   const response = await app.server.inject({

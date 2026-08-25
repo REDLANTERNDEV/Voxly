@@ -13,6 +13,7 @@ import type {
   MusicControlError,
   MusicQueueState,
   MusicSearchResult,
+  MusicSetLogAction,
   MusicTrackSummary,
   VoiceMemberState
 } from "@voxly/shared";
@@ -299,6 +300,75 @@ function positionLabelFor(
 }
 
 /**
+ * One line of the Set log, ready to render.
+ *
+ * A whole sentence rather than the parts to assemble, which is the one thing
+ * that differs from a Queue row. A Queue row is a Track, a length and a name in
+ * fixed columns; a log line is a sentence about a member, and Turkish does not
+ * put its words in English's order. Building it here means each language owns
+ * its own, in one string, instead of having it stitched together in JSX.
+ */
+export interface MusicSetLogRow {
+  lineId: string;
+  message: string;
+}
+
+/**
+ * What members have done during this Set, most recent first.
+ *
+ * **This is the room's, not one member's** — the opposite of a search's
+ * Results, immediately above. Everyone in the channel must read the same
+ * explanation for the same silence, or "Ada skipped Nocturne" answers four
+ * people's question and not the fifth's. So it arrives inside the published
+ * Queue, on the same message, and this reads it exactly as `musicQueueRows`
+ * reads the entries. ADR-0008.
+ *
+ * Nicknames are resolved here for the same reason the Requester's is: the bot
+ * publishes ids and never sees a member list, and a member who has left is
+ * named by the same stand-in sentence rather than by an id nobody can read.
+ */
+export function musicSetLogRows(
+  state: MusicQueueState | null,
+  members: VoiceMemberState[],
+  t: (key: TranslationKey, values?: Record<string, string | number>) => string
+): MusicSetLogRow[] {
+  const nicknames = new Map(members.map((member) => [member.user.userId, member.user.nickname]));
+  return (state?.log ?? []).map((line) => ({
+    lineId: line.lineId,
+    message: t(setLogKey(line.action), {
+      nickname: nicknames.get(line.requestedByUserId) ?? t("music.requesterUnknown"),
+      // A pause and a resume carry no Track and their sentences do not name
+      // one, so this is only ever read for the three verbs that do. A line that
+      // should have carried a title and did not is a fault above; the answer to
+      // it is a sentence that still reads rather than a gap in the middle of
+      // one.
+      title: line.trackTitle ?? t("music.logTrackUnknown")
+    })
+  }));
+}
+
+/**
+ * Exhaustive on purpose, as the refusals are: a verb added to the contract
+ * should fail the build here rather than render a member doing nothing.
+ */
+function setLogKey(action: MusicSetLogAction): TranslationKey {
+  switch (action) {
+    case "added":
+      return "music.logAdded";
+    case "skipped":
+      return "music.logSkipped";
+    case "removed":
+      return "music.logRemoved";
+    case "paused":
+      return "music.logPaused";
+    case "resumed":
+      return "music.logResumed";
+    default:
+      return assertNever("Set log action", action);
+  }
+}
+
+/**
  * The Queue for the room being looked at, or nothing.
  *
  * Nothing is the answer whenever the bot is not in the room: it is the bot that
@@ -349,10 +419,11 @@ export function musicErrorKey(error: MusicControlError): TranslationKey {
       // Exhaustive on purpose rather than a catch-all: a refusal added to the
       // contract should fail the build here, not quietly render the wrong
       // sentence to someone wondering why nothing happened.
-      return assertNever(error);
+      return assertNever("music control error", error);
   }
 }
 
-function assertNever(value: never): never {
-  throw new Error(`Unhandled music control error: ${String(value)}`);
+/** One per file, naming what was unhandled, as the bot's modules do. */
+function assertNever(what: string, value: never): never {
+  throw new Error(`Unhandled ${what}: ${String(value)}`);
 }

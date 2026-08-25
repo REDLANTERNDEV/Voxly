@@ -415,6 +415,31 @@ requirement.
 - Every refusal from `music:control` gets its own localized sentence. The whole
   output of this control is sound in someone else's headphones, so "nothing
   happened" is the one answer it cannot give.
+- **The Set log is the room's, and it arrives inside the published Queue.**
+  Read it with `musicSetLogRows` exactly as the entries are read with
+  `musicQueueRows`, resolve each member's nickname here for the same reason the
+  Requester's is resolved here, and name a member who has left with the same
+  stand-in. Do not mistake it for the exception below: everyone in the channel
+  must read the same explanation for the same silence, or a line answers one
+  member's question and not the other four's. ADR-0008.
+- **The Set log goes last, below the transport controls.** Everything in this
+  panel grows the page, but the Queue grows only when somebody adds while the
+  log grows on every press anyone makes — including a pause that changes nothing
+  else here. Anything above it drifts down under a member reaching for it, so
+  the part that grows goes last and every control's position stays a function of
+  the Queue alone. Bound the count at the wire (`musicSetLogMaxLines`), never
+  with a height: the scroll-owner rule applies to it as it does to the Queue and
+  to a search's Results.
+- **The log is not a second live region.** This panel has one and it belongs to
+  the member waiting for an answer to their own press; announcing every other
+  member's action over the top of it would talk across that answer. Key each
+  line by its `lineId` — two members pausing in turn produce two sentences that
+  read identically.
+- **One translation string per verb, carrying the whole sentence.** Turkish does
+  not put these words in English's order, so a line assembled out of fragments
+  in JSX would have to be reassembled per language. The five verbs must also
+  read differently from one another in both languages; a log whose verbs read
+  alike explains nothing.
 - **A search's Results are the one thing in this panel that is not the room's.**
   Everything above is "read it from the published Queue"; this is the exception
   and ADR-0007 is why. They arrive on the asking member's own acknowledgement,

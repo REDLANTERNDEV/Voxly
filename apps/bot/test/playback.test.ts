@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { musicQueueMaxEntries } from "@voxly/shared";
+import { musicQueueMaxEntries, musicSetLogMaxLines } from "@voxly/shared";
 import {
   advancePlayback,
   emptyPlayback,
@@ -39,10 +39,27 @@ function entry(id: string, requestedByUserId = "ada"): QueueEntry {
   return { entryId: `entry-${minted}`, track: trackFor(id), requestedByUserId };
 }
 
+/**
+ * The identity a Set log line needs and the pure module cannot mint. It arrives
+ * on the event exactly as an `entryId` and a resolved Track already do; a
+ * counter here so a test can name the line it means.
+ */
+let lines = 0;
+const nextLineId = () => `line-${(lines += 1)}`;
+
 const added = (id: string, requestedByUserId?: string): PlaybackEvent =>
-  ({ kind: "added", entry: entry(id, requestedByUserId) });
-const paused: PlaybackEvent = { kind: "paused" };
-const resumed: PlaybackEvent = { kind: "resumed" };
+  ({ kind: "added", entry: entry(id, requestedByUserId), lineId: nextLineId() });
+/**
+ * Written as thunks so a run of events can pause twice and get two lines, and
+ * so a test that cares who pressed the button can say. `run` calls anything it
+ * is handed as a function, so `paused` still reads as an event in a list.
+ */
+const pausedBy = (requestedByUserId = "ada"): PlaybackEvent =>
+  ({ kind: "paused", requestedByUserId, lineId: nextLineId() });
+const resumedBy = (requestedByUserId = "ada"): PlaybackEvent =>
+  ({ kind: "resumed", requestedByUserId, lineId: nextLineId() });
+const paused = () => pausedBy();
+const resumed = () => resumedBy();
 const cleared: PlaybackEvent = { kind: "cleared" };
 
 /**
@@ -53,10 +70,14 @@ const cleared: PlaybackEvent = { kind: "cleared" };
  */
 const endsHead = (state: PlaybackState): PlaybackEvent =>
   ({ kind: "ended", entryId: state.entries[0]?.entryId ?? "nothing-is-playing" });
-const skips = (entryId: string): PlaybackEvent => ({ kind: "skipped", entryId });
+const skips = (entryId: string, requestedByUserId = "ada"): PlaybackEvent =>
+  ({ kind: "skipped", entryId, requestedByUserId, lineId: nextLineId() });
 const skipsHead = (state: PlaybackState): PlaybackEvent =>
   skips(state.entries[0]?.entryId ?? "nothing-is-playing");
-const removes = (entryId: string): PlaybackEvent => ({ kind: "removed", entryId });
+const skipsHeadBy = (requestedByUserId: string) => (state: PlaybackState): PlaybackEvent =>
+  skips(state.entries[0]?.entryId ?? "nothing-is-playing", requestedByUserId);
+const removes = (entryId: string, requestedByUserId = "ada"): PlaybackEvent =>
+  ({ kind: "removed", entryId, requestedByUserId, lineId: nextLineId() });
 
 /** The entry at a place in the Queue, so a test can name what it means to skip. */
 const idAt = (state: PlaybackState, index: number) => state.entries[index]!.entryId;
@@ -198,7 +219,7 @@ describe("pausing and resuming", () => {
   });
 
   it("has nothing to resume when the Queue is empty", () => {
-    const step = advancePlayback(emptyPlayback(), resumed);
+    const step = advancePlayback(emptyPlayback(), resumedBy());
 
     assert.equal(step.state.playing, false);
     assert.deepEqual(step.effects, []);
@@ -404,6 +425,195 @@ describe("the Set ending", () => {
   });
 });
 
+/**
+ * The Set log. Every line here is written by the same transition that changed
+ * the Queue, which is the property the whole thing rests on: a request that
+ * changed nothing writes no line, so no member is ever named for something
+ * that did not happen.
+ */
+describe("the Set log", () => {
+  const actions = (state: PlaybackState) => state.log.map((line) => line.action);
+  const said = (state: PlaybackState) =>
+    state.log.map((line) => `${line.requestedByUserId} ${line.action} ${line.trackTitle ?? "-"}`);
+
+  it("names the member who added a Track and the Track they added", () => {
+    const { state } = run([added("aB3dE5gH7jK", "ada-id")]);
+
+    assert.deepEqual(said(state), ["ada-id added Track aB3dE5gH7jK"]);
+  });
+
+  it("names the member who skipped, and the Track they skipped", () => {
+    // The Track by name and not by `entryId`: the point of the line is that the
+    // entry has gone, so there is nothing left in the Queue to look it up in.
+    const queued = run([added("one"), added("two")]).state;
+
+    const { state } = run([skipsHeadBy("bob-id")], queued);
+
+    assert.equal(state.log[0].trackTitle, "Track one", "the Track that stopped, not the one that started");
+    assert.equal(state.log[0].requestedByUserId, "bob-id");
+    assert.deepEqual(actions(state), ["skipped", "added", "added"]);
+  });
+
+  it("writes nothing for a skip that named a Track the Queue had moved past", () => {
+    // The half of ADR-0006 the log has to honour. That skip succeeds, changes
+    // nothing and publishes nothing — so a line for it would tell four people
+    // that a member skipped a Track nobody skipped, in a panel that is showing
+    // them the Track still playing.
+    const queued = run([added("one"), added("two")]).state;
+    const wasPlaying = idAt(queued, 0);
+    const advanced = run([skipsHead], queued).state;
+
+    const step = advancePlayback(advanced, skips(wasPlaying, "late-id"));
+
+    assert.equal(step.state, advanced, "the state it was given, log and all");
+    assert.deepEqual(step.effects, [], "no publish, and so no line either");
+  });
+
+  it("says a removal was a removal, even when it took the Track that was playing", () => {
+    // Removing the head advances the Queue exactly as a skip does, and the two
+    // are one rule in the code. They are still two things a member did, and the
+    // log is the whole reason ADR-0006 kept them apart as two verbs.
+    const queued = run([added("one"), added("two")]).state;
+
+    const { state } = run([removes(idAt(queued, 0), "ece-id")], queued);
+
+    assert.deepEqual(actions(state), ["removed", "added", "added"]);
+    assert.deepEqual(said(state)[0], "ece-id removed Track one");
+  });
+
+  it("names the Track a removal took out of the middle of the Queue", () => {
+    const queued = run([added("one"), added("two"), added("three")]).state;
+
+    const { state } = run([removes(idAt(queued, 1), "ece-id")], queued);
+
+    assert.deepEqual(said(state)[0], "ece-id removed Track two");
+  });
+
+  it("writes nothing for a removal naming an entry the Queue no longer holds", () => {
+    const queued = run([added("one")]).state;
+
+    const step = advancePlayback(queued, removes("an-entry-from-a-previous-Set"));
+
+    assert.equal(step.state, queued);
+    assert.deepEqual(step.effects, []);
+  });
+
+  it("names the member who paused and the one who resumed, and no Track", () => {
+    // A pause is about the Queue rather than about any one Track, and the Track
+    // it stopped is still sitting at the head of the list saying "Paused".
+    const { state } = run([added("one"), pausedBy("ada-id"), resumedBy("bob-id")]);
+
+    assert.deepEqual(said(state), ["bob-id resumed -", "ada-id paused -", "ada added Track one"]);
+  });
+
+  it("writes nothing for a pause that arrived at an already-paused Queue", () => {
+    // The same rule as a stale skip, reached from the other side: nothing
+    // changed and the room was told nothing, so naming a member for it would
+    // describe a pause that nobody experienced.
+    const stopped = run([added("one"), paused]).state;
+
+    const step = advancePlayback(stopped, pausedBy("late-id"));
+
+    assert.equal(step.state, stopped);
+    assert.deepEqual(step.effects, []);
+  });
+
+  it("writes nothing for a resume with nothing to resume", () => {
+    const playing = run([added("one")]).state;
+    const empty = emptyPlayback();
+
+    assert.equal(advancePlayback(playing, resumedBy("late-id")).state, playing, "already playing");
+    assert.deepEqual(advancePlayback(empty, resumedBy("late-id")).state.log, [], "and an empty Queue");
+  });
+
+  it("writes nothing for a Track that ended by itself", () => {
+    // The log names who did something. Nobody ended it, and a line naming the
+    // member whose Track it was would say they skipped a Track they queued.
+    const queued = run([added("one"), added("two")]).state;
+
+    const { state } = run([endsHead], queued);
+
+    assert.deepEqual(actions(state), ["added", "added"], "the two additions, and nothing for the ending");
+  });
+
+  it("keeps the most recent lines and lets the oldest fall off the back", () => {
+    // The opposite of what a full Queue does, and on purpose: a Queue is a
+    // promise about what will play, so the member who would lose their Track is
+    // refused; a log is a record of what already happened, and what is worth
+    // keeping is the recent part.
+    let state = run([added("one")]).state;
+    for (let index = 0; index < musicSetLogMaxLines + 5; index += 1) {
+      state = run([index % 2 === 0 ? paused : resumed], state).state;
+    }
+
+    assert.equal(state.log.length, musicSetLogMaxLines);
+    assert.equal(state.log.at(-1)?.action, "resumed", "the addition at the start has gone");
+    assert.equal(
+      new Set(state.log.map((line) => line.lineId)).size,
+      musicSetLogMaxLines,
+      "every line is its own, so two identical pauses are two rows"
+    );
+  });
+
+  it("keeps two members who did the same thing apart", () => {
+    const queued = run([added("one"), pausedBy("ada-id"), resumedBy("ada-id")]).state;
+
+    const { state } = run([pausedBy("bob-id")], queued);
+
+    assert.deepEqual(state.log.map((line) => line.requestedByUserId), ["bob-id", "ada-id", "ada-id", "ada"]);
+  });
+
+  it("goes with the Set, and says so to the room before the Set is torn down", () => {
+    // This is the whole of "the Set log is cleared when the Music bot leaves":
+    // the log is part of the state the Set holds, so discarding the state
+    // discards it, and the empty publish that goes out first is what takes it
+    // off everybody's panel.
+    const played = run([added("one"), pausedBy("ada-id"), cleared]);
+
+    assert.deepEqual(played.state.log, []);
+    assert.deepEqual(played.effects, [{ kind: "stop" }, { kind: "unload" }, { kind: "publish" }]);
+  });
+
+  it("tells the room even when the log is all that is left to discard", () => {
+    // A Set whose Tracks have all played out has an empty Queue and a log full
+    // of what people did to it. Saying nothing here would leave that log on
+    // five panels for a Set that is over.
+    const spent = run([added("one"), endsHead]).state;
+    assert.deepEqual(ids(spent), [], "nothing queued, but something to forget");
+
+    const step = advancePlayback(spent, cleared);
+
+    assert.deepEqual(step.state.log, []);
+    assert.deepEqual(step.effects, [{ kind: "stop" }, { kind: "unload" }, { kind: "publish" }]);
+  });
+
+  it("still says nothing when there is nothing at all to discard", () => {
+    assert.deepEqual(advancePlayback(emptyPlayback(), cleared).effects, []);
+  });
+
+  it("puts nothing on a line but the four fields the wire agreed on", () => {
+    // The transitions build a line by spreading the event they were handed,
+    // which carries `kind` and an `entryId` as well. A field riding along here
+    // is not cosmetic: the server validates this payload with `strict()`, so it
+    // would refuse the *whole* publish — and the room would stop being told
+    // about the Queue at all, for a reason nothing in the panel could show.
+    const queued = run([added("one"), added("two"), added("three")]).state;
+    const { state } = run(
+      [skipsHeadBy("bob-id"), pausedBy("bob-id"), resumedBy("bob-id"), (later) => removes(idAt(later, 1), "bob-id")],
+      queued
+    );
+
+    assert.equal(state.log.length, 7, "every verb is represented");
+    for (const line of state.log) {
+      assert.deepEqual(
+        Object.keys(line).sort(),
+        ["action", "lineId", "requestedByUserId", "trackTitle"],
+        line.action
+      );
+    }
+  });
+});
+
 describe("what the room is shown", () => {
   it("carries the Requester as an id and never a nickname", () => {
     const { state } = run([added("aB3dE5gH7jK", "ada-id")]);
@@ -428,6 +638,20 @@ describe("what the room is shown", () => {
   });
 
   it("publishes an empty Queue as an empty Queue, not as nothing", () => {
-    assert.deepEqual(publishedQueue(emptyPlayback()), { entries: [], playing: false });
+    assert.deepEqual(publishedQueue(emptyPlayback()), { entries: [], playing: false, log: [] });
+  });
+
+  it("carries the Set log to the room on the same message as the Queue", () => {
+    // One payload, so a line and the change it describes can never arrive out
+    // of order or one without the other. ADR-0008.
+    const { state } = run([added("aB3dE5gH7jK", "ada-id"), pausedBy("bob-id")]);
+
+    const published = publishedQueue(state);
+
+    assert.deepEqual(published.log.map((line) => [line.requestedByUserId, line.action, line.trackTitle]), [
+      ["bob-id", "paused", null],
+      ["ada-id", "added", "Track aB3dE5gH7jK"]
+    ]);
+    assert.equal(published.entries.length, 1, "and the Queue the lines are about, in the same breath");
   });
 });

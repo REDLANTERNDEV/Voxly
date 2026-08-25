@@ -135,12 +135,16 @@ function harness(options: {
     release = resolve;
   });
   let minted = 0;
+  let logged = 0;
   const responder = createMusicResponder({
     socket,
     selfUserId: "aaaa-bot",
     environment,
     publish: (payload) => published.push({ roomId: payload.roomId, state: payload.state }),
     mintEntryId: () => `entry-${(minted += 1)}`,
+    // Its own sequence, so a test that names an entry does not have to know
+    // which ids the Set log consumed on the way past.
+    mintLineId: () => `line-${(logged += 1)}`,
     loadIceServers: async () => {
       iceRequests.push(Date.now());
       return [];
@@ -191,7 +195,11 @@ function harness(options: {
 
 /** Every request carries the member who made it; most tests do not care which. */
 const ada = "ada-user-id";
+const bob = "bob-user-id";
 const titles = (state: MusicQueueState | undefined) => state?.entries.map((item) => item.track.title) ?? [];
+/** The Set log as sentences, so a test can say what the room was told. */
+const lines = (state: MusicQueueState | undefined) =>
+  (state?.log ?? []).map((line) => `${line.requestedByUserId} ${line.action} ${line.trackTitle ?? "-"}`);
 
 describe("a pasted link", () => {
   it("summons the bot, loads the Track and starts playing", async () => {
@@ -529,7 +537,10 @@ describe("telling the room", () => {
           requestedByUserId: ada,
           track: { id: "aB3dE5gH7jK", title: "Track aB3dE5gH7jK", durationSeconds: 273 }
         }
-      ]
+      ],
+      // The Set log rides the same message as the Queue it describes, so the
+      // room can never be holding one without the other. ADR-0008.
+      log: [{ lineId: "line-1", action: "added", requestedByUserId: ada, trackTitle: "Track aB3dE5gH7jK" }]
     });
   });
 
@@ -557,6 +568,74 @@ describe("telling the room", () => {
 
     assert.deepEqual(titles(lastPublished()), []);
     assert.deepEqual(created[0]?.events.at(-1), "end", "the Set is torn down after the room was told");
+  });
+});
+
+/**
+ * The plumbing this ticket is mostly made of. Which member did it is the
+ * server's word, handed to the responder with every request — and until now the
+ * responder kept it for an addition and dropped it for everything else.
+ */
+describe("who the room is told did it", () => {
+  it("names the member who made each request, not the one who queued the Track", async () => {
+    const { responder, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(add(otherLink), "lobby", ada);
+
+    await responder.handle(stop, "lobby", bob);
+    await responder.handle(play, "lobby", bob);
+    await responder.handle(remove("entry-2"), "lobby", bob);
+    await responder.handle(skip("entry-1"), "lobby", bob);
+
+    assert.deepEqual(lines(lastPublished()), [
+      `${bob} skipped Track aB3dE5gH7jK`,
+      `${bob} removed Track zY9xW7vU5tS`,
+      `${bob} resumed -`,
+      `${bob} paused -`,
+      `${ada} added Track zY9xW7vU5tS`,
+      `${ada} added Track aB3dE5gH7jK`
+    ]);
+  });
+
+  it("writes no line for a skip that named a Track the Queue had moved past", async () => {
+    // Two members pressing Skip at the same moment cost one Track (ADR-0006).
+    // They must not cost two lines either, or the panel would explain one
+    // silence twice and name a member for a Track nobody skipped.
+    const { responder, lastPublished, published } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(add(otherLink), "lobby", ada);
+    await responder.handle(skip("entry-1"), "lobby", ada);
+    const told = published.length;
+
+    assert.deepEqual(await responder.handle(skip("entry-1"), "lobby", bob), { ok: true, kind: "track", track: null });
+
+    assert.equal(published.length, told, "nothing changed, so the room was not told again");
+    assert.equal(lines(lastPublished()).filter((line) => line.includes("skipped")).length, 1);
+  });
+
+  it("forgets the Set log when the bot leaves, and says so before it goes", async () => {
+    const { responder, lastPublished, created } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(stop, "lobby", bob);
+    assert.equal(lines(lastPublished()).length, 2, "there was something to forget");
+
+    await responder.handle(leave, "lobby", ada);
+
+    assert.deepEqual(lines(lastPublished()), []);
+    assert.deepEqual(created[0]?.events.at(-1), "end", "the room was told before the Set was torn down");
+  });
+
+  it("forgets it when an owner disconnects the bot, too", async () => {
+    // The Set ends the same way whoever ended it, and the log is part of the
+    // state a Set holds rather than something kept beside it.
+    const { responder, lastPublished, forceLeave } = harness();
+    await responder.handle(add(), "lobby", ada);
+
+    forceLeave("lobby");
+    await responder.close();
+
+    assert.deepEqual(lines(lastPublished()), []);
+    assert.deepEqual(titles(lastPublished()), []);
   });
 });
 

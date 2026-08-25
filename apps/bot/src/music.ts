@@ -66,6 +66,14 @@ export interface MusicResponderOptions {
   fetch?: typeof fetchTrackAudio;
   /** Injected so a test does not have to match a UUID it cannot predict. */
   mintEntryId?: () => string;
+  /**
+   * The same, for a Set log line. Two minters rather than one shared counter
+   * because a test that names an entry and a test that names a line would
+   * otherwise be reading the same sequence with holes punched in it — and which
+   * ids an addition consumes would become something every unrelated test had to
+   * know. In the process both are `randomUUID`.
+   */
+  mintLineId?: () => string;
   log?: (message: string) => void;
 }
 
@@ -88,6 +96,7 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
   // find shadowed halfway down a file.
   const fetchAudio = options.fetch ?? fetchTrackAudio;
   const mintEntryId = options.mintEntryId ?? (() => randomUUID());
+  const mintLineId = options.mintLineId ?? (() => randomUUID());
   let set: MusicSet | null = null;
   let audio: TrackAudio | null = null;
   let playback: PlaybackState = emptyPlayback();
@@ -309,7 +318,8 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
     const current = await summon(roomId);
     const step = advance(current, {
       kind: "added",
-      entry: { entryId: mintEntryId(), track: resolved.track, requestedByUserId }
+      entry: { entryId: mintEntryId(), track: resolved.track, requestedByUserId },
+      lineId: mintLineId()
     });
     if (step.refusal) return { ok: false, error: step.refusal };
     return { ok: true, kind: "track", track: summaryOf(resolved.track) };
@@ -359,7 +369,8 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
 
   async function apply(
     command: Exclude<MusicCommand, { kind: "add" }>,
-    roomId: string
+    roomId: string,
+    requestedByUserId: string
   ): Promise<MusicCommandAck> {
     // These name the room they mean, so a command that raced a move does not
     // silence a Set the asker was never in. They are also about a Queue that is
@@ -368,20 +379,20 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
     if (!set || set.roomId !== roomId) return acknowledged;
     switch (command.kind) {
       case "play":
-        advance(set, { kind: "resumed" });
+        advance(set, { kind: "resumed", requestedByUserId, lineId: mintLineId() });
         return acknowledged;
       case "stop":
-        advance(set, { kind: "paused" });
+        advance(set, { kind: "paused", requestedByUserId, lineId: mintLineId() });
         return acknowledged;
       // Both name the entry they mean rather than a position, and both succeed
       // when that entry has already gone. See ADR-0006: that is what makes two
       // members pressing skip together cost one Track rather than two, and it
       // is the Queue's rule, so it is decided in `playback.ts` and not here.
       case "skip":
-        advance(set, { kind: "skipped", entryId: command.entryId });
+        advance(set, { kind: "skipped", entryId: command.entryId, requestedByUserId, lineId: mintLineId() });
         return acknowledged;
       case "remove":
-        advance(set, { kind: "removed", entryId: command.entryId });
+        advance(set, { kind: "removed", entryId: command.entryId, requestedByUserId, lineId: mintLineId() });
         return acknowledged;
       case "leave":
         await endCurrentSet();
@@ -440,7 +451,9 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
      * feature has always refused.
      */
     handle(command, roomId, requestedByUserId) {
-      if (command.kind !== "add") return enqueue(command.kind, roomId, () => apply(command, roomId));
+      if (command.kind !== "add") {
+        return enqueue(command.kind, roomId, () => apply(command, roomId, requestedByUserId));
+      }
       const choice = resolverFor(command.input);
       switch (choice.kind) {
         case "search":

@@ -10,6 +10,7 @@ import {
   musicQueueRows,
   musicRestingKey,
   musicSearchRows,
+  musicSetLogRows,
   musicTransport,
   trackAddedMessage,
   transportToggleCommand,
@@ -81,6 +82,9 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
   const bot = musicBotIn(members);
   const queue = musicQueueFor(queues, roomId, bot);
   const rows = musicQueueRows(queue, members, t);
+  // The Set log arrives inside the same published Queue, so it is read the same
+  // way and nothing here remembers a line. ADR-0008.
+  const logRows = musicSetLogRows(queue, members, t);
   const resultRows = musicSearchRows(results, t);
   // Play, Pause, Skip and every row's Remove all read the Queue the bot
   // published, so one message moves the whole panel and no two controls here
@@ -336,6 +340,24 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
           {message}
         </span>
       </div>
+      {/* Last on the page, because it is the part that grows. The Queue grows
+          when somebody adds; this grows on every press anyone in the room
+          makes, including a pause that changes nothing else here — so anything
+          above it would drift down the page under a member who was reaching
+          for it. Not a live region either: the panel has one, and it belongs to
+          the member waiting for an answer to their own press. */}
+      {logRows.length > 0 ? (
+        <section className="music-log" aria-labelledby="musicLogTitle">
+          <p className="label" id="musicLogTitle">{t("music.log")}</p>
+          <ol className="music-log-list">
+            {logRows.map((row) => (
+              /* By id and not by what it says: two members pausing in turn
+                 produce two lines that read identically. */
+              <li key={row.lineId}>{row.message}</li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
     </section>
   );
 }

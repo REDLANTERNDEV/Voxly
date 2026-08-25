@@ -24,7 +24,8 @@ no HTTP surface, and no authority over anything.
   the imperative half of the Queue — joining, spawning, playing, publishing —
   and holds no rule about what the Queue does.
 - `src/playback.ts` is the other half and is pure: a state and one event in, the
-  next state and a list of effects out. Every rule the Queue has lives here.
+  next state and a list of effects out. Every rule the Queue has lives here, and
+  so does the Set log, which is part of the state a Set holds.
 - `src/set.ts` is one Set — voice membership, mesh and player started and
   stopped together — and publishes the bot's own `speaking` state. A Set
   outlives any one Track. It also reports when the room's *roster* changes,
@@ -184,6 +185,27 @@ it that way.
   silence runs to is unmeasured. This is the first thing to re-read against a
   real Set, and the measurement is what should decide it rather than this
   argument.
+- **The Set log is written where the Queue changes, and nowhere else.** A line
+  is appended in the branch that makes the change, below the guard that returns
+  early — so a stale skip, a pause at an already-paused Queue, a removal naming
+  an entry that has gone and an addition refused for a full Queue all write
+  nothing, because none of them changed anything or told the room anything. No
+  line may describe a change the room was not sent. A Track ending writes none
+  either: the log names who did something and nobody did that. Read ADR-0008
+  before adding a verb to it.
+- **A line's identity arrives on the event**, as `entryId` and a resolved Track
+  already do, because this module has no clock and no `crypto`. It carries no
+  time at all — ordering is the list's and identity is `lineId`'s — so nothing
+  here should acquire a `Date.now()` in order to write one.
+- **Every verb carries the member who asked.** `music.ts` used to keep
+  `requestedByUserId` for an addition and drop it for the rest; each of the five
+  now names the member who asked for *that* action rather than the one who
+  queued the Track it happened to.
+- **The Set log is bounded** (`musicSetLogMaxLines`) and drops its **oldest**
+  line, which is the opposite of what a full Queue does. A Queue is a promise
+  about what will play, so the member who would lose their Track is refused; a
+  log is a record of what already happened, and the part worth keeping is the
+  recent part.
 - **The Queue is bounded** (`musicQueueMaxEntries`) because it is broadcast
   whole on every change. Ask `additionRefusal` before spending a link on the
   extractor; do not write a second bound beside it. Ask it only about the Queue
@@ -207,6 +229,18 @@ authorizes it rather than relaying it. Read
   room looking at an empty panel. Roster, not snapshot: a snapshot lands every
   time anyone starts or stops talking, and republishing per syllable is a
   broadcast storm.
+- **The Set log rides that same payload** rather than one beside it. Every line
+  is produced by a change that was already publishing the Queue, so a second
+  message would buy nothing and cost the one failure this contract prevents: a
+  room told that a Track was skipped while still holding it. It is also what
+  makes the log arrive with a newcomer's Queue, and what takes it off five
+  panels when the empty Queue is published before the bot leaves. ADR-0008.
+- **The log dies with the Set, and nothing writes it down.** It is a field on
+  `PlaybackState`, so `emptyPlayback()` is the whole of "cleared when the bot
+  leaves". The bot has no database, no file it opens and no HTTP surface to
+  write through, and `playback.ts` performs no I/O — those are where "never
+  written to the database or to any file" is enforced, rather than merely not
+  violated.
 
 ## Sources and Fetching
 
@@ -332,6 +366,10 @@ press the button:
   than starting the Track again;
 - a skip moves to the next Track, and two browsers pressing it at the same
   moment cost one Track between them;
+- **the Set log says the same thing in both browsers.** Each of the five verbs
+  produces a line naming the member who pressed it, the second of two
+  simultaneous skips produces *no* line, and sending the bot away empties the
+  log on every panel at once rather than only on the one that pressed;
 - it is *clear* — no stutter, no metallic edge, and no gap where the fetch had
   to catch up. A skip is the easiest way to hear a Track boundary on demand, and
   how long that gap runs to is the measurement `The Queue` above is waiting for.

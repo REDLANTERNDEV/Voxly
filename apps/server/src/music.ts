@@ -28,12 +28,14 @@ import {
   musicIdentifierMaxLength,
   musicInputMaxLength,
   musicQueueMaxEntries,
+  musicSetLogMaxLines,
   musicTitleMaxLength,
   type MusicCommand,
   type MusicCommandAck,
   type MusicControlAck,
   type MusicPublishAck,
   type MusicQueueState,
+  type MusicSetLogAction,
   type PresenceUser
 } from "@voxly/shared";
 import { musicBotAccountFor } from "./bots.js";
@@ -107,6 +109,24 @@ export const botAckTimeoutMs = 25_000;
  */
 const trackDurationMaxSeconds = 24 * 60 * 60;
 
+/**
+ * One line of the Set log, bounded exactly as a Queue entry is and for the same
+ * reason: the title on it is the source's string, not Voxly's, and this payload
+ * goes to every browser in the room. The verbs are a closed list because a verb
+ * nobody agreed on is not something a member can be said to have done.
+ *
+ * Nothing here is stored. The server relays this payload and keeps no copy of
+ * it — there is no table for a log line and no code path that would look for
+ * one — which is what makes "the Set log is never written to the database"
+ * enforced rather than merely true today.
+ */
+const musicSetLogLineSchema = z.object({
+  lineId: z.string().min(1).max(musicIdentifierMaxLength),
+  action: z.enum(["added", "skipped", "removed", "paused", "resumed"]),
+  requestedByUserId: z.string().min(1).max(musicIdentifierMaxLength),
+  trackTitle: z.string().max(musicTitleMaxLength).nullable()
+}).strict();
+
 const musicQueueStateSchema = z.object({
   entries: z.array(z.object({
     entryId: z.string().min(1).max(musicIdentifierMaxLength),
@@ -117,8 +137,19 @@ const musicQueueStateSchema = z.object({
     }).strict(),
     requestedByUserId: z.string().min(1).max(musicIdentifierMaxLength)
   }).strict()).max(musicQueueMaxEntries),
-  playing: z.boolean()
+  playing: z.boolean(),
+  log: z.array(musicSetLogLineSchema).max(musicSetLogMaxLines)
 }).strict();
+
+/**
+ * The join between the shared vocabulary and this validator, as the command
+ * union already has one. A verb added to `MusicSetLogAction` and forgotten here
+ * would be a line the bot writes and the server refuses, which stops the whole
+ * publish — the Queue with it — for something no member did wrong.
+ */
+const coversEverySetLogAction:
+  MusicSetLogAction extends z.infer<typeof musicSetLogLineSchema>["action"] ? true : never = true;
+void coversEverySetLogAction;
 
 const musicPublishPayloadSchema = z.object({
   roomId: z.string().min(1),

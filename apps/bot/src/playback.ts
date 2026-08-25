@@ -20,8 +20,11 @@
 
 import {
   musicQueueMaxEntries,
+  musicSetLogMaxLines,
   type MusicCommandAck,
-  type MusicQueueState
+  type MusicQueueState,
+  type MusicSetLogAction,
+  type MusicSetLogLine
 } from "@voxly/shared";
 import type { Track } from "./track.js";
 
@@ -45,11 +48,47 @@ export interface PlaybackState {
   readonly entries: readonly QueueEntry[];
   /** Whether `entries[0]` is sounding right now. A paused Queue is not empty. */
   readonly playing: boolean;
+  /**
+   * What members have done to this Queue, most recent first and bounded.
+   *
+   * A line is written **only where the Queue is published**, which is what
+   * keeps the log honest: a skip that named a Track the Queue had already
+   * moved past changes nothing and tells the room nothing, and a line for it
+   * would say a member skipped a Track that nobody skipped. So the rule is not
+   * "every event writes a line" but "a change writes a line", and it falls out
+   * of writing them in the branches that make the change.
+   */
+  readonly log: readonly MusicSetLogLine[];
 }
+
+/**
+ * What a transition needs in order to write a line, and cannot work out for
+ * itself.
+ *
+ * This module has no clock and no source of randomness — it performs no input
+ * or output at all — so an identity for the line arrives on the event, exactly
+ * as an `entryId` and a resolved Track already do. Who asked arrives the same
+ * way: the bot is handed a user id with every request and this module is handed
+ * it in turn.
+ *
+ * `added` is the one event that does not carry the member separately, because
+ * its entry already names the Requester and one of the two would be the copy
+ * that could disagree.
+ */
+interface LogContext {
+  lineId: string;
+  requestedByUserId: string;
+}
+
+/**
+ * The line a transition writes, if any member asked for it. `null` where a
+ * Track ended by itself: the log says who did something, and nobody did that.
+ */
+type LineToWrite = LogContext & { action: MusicSetLogAction };
 
 export type PlaybackEvent =
   /** A member's link resolved to a Track and it goes on the end. */
-  | { kind: "added"; entry: QueueEntry }
+  | { kind: "added"; entry: QueueEntry; lineId: string }
   /**
    * The Track that was playing reached its end of its own accord. It names the
    * entry that ended for the same reason a skip does: the player reports an end
@@ -59,11 +98,11 @@ export type PlaybackEvent =
    */
   | { kind: "ended"; entryId: string }
   /** A member asked to move past the Track they believe is playing. */
-  | { kind: "skipped"; entryId: string }
+  | ({ kind: "skipped"; entryId: string } & LogContext)
   /** A member asked for one entry to leave the Queue, wherever it is in it. */
-  | { kind: "removed"; entryId: string }
-  | { kind: "paused" }
-  | { kind: "resumed" }
+  | ({ kind: "removed"; entryId: string } & LogContext)
+  | ({ kind: "paused" } & LogContext)
+  | ({ kind: "resumed" } & LogContext)
   /** The Set is over: the Queue is discarded and nothing survives it. */
   | { kind: "cleared" };
 
@@ -102,7 +141,7 @@ export interface PlaybackStep {
 }
 
 export function emptyPlayback(): PlaybackState {
-  return { entries: [], playing: false };
+  return { entries: [], playing: false, log: [] };
 }
 
 /**
@@ -128,20 +167,23 @@ export function additionRefusal(state: PlaybackState): PlaybackRefusal | null {
 export function advancePlayback(state: PlaybackState, event: PlaybackEvent): PlaybackStep {
   switch (event.kind) {
     case "added":
-      return add(state, event.entry);
+      return add(state, event.entry, event.lineId);
     case "ended":
       // A Track ending is the Queue advancing past it, with the player already
       // stopped of its own accord — which is the only thing that tells it apart
       // from a skip.
-      return advancePast(state, event.entryId, { playerStillSounding: false });
+      return advancePast(state, event.entryId, { playerStillSounding: false, line: null });
     case "skipped":
-      return advancePast(state, event.entryId, { playerStillSounding: state.playing });
+      return advancePast(state, event.entryId, {
+        playerStillSounding: state.playing,
+        line: { ...event, action: "skipped" }
+      });
     case "removed":
-      return remove(state, event.entryId);
+      return remove(state, event.entryId, { ...event, action: "removed" });
     case "paused":
-      return pause(state);
+      return pause(state, { ...event, action: "paused" });
     case "resumed":
-      return resume(state);
+      return resume(state, { ...event, action: "resumed" });
     case "cleared":
       return clear(state);
     default:
@@ -167,7 +209,8 @@ export function publishedQueue(state: PlaybackState): MusicQueueState {
         durationSeconds: item.track.durationSeconds
       }
     })),
-    playing: state.playing
+    playing: state.playing,
+    log: [...state.log]
   };
 }
 
@@ -176,17 +219,28 @@ export function publishedQueue(state: PlaybackState): MusicQueueState {
  * front of it — which is the whole difference between a Queue and the single
  * slot this replaced.
  */
-function add(state: PlaybackState, entry: QueueEntry): PlaybackStep {
+function add(state: PlaybackState, entry: QueueEntry, lineId: string): PlaybackStep {
   const refusal = additionRefusal(state);
+  // Before the line is written, not after: a refused addition changes nothing,
+  // and a log line for it would name a member for a Track that never joined the
+  // Queue. The same rule as a stale skip, arrived at from the other direction.
   if (refusal) return { state, effects: [], refusal };
   const entries = [...state.entries, entry];
+  const log = withLine(state.log, {
+    lineId,
+    action: "added",
+    // The entry's own Requester rather than a second copy on the event: one of
+    // the two would be the one that could disagree with the Queue row.
+    requestedByUserId: entry.requestedByUserId,
+    trackTitle: entry.track.title
+  });
   if (state.entries.length > 0) {
     // Something is already at the head of the Queue, playing or paused. Adding
     // behind it touches nothing but the list.
-    return { state: { entries, playing: state.playing }, effects: [{ kind: "publish" }] };
+    return { state: { entries, playing: state.playing, log }, effects: [{ kind: "publish" }] };
   }
   return {
-    state: { entries, playing: true },
+    state: { entries, playing: true, log },
     effects: [{ kind: "load", entry }, { kind: "play" }, { kind: "publish" }]
   };
 }
@@ -214,10 +268,15 @@ function add(state: PlaybackState, entry: QueueEntry): PlaybackStep {
 function advancePast(
   state: PlaybackState,
   entryId: string,
-  options: { playerStillSounding: boolean }
+  options: { playerStillSounding: boolean; line: LineToWrite | null }
 ): PlaybackStep {
-  if (state.entries[0]?.entryId !== entryId) return { state, effects: [] };
+  const head = state.entries[0];
+  // Everything below this line is a change the room will be told about, so
+  // everything below it may write to the log. Nothing above it may: a request
+  // that arrived too late is a request that took nothing away.
+  if (head?.entryId !== entryId) return { state, effects: [] };
   const entries = state.entries.slice(1);
+  const log = options.line ? withLine(state.log, lineFor(options.line, head.track.title)) : state.log;
   const next = entries[0];
   // Only when something is really being taken away mid-flight. A Track that
   // ended of its own accord left the player stopped already, and a paused Queue
@@ -225,12 +284,12 @@ function advancePast(
   const silence: PlaybackEffect[] = options.playerStillSounding ? [{ kind: "stop" }] : [];
   if (!next) {
     return {
-      state: { entries, playing: false },
+      state: { entries, playing: false, log },
       effects: [...silence, { kind: "unload" }, { kind: "publish" }]
     };
   }
   return {
-    state: { entries, playing: state.playing },
+    state: { entries, playing: state.playing, log },
     effects: [
       { kind: "load", entry: next },
       ...(state.playing ? [{ kind: "play" } as const] : []),
@@ -250,17 +309,38 @@ function advancePast(
  * An entry the Queue no longer holds is not an error, for the same reason a
  * late skip is not: the member wanted it gone and it is gone.
  */
-function remove(state: PlaybackState, entryId: string): PlaybackStep {
+function remove(state: PlaybackState, entryId: string, line: LineToWrite): PlaybackStep {
   const index = state.entries.findIndex((item) => item.entryId === entryId);
   if (index < 0) return { state, effects: [] };
-  if (index === 0) return advancePast(state, entryId, { playerStillSounding: state.playing });
+  // The line says `removed` either way. Taking the head out is skipping it as
+  // far as the player is concerned, which is why it is one rule and not two —
+  // but they are two things a member did, and telling them apart in the log is
+  // the reason ADR-0006 kept them as two verbs.
+  if (index === 0) return advancePast(state, entryId, { playerStillSounding: state.playing, line });
+  const removed = state.entries[index]!;
   const entries = [...state.entries.slice(0, index), ...state.entries.slice(index + 1)];
-  return { state: { entries, playing: state.playing }, effects: [{ kind: "publish" }] };
+  return {
+    state: {
+      entries,
+      playing: state.playing,
+      log: withLine(state.log, lineFor(line, removed.track.title))
+    },
+    effects: [{ kind: "publish" }]
+  };
 }
 
-function pause(state: PlaybackState): PlaybackStep {
+function pause(state: PlaybackState, line: LineToWrite): PlaybackStep {
+  // A pause arriving at a Queue that is already stopped changes nothing, so it
+  // publishes nothing and writes nothing. A line for it would name a member for
+  // a silence that was already there.
   if (!state.playing) return { state, effects: [] };
-  return { state: { entries: state.entries, playing: false }, effects: [{ kind: "stop" }, { kind: "publish" }] };
+  return {
+    // No Track on the line: a pause is about the Queue rather than about any
+    // one Track, and the Track it stopped is still at the head of the list
+    // where the panel is already calling it paused.
+    state: { entries: state.entries, playing: false, log: withLine(state.log, lineFor(line, null)) },
+    effects: [{ kind: "stop" }, { kind: "publish" }]
+  };
 }
 
 /**
@@ -269,9 +349,12 @@ function pause(state: PlaybackState): PlaybackStep {
  * for it again would be a second trip to the source for something the bot is
  * already holding.
  */
-function resume(state: PlaybackState): PlaybackStep {
+function resume(state: PlaybackState, line: LineToWrite): PlaybackStep {
   if (state.playing || state.entries.length === 0) return { state, effects: [] };
-  return { state: { entries: state.entries, playing: true }, effects: [{ kind: "play" }, { kind: "publish" }] };
+  return {
+    state: { entries: state.entries, playing: true, log: withLine(state.log, lineFor(line, null)) },
+    effects: [{ kind: "play" }, { kind: "publish" }]
+  };
 }
 
 /**
@@ -280,10 +363,43 @@ function resume(state: PlaybackState): PlaybackStep {
  * message from a member who has left, which the server refuses — correctly.
  */
 function clear(state: PlaybackState): PlaybackStep {
-  if (state.entries.length === 0 && !state.playing) return { state, effects: [] };
+  // The log counts as something to discard. A Set whose Tracks have all played
+  // out has an empty Queue and a full log, and saying nothing here would leave
+  // that log standing on five panels for a Set that is over.
+  if (state.entries.length === 0 && !state.playing && state.log.length === 0) return { state, effects: [] };
   return {
     state: emptyPlayback(),
     effects: [{ kind: "stop" }, { kind: "unload" }, { kind: "publish" }]
+  };
+}
+
+/**
+ * The newest line on the front, and the oldest off the back once there are
+ * `musicSetLogMaxLines` of them.
+ *
+ * Most recent first because the log's whole job is to explain what just
+ * happened, and the panel it renders into owns no scroll region — so the line
+ * that answers "why did the music change" has to be at the top, where a member
+ * is already looking, rather than at the bottom of a block that grows down the
+ * page every time somebody else presses a button.
+ *
+ * Dropping the oldest rather than refusing the newest, which is the opposite of
+ * what a full Queue does. A Queue is a promise about what will play, so the
+ * member who would lose their Track is told; a log is a record of what already
+ * happened, and the thing worth keeping when there is not room for all of it is
+ * the most recent part.
+ */
+function withLine(log: readonly MusicSetLogLine[], line: MusicSetLogLine): MusicSetLogLine[] {
+  return [line, ...log].slice(0, musicSetLogMaxLines);
+}
+
+/** The Track by its title, because the entry it names is on its way out. */
+function lineFor(line: LineToWrite, trackTitle: string | null): MusicSetLogLine {
+  return {
+    lineId: line.lineId,
+    action: line.action,
+    requestedByUserId: line.requestedByUserId,
+    trackTitle
   };
 }
 

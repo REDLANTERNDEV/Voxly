@@ -380,6 +380,62 @@ export interface MusicQueueEntry {
 export const musicIdentifierMaxLength = 64;
 
 /**
+ * How many lines of the Set log the room is told about.
+ *
+ * Bounded for the same reason the Queue is, and more urgently: the Queue is
+ * bounded because it is broadcast whole on every change, and the log rides the
+ * same payload — but a Queue shrinks as Tracks play out and a log only ever
+ * grows. Twenty rather than a hundred because the panel owns no scroll region,
+ * so every line grows the page for people who are not reading it, and because
+ * of what the log is *for*: it explains a silence that has just happened. The
+ * line that answers "why did the music change" is one of the last few, and a
+ * Set log long enough to need scrolling has stopped answering that question.
+ */
+export const musicSetLogMaxLines = 20;
+
+/**
+ * What a member did to the Queue.
+ *
+ * Exactly the five things a member can do that change it, and no more. A Track
+ * ending is not here: the log names who did something, and nobody ended it. The
+ * same goes for the Set being torn down — the log does not survive that to
+ * describe it.
+ */
+export type MusicSetLogAction = "added" | "skipped" | "removed" | "paused" | "resumed";
+
+/**
+ * One line of the Set log: a member, a verb, and the Track it was about.
+ *
+ * The member is an id, resolved to a nickname at the browser's end — the same
+ * rule and the same reason as `MusicQueueEntry.requestedByUserId`, which the
+ * browser is already resolving from the same member list. ADR-0005.
+ *
+ * The Track is a *title* and not an `entryId`, because the point of a line is
+ * usually that the entry is gone: "Ada skipped Nocturne" is a sentence about a
+ * Track that is no longer in the Queue to be looked up. It carries no time.
+ * Order is the list's, identity is `lineId`'s, and a wall-clock instant from
+ * the bot's host is not one a member's browser could render honestly.
+ */
+export interface MusicSetLogLine {
+  /**
+   * This line, as distinct from any other. Minted per line for the same reason
+   * an `entryId` is minted per addition: two members pausing in turn are two
+   * lines that are otherwise identical, and the browser needs to tell them
+   * apart. Meaningless outside the Set that produced it.
+   */
+  lineId: string;
+  action: MusicSetLogAction;
+  requestedByUserId: string;
+  /**
+   * The Track the action was about, or `null` for a pause or a resume, which
+   * are about the Queue rather than about any one Track. Explicitly null rather
+   * than absent, as `MusicAnswer`'s `track` is: a consumer that forgets a line
+   * may name no Track should be made to say so.
+   */
+  trackTitle: string | null;
+}
+
+/**
  * The Queue and what is happening to it, as everyone in the room sees it.
  *
  * The bot is the single source of truth for this and publishes the whole thing
@@ -401,6 +457,21 @@ export interface MusicQueueState {
    * because a paused Queue is not an empty one.
    */
   playing: boolean;
+  /**
+   * What members have done to this Queue, most recent first and bounded by
+   * `musicSetLogMaxLines`.
+   *
+   * On this payload rather than beside it, because a line and the change it
+   * describes are the same event and two messages could disagree about it — a
+   * room told "Ada skipped Nocturne" while still holding Nocturne is exactly
+   * the failure the whole-Queue rule above exists to prevent. It costs no extra
+   * message either: every line is produced by a change that was already
+   * publishing the Queue. ADR-0008 records the choice.
+   *
+   * The room's, like the entries and unlike a search's Results: everyone must
+   * read the same explanation for the same silence.
+   */
+  log: MusicSetLogLine[];
 }
 
 /** What the server answers a bot that published the Queue. */
