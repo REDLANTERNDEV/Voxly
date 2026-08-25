@@ -1,6 +1,6 @@
 # ADR-0008 — The Set log rides the Queue, and only a real change writes a line
 
-- **Status:** accepted
+- **Status:** accepted; the gap left in Consequences is closed by ADR-0011
 - **Date:** 2026-08-25
 - **Context:** ticket 11, "The Set log"
 
@@ -182,7 +182,11 @@ action would talk across it.
   name. That is a real gap in this vocabulary and it is left open deliberately:
   the honest answer is probably a line whose actor is the bot rather than a
   person, and it should be designed against the failure it is explaining rather
-  than guessed at here.
+  than guessed at here. **Closed by ADR-0011**, which took that answer: the line
+  names no member at all rather than naming the bot's own account, and the
+  reason it carries is the verb rather than a field beside one — for the reason
+  §5 above gives, that a sentence assembled out of translated fragments is one
+  Turkish cannot build.
 - A member who joins mid-Set is shown lines about things that happened before
   they arrived, with nothing saying how long ago. That follows from having no
   clock, and it is the same trade the Queue already makes: it does not say when

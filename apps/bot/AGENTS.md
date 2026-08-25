@@ -37,8 +37,9 @@ no HTTP surface, and no authority over anything.
 - `src/audio.ts` reads Ogg Opus and frames it as RTP. No codec runs here.
 - `src/track.ts` holds both resolvers: a pasted link, a typed name, and the
   extractor's output for either, turned into a Track or a list of Results. It is
-  also where an input is decided to be one or the other. Pure, and the only
-  place a source's vocabulary is known.
+  also where an input is decided to be one or the other, and where a fetch that
+  gave up is turned into the reason the room is told. Pure, and the only place a
+  source's vocabulary is known.
 - `src/stream.ts` is the audio provider: yt-dlp piped into ffmpeg, and the
   search that asks yt-dlp the same source a different question. It is not unit
   tested, and the reason is written at the top of the file: the decisions it
@@ -46,6 +47,15 @@ no HTTP surface, and no authority over anything.
   Track — have no failure mode a unit test could catch, because the way they go
   wrong is a flag meaning something other than what was intended. Only the real
   binaries can say. Put anything testable in `track.ts` instead.
+  Since ticket 13 it holds one more decision of that kind and it is worth
+  naming, because it is load-bearing and the exemption covers it for the same
+  reason: **when there is enough evidence to say a fetch failed.** Both
+  programs' exits and the extractor's stderr arrive after the encoder's stream
+  ends, so the file asks the question at `finish` and again as each program
+  *closes*. What the answer then *is* lives in `track.ts` and is covered there;
+  what the ordering buys is guarded at the responder seam in `music.test.ts`
+  ("keeps the line when the player then reports the end of the Track that
+  failed"). Neither test runs a binary, and nothing here has.
 - `src/voxly.ts` reads the HTTP endpoints a browser reads, with the bot session.
 - `test/` covers each of those. `test/playback.test.ts` is where the Queue's
   rules are asserted; a rule proved there should not be proved again through the
@@ -224,6 +234,24 @@ it that way.
   about what will play, so the member who would lose their Track is refused; a
   log is a record of what already happened, and the part worth keeping is the
   recent part.
+- **A Track that will not play is the fourth targeted event**, not a second way
+  to move the Queue. `failed` goes through `advancePast` beside `ended`,
+  `skipped` and a head `removed`, so one that names a Track a skip already moved
+  past changes nothing and succeeds — ADR-0006's rule, unchanged. It carries
+  `playerStillSounding` like a skip and unlike an end: the fetch died, but the
+  player may still be sounding whatever arrived before it did. It keeps
+  `playing` as it was, so a paused Queue whose head will not play advances and
+  stays paused.
+- **The failure line names no member, and the reason is the verb.** Nobody did
+  this, so the actor is `null` rather than the bot's own account — "Music bot
+  skipped Nocturne" reads as somebody having pressed something, in whatever the
+  operator called the account. The three verbs are `failedUnavailable`,
+  `failedSource` and `failedBot`, each one whole sentence per language, because
+  a reason substituted into "a Track failed" is the fragment-stitching ADR-0008
+  §5 refuses. This is the one line in the log the bot writes about itself. Read
+  ADR-0011 before adding a fourth kind of failure.
+- **`playback.ts` never sees a source's words.** The reason arrives on the event
+  as an already-decided verb, exactly as an `entryId` and a resolved Track do.
 - **The Queue is bounded** (`musicQueueMaxEntries`) because it is broadcast
   whole on every change. Ask `additionRefusal` before spending a link on the
   extractor; do not write a second bound beside it. Ask it only about the Queue
@@ -363,6 +391,28 @@ audio. What it settles, in short:
 - **Blame nothing on the video when there is no video.** A failed search is
   `extractor_failed` or `bot_failed`; `classifyExtractorFailure` answers "was it
   the video or the extractor", and a query has no video to be unavailable.
+- **A fetch that gave up says so, and `classifyFetchFailure` decides what it
+  says.** Ending the buffer is exactly how a completed Track ends, so a failure
+  that only did that was invisible to the room — that was ticket 13's bug. The
+  rule is pure and lives in `track.ts` beside `classifyExtractorFailure`, which
+  it **calls**: whether the source's words blame the video or the source is one
+  question with one answer, asked before the bot joins or an hour later when the
+  Track's turn comes. Do not write a second phrase list. `stream.ts` gathers the
+  evidence and decides nothing.
+- **A cancel is not a failure.** Every advance kills the fetch behind the Track
+  it moved past, so a teardown that reported itself would put a line in front of
+  the room behind every skip. `cancelled` is set before `finish` and is the
+  first question the rule asks, because it explains every other signal.
+- **Report the failure before closing the buffer.** Closing it is what lets the
+  player reach the end and report it, through the same chain — so a failure
+  reported second names a Track the Queue has already moved past, does nothing
+  by ADR-0006's rule, and leaves the room with the silence and no explanation.
+  The order is the whole guarantee; there is no lock.
+- **A silent fetch is a failure even with nothing to show for it.** `finish()`
+  runs on the *encoder's* exit and the extractor's exit code and stderr may both
+  still be in flight, so "no audio ever arrived" is the one signal that cannot
+  race. It answers `failedBot` — "check the logs" — rather than blaming a source
+  nothing has accused.
 - **A search that matched nothing is a success carrying an empty list.** Nothing
   failed and there is nothing for a member to wait out, so the panel puts a
   sentence to it rather than the wire carrying a refusal.
@@ -442,6 +492,12 @@ press the button:
   produces a line naming the member who pressed it, the second of two
   simultaneous skips produces *no* line, and sending the bot away empties the
   log on every panel at once rather than only on the one that pressed;
+- **a Track that will not play is skipped by itself, with the reason in the
+  log.** Queue two Tracks, make the first one fail its *fetch* rather than its
+  resolve — the honest way is a link that resolves and whose media is refused,
+  which nothing in this repository has yet reproduced on purpose — and the room
+  should hear the second Track start and read one line naming the first and no
+  member. Nothing about this has been seen against a real yt-dlp;
 - **an owner's mute stops the sound**, not just the bot's row: mute the Music
   account from the member list while a Track is playing and the room goes quiet,
   and unmuting carries on from where it stopped rather than restarting the

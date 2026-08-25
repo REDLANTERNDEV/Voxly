@@ -51,7 +51,7 @@ One Track a Search offered. It belongs to the member who typed the name, is neve
 _Avoid_: Match, hit, candidate, suggestion, option
 
 **Set log**:
-The record of what members did during a Set — who queued a Track, who skipped one. It exists only for the duration of the Set.
+The record of what happened during a Set — who queued a Track, who skipped one, and the Tracks that would not play when their turn came. Every line but those names a member; a Track failing is the one thing in it the Music bot says about itself. It exists only for the duration of the Set.
 _Avoid_: History, audit log, activity feed
 
 ### Where a source's own words are allowed

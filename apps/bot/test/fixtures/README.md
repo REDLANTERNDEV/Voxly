@@ -14,9 +14,24 @@ Two kinds, kept apart on purpose:
   that reads like logs somebody committed by accident, so they are named
   constants instead. Its own comment carries the refresh instructions.
 
+Since ticket 13 these stderr constants are read by two rules rather than one.
+`classifyExtractorFailure` reads them for a link a member has just pasted, and
+`classifyFetchFailure` reads them again for a Track whose turn came an hour
+later — the same words asked the same question, which is why there is one list
+of phrases and not two. `refusedExtractor.mediaRefused` is the only one of them
+that a resolve can never produce: it is what the source says when the metadata
+was fine and the media itself is refused.
+
+ffmpeg has no fixtures here on purpose. Nothing reads its words — a failed
+encode is judged by its exit code, because an encoder that refused audio the
+extractor delivered is the bot's own trouble whatever it printed about it.
+
 **Provenance, plainly:** none of this was captured from a live run — neither
 `yt-dlp` nor `ffmpeg` is installed on the machine this was implemented on, so
-nothing here is a transcript of a real invocation. The field names, the
+nothing here is a transcript of a real invocation. That was true when ticket 11
+was written and **it is still true after ticket 13**, which added two more
+constants to `extractorFailures.ts` in exactly the same way: written to yt-dlp's
+documented message formats, not observed. The field names, the
 `_type`/`live_status`/`availability` vocabulary and the `ERROR:` formats are
 yt-dlp's own; the video ids and titles are invented. The JSON is reduced to the
 fields the parser reads plus enough neighbours to prove it is not reading by

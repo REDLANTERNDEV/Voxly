@@ -301,6 +301,9 @@ describe("what a refusal says", () => {
       "music.logRemoved",
       "music.logPaused",
       "music.logResumed",
+      "music.logFailedUnavailable",
+      "music.logFailedSource",
+      "music.logFailedBot",
       "music.logTrackUnknown"
     ] as const;
     for (const key of keys) {
@@ -331,6 +334,33 @@ describe("what a refusal says", () => {
 
       assert.equal(new Set(said).size, actions.length, `${language}: no two verbs may read the same`);
       for (const message of said) assert.match(message, /Ada/, `${language}: every line names who did it`);
+    }
+  });
+
+  it("says each way a Track can fail differently, in both languages", () => {
+    // Three sentences rather than one with the reason substituted into it. The
+    // reason is the verb precisely so that each language owns the whole
+    // sentence — Turkish does not put these words in English's order, and a
+    // line stitched together out of translated fragments would have to.
+    const failures = ["failedUnavailable", "failedSource", "failedBot"] as const;
+    for (const language of ["en", "tr"] as const) {
+      const said = musicSetLogRows(
+        {
+          playing: true,
+          entries: [],
+          log: failures.map((action, index) => ({
+            lineId: `line-${index}`,
+            action,
+            requestedByUserId: null,
+            trackTitle: "Nocturne"
+          }))
+        },
+        [member("ada", { user: { userId: "ada", nickname: "Ada", role: "member" } })],
+        (key, values) => translate(language, key, values)
+      ).map((row) => row.message);
+
+      assert.equal(new Set(said).size, failures.length, `${language}: no two reasons may read the same`);
+      for (const message of said) assert.match(message, /Nocturne/, `${language}: every line names the Track`);
     }
   });
 });
@@ -465,7 +495,7 @@ describe("the Set log as the panel reads it", () => {
   const ada = member("ada", { user: { userId: "ada", nickname: "Ada", role: "member" } });
   const ece = member("ece", { user: { userId: "ece", nickname: "Ece", role: "member" } });
 
-  function logOf(lines: Array<[MusicSetLogAction, string, string | null]>): MusicQueueState {
+  function logOf(lines: Array<[MusicSetLogAction, string | null, string | null]>): MusicQueueState {
     return {
       playing: true,
       entries: [],
@@ -534,6 +564,38 @@ describe("the Set log as the panel reads it", () => {
   it("has no rows at all when the bot has published nothing", () => {
     assert.deepEqual(musicSetLogRows(null, [ada], t), []);
     assert.deepEqual(musicSetLogRows(logOf([]), [ada], t), []);
+  });
+
+  it("explains a Track that would not play without naming anyone", () => {
+    // The hole ADR-0008 left open and ADR-0011 filled. Nobody did this, so the
+    // sentence has no subject to resolve — and the bot's own account in that
+    // slot would read as somebody having pressed something.
+    const rows = musicSetLogRows(
+      logOf([
+        ["failedUnavailable", null, "Nocturne"],
+        ["failedSource", null, "Gymnopédie"],
+        ["failedBot", null, "Clair de lune"]
+      ]),
+      [ada],
+      t
+    );
+
+    assert.equal(new Set(rows.map((row) => row.message)).size, 3, "no two reasons may read the same");
+    for (const row of rows) {
+      assert.doesNotMatch(row.message, new RegExp(translate("en", "music.requesterUnknown")));
+      assert.doesNotMatch(row.message, /Ada/, "no member did this");
+    }
+    assert.match(rows[0].message, /Nocturne/, "and the Track is still named");
+  });
+
+  it("tells a blocked Track apart from a source that is refusing the bot", () => {
+    // The fourth acceptance criterion, where a member actually reads it: one
+    // sends them to find another Track, the other sends the room to wait, and
+    // one sentence for both sends half of them the wrong way.
+    const [blocked] = musicSetLogRows(logOf([["failedUnavailable", null, "Nocturne"]]), [ada], t);
+    const [refused] = musicSetLogRows(logOf([["failedSource", null, "Nocturne"]]), [ada], t);
+
+    assert.notEqual(blocked.message, refused.message);
   });
 
   it("still reads as a sentence if a line arrives naming no Track", () => {

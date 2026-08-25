@@ -347,7 +347,15 @@ export function musicSetLogRows(
   return (state?.log ?? []).map((line) => ({
     lineId: line.lineId,
     message: t(setLogKey(line.action), {
-      nickname: nicknames.get(line.requestedByUserId) ?? t("music.requesterUnknown"),
+      // A name if the room has one, and the stand-in otherwise — which covers
+      // a member who has left and, harmlessly, a line that arrived without an
+      // id it should have carried. The three sentences the bot writes about
+      // itself name nobody at all, so they never read this; special-casing the
+      // null here would only mean a member's line rendering subjectless if one
+      // ever arrived malformed. ADR-0011.
+      nickname: (line.requestedByUserId === null
+        ? undefined
+        : nicknames.get(line.requestedByUserId)) ?? t("music.requesterUnknown"),
       // A pause and a resume carry no Track and their sentences do not name
       // one, so this is only ever read for the three verbs that do. A line that
       // should have carried a title and did not is a fault above; the answer to
@@ -374,6 +382,16 @@ function setLogKey(action: MusicSetLogAction): TranslationKey {
       return "music.logPaused";
     case "resumed":
       return "music.logResumed";
+    // The three the bot writes about itself. Three keys rather than one with
+    // the reason substituted into it: each is a whole sentence in each
+    // language, which is the same rule the five above follow and the reason
+    // the reason travels as a verb. ADR-0011.
+    case "failedUnavailable":
+      return "music.logFailedUnavailable";
+    case "failedSource":
+      return "music.logFailedSource";
+    case "failedBot":
+      return "music.logFailedBot";
     default:
       return assertNever("Set log action", action);
   }

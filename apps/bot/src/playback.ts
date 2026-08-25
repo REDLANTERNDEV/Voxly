@@ -24,7 +24,8 @@ import {
   type MusicCommandAck,
   type MusicQueueState,
   type MusicSetLogAction,
-  type MusicSetLogLine
+  type MusicSetLogLine,
+  type MusicTrackFailure
 } from "@voxly/shared";
 import type { Track } from "./track.js";
 
@@ -96,10 +97,19 @@ interface LogContext {
 }
 
 /**
- * The line a transition writes, if any member asked for it. `null` where a
- * Track ended by itself: the log says who did something, and nobody did that.
+ * The line a transition writes, if there is one. `null` where a Track ended by
+ * itself: that is the Queue working and there is nothing to explain.
+ *
+ * `requestedByUserId` is nullable here and not on `LogContext`, which is what
+ * keeps the two apart: every *member-driven* event still has to carry the
+ * member who asked, and only the line a failure writes may leave the slot
+ * empty. ADR-0011.
  */
-type LineToWrite = LogContext & { action: MusicSetLogAction };
+type LineToWrite = {
+  lineId: string;
+  action: MusicSetLogAction;
+  requestedByUserId: string | null;
+};
 
 export type PlaybackEvent =
   /** A member's link resolved to a Track and it goes on the end. */
@@ -112,6 +122,22 @@ export type PlaybackEvent =
    * just started.
    */
   | { kind: "ended"; entryId: string }
+  /**
+   * The Track whose turn came would not play, and the bot has given up on it.
+   *
+   * The fourth thing that moves the Queue past a Track, and targeted like the
+   * other three for the same reason: the fetch decided this some time after it
+   * was started, and a skip may have got there first — in which case the room
+   * has already moved on and this is about a Track it has left behind.
+   *
+   * It is the one event here that writes a line without a member on it. Nobody
+   * did this; the room is owed the reason anyway, because a Track vanishing
+   * from under it with no explanation is the silence this feature exists to
+   * account for. The reason travels as a verb rather than as a sentence, and
+   * `music.ts` reads it off the fetch — this module never sees a source's
+   * words. ADR-0011.
+   */
+  | { kind: "failed"; entryId: string; reason: MusicTrackFailure; lineId: string }
   /** A member asked to move past the Track they believe is playing. */
   | ({ kind: "skipped"; entryId: string } & LogContext)
   /** A member asked for one entry to leave the Queue, wherever it is in it. */
@@ -219,6 +245,14 @@ export function advancePlayback(state: PlaybackState, event: PlaybackEvent): Pla
       // stopped of its own accord — which is the only thing that tells it apart
       // from a skip.
       return advancePast(state, event.entryId, { playerStillSounding: false, line: null });
+    case "failed":
+      // `playerStillSounding` for the same reason a skip does rather than for
+      // the reason an end does not: the fetch died, but the player may still be
+      // sounding whatever arrived before it did, and this is what stops it.
+      return advancePast(state, event.entryId, {
+        playerStillSounding: state.playing,
+        line: { lineId: event.lineId, action: event.reason, requestedByUserId: null }
+      });
     case "skipped":
       return advancePast(state, event.entryId, {
         playerStillSounding: state.playing,

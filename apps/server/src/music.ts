@@ -115,6 +115,12 @@ const trackDurationMaxSeconds = 24 * 60 * 60;
  * goes to every browser in the room. The verbs are a closed list because a verb
  * nobody agreed on is not something a member can be said to have done.
  *
+ * `requestedByUserId` is nullable and the emptiness is not validated against
+ * the verb. The server does not hold an opinion about which lines name a
+ * member: which of them the bot writes about itself is the bot's knowledge, and
+ * a second copy of that rule here would refuse a publish the bot was right to
+ * make — losing the room its whole Queue over a line.
+ *
  * Nothing here is stored. The server relays this payload and keeps no copy of
  * it — there is no table for a log line and no code path that would look for
  * one — which is what makes "the Set log is never written to the database"
@@ -122,8 +128,20 @@ const trackDurationMaxSeconds = 24 * 60 * 60;
  */
 const musicSetLogLineSchema = z.object({
   lineId: z.string().min(1).max(musicIdentifierMaxLength),
-  action: z.enum(["added", "skipped", "removed", "paused", "resumed"]),
-  requestedByUserId: z.string().min(1).max(musicIdentifierMaxLength),
+  action: z.enum([
+    "added",
+    "skipped",
+    "removed",
+    "paused",
+    "resumed",
+    // The three the bot writes about itself: a Track whose turn came and would
+    // not play. They carry no member, which is the only reason the field below
+    // is nullable. ADR-0011.
+    "failedUnavailable",
+    "failedSource",
+    "failedBot"
+  ]),
+  requestedByUserId: z.string().min(1).max(musicIdentifierMaxLength).nullable(),
   trackTitle: z.string().max(musicTitleMaxLength).nullable()
 }).strict();
 

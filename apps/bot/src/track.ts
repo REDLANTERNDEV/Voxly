@@ -18,6 +18,7 @@ import {
   musicTitleMaxLength,
   type MusicCommandAck,
   type MusicSearchResult,
+  type MusicTrackFailure,
   type MusicTrackSummary
 } from "@voxly/shared";
 
@@ -327,4 +328,100 @@ const unavailablePhrases = [
 export function classifyExtractorFailure(stderr: string): "track_unavailable" | "extractor_failed" {
   const text = stderr.toLowerCase();
   return unavailablePhrases.some((phrase) => text.includes(phrase)) ? "track_unavailable" : "extractor_failed";
+}
+
+/**
+ * What a fetch had to say for itself when it stopped.
+ *
+ * Everything the two processes told `stream.ts`, as plain values, so that the
+ * decision below can be asserted without either binary being installed. The
+ * exit codes are `null` where the process was signalled or has not been reaped
+ * yet — which is ordinary here rather than exceptional, because the encoder's
+ * exit is what ends a fetch and the extractor's own may land a tick later.
+ */
+export interface TrackFetchOutcome {
+  /** The Set moved on — a skip, a removal, the next Track, the Set ending. */
+  cancelled: boolean;
+  /** One of the two programs could not be run at all. */
+  spawnFailed: boolean;
+  /** The whole fetch ran out of time and was abandoned. */
+  timedOut: boolean;
+  /** yt-dlp's stderr, as much of the tail as was kept. */
+  extractorStderr: string;
+  extractorCode: number | null;
+  encoderCode: number | null;
+  /** The Ogg stream stopped mid-page or mid-packet. */
+  incomplete: boolean;
+  /**
+   * No playable audio ever arrived, so the room heard none of this Track.
+   *
+   * The one signal here that cannot race. `finish()` runs on the encoder's
+   * exit, and both the extractor's exit code and the tail of its stderr may
+   * still be in flight at that moment — a fetch that produced nothing and can
+   * prove nothing about why would otherwise be indistinguishable from a Track
+   * that played out, which is the exact bug this ticket exists to fix.
+   */
+  silent: boolean;
+}
+
+/**
+ * yt-dlp saying it gave up, in the one shape it says it in.
+ *
+ * Read as well as the exit code rather than instead of it, because the two
+ * arrive at different moments: `finish()` runs on the *encoder's* exit, and the
+ * extractor's own may not have been delivered yet. Its `ERROR:` line has been —
+ * stderr is data on a stream the process wrote before it left.
+ */
+const extractorGaveUp = /^ERROR:/m;
+
+/**
+ * Why a Track whose turn came would not play, or `null` because it did.
+ *
+ * This is the ticket-13 counterpart to `classifyExtractorFailure`, and it
+ * deliberately *calls* that rather than repeating it: whether the source's
+ * words blame the video or the source is one question with one answer, whether
+ * it is asked before the bot joins or an hour later when the Track reaches the
+ * head of the Queue. What is new here is the third answer, which the resolve
+ * path cannot produce — a fetch spawns ffmpeg, and a missing encoder is neither
+ * a blocked video nor a source refusing anything.
+ *
+ * The order of the questions is the order of certainty. A cancel explains every
+ * other signal on the outcome and so is asked first; the bot's own failures are
+ * facts rather than readings; and only then is somebody else's stderr matched
+ * against a list of phrases. Anything unrecognised comes out as the source's
+ * fault, which is the same safe direction `classifyExtractorFailure` takes for
+ * the same reason: "that video will not play" sends a room to replace a Track
+ * that was never broken.
+ */
+export function classifyFetchFailure(outcome: TrackFetchOutcome): MusicTrackFailure | null {
+  // Not a failure at all. The Set moved past this Track, and both programs were
+  // killed mid-sentence — so the exit codes, the truncated stream and anything
+  // on stderr are what being cancelled looks like, not evidence of anything.
+  if (outcome.cancelled) return null;
+  // A binary that could not be run is a deployment fault. It cannot be the
+  // video, and telling the room to wait for the source to recover would be a
+  // wait that never ends.
+  if (outcome.spawnFailed) return "failedBot";
+  // Which side stalled is not knowable from here, and thirty minutes of neither
+  // program finishing is not a sentence about YouTube.
+  if (outcome.timedOut) return "failedBot";
+  if (extractorGaveUp.test(outcome.extractorStderr) || failedExit(outcome.extractorCode)) {
+    return classifyExtractorFailure(outcome.extractorStderr) === "track_unavailable"
+      ? "failedUnavailable"
+      : "failedSource";
+  }
+  // The extractor delivered and the encode did not survive it, or survived it
+  // and left the stream mid-packet. Either way the source did its part.
+  if (failedExit(outcome.encoderCode) || outcome.incomplete) return "failedBot";
+  // Nothing at all came out and nothing here says why. Not the source's fault
+  // by default: "YouTube is refusing us" is a sentence that sends a room to
+  // wait, and this is a sentence that should send somebody to the bot's logs,
+  // where the reason this could not name will be written down.
+  if (outcome.silent) return "failedBot";
+  return null;
+}
+
+/** A process that ran and refused. `null` is one that was signalled or is late. */
+function failedExit(code: number | null): boolean {
+  return code !== null && code !== 0;
 }

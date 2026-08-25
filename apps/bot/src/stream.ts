@@ -28,8 +28,10 @@ import type { Readable } from "node:stream";
 import { musicSearchResultsMax } from "@voxly/shared";
 import type { BotEnvironment } from "./config.js";
 import { OggOpusReader, TrackBuffer } from "./audio.js";
+import type { MusicTrackFailure } from "@voxly/shared";
 import {
   classifyExtractorFailure,
+  classifyFetchFailure,
   parseSearchResults,
   parseTrackMetadata,
   type SearchResult,
@@ -78,6 +80,20 @@ export const fetchTimeoutMs = 30 * 60_000;
  * much that is, and this process is long-lived.
  */
 const maxMetadataBytes = 4 * 1_024 * 1_024;
+
+/**
+ * How much of a program's stderr is kept in order to say what went wrong. Only
+ * the tail is ever read, and only to name which of three things to blame.
+ */
+const maxStderrBytes = 8_000;
+
+/**
+ * How much of a line that has not ended yet is held while waiting for its
+ * newline. Its own bound rather than `maxStderrBytes`: this one exists so a
+ * program writing without newlines cannot grow a buffer without limit, and it
+ * is about a single line rather than about the evidence kept above.
+ */
+const maxPartialLineBytes = 4_000;
 
 /**
  * The encoder settings, fixed rather than adapted per Listener.
@@ -136,6 +152,21 @@ export interface TrackAudio {
   buffer: TrackBuffer;
   /** Abandons the fetch. Safe to call after it has already finished. */
   cancel: () => void;
+}
+
+/** What a fetch reports back while it runs. */
+export interface TrackFetchHandlers {
+  log: (message: string) => void;
+  /**
+   * This Track will not play, and this is what the room should be told.
+   *
+   * Called at most once per fetch and **never for a cancel**: a skip kills both
+   * programs mid-sentence, and reporting that as a failure would explain a
+   * silence somebody deliberately caused. The reason is a verb the Set log
+   * already knows rather than anything of the source's own — no words from
+   * yt-dlp cross this seam, let alone the wire.
+   */
+  onFailure: (failure: MusicTrackFailure) => void;
 }
 
 /**
@@ -222,13 +253,17 @@ function searchArguments(environment: BotEnvironment, name: string) {
  *
  * A failure part-way through ends the buffer rather than throwing at nobody:
  * the caller is a player that is already sending frames, and what it needs is
- * for the Track to end where the audio did.
+ * for the Track to end where the audio did. What it *also* needs — and did not
+ * get until ticket 13 — is to be told that the end was a failure. Ending the
+ * buffer is exactly how a completed Track ends too, so without this a blocked
+ * video and a Track the room heard all of were the same event.
  */
 export function fetchTrackAudio(
   environment: BotEnvironment,
   track: Track,
-  log: (message: string) => void
+  handlers: TrackFetchHandlers
 ): TrackAudio {
+  const { log } = handlers;
   const buffer = new TrackBuffer();
   const reader = new OggOpusReader();
 
@@ -237,17 +272,86 @@ export function fetchTrackAudio(
   });
   const encoder = spawn(environment.encoderPath, encoderArguments, { stdio: ["pipe", "pipe", "pipe"] });
 
+  // Both programs report their problems on stderr and then exit non-zero. The
+  // exit is what ends the Track; the text is what makes the log worth reading —
+  // and, for the extractor, what says whether the video or the source is to
+  // blame. Subscribed before anything can call `finish`, so the evidence is
+  // being collected by the time it is asked for.
+  const extractorStderr = readStderr(extractor, (line) => log(`yt-dlp: ${line}`));
+  readStderr(encoder, (line) => log(`ffmpeg: ${line}`));
+
   let done = false;
+  /** The Set moved on, which makes every other signal below meaningless. */
+  let cancelled = false;
+  let timedOut = false;
+  let spawnFailed = false;
+  let extractorCode: number | null = null;
+  let encoderCode: number | null = null;
+
+  /** Whether the room has already been told. A fetch fails once. */
+  let reported = false;
+
+  /**
+   * Whether this Track will play, answered from whatever evidence has arrived.
+   *
+   * The rule itself is in `track.ts`, which is pure and covered; everything
+   * here is the evidence-gathering, which is what this file is for.
+   *
+   * Asked more than once on purpose, because the evidence arrives in stages.
+   * `finish` runs on the encoder's *stream* ending, and at that moment neither
+   * program's exit code need have been delivered and the extractor's stderr may
+   * still be in flight — so a fetch that produced half a Track and then lost
+   * yt-dlp can look, at that instant, exactly like one the room heard all of:
+   * the Ogg stream ffmpeg closed is complete, and audio did arrive. Asking
+   * again as each program *closes* — which waits for its streams where `exit`
+   * does not — is what turns that into an answer.
+   *
+   * The late answer is still early enough. A fetch with audio in it leaves the
+   * player minutes to drain, and this arrives within a tick; the one case that
+   * cannot wait is a fetch that produced nothing, and `silent` settles that one
+   * where it is asked first, before the buffer is closed.
+   */
+  const reportFailure = (why: string) => {
+    if (reported) return;
+    const failure = classifyFetchFailure({
+      cancelled,
+      spawnFailed,
+      timedOut,
+      extractorStderr: extractorStderr(),
+      extractorCode,
+      encoderCode,
+      incomplete: reader.incomplete,
+      // Not "the buffer is empty" a moment later: the player may have been
+      // reading from it, but nothing is ever removed, so its length is how much
+      // audio this fetch ever produced.
+      silent: buffer.length === 0
+    });
+    if (!failure) return;
+    reported = true;
+    log(`${track.id} will not play (${failure}): ${why}`);
+    handlers.onFailure(failure);
+  };
+
   const finish = (why: string) => {
     if (done) return;
     done = true;
     clearTimeout(timer);
     if (reader.incomplete) log(`the audio for ${track.id} ended mid-stream (${why})`);
+    // Before the buffer is closed, not after — and the order is the whole of
+    // why a failure is not lost. Closing the buffer is what lets the player
+    // reach the end of this Track and report it, and that report travels the
+    // same chain this does. A failure arriving second would name a Track the
+    // Queue had already moved past, which by ADR-0006's rule changes nothing
+    // and succeeds — leaving the room with the silence and no explanation.
+    reportFailure(why);
     buffer.finish();
     extractor.kill("SIGKILL");
     encoder.kill("SIGKILL");
   };
-  const timer = setTimeout(() => finish(`nothing finished within ${fetchTimeoutMs} ms`), fetchTimeoutMs);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    finish(`nothing finished within ${fetchTimeoutMs} ms`);
+  }, fetchTimeoutMs);
   timer.unref?.();
 
   extractor.stdout.pipe(encoder.stdin);
@@ -267,36 +371,74 @@ export function fetchTrackAudio(
   });
   encoder.stdout.on("end", () => finish("the encoder finished"));
 
-  // Both programs report their problems on stderr and then exit non-zero. The
-  // exit is what ends the Track; the text is what makes the log worth reading.
-  logStderr(extractor, (line) => log(`yt-dlp: ${line}`));
-  logStderr(encoder, (line) => log(`ffmpeg: ${line}`));
   for (const [name, child] of [["yt-dlp", extractor], ["ffmpeg", encoder]] as const) {
     child.on("error", (cause) => {
       log(`could not run ${name} (${environment.extractorPath}/${environment.encoderPath}): ${String(cause)}`);
+      spawnFailed = true;
       finish(`${name} could not be run`);
     });
     child.on("exit", (code) => {
       if (code !== 0 && code !== null) log(`${name} exited with code ${code}`);
+      // Recorded whether or not this exit ends the fetch. The extractor's is
+      // the more interesting of the two and never ends anything.
+      if (child === encoder) encoderCode = code;
+      else extractorCode = code;
       // Only the encoder's exit ends the audio: the extractor finishes first by
       // design, and treating that as the end would truncate every Track by
       // whatever the encoder still had buffered.
       if (child === encoder) finish(`ffmpeg exited with code ${code}`);
     });
+    // `close` rather than `exit`, because it waits for the program's streams
+    // and `exit` does not: this is the first moment everything yt-dlp had to
+    // say has actually been delivered. If the fetch has already stopped and
+    // could not name a reason at the time, this is where it can — which is the
+    // whole of how a Track that died half-way through is caught, its Ogg
+    // stream having been closed perfectly cleanly around the audio it did get.
+    child.on("close", (code) => {
+      if (child === encoder) encoderCode = code;
+      else extractorCode = code;
+      if (done) reportFailure(`${name} closed with code ${code}`);
+    });
   }
 
-  return { buffer, cancel: () => finish("the Set moved on") };
+  return {
+    buffer,
+    cancel: () => {
+      // Set before `finish`, not after. It is the one fact that makes every
+      // other signal here meaningless, and a fetch killed by a skip must not
+      // put a line in front of the room about a Track somebody chose to leave.
+      cancelled = true;
+      finish("the Set moved on");
+    }
+  };
 }
 
-function logStderr(child: ChildProcess & { stderr: Readable }, log: (line: string) => void) {
-  let tail = "";
+/**
+ * Reports a child's stderr line by line, and hands back the tail it kept.
+ *
+ * Kept as well as logged because the tail is the *evidence* for why a fetch
+ * stopped, and by the time anything asks that question the process has gone.
+ * Bounded exactly as `collect` bounds its own and for the same reason: a chatty
+ * failure must not grow without limit inside a process that outlives it.
+ */
+function readStderr(child: ChildProcess & { stderr: Readable }, log: (line: string) => void): () => string {
+  /**
+   * The line still arriving, held until its newline turns up — and bounded, so
+   * that a program writing without one cannot grow this without limit.
+   */
+  let partialLine = "";
+  /** The tail worth keeping, which is a different thing and a different bound. */
+  let kept = "";
   child.stderr.on("data", (chunk: Buffer) => {
-    tail = (tail + chunk.toString("utf8")).slice(-4_000);
-    for (const line of tail.split("\n").slice(0, -1)) {
+    const text = chunk.toString("utf8");
+    kept = (kept + text).slice(-maxStderrBytes);
+    partialLine = (partialLine + text).slice(-maxPartialLineBytes);
+    for (const line of partialLine.split("\n").slice(0, -1)) {
       if (line.trim()) log(line.trim());
     }
-    tail = tail.slice(tail.lastIndexOf("\n") + 1);
+    partialLine = partialLine.slice(partialLine.lastIndexOf("\n") + 1);
   });
+  return () => kept;
 }
 
 interface CollectedOutput {
@@ -334,7 +476,7 @@ function collect(child: ChildProcess & { stdout: Readable; stderr: Readable }, t
     child.stderr.on("data", (chunk: Buffer) => {
       // Only the tail is ever read, and only to name which of two things went
       // wrong. Keeping all of it would let a chatty failure grow without bound.
-      stderr = (stderr + chunk.toString("utf8")).slice(-8_000);
+      stderr = (stderr + chunk.toString("utf8")).slice(-maxStderrBytes);
     });
     child.on("error", () => settle({ code: null, stdout, stderr, spawnError: true }));
     child.on("close", (code) => settle({ code, stdout, stderr, spawnError: false }));

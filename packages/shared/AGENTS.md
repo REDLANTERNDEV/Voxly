@@ -165,10 +165,25 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   most lines is that the entry has gone and there is nothing left to look it up
   in. `trackTitle` is explicitly `null` for a pause and a resume rather than
   absent, as `MusicAnswer`'s `track` is.
-- `MusicSetLogAction` is the closed list of things a member can be said to have
-  done. A Track ending is not one of them — the log names who did something, and
-  nobody did that. A verb added here must be added to the server's validator and
-  to the browser's mapping; both are exhaustive so the build says so.
+- **`requestedByUserId` is `null` for exactly the three `MusicTrackFailure`
+  verbs**, and for nothing else. Nobody asked for a Track to fail, and the bot's
+  own account in that slot would read as somebody having pressed something — in
+  whatever the operator called it. The type cannot tie the emptiness to the
+  verb; what keeps it honest is that those three sentences name no member, so no
+  reader asks the field for one. Do not validate the pairing on the server:
+  which lines the bot writes about itself is the bot's knowledge, and a second
+  opinion there refuses a publish the bot was right to make. ADR-0011.
+- `MusicSetLogAction` is the closed list of things that can be said to have
+  happened to a Queue — the five a member can do, and the three ways a Track can
+  fail once its turn comes. A Track *ending* is not one of them: that is the
+  Queue working and there is nothing to explain. A verb added here must be added
+  to the server's validator and to the browser's mapping; both are exhaustive so
+  the build says so, which is what makes both languages mandatory.
+- **A failure's reason is the verb, never a field beside it.** `MusicTrackFailure`
+  is folded into `MusicSetLogAction` so each reason is one whole sentence per
+  language. A `failed` verb with a `reason` next to it would put the reason back
+  into a fragment substituted into an English sentence, which is the same
+  stitching the one-string-per-verb rule refuses. ADR-0011.
 - `MusicQueueEntry.requestedByUserId` is an id, and no nickname belongs beside
   it. The bot is handed ids and never sees a member list; every browser already
   holds the room's members and renders their current names. A nickname copied on

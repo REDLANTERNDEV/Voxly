@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { musicQueueMaxEntries, musicSetLogMaxLines } from "@voxly/shared";
+import { musicQueueMaxEntries, musicSetLogMaxLines, type MusicTrackFailure } from "@voxly/shared";
 import {
   advancePlayback,
   emptyPlayback,
@@ -84,6 +84,16 @@ const skipsHeadBy = (requestedByUserId: string) => (state: PlaybackState): Playb
   skips(state.entries[0]?.entryId ?? "nothing-is-playing", requestedByUserId);
 const removes = (entryId: string, requestedByUserId = "ada"): PlaybackEvent =>
   ({ kind: "removed", entryId, requestedByUserId, lineId: nextLineId() });
+
+/**
+ * The Track whose turn came would not play. Targeted like the other three, and
+ * the only one of them that names no member — nobody did this, which is the
+ * whole of what ADR-0011 had to decide.
+ */
+const fails = (entryId: string, reason: MusicTrackFailure = "failedUnavailable"): PlaybackEvent =>
+  ({ kind: "failed", entryId, reason, lineId: nextLineId() });
+const failsHead = (reason?: MusicTrackFailure) => (state: PlaybackState): PlaybackEvent =>
+  fails(state.entries[0]?.entryId ?? "nothing-is-playing", reason);
 
 /** The entry at a place in the Queue, so a test can name what it means to skip. */
 const idAt = (state: PlaybackState, index: number) => state.entries[index]!.entryId;
@@ -414,6 +424,103 @@ describe("a Track ending after the Queue moved on", () => {
 
     assert.deepEqual(ids(step.state), ["two"], "the Track the skip started is still there");
     assert.deepEqual(step.effects, []);
+  });
+});
+
+/**
+ * A Track that resolved an hour ago and will not play now.
+ *
+ * It is the fourth thing that moves the Queue past a Track, and it is the same
+ * rule as the other three: it names the entry it means, so one that arrives
+ * about a Track the room has already moved past changes nothing and succeeds.
+ * What is new is that it writes a line nobody asked for — the room is owed an
+ * explanation for a silence no member caused. ADR-0011.
+ */
+describe("a Track that will not play", () => {
+  const said = (state: PlaybackState) =>
+    state.log.map((line) => `${line.requestedByUserId} ${line.action} ${line.trackTitle ?? "-"}`);
+
+  it("moves past it and starts the next one", () => {
+    const { state, effects } = run([added("blocked"), added("fine"), failsHead()]);
+
+    assert.deepEqual(ids(state), ["fine"]);
+    assert.deepEqual(effects, [
+      { kind: "load", entry: state.entries[0] },
+      { kind: "play" },
+      { kind: "publish" }
+    ]);
+  });
+
+  it("writes a line that names the Track and no member", () => {
+    // The hole ADR-0008 left open. Nobody skipped this Track, so naming a
+    // member would say that somebody did — and the bot's own account in that
+    // slot would read as a person having pressed something.
+    const { state } = run([added("blocked"), added("fine"), failsHead()]);
+
+    assert.deepEqual(said(state), [
+      "null failedUnavailable Track blocked",
+      "ada added Track fine",
+      "ada added Track blocked"
+    ]);
+  });
+
+  it("says which of the three went wrong, in three different lines", () => {
+    // The fourth acceptance criterion, as far as the Queue is concerned: the
+    // reason is the verb, so a room can tell a blocked video from a source
+    // refusing the bot from the bot's own trouble.
+    const reasons: MusicTrackFailure[] = ["failedUnavailable", "failedSource", "failedBot"];
+    const written = reasons.map((reason) => run([added("one"), failsHead(reason)]).state.log[0]?.action);
+
+    assert.deepEqual(written, reasons);
+  });
+
+  it("goes quiet and empties when there is nothing behind it", () => {
+    // The player is still sounding whatever arrived before the fetch died, so
+    // this is the one branch that has to stop it.
+    const { state, effects } = run([added("blocked"), failsHead()]);
+
+    assert.deepEqual(ids(state), []);
+    assert.equal(state.playing, false);
+    assert.deepEqual(effects, [{ kind: "stop" }, { kind: "unload" }, { kind: "publish" }]);
+    assert.deepEqual(state.log.map((line) => line.action), ["failedUnavailable", "added"]);
+  });
+
+  it("leaves a paused Queue paused, and still explains itself", () => {
+    // ADR-0006 §4 said about a failure instead of a skip: this says which
+    // Track, not whether to play. Somebody who paused the music to talk should
+    // not have the next Track start under them because a fetch died.
+    const { state, effects } = run([added("blocked"), added("fine"), paused, failsHead()]);
+
+    assert.deepEqual(ids(state), ["fine"]);
+    assert.equal(state.playing, false);
+    assert.deepEqual(effects, [{ kind: "load", entry: state.entries[0] }, { kind: "publish" }]);
+    assert.equal(state.log[0]?.action, "failedUnavailable");
+  });
+
+  it("changes nothing when the Queue has already moved past that Track", () => {
+    // A member skipped the blocked Track before the fetch got round to failing
+    // on it. The failure is about a Track that is gone, and a line for it would
+    // explain a silence the room never heard, about a Track it has left behind.
+    const queued = run([added("blocked"), added("fine")]).state;
+    const wasPlaying = idAt(queued, 0);
+    const advanced = advancePlayback(queued, skips(wasPlaying)).state;
+
+    const step = advancePlayback(advanced, fails(wasPlaying));
+
+    assert.deepEqual(ids(step.state), ["fine"], "the Track the skip started is still there");
+    assert.deepEqual(step.effects, []);
+    assert.equal(step.state.log.length, advanced.log.length, "and the room is told nothing");
+  });
+
+  it("is not what an ordinary end is, which still writes nothing", () => {
+    // Kept beside each other on purpose. A Track that played out is the Queue
+    // working and there is nothing to explain; a Track that would not play is
+    // the one thing in this log that no member did.
+    const played = run([added("one"), added("two"), endsHead]).state;
+    const failed = run([added("one"), added("two"), failsHead()]).state;
+
+    assert.deepEqual(played.log.map((line) => line.action), ["added", "added"]);
+    assert.deepEqual(failed.log.map((line) => line.action), ["failedUnavailable", "added", "added"]);
   });
 });
 

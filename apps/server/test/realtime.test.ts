@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
 import { musicBotNickname, musicIdentifierMaxLength, musicSetLogMaxLines } from "@voxly/shared";
-import type { MusicCommand, MusicCommandAck, MusicControlAck, MusicPublishAck, VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck, VoiceSnapshot } from "@voxly/shared";
+import type { MusicCommand, MusicCommandAck, MusicControlAck, MusicPublishAck, MusicQueueState, VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck, VoiceSnapshot } from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 
 describe("Voxly realtime MVP", () => {
@@ -1764,6 +1764,43 @@ describe("music bot control", () => {
       { ok: false, error: "invalid_state" },
       "a verb nobody agreed on is not a thing a member can be said to have done"
     );
+  });
+
+  it("relays a line about a Track that would not play, which names no member", async () => {
+    // The bot writes three lines about itself, and they are the only ones on
+    // this payload with no member on them. The server holds no opinion about
+    // which verbs those are — a second copy of that rule here would refuse a
+    // publish the bot was right to make, and take the room's whole Queue with
+    // it. What it does check is that the shape is one everybody agreed on.
+    const owner = await bootstrapOwner(app);
+    const { botSocket } = await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    await joinVoice(ownerSocket, "lobby");
+    await joinVoice(botSocket, "lobby");
+
+    const relayed = new Promise<MusicQueueState>((resolve) => {
+      ownerSocket.once("music:queue", (payload: { roomId: string; state: MusicQueueState }) => resolve(payload.state));
+    });
+    const ack = await emitWithAck<MusicPublishAck>(botSocket, "music:publish", {
+      roomId: "lobby",
+      state: {
+        playing: false,
+        entries: [],
+        log: [
+          { lineId: "line-1", action: "failedUnavailable", requestedByUserId: null, trackTitle: "Nocturne" },
+          { lineId: "line-2", action: "failedSource", requestedByUserId: null, trackTitle: "Gymnopédie" },
+          { lineId: "line-3", action: "failedBot", requestedByUserId: null, trackTitle: "Clair de lune" }
+        ]
+      }
+    });
+
+    assert.deepEqual(ack, { ok: true });
+    assert.deepEqual((await relayed).log.map((line) => line.action), [
+      "failedUnavailable",
+      "failedSource",
+      "failedBot"
+    ]);
   });
 
   it("never writes the Set log down, anywhere", async () => {

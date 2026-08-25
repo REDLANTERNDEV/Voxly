@@ -3,7 +3,15 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { musicSearchResultsMax, musicTitleMaxLength } from "@voxly/shared";
-import { classifyExtractorFailure, parseSearchResults, parseTrackMetadata, resolverFor, youtubeVideoUrl } from "../src/track.js";
+import {
+  classifyExtractorFailure,
+  classifyFetchFailure,
+  parseSearchResults,
+  parseTrackMetadata,
+  resolverFor,
+  youtubeVideoUrl,
+  type TrackFetchOutcome
+} from "../src/track.js";
 import { resolveTimeoutMs, searchTimeoutMs } from "../src/stream.js";
 import { refusedExtractor, unavailableVideo } from "./fixtures/extractorFailures.js";
 
@@ -162,6 +170,144 @@ describe("reading why the extractor gave up", () => {
     // link is wrong" sends them to fix something that was never broken.
     assert.equal(classifyExtractorFailure("ERROR: something entirely new"), "extractor_failed");
     assert.equal(classifyExtractorFailure(""), "extractor_failed");
+  });
+});
+
+/**
+ * A Track that resolved perfectly at eight o'clock and will not play when its
+ * turn comes at nine. The pre-playback path never sees this one: `resolveTrack`
+ * asked the source an hour ago and got an answer.
+ *
+ * This is the whole of the rule, and it is here rather than in `stream.ts` for
+ * the reason written at the top of that file — the adapter has argument lists
+ * and timeouts in it, which only the real binaries can judge, while *which of
+ * three things to tell the room* is a decision a test can hold to account.
+ */
+describe("a Track that fails when its turn comes", () => {
+  /** A fetch that ran, delivered the whole Track, and stopped. */
+  const playedOut: TrackFetchOutcome = {
+    cancelled: false,
+    spawnFailed: false,
+    timedOut: false,
+    extractorStderr: "",
+    extractorCode: 0,
+    encoderCode: 0,
+    incomplete: false,
+    silent: false
+  };
+
+  it("says nothing about a Track that played out", () => {
+    assert.equal(classifyFetchFailure(playedOut), null);
+  });
+
+  it("says nothing when the Set moved on, however the processes ended", () => {
+    // A skip, a removal or the Set ending kills both programs mid-fetch, so
+    // every other signal here looks exactly like a failure. Telling the room a
+    // Track was blocked because somebody skipped it would be a line about a
+    // thing that did not happen.
+    assert.equal(
+      classifyFetchFailure({
+        ...playedOut,
+        cancelled: true,
+        extractorCode: null,
+        encoderCode: null,
+        incomplete: true,
+        silent: true
+      }),
+      null
+    );
+  });
+
+  it("blames the video for the failures a member can do something about", () => {
+    // The same words and the same classifier the pre-playback path uses: a
+    // second one beside it would be a second opinion about the source's own
+    // vocabulary, and the two would drift.
+    for (const [name, stderr] of Object.entries(unavailableVideo)) {
+      assert.equal(
+        classifyFetchFailure({ ...playedOut, extractorStderr: stderr, extractorCode: 1, encoderCode: 1 }),
+        "failedUnavailable",
+        name
+      );
+    }
+  });
+
+  it("blames the source when it is refusing the bot rather than hiding the Track", () => {
+    // The fourth acceptance criterion: a member who can tell these apart knows
+    // whether to find another Track or to wait, and one message for both sends
+    // half of them the wrong way.
+    for (const [name, stderr] of Object.entries(refusedExtractor)) {
+      assert.equal(
+        classifyFetchFailure({ ...playedOut, extractorStderr: stderr, extractorCode: 1, encoderCode: 1 }),
+        "failedSource",
+        name
+      );
+    }
+  });
+
+  it("reads the extractor's words even before its exit has arrived", () => {
+    // Two processes end within a tick of each other and the encoder's exit is
+    // what ends the fetch, so yt-dlp's own exit code may not have been
+    // delivered yet. Its `ERROR:` line has been.
+    assert.equal(
+      classifyFetchFailure({
+        ...playedOut,
+        extractorStderr: unavailableVideo.private,
+        extractorCode: null,
+        encoderCode: 1
+      }),
+      "failedUnavailable"
+    );
+  });
+
+  it("blames neither when the bot's own side is what broke", () => {
+    // `failedSource` renders as "YouTube is refusing the Music bot right now",
+    // so it must mean that. An ffmpeg nobody installed is a wait that never
+    // ends, and the person who can fix it is reading the bot's logs.
+    assert.equal(classifyFetchFailure({ ...playedOut, spawnFailed: true }), "failedBot");
+    assert.equal(classifyFetchFailure({ ...playedOut, timedOut: true, encoderCode: null }), "failedBot");
+    assert.equal(classifyFetchFailure({ ...playedOut, encoderCode: 1 }), "failedBot");
+    assert.equal(classifyFetchFailure({ ...playedOut, incomplete: true }), "failedBot");
+  });
+
+  it("does not mistake a fetch that produced nothing for a Track that played out", () => {
+    // The bug this ticket is about, in its most direct form. The encoder's exit
+    // is what ends a fetch, so the extractor's own exit code and the tail of
+    // its stderr can both still be in flight — and a fetch judged on those
+    // alone would look exactly like a Track the room had heard all of.
+    assert.equal(
+      classifyFetchFailure({ ...playedOut, silent: true, extractorCode: null, encoderCode: null }),
+      "failedBot"
+    );
+  });
+
+  it("still blames the video when a silent fetch says why", () => {
+    // Silence is the fallback, not the answer. Whenever the extractor's own
+    // words have arrived, they are what the room is told.
+    assert.equal(
+      classifyFetchFailure({
+        ...playedOut,
+        silent: true,
+        extractorStderr: unavailableVideo.geoBlocked,
+        extractorCode: 1,
+        encoderCode: 1
+      }),
+      "failedUnavailable"
+    );
+  });
+
+  it("blames the source, not the video, for words nobody has seen before", () => {
+    // The same safe direction `classifyExtractorFailure` already takes, arrived
+    // at from the other end: an unrecognised failure must not put "that video
+    // will not play" in front of a room about a Track that is perfectly fine.
+    assert.equal(
+      classifyFetchFailure({
+        ...playedOut,
+        extractorStderr: "ERROR: something entirely new",
+        extractorCode: 1,
+        encoderCode: 1
+      }),
+      "failedSource"
+    );
   });
 });
 

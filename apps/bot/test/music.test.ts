@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { musicQueueMaxEntries, type MusicCommand, type MusicQueueState, type VoiceForceLeaveReason } from "@voxly/shared";
+import {
+  musicQueueMaxEntries,
+  type MusicCommand,
+  type MusicQueueState,
+  type MusicTrackFailure,
+  type VoiceForceLeaveReason
+} from "@voxly/shared";
 import type { BotEnvironment } from "../src/config.js";
 import { createMusicResponder, gracePeriodMs } from "../src/music.js";
 import { TrackBuffer } from "../src/audio.js";
@@ -144,6 +150,8 @@ function harness(options: {
    */
   let scheduled = 0;
   const waits = new Map<number, { callback: () => void; milliseconds: number }>();
+  /** How each Track's fetch would say it had given up, keyed by Track. */
+  const fetchFailures = new Map<string, (failure: MusicTrackFailure) => void>();
   /** Every wait ever asked for, cancelled ones included. See `expireGracePeriodNumber`. */
   const everyWait: Array<() => void> = [];
   const responder = createMusicResponder({
@@ -169,8 +177,12 @@ function harness(options: {
       searched.push(name);
       return options.searchAs ?? { ok: true, results: [resultFor("aB3dE5gH7jK"), resultFor("qW8eR2tY6uI")] };
     },
-    fetch: (_environment, track): TrackAudio => {
+    fetch: (_environment, track, handlers): TrackAudio => {
       fetched.push(track.id);
+      // Held so a test can make the fetch give up on a Track that resolved
+      // perfectly an hour ago, which is the one failure the pre-playback path
+      // cannot see. The real one reports through exactly this callback.
+      fetchFailures.set(track.id, handlers.onFailure);
       return { buffer: new TrackBuffer(), cancel: () => cancelled.push(track.id) };
     },
     log: (message) => log.push(message),
@@ -199,6 +211,14 @@ function harness(options: {
     lastPublished: () => published.at(-1)?.state,
     /** The Track that is playing reached its end, as the player reports it. */
     endTrack: (roomId: string) => endTrack.get(roomId)?.(),
+    /**
+     * The fetch for a Track gave up. Not the same thing as the Track ending —
+     * that is what the whole ticket is about — so it is reported the way the
+     * real one reports it, through the fetch's own callback rather than
+     * through the player's end.
+     */
+    failFetch: (trackId: string, failure: MusicTrackFailure = "failedUnavailable") =>
+      fetchFailures.get(trackId)?.(failure),
     /**
      * Somebody joined or left the voice room the Set is in. The bot is not in
      * this list: the real Set takes itself out of the roster before reporting,
@@ -846,6 +866,105 @@ describe("skipping and removing", () => {
 
     assert.deepEqual(created[0]?.events, ["begin", "load", "play"]);
     assert.equal(responder.currentRoomId(), "lobby");
+  });
+});
+
+/**
+ * A Track that resolved perfectly and will not play when its turn comes.
+ *
+ * The pre-playback path never sees this one — `resolveTrack` asked the source
+ * an hour ago and got an answer — so everything here is about the seam between
+ * the fetch and the Queue. What the Queue then *does* with a failure is proved
+ * in `playback.test.ts` without a subprocess; what is proved here is that the
+ * failure reaches it at all, which is the bug ticket 13 is about.
+ */
+describe("a Track that will not play when its turn comes", () => {
+  it("moves on to the next Track and tells the room why", async () => {
+    const { responder, failFetch, fetched, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(add(otherLink), "lobby", ada);
+
+    failFetch("aB3dE5gH7jK");
+    // The failure is handled through the same chain as a command, so it has
+    // landed by the time the next request is answered.
+    await responder.handle(play, "lobby", ada);
+
+    assert.deepEqual(titles(lastPublished()), ["Track zY9xW7vU5tS"]);
+    assert.deepEqual(fetched, ["aB3dE5gH7jK", "zY9xW7vU5tS"], "the next Track is fetched");
+    assert.equal(lastPublished()?.log[0]?.action, "failedUnavailable");
+  });
+
+  it("writes a line naming the Track and nobody", async () => {
+    // The hole ADR-0008 left open, filled where it said it should be: no member
+    // did this, and the reason is the verb rather than a sentence on the wire.
+    const { responder, failFetch, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+
+    failFetch("aB3dE5gH7jK", "failedSource");
+    await responder.handle(play, "lobby", ada);
+
+    assert.deepEqual(lines(lastPublished()), [
+      "null failedSource Track aB3dE5gH7jK",
+      `${ada} added Track aB3dE5gH7jK`
+    ]);
+  });
+
+  it("says nothing when the Set moved past that Track first", async () => {
+    // A member skipped the Track before the fetch got round to failing on it.
+    // The rule is the Queue's and is proved without a responder in
+    // `playback.test.ts`; what is proved here is that a failure arriving from
+    // the *fetch* reaches it by the same targeted route a command does, and
+    // that nothing is published for one that changed nothing.
+    const { responder, failFetch, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(add(otherLink), "lobby", ada);
+    await responder.handle(skip("entry-1"), "lobby", ada);
+    const before = lastPublished()?.log.length ?? 0;
+
+    failFetch("aB3dE5gH7jK");
+    await responder.handle(play, "lobby", ada);
+
+    assert.deepEqual(titles(lastPublished()), ["Track zY9xW7vU5tS"], "the skip's Track is untouched");
+    assert.equal(lastPublished()?.log.length, before, "and nothing was added to the log");
+  });
+
+  it("explains nothing about a Track that played out", async () => {
+    // Kept beside the others on purpose. Every advance tears down the fetch
+    // behind the Track it moved past, so a teardown that reported itself would
+    // put a failure line behind every skip and every ordinary end.
+    const { responder, endTrack, cancelled, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(add(otherLink), "lobby", ada);
+
+    endTrack("lobby");
+    await responder.handle(play, "lobby", ada);
+
+    assert.deepEqual(cancelled, ["aB3dE5gH7jK"], "the finished Track's fetch was torn down");
+    assert.deepEqual(lastPublished()?.log.map((line) => line.action), ["added", "added"]);
+  });
+
+  it("keeps the line when the player then reports the end of the Track that failed", async () => {
+    // The pair `stream.ts` orders deliberately, asserted where the order is
+    // observable. Closing the buffer is what lets the player reach the end and
+    // report it, through this same chain — so the failure is reported first.
+    // Were it second, the end would advance with no line and the failure would
+    // arrive naming a Track already moved past, where ADR-0006's rule correctly
+    // makes it do nothing: the room would be left with the silence and no
+    // explanation, which is the bug this ticket exists to fix.
+    const { responder, failFetch, endTrack, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(add(otherLink), "lobby", ada);
+
+    failFetch("aB3dE5gH7jK");
+    endTrack("lobby");
+    await responder.handle(play, "lobby", ada);
+
+    assert.deepEqual(titles(lastPublished()), ["Track zY9xW7vU5tS"], "the end did not advance a second time");
+    assert.equal(
+      lines(lastPublished()).filter((line) => line.includes("failed")).length,
+      1,
+      "and the explanation survived the end that followed it"
+    );
   });
 });
 

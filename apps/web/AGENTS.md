@@ -432,6 +432,12 @@ requirement.
   stand-in. Do not mistake it for the exception below: everyone in the channel
   must read the same explanation for the same silence, or a line answers one
   member's question and not the other four's. ADR-0008.
+- **Three of the verbs name nobody, and their sentences must not.** A line whose
+  `requestedByUserId` is `null` is the bot saying a Track would not play. Do not
+  reach for `music.requesterUnknown` there — that stand-in is for a member who
+  really was in the room and has gone, and putting it in front of a failure
+  invents a person. The three sentences have no subject at all, which is what
+  makes the empty field safe to read. ADR-0011.
 - **The Set log goes last, below the transport controls.** Everything in this
   panel grows the page, but the Queue grows only when somebody adds while the
   log grows on every press anyone makes — including a pause that changes nothing

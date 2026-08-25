@@ -394,14 +394,41 @@ export const musicIdentifierMaxLength = 64;
 export const musicSetLogMaxLines = 20;
 
 /**
- * What a member did to the Queue.
+ * Why a Track the Queue reached could not be played, as the room is told it.
  *
- * Exactly the five things a member can do that change it, and no more. A Track
- * ending is not here: the log names who did something, and nobody ended it. The
- * same goes for the Set being torn down — the log does not survive that to
- * describe it.
+ * The reason is the verb rather than a field beside one, because the sentence
+ * differs all the way through in both languages and a line assembled out of "a
+ * Track failed" plus a translated fragment is exactly the fragment-stitching
+ * ADR-0008 §5 refuses. One member here is one whole sentence per language, and
+ * both are made mandatory by the browser's exhaustive switch.
+ *
+ * Three rather than two because the third is not a kind of the other two.
+ * `failedUnavailable` sends a member to find another Track, `failedSource`
+ * sends the room to wait, and `failedBot` sends whoever hosts the server to its
+ * logs — and telling a room to wait out an ffmpeg nobody installed is a wait
+ * that never ends. They are the three answers `MusicCommandAck` already gives a
+ * member whose link would not resolve, said about a Track whose turn came.
  */
-export type MusicSetLogAction = "added" | "skipped" | "removed" | "paused" | "resumed";
+export type MusicTrackFailure = "failedUnavailable" | "failedSource" | "failedBot";
+
+/**
+ * What happened to the Queue, as one line of the Set log.
+ *
+ * The five things a member can do that change it, and the three ways a Track
+ * can fail once its turn comes. A Track that ends of its own accord is not
+ * here: that is the Queue working, and there is nothing to explain. Neither is
+ * the Set being torn down — the log does not survive that to describe it.
+ *
+ * The five name a member and the three do not, which is the one thing every
+ * consumer has to read this union for. ADR-0011.
+ */
+export type MusicSetLogAction =
+  | "added"
+  | "skipped"
+  | "removed"
+  | "paused"
+  | "resumed"
+  | MusicTrackFailure;
 
 /**
  * One line of the Set log: a member, a verb, and the Track it was about.
@@ -425,7 +452,20 @@ export interface MusicSetLogLine {
    */
   lineId: string;
   action: MusicSetLogAction;
-  requestedByUserId: string;
+  /**
+   * The member who asked for this, or `null` where nobody did.
+   *
+   * Null exactly for the three `MusicTrackFailure` verbs, which is the hole
+   * ADR-0008 left open and ADR-0011 fills: a Track that will not play is the
+   * bot reporting on itself, and there is no member whose name belongs in that
+   * sentence. Naming the bot's own account instead would read as somebody
+   * having pressed something, in whatever the operator called the account.
+   *
+   * The type cannot tie the two together and does not try. What keeps it
+   * honest is that the failure sentences name no member at all, so a reader
+   * never asks this field for one.
+   */
+  requestedByUserId: string | null;
   /**
    * The Track the action was about, or `null` for a pause or a resume, which
    * are about the Queue rather than about any one Track. Explicitly null rather

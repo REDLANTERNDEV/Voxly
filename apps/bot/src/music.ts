@@ -31,7 +31,13 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { MusicCommand, MusicCommandAck, MusicQueueState, VoiceForceLeaveReason } from "@voxly/shared";
+import type {
+  MusicCommand,
+  MusicCommandAck,
+  MusicQueueState,
+  MusicTrackFailure,
+  VoiceForceLeaveReason
+} from "@voxly/shared";
 import type { BotEnvironment } from "./config.js";
 import {
   additionRefusal,
@@ -280,10 +286,34 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
   function startFetch(current: MusicSet, entry: QueueEntry) {
     const { track } = entry;
     releaseAudio();
-    audio = fetchAudio(options.environment, track, log);
+    audio = fetchAudio(options.environment, track, {
+      log,
+      onFailure: (failure) => reportFailure(current, entry.entryId, failure)
+    });
     loadedEntryId = entry.entryId;
     current.loadTrack(audio.buffer);
     log(`playing ${track.id} (${track.title}), ${track.durationSeconds}s`);
+  }
+
+  /**
+   * A Track that resolved an hour ago and will not play now.
+   *
+   * The Set moving on is what tears a fetch down, so this only ever arrives for
+   * a fetch that really gave up — `cancel` reports nothing. It still names the
+   * entry rather than "whatever is playing", for the same reason an end does: a
+   * skip can reach the Queue first, and a failure about a Track the room has
+   * already left behind must change nothing (ADR-0006).
+   *
+   * Through the same chain as a command, so it cannot land halfway through a
+   * Summon that is already running — and so that it is ahead of the end the
+   * player is about to report for the same Track, which `stream.ts` guarantees
+   * by reporting before it closes the buffer.
+   */
+  function reportFailure(current: MusicSet, entryId: string, failure: MusicTrackFailure) {
+    queue = queue.then(() => {
+      if (set !== current) return;
+      advance(current, { kind: "failed", entryId, reason: failure, lineId: mintLineId() });
+    }).catch(() => undefined);
   }
 
   async function endCurrentSet() {

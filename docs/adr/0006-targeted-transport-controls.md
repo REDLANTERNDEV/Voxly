@@ -170,3 +170,10 @@ now the easiest way to produce one on demand. A Track that fails mid-playback is
 ticket 13 and will be another event through the same targeted path. The Set log
 is ticket 11, and it is what will let the room see *that* somebody skipped
 rather than only hearing the result.
+
+**Both arrived.** The Set log is ADR-0008. A failed Track is ADR-0011, and it is
+the fourth event through this path exactly as expected: it names the entry it
+means, and one that arrives about a Track the Queue has already moved past
+changes nothing and succeeds. It is also the second way to produce a Track
+boundary on demand, and the only one that does it without anybody pressing
+anything — which is now the easiest way to take the measurement above.
