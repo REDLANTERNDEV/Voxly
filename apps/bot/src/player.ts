@@ -133,14 +133,16 @@ export class TrackPlayer {
 
   start() {
     if (this.isPlaying || !this.source) return;
-    // Play on a Track that already finished plays it again, from the start.
-    // The alternative is a control that is visible, enabled, and does nothing —
-    // which from the outside is indistinguishable from a broken one. The audio
-    // is still buffered, so this costs no second fetch.
-    if (this.ended) {
-      this.ended = false;
-      this.sentFrames = 0;
-    }
+    // A Track that already reached its end is not played again from here.
+    //
+    // This used to replay it, on the grounds that a Play button which did
+    // nothing would look broken. The Queue took that argument away: what
+    // follows a Track is the Queue's answer, and a `play` for audio the Queue
+    // has not just loaded can only be a mistake above. Replaying then means the
+    // room hears the wrong Track, which is a worse failure than hearing
+    // nothing and a much harder one to recognise. Loading a Track clears this,
+    // so every real advance still plays.
+    if (this.ended) return;
     this.isPlaying = true;
     this.rebaseClock();
     // Tick faster than the frame rate and send whatever is due. A 20 ms

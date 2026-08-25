@@ -50,8 +50,18 @@ export interface PlaybackState {
 export type PlaybackEvent =
   /** A member's link resolved to a Track and it goes on the end. */
   | { kind: "added"; entry: QueueEntry }
-  /** The Track that was playing reached its end of its own accord. */
-  | { kind: "ended" }
+  /**
+   * The Track that was playing reached its end of its own accord. It names the
+   * entry that ended for the same reason a skip does: the player reports an end
+   * for the Track it was handed, and by the time that arrives a skip may
+   * already have moved past it. Acting on it then would drop the Track that had
+   * just started.
+   */
+  | { kind: "ended"; entryId: string }
+  /** A member asked to move past the Track they believe is playing. */
+  | { kind: "skipped"; entryId: string }
+  /** A member asked for one entry to leave the Queue, wherever it is in it. */
+  | { kind: "removed"; entryId: string }
   | { kind: "paused" }
   | { kind: "resumed" }
   /** The Set is over: the Queue is discarded and nothing survives it. */
@@ -64,8 +74,13 @@ export type PlaybackEvent =
  * the media path leaves this vocabulary alone.
  */
 export type PlaybackEffect =
-  /** Fetch this Track and load it, replacing whatever was loaded before. */
-  | { kind: "load"; track: Track }
+  /**
+   * Fetch this entry's Track and load it, replacing whatever was loaded before.
+   * The whole entry rather than its Track, because the imperative half has to be
+   * able to say *which* entry ended when the player reports an end — and a Track
+   * cannot say that, two members queueing the same link being two entries.
+   */
+  | { kind: "load"; entry: QueueEntry }
   /** Abandon the fetch behind whatever was loaded. Nothing is loaded now. */
   | { kind: "unload" }
   | { kind: "play" }
@@ -115,7 +130,14 @@ export function advancePlayback(state: PlaybackState, event: PlaybackEvent): Pla
     case "added":
       return add(state, event.entry);
     case "ended":
-      return end(state);
+      // A Track ending is the Queue advancing past it, with the player already
+      // stopped of its own accord — which is the only thing that tells it apart
+      // from a skip.
+      return advancePast(state, event.entryId, { playerStillSounding: false });
+    case "skipped":
+      return advancePast(state, event.entryId, { playerStillSounding: state.playing });
+    case "removed":
+      return remove(state, event.entryId);
     case "paused":
       return pause(state);
     case "resumed":
@@ -165,21 +187,75 @@ function add(state: PlaybackState, entry: QueueEntry): PlaybackStep {
   }
   return {
     state: { entries, playing: true },
-    effects: [{ kind: "load", track: entry.track }, { kind: "play" }, { kind: "publish" }]
+    effects: [{ kind: "load", entry }, { kind: "play" }, { kind: "publish" }]
   };
 }
 
-function end(state: PlaybackState): PlaybackStep {
-  if (state.entries.length === 0) return { state, effects: [] };
+/**
+ * Move past the Track at the head, if that is still the Track being named.
+ *
+ * The targeting is the whole answer to two members pressing skip at the same
+ * moment, and it needs no lock and no sequence number: the second request
+ * arrives to find that the Track it named is not at the head any more, and
+ * doing nothing is exactly right — the member asked for that Track to stop
+ * playing, and it has. So it succeeds, silently, and the Queue does not move
+ * twice for one intention.
+ *
+ * It is also why nothing is refused here. A refusal would put a sentence in
+ * front of somebody who got what they wanted, and the room is told nothing
+ * because nothing changed, which leaves every client showing what the bot
+ * shows.
+ *
+ * `playing` survives the move. Skipping says *which Track*, not *whether to
+ * play*: somebody who paused the music to talk should not have the next one
+ * start under them. The next Track is still loaded, though, so resuming plays
+ * it rather than replaying the one that was skipped.
+ */
+function advancePast(
+  state: PlaybackState,
+  entryId: string,
+  options: { playerStillSounding: boolean }
+): PlaybackStep {
+  if (state.entries[0]?.entryId !== entryId) return { state, effects: [] };
   const entries = state.entries.slice(1);
   const next = entries[0];
+  // Only when something is really being taken away mid-flight. A Track that
+  // ended of its own accord left the player stopped already, and a paused Queue
+  // has nothing sounding to stop.
+  const silence: PlaybackEffect[] = options.playerStillSounding ? [{ kind: "stop" }] : [];
   if (!next) {
-    return { state: { entries, playing: false }, effects: [{ kind: "unload" }, { kind: "publish" }] };
+    return {
+      state: { entries, playing: false },
+      effects: [...silence, { kind: "unload" }, { kind: "publish" }]
+    };
   }
   return {
-    state: { entries, playing: true },
-    effects: [{ kind: "load", track: next.track }, { kind: "play" }, { kind: "publish" }]
+    state: { entries, playing: state.playing },
+    effects: [
+      { kind: "load", entry: next },
+      ...(state.playing ? [{ kind: "play" } as const] : []),
+      { kind: "publish" }
+    ]
   };
+}
+
+/**
+ * Take one entry out, wherever it is in the Queue.
+ *
+ * Removing the head is skipping it — the Track being taken away is the one
+ * sounding, so the Queue has to move on — and that is one rule rather than two
+ * that could disagree. Removing anything else touches the list and nothing
+ * else: the player is not disturbed by a change happening behind it.
+ *
+ * An entry the Queue no longer holds is not an error, for the same reason a
+ * late skip is not: the member wanted it gone and it is gone.
+ */
+function remove(state: PlaybackState, entryId: string): PlaybackStep {
+  const index = state.entries.findIndex((item) => item.entryId === entryId);
+  if (index < 0) return { state, effects: [] };
+  if (index === 0) return advancePast(state, entryId, { playerStillSounding: state.playing });
+  const entries = [...state.entries.slice(0, index), ...state.entries.slice(index + 1)];
+  return { state: { entries, playing: state.playing }, effects: [{ kind: "publish" }] };
 }
 
 function pause(state: PlaybackState): PlaybackStep {

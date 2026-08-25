@@ -7,13 +7,14 @@ import {
   isSendableLink,
   musicBotIn,
   musicErrorKey,
-  musicPanelState,
   musicQueueFor,
   musicQueueRows,
-  offersStop,
+  musicRestingKey,
+  musicTransport,
   requestMusicCommand,
   trackAddedMessage,
-  trackLength
+  trackLength,
+  transportToggleCommand
 } from "../src/lib/musicBot.js";
 
 const musicPanel = readFileSync("src/features/voice/MusicPanel.tsx", "utf8");
@@ -45,28 +46,74 @@ describe("finding the Music bot in a room", () => {
   });
 });
 
-describe("what the panel is looking at", () => {
-  it("reads the bot's own speaking report, the same as anyone else's", () => {
-    assert.equal(musicPanelState({ ...bot, media: { ...bot.media, speaking: true } }), "playing");
-    assert.equal(musicPanelState(bot), "idle");
-    assert.equal(musicPanelState(undefined), "absent");
+describe("what the transport controls are looking at", () => {
+  const entry = (entryId: string) => ({
+    entryId,
+    requestedByUserId: "ada",
+    track: { id: entryId, title: `Track ${entryId}`, durationSeconds: 60 }
+  });
+  const sounding: MusicQueueState = { playing: true, entries: [entry("a"), entry("b")] };
+  const halted: MusicQueueState = { playing: false, entries: [entry("a")] };
+  const mutedBot = { ...bot, moderation: { muted: true, deafened: false } };
+
+  it("reads whether the music is playing from the Queue, not from the bot's speaking flag", () => {
+    // The two can disagree — the server clamps `speaking` off for a muted
+    // member, and they arrive in separate messages — and the Queue's own rows
+    // already read the Queue. One fact, one publisher, one message.
+    const talking = { ...bot, media: { ...bot.media, speaking: true } };
+
+    assert.equal(musicTransport(talking, halted).playing, false, "a paused Queue is paused whatever the flag says");
+    assert.equal(musicTransport(bot, sounding).playing, true, "and a playing one is playing");
   });
 
-  it("treats a muted bot as its own state, not as idle", () => {
-    // The server clamps `speaking` off for a muted member, but media is
-    // peer-to-peer so the mute does not stop the packets. Calling that idle
-    // would offer Play for a bot that may well still be audible.
-    const muted = { ...bot, moderation: { muted: true, deafened: false } };
-
-    assert.equal(musicPanelState(muted), "muted");
-    assert.equal(musicPanelState({ ...muted, media: { ...bot.media, speaking: true } }), "muted");
+  it("names the entry Play, Pause and Skip act on", () => {
+    assert.equal(musicTransport(bot, sounding).currentEntryId, "a", "the head, which is what a skip targets");
+    assert.equal(musicTransport(bot, null).currentEntryId, null);
+    assert.equal(musicTransport(bot, { playing: false, entries: [] }).currentEntryId, null);
   });
 
-  it("offers to stop whenever pressing play could do nothing", () => {
-    assert.equal(offersStop("playing"), true);
-    assert.equal(offersStop("muted"), true, "stopping is the request that always takes effect");
-    assert.equal(offersStop("idle"), false);
-    assert.equal(offersStop("absent"), false);
+  it("never calls an empty Queue playing, whatever it was told", () => {
+    // A Queue with nothing in it and `playing` true is not a state the bot
+    // produces, and the panel must not offer Pause for it either way.
+    assert.equal(musicTransport(bot, { playing: true, entries: [] }).playing, false);
+  });
+
+  it("says whether a bot is here at all", () => {
+    assert.equal(musicTransport(bot, null).present, true);
+    assert.equal(musicTransport(undefined, sounding).present, false);
+  });
+
+  it("keeps an owner's mute as information rather than as a button state", () => {
+    // Media is peer-to-peer, so the mute does not by itself stop the bot's
+    // packets and a member is owed that sentence. What the button offers still
+    // comes from the Queue, which can now say whether there is anything to
+    // pause — so a muted bot with music running still offers Pause.
+    const transport = musicTransport(mutedBot, sounding);
+
+    assert.equal(transport.muted, true);
+    assert.equal(transport.playing, true);
+    assert.equal(musicRestingKey(transport), "music.muted");
+  });
+
+  it("only mentions the mute while something is playing", () => {
+    // The sentence tells the member to pause the bot, and Pause is offered only
+    // for a Queue that is running. Saying it over a paused or empty Queue would
+    // point at a control that is disabled or that says the opposite.
+    assert.equal(musicRestingKey(musicTransport(mutedBot, halted)), "music.paused");
+    assert.equal(musicRestingKey(musicTransport(mutedBot, null)), "music.idle");
+    assert.match(translate("en", "music.muted"), /Pause/, "the sentence names the control it means");
+  });
+
+  it("says what the room is doing when nobody has just asked for anything", () => {
+    assert.equal(musicRestingKey(musicTransport(bot, sounding)), "music.playing");
+    assert.equal(musicRestingKey(musicTransport(bot, halted)), "music.paused");
+    assert.equal(musicRestingKey(musicTransport(bot, null)), "music.idle");
+    assert.equal(musicRestingKey(musicTransport(undefined, null)), "music.idle");
+  });
+
+  it("asks for the half of the toggle the member cannot see", () => {
+    assert.deepEqual(transportToggleCommand(musicTransport(bot, sounding)), { kind: "stop" });
+    assert.deepEqual(transportToggleCommand(musicTransport(bot, halted)), { kind: "play" });
   });
 });
 
@@ -103,6 +150,18 @@ describe("asking for music", () => {
       assert.deepEqual(await requestMusicCommand(socket, "lobby", { kind }), { ok: true, track: null });
     }
     assert.deepEqual(sent.map((entry) => entry.command.kind), ["play", "stop", "leave"]);
+  });
+
+  it("sends a skip and a removal with the entry they name", async () => {
+    const { sent, socket } = socketDouble();
+
+    await requestMusicCommand(socket, "lobby", { kind: "skip", entryId: "entry-1" });
+    await requestMusicCommand(socket, "lobby", { kind: "remove", entryId: "entry-2" });
+
+    assert.deepEqual(sent.map((entry) => entry.command), [
+      { kind: "skip", entryId: "entry-1" },
+      { kind: "remove", entryId: "entry-2" }
+    ]);
   });
 
   it("answers without a round trip when there is no socket or no room", async () => {
@@ -183,9 +242,13 @@ describe("what a refusal says", () => {
       "music.linkPlaceholder",
       "music.add",
       "music.play",
-      "music.stop",
+      "music.pause",
+      "music.skip",
+      "music.remove",
+      "music.removeTrack",
       "music.leave",
       "music.playing",
+      "music.paused",
       "music.idle",
       "music.muted",
       "music.summoning",
@@ -390,15 +453,34 @@ describe("the control's placement", () => {
     assert.match(voiceRoom, /viewedRoomId && props\.activeVoiceRoomId === viewedRoomId \? \(\s*<MusicPanel/);
   });
 
-  it("reads playback from the room snapshot rather than remembering a press", () => {
+  it("reads playback from the published Queue rather than remembering a press", () => {
     assert.match(musicPanel, /const bot = musicBotIn\(members\);/);
-    assert.match(musicPanel, /const state = musicPanelState\(bot\);/);
+    assert.match(musicPanel, /const transport = musicTransport\(bot, queue\);/);
+    assert.doesNotMatch(musicPanel, /media\.speaking/, "the buttons and the rows read one fact, not two");
   });
 
   it("offers the transport controls only once the bot is here", () => {
     // Before that there is nothing to stop and nothing to resume, and a Play
-    // button that did nothing would look exactly like a broken one.
-    assert.match(musicPanel, /\{bot \? \(/);
+    // button that did nothing would look exactly like a broken one. Read from
+    // the same helper the rest of the controls read, so there is one answer to
+    // "what are these looking at" rather than two that could part company.
+    assert.match(musicPanel, /\{transport\.present \? \(/);
+  });
+
+  it("goes quiet when there is nothing queued to act on", () => {
+    assert.match(musicPanel, /const transportDisabled = busy \|\| !transport\.currentEntryId;/);
+    assert.match(musicPanel, /disabled=\{transportDisabled\}/);
+  });
+
+  it("catches the keyboard when the control a member pressed goes away", () => {
+    // Skipping the last Track disables the button under the cursor and removing
+    // a row unmounts it; either way the browser drops focus to the document and
+    // a keyboard user is left at the top of the page. Only this client's own
+    // press counts — pulling focus for somebody else's skip would be worse.
+    assert.match(musicPanel, /droppedFocus\.current = command\.kind === "skip" \|\| command\.kind === "remove";/);
+    assert.match(musicPanel, /if \(document\.activeElement === document\.body\) linkRef\.current\?\.focus\(\);/);
+    assert.match(musicPanel, /\}, \[rows\.length\]\);/);
+    assert.match(musicPanel, /ref=\{linkRef\}/);
   });
 
   it("takes the link through a form, so Enter submits it", () => {
@@ -418,6 +500,44 @@ describe("the control's placement", () => {
 
   it("announces status changes to a screen reader", () => {
     assert.match(musicPanel, /aria-live="polite"/);
-    assert.match(musicPanel, /aria-pressed=\{state === "playing"\}/);
+    assert.match(musicPanel, /const resting = t\(musicRestingKey\(transport\)\);/);
+  });
+
+  it("labels the one toggle by what pressing it does, and not also by a state", () => {
+    // "Pause, pressed" leaves a listener working out whether the music is
+    // running or stopped — the one thing the label has already told them.
+    assert.match(musicPanel, /\{transport\.playing \? t\("music\.pause"\) : t\("music\.play"\)\}/);
+    assert.match(musicPanel, /onClick=\{\(\) => void send\(transportToggleCommand\(transport\)\)\}/);
+    assert.doesNotMatch(musicPanel, /aria-pressed/);
+  });
+
+  it("skips by naming the entry it believes is playing", () => {
+    // Not "skip whatever is at the head now": a panel one message out of date
+    // must skip nothing rather than skip the Track that moved up into place.
+    assert.match(musicPanel, /void send\(\{ kind: "skip", entryId: transport\.currentEntryId \}\);/);
+    assert.match(musicPanel, /\{t\("music\.skip"\)\}/);
+  });
+
+  it("gives every row a remove control that names its own Track", () => {
+    // A column of buttons all called "Remove" tells a screen-reader user
+    // nothing about which Track they are about to lose.
+    assert.match(musicPanel, /aria-label=\{t\("music\.removeTrack", \{ title: row\.title \}\)\}/);
+    assert.match(musicPanel, /void send\(\{ kind: "remove", entryId: row\.entryId \}\)/);
+    assert.match(musicPanel, /<button[^>]*\n?[\s\S]{0,300}?className="btn btn-ghost music-queue-remove"/);
+    assert.match(musicPanel, /title=\{t\("music\.remove"\)\}/, "and a short one on hover, as the chat row controls do");
+    assert.match(styles, /\.music-queue-remove \{[^}]*inline-size:/);
+    // The global `button:disabled` already dims and re-cursors every button.
+    assert.doesNotMatch(styles, /\.music-queue-remove:disabled/);
+  });
+
+  it("keeps every control a real button, so the keyboard reaches all of them", () => {
+    // No div-with-onClick anywhere in the panel: `type="button"` on each one is
+    // also what stops a control inside the link form submitting it.
+    const buttons = musicPanel.match(/<button/g) ?? [];
+    const typed = musicPanel.match(/type="(?:button|submit)"/g) ?? [];
+
+    assert.equal(buttons.length, 5, "add, play/pause, skip, send away, and one per Queue row");
+    assert.equal(typed.length, buttons.length);
+    assert.doesNotMatch(musicPanel, /<(?:div|span|li)[^>]*onClick/);
   });
 });

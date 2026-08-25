@@ -84,6 +84,8 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | The music command vocabulary and how a refusal reaches the member | `packages/shared/AGENTS.md` — Music Contracts |
 | How the Queue reaches every member in the room, and who may publish it | ADR-0005; `apps/server/AGENTS.md` — The Music Bot; `packages/shared/AGENTS.md` — Music Contracts |
 | What the Queue does when a Track is added, ends, or is paused | `apps/bot/AGENTS.md` — The Queue |
+| Pausing, skipping and removing, and what a stale request does | ADR-0006; `apps/bot/AGENTS.md` — The Queue; `packages/shared/AGENTS.md` — Music Contracts |
+| Which fact the Music panel's transport controls read | ADR-0006; `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
 
 ## Repository Map
 

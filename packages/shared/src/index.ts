@@ -236,6 +236,21 @@ export type MusicCommand =
   | { kind: "add"; url: string }
   | { kind: "play" }
   | { kind: "stop" }
+  /**
+   * Move past the Track the asker believes is playing, naming it. The entry and
+   * not the position, because by the time this arrives the Queue may have moved
+   * on: a skip whose target is no longer the head succeeds and advances
+   * nothing, which is what makes two members pressing skip together cost one
+   * Track rather than two. See ADR-0006.
+   */
+  | { kind: "skip"; entryId: string }
+  /**
+   * Take one entry out of the Queue, wherever it is. Naming the entry and not
+   * the position for the same reason a skip does — a Track that ended while the
+   * request was in flight must not turn a removal into the removal of whatever
+   * moved up into its place.
+   */
+  | { kind: "remove"; entryId: string }
   | { kind: "leave" };
 
 /**

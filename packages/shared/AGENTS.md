@@ -85,11 +85,12 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   verb. Every one of them is the same request — this room, this instruction —
   and the transport rules do not vary between them. Extend the union rather than
   adding an event beside it.
-- `MusicCommand` is a discriminated union on `kind`, because `add` carries the
-  link it names and the others carry nothing. Do not flatten it back to a verb
-  plus an optional `url`: that makes the field optional everywhere in order to
-  be absent in three cases out of four, and nothing then stops a `stop` arriving
-  with a link on it. A new verb that needs data is a new member here.
+- `MusicCommand` is a discriminated union on `kind`, because the verbs that
+  carry data carry different data: `add` names a link, `skip` and `remove` name
+  a Queue entry, and `play`, `stop` and `leave` name nothing. Do not flatten it
+  back to a verb plus optional fields — each one would be optional everywhere in
+  order to be absent in most cases, and nothing would then stop a `stop`
+  arriving with a link on it. A new verb that needs data is a new member here.
 - `music:command` is server-to-client and is only ever delivered to a Music bot
   account. It carries the room the request names, so a command that raced a move
   can be ignored rather than applied to the wrong Set. It is delivered to one
@@ -129,6 +130,13 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
 - `entryId` identifies the entry, not the Track. Two members queueing the same
   link are two entries, and either can be skipped or removed without the other
   going with it. It is meaningless outside the Set that minted it.
+- **`skip` and `remove` carry the entry they mean, and are two verbs on purpose.**
+  Naming an entry rather than a position is what makes two members pressing skip
+  at the same moment cost one Track: the second request finds the Track it named
+  already gone and succeeds without advancing. They stay apart because a skip
+  may only move past the *head* while a removal takes out the entry it names
+  wherever it sits — so a stale Skip press can never delete a Track somebody is
+  still waiting for. ADR-0006 records both.
 - One bound for every opaque identifier on this wire (`musicIdentifierMaxLength`)
   — the `entryId`, the source's id for a Track, the Requester's user id. They
   are the same kind of thing to everyone handling them, and a second constant

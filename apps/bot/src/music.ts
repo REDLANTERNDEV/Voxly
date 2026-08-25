@@ -34,7 +34,8 @@ import {
   publishedQueue,
   type PlaybackEffect,
   type PlaybackEvent,
-  type PlaybackState
+  type PlaybackState,
+  type QueueEntry
 } from "./playback.js";
 import { createMusicSet, type MusicSet, type SetSocket } from "./set.js";
 import { fetchTrackAudio, resolveTrack, type TrackAudio } from "./stream.js";
@@ -83,6 +84,14 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
   let audio: TrackAudio | null = null;
   let playback: PlaybackState = emptyPlayback();
   let queue: Promise<void> = Promise.resolve();
+  /**
+   * The entry whose Track the player is holding, so that an end reported by the
+   * player can name it. The player knows about audio and nothing about the
+   * Queue, and by the time its report has waited its turn in the chain a skip
+   * may already have moved on — in which case the end belongs to a Track that
+   * is gone, and acting on it would drop the one that had just started.
+   */
+  let loadedEntryId: string | null = null;
 
   /**
    * Abandons the fetch behind whatever was playing. A Track that has been
@@ -92,6 +101,7 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
   function releaseAudio() {
     audio?.cancel();
     audio = null;
+    loadedEntryId = null;
   }
 
   function publishTo(roomId: string) {
@@ -109,7 +119,7 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
     for (const effect of effects) {
       switch (effect.kind) {
         case "load":
-          startFetch(current, effect.track);
+          startFetch(current, effect.entry);
           break;
         case "unload":
           releaseAudio();
@@ -151,9 +161,11 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
     return step;
   }
 
-  function startFetch(current: MusicSet, track: Track) {
+  function startFetch(current: MusicSet, entry: QueueEntry) {
+    const { track } = entry;
     releaseAudio();
     audio = fetchAudio(options.environment, track, log);
+    loadedEntryId = entry.entryId;
     current.loadTrack(audio.buffer);
     log(`playing ${track.id} (${track.title}), ${track.durationSeconds}s`);
   }
@@ -220,10 +232,15 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
       selfUserId: options.selfUserId,
       iceServers,
       onTrackEnded: () => {
+        // The Track the player was holding when it reached the end, named here
+        // rather than read as "whatever is at the head now" — those are the
+        // same entry only when nothing happened in between, and a skip landing
+        // in that window is exactly what this has to survive.
+        const ended = loadedEntryId;
         // Through the same chain as a command: a Track ending while a Summon is
         // half-finished must not advance a Queue that is still being changed.
         queue = queue.then(() => {
-          if (set === started) advance(started, { kind: "ended" });
+          if (set === started && ended) advance(started, { kind: "ended", entryId: ended });
         }).catch(() => undefined);
       },
       // Somebody arrived or left. Whoever just walked in has no Queue yet, and
@@ -290,6 +307,16 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
         return acknowledged;
       case "stop":
         advance(set, { kind: "paused" });
+        return acknowledged;
+      // Both name the entry they mean rather than a position, and both succeed
+      // when that entry has already gone. See ADR-0006: that is what makes two
+      // members pressing skip together cost one Track rather than two, and it
+      // is the Queue's rule, so it is decided in `playback.ts` and not here.
+      case "skip":
+        advance(set, { kind: "skipped", entryId: command.entryId });
+        return acknowledged;
+      case "remove":
+        advance(set, { kind: "removed", entryId: command.entryId });
         return acknowledged;
       case "leave":
         await endCurrentSet();

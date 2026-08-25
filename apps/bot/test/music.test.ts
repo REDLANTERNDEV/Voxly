@@ -32,6 +32,13 @@ const add = (url = link): MusicCommand => ({ kind: "add", url });
 const play: MusicCommand = { kind: "play" };
 const stop: MusicCommand = { kind: "stop" };
 const leave: MusicCommand = { kind: "leave" };
+/**
+ * Both verbs name an entry, and the harness mints them in order — `entry-1` is
+ * the first Track added, `entry-2` the second. Naming them literally is what
+ * lets a test hold a *stale* one, which is the case that matters.
+ */
+const skip = (entryId: string): MusicCommand => ({ kind: "skip", entryId });
+const remove = (entryId: string): MusicCommand => ({ kind: "remove", entryId });
 
 function trackFor(id: string) {
   return {
@@ -399,10 +406,119 @@ describe("stopping and leaving", () => {
     // Only `add` summons, so none of these puts a bot in the channel.
     const { responder, created } = harness();
 
-    for (const command of [play, stop, leave]) {
+    for (const command of [play, stop, skip("entry-1"), remove("entry-1"), leave]) {
       assert.deepEqual(await responder.handle(command, "lobby", ada), { ok: true, track: null });
     }
     assert.deepEqual(created, []);
+  });
+});
+
+describe("skipping and removing", () => {
+  it("skips the Track that is playing and starts the next one", async () => {
+    const { responder, created, fetched, cancelled, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(add(otherLink), "lobby", ada);
+
+    assert.deepEqual(await responder.handle(skip("entry-1"), "lobby", ada), { ok: true, track: null });
+
+    assert.deepEqual(created[0]?.events, ["begin", "load", "play", "load", "play"]);
+    assert.deepEqual(fetched, ["aB3dE5gH7jK", "zY9xW7vU5tS"], "the Track that was skipped to is fetched now");
+    assert.deepEqual(cancelled, ["aB3dE5gH7jK"], "and the skipped one's fetch is abandoned");
+    assert.deepEqual(titles(lastPublished()), ["Track zY9xW7vU5tS"]);
+  });
+
+  it("advances one Track when two members skip the same one at once", async () => {
+    const { responder, created, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(add(otherLink), "lobby", ada);
+
+    await Promise.all([
+      responder.handle(skip("entry-1"), "lobby", "ada-user-id"),
+      responder.handle(skip("entry-1"), "lobby", "bob-user-id")
+    ]);
+
+    assert.deepEqual(titles(lastPublished()), ["Track zY9xW7vU5tS"], "one Track, not two");
+    assert.deepEqual(created[0]?.events, ["begin", "load", "play", "load", "play"]);
+  });
+
+  it("skipping the last Track leaves the bot in the room with nothing queued", async () => {
+    const { responder, created, cancelled, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+
+    await responder.handle(skip("entry-1"), "lobby", ada);
+
+    assert.deepEqual(titles(lastPublished()), []);
+    assert.equal(lastPublished()?.playing, false);
+    assert.deepEqual(created[0]?.events, ["begin", "load", "play", "stop"]);
+    assert.deepEqual(cancelled, ["aB3dE5gH7jK"]);
+    assert.equal(responder.currentRoomId(), "lobby", "an empty Queue is not a Set that ended");
+  });
+
+  it("removes a queued Track without disturbing the one playing", async () => {
+    const { responder, created, fetched, cancelled, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(add(otherLink), "lobby", ada);
+
+    assert.deepEqual(await responder.handle(remove("entry-2"), "lobby", ada), { ok: true, track: null });
+
+    assert.deepEqual(created[0]?.events, ["begin", "load", "play"], "the player is not touched");
+    assert.deepEqual(fetched, ["aB3dE5gH7jK"]);
+    assert.deepEqual(cancelled, []);
+    assert.deepEqual(titles(lastPublished()), ["Track aB3dE5gH7jK"]);
+  });
+
+  it("removing the Track that is playing advances to the next", async () => {
+    const { responder, created, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(add(otherLink), "lobby", ada);
+
+    await responder.handle(remove("entry-1"), "lobby", ada);
+
+    assert.deepEqual(created[0]?.events, ["begin", "load", "play", "load", "play"]);
+    assert.deepEqual(titles(lastPublished()), ["Track zY9xW7vU5tS"]);
+  });
+
+  it("says nothing to the room about an entry the Queue no longer holds", async () => {
+    const { responder, published, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(add(otherLink), "lobby", ada);
+    await responder.handle(skip("entry-1"), "lobby", ada);
+    const before = published.length;
+
+    assert.deepEqual(await responder.handle(remove("entry-1"), "lobby", ada), { ok: true, track: null });
+
+    assert.equal(published.length, before, "nothing changed, so every client keeps what the bot has");
+    assert.deepEqual(titles(lastPublished()), ["Track zY9xW7vU5tS"]);
+  });
+
+  it("keeps the Track a skip started when the skipped one's end arrives late", async () => {
+    // The player reports the end of the Track it was handed. That report waits
+    // its turn in the same chain as the commands, and a skip can get there
+    // first — at which point the end belongs to a Track that is already gone,
+    // and acting on it would drop the one that had just started.
+    const { responder, created, endTrack, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(add(otherLink), "lobby", ada);
+
+    const skipping = responder.handle(skip("entry-1"), "lobby", ada);
+    endTrack("lobby");
+    await skipping;
+    // Anything answered after both have been through the chain proves they have.
+    await responder.handle(play, "lobby", ada);
+
+    assert.deepEqual(titles(lastPublished()), ["Track zY9xW7vU5tS"], "the skip's Track is still playing");
+    assert.deepEqual(created[0]?.events, ["begin", "load", "play", "load", "play"]);
+  });
+
+  it("ignores a skip aimed at a room it is not in", async () => {
+    const { responder, created } = harness();
+    await responder.handle(add(), "lobby", ada);
+
+    await responder.handle(skip("entry-1"), "studio", ada);
+    await responder.handle(remove("entry-1"), "studio", ada);
+
+    assert.deepEqual(created[0]?.events, ["begin", "load", "play"]);
+    assert.equal(responder.currentRoomId(), "lobby");
   });
 });
 

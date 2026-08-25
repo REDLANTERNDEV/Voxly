@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
-import { musicBotNickname } from "@voxly/shared";
+import { musicBotNickname, musicIdentifierMaxLength } from "@voxly/shared";
 import type { MusicCommand, MusicCommandAck, MusicControlAck, MusicPublishAck, VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck } from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 
@@ -1376,6 +1376,29 @@ describe("music bot control", () => {
     assert.deepEqual(received.map((entry) => entry.command.kind), ["play", "stop", "leave"]);
   });
 
+  it("forwards a skip and a removal with the entry they name", async () => {
+    // The server does not know what an `entryId` refers to and must not: which
+    // entry is at the head of the Queue is the bot's knowledge, and a stale one
+    // is a request the bot succeeds at without moving, not a refusal here.
+    const owner = await bootstrapOwner(app);
+    const { received } = await connectBot();
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    await joinVoice(ownerSocket, "lobby");
+
+    for (const command of [{ kind: "skip", entryId: "entry-1" }, { kind: "remove", entryId: "entry-2" }] as const) {
+      assert.deepEqual(
+        await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command }),
+        { ok: true, track: null },
+        command.kind
+      );
+    }
+    assert.deepEqual(received.map((entry) => entry.command), [
+      { kind: "skip", entryId: "entry-1" },
+      { kind: "remove", entryId: "entry-2" }
+    ]);
+  });
+
   it("refuses a member who is in the server but not in that voice room", async () => {
     const owner = await bootstrapOwner(app);
     const { botSocket } = await connectBot();
@@ -1442,6 +1465,19 @@ describe("music bot control", () => {
       }),
       { ok: false, error: "room_not_found" },
       "and a link is bounded before it reaches another process"
+    );
+    assert.deepEqual(
+      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: { kind: "skip" } }),
+      { ok: false, error: "room_not_found" },
+      "a skip that names no entry is not a skip"
+    );
+    assert.deepEqual(
+      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", {
+        roomId: "lobby",
+        command: { kind: "remove", entryId: "e".repeat(musicIdentifierMaxLength + 1) }
+      }),
+      { ok: false, error: "room_not_found" },
+      "and an entry id is bounded like every other opaque identifier on this wire"
     );
   });
 

@@ -368,10 +368,39 @@ requirement.
 - The Music panel is shown only when the viewed room is the active voice room.
   Being in the channel is what entitles a member to summon, the server enforces
   that, and a control that could only ever be refused is worse than no control.
-- Read whether the bot is playing from the room's voice snapshot, never from
-  local state left over from a press. The bot reports it through `speaking`, the
-  same self-report a person's microphone makes, so everyone in the channel —
-  including the people who pressed nothing — sees the same thing.
+- Read whether the music is playing from the published Queue
+  (`MusicQueueState.playing`), never from local state left over from a press and
+  never from the bot's `speaking` flag on the voice snapshot. Both were answers
+  to the same question and they disagree — the server clamps `speaking` off for
+  a bot an owner has muted, while the music keeps playing, and the two arrive in
+  separate messages. ADR-0006 records the choice; the practical part is that the
+  buttons, the rows and the Queue all come out of one message, so nothing in the
+  panel can contradict anything else in it.
+- An owner's mute stays visible as the panel's resting sentence, not as the
+  polarity of a button — and only while the Queue is playing. Media is
+  peer-to-peer, so a mute may not have silenced anything, which is worth a
+  member's while to know; but the sentence names Pause, and Pause is offered
+  only for a Queue that is running. Announcing it over a paused or empty Queue
+  points at a control that is disabled or that says the opposite.
+- Transport controls name the entry they act on. Skip carries the `entryId` the
+  panel believes is playing and Remove carries the row's own — never a position
+  — so a panel one message out of date skips nothing rather than skipping the
+  Track that moved up into place.
+- Disable the transport controls when nothing is queued. A visible, enabled
+  control that does nothing is indistinguishable from a broken one.
+- Play and Pause are one button whose label says which half it is, with no
+  pressed state announced beside it: "Pause, pressed" leaves a listener working
+  out the one thing the label has already told them.
+- An icon-only control in a Queue row carries the Track's name in its accessible
+  label, and a short `title` beside it, as the chat row controls do. A column of
+  buttons all called "Remove" tells a screen-reader user nothing about which
+  Track they are about to lose.
+- A control that can take away the thing it acts on must catch the keyboard when
+  it does. Skipping the last Track disables the button under the cursor and
+  removing a row unmounts it; the browser then drops focus to the document and
+  leaves a keyboard user at the top of the page. Restore it only for the
+  member's *own* press — the Queue also changes when somebody else acts, and
+  pulling focus for that is worse than losing it.
 - Render the Queue from what the bot published to the room (`music:queue`),
   never from a Track remembered out of an acknowledgement. The acknowledgement
   reaches the one member who asked; the Queue is what the other four are owed.

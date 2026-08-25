@@ -204,6 +204,10 @@ apply to it unchanged.
   headphones cannot afford to fail silently.
 - Refuse the AFK room. It mutes everyone in it, the bot included, so a Summon
   there could only ever produce a silent participant.
+- Bound an `entryId` and interpret nothing else about it. Which entry a skip or
+  a removal refers to is the bot's knowledge; a stale one is a request the bot
+  succeeds at without moving the Queue, and a second opinion here would refuse
+  members the bot would have agreed with.
 
 `music:publish` is the one thing that travels the other way, and it is
 authorized rather than relayed. Read `docs/adr/0005-the-bot-publishes-the-queue.md`

@@ -113,6 +113,13 @@ for a library feature.
   `voice:setMediaState` — so a bot that stays quiet about itself plays into a
   room where its own row never lights. It joins with `mic: true` for the same
   reason: the server clamps `speaking` off for a microphone that is off.
+- **The player never replays a Track that finished.** What follows a Track is
+  the Queue's answer and the Queue loads whatever it wants played, so a `play`
+  for audio it did not just load can only be a mistake above — and replaying on
+  one puts the wrong Track in front of the room, which is worse than silence and
+  much harder to recognise. Loading a Track clears it, so every real advance
+  still plays. This replaced the older reading, that a Play button which did
+  nothing looks broken; the panel now disables the button instead.
 - The bot must enforce its own silence. Media is peer-to-peer, so the server
   cannot stop packets it never sees: owner mute and the AFK room's forced mute
   are advisory for media and the bot has to honour them itself. An eviction —
@@ -142,6 +149,25 @@ it that way.
 - **A Track that ends advances to the next**, and an empty Queue is not the end
   of the Set — the bot stays in the room with nothing queued, which is a state
   it really is in.
+- **Everything that moves the Queue past a Track names that Track**, and an
+  event naming an entry the Queue is no longer on changes nothing and succeeds.
+  That is the whole answer to two members skipping at the same moment — no lock,
+  no sequence number, nothing to reconcile — and it is why a stale request is not
+  a refusal: the member asked for that Track to stop playing and it has. Nothing
+  is published either, so every client keeps showing what the bot shows. Read
+  ADR-0006 before adding a Queue action that is not an addition.
+- **A Track ending is targeted too.** The player reports the end of the Track it
+  was handed, and that report waits its turn in the same chain as the commands,
+  so a skip can get there first. `load` carries the entry it loads and `music.ts`
+  remembers it for exactly this — an untargeted end would drop the Track the skip
+  had just started.
+- **A skip only ever moves past the head; a removal takes the entry it names
+  wherever it is.** Both would be one verb otherwise, and the difference is what
+  stops a panel one message out of date turning a Skip press into the deletion of
+  a Track somebody is still waiting for.
+- **Advancing keeps `playing` as it was.** Skipping says which Track, not whether
+  to play, so a paused Queue that advances stays paused — with the new head
+  loaded, so resuming plays it rather than the Track that was skipped.
 - **Nothing is prefetched.** The next Track's fetch starts when the previous one
   ends, not before it. Prefetching would cost a second concurrent extractor run
   against a source that rate-limits by address — the failure the design already
@@ -244,7 +270,12 @@ press the button:
 - the bot joins, its row lights, and the Track you pasted is what plays;
 - a dead link, a playlist and a live stream each produce their own sentence,
   and none of them puts a silent bot in the channel;
+- pausing stops the sound and resuming carries on from where it stopped rather
+  than starting the Track again;
+- a skip moves to the next Track, and two browsers pressing it at the same
+  moment cost one Track between them;
 - it is *clear* — no stutter, no metallic edge, and no gap where the fetch had
-  to catch up.
+  to catch up. A skip is the easiest way to hear a Track boundary on demand, and
+  how long that gap runs to is the measurement `The Queue` above is waiting for.
 
 That last one still needs a person and headphones, and no test replaces it.

@@ -37,30 +37,70 @@ export function musicBotIn(members: VoiceMemberState[]): VoiceMemberState | unde
 }
 
 /**
- * What the Music panel is looking at.
+ * What the transport controls are looking at.
  *
- * `muted` is its own state rather than a kind of idle, and the distinction is
- * not cosmetic. The server clamps `speaking` to false for a muted member, but
- * media is peer-to-peer so the mute does not actually stop the bot's packets —
- * it may well still be audible. Folding that into "idle" would offer Play for
- * a bot that is already playing, and pressing it would do nothing at all.
+ * Everything here is read from the Queue the bot published, and deliberately
+ * not from the bot's `speaking` flag on the voice snapshot. Both are answers to
+ * "is the music playing" and they can disagree — the server clamps `speaking`
+ * off for a muted member, and the two arrive in separate messages — so the
+ * panel picks one and it is the one the Queue's own rows already read. Play,
+ * Pause, Skip and the Queue then change together, out of one message, and a
+ * refusal leaves every client showing exactly what the bot shows. ADR-0006
+ * records the choice.
+ *
+ * A mute stays visible, but as a sentence rather than as a button state: media
+ * is peer-to-peer, so an owner's mute does not by itself stop the bot's
+ * packets, and a member is owed that. It no longer decides what the button
+ * offers, because the Queue can now say whether there is anything to pause.
  */
-export type MusicPanelState = "absent" | "idle" | "playing" | "muted";
+export interface MusicTransport {
+  /** A Music bot is in this room, so there is something to control at all. */
+  present: boolean;
+  /** Whether the head of the Queue is sounding right now. */
+  playing: boolean;
+  /**
+   * The entry Play, Pause and Skip act on — the head of the Queue — or `null`
+   * when there is nothing queued and those controls have nothing to name.
+   */
+  currentEntryId: string | null;
+  /** An owner muted the bot. Information for the member, not a control state. */
+  muted: boolean;
+}
 
-export function musicPanelState(bot: VoiceMemberState | undefined): MusicPanelState {
-  if (!bot) return "absent";
-  if (bot.moderation.muted) return "muted";
-  return bot.media.speaking ? "playing" : "idle";
+export function musicTransport(
+  bot: VoiceMemberState | undefined,
+  queue: MusicQueueState | null
+): MusicTransport {
+  return {
+    present: Boolean(bot),
+    playing: queue?.playing === true && queue.entries.length > 0,
+    currentEntryId: queue?.entries[0]?.entryId ?? null,
+    muted: bot?.moderation.muted === true
+  };
 }
 
 /**
- * Whether the control should offer to stop rather than to start. A muted bot
- * counts: stopping is the one request that is always safe to make and always
- * takes effect, so it is what a member is offered when nobody can tell from
- * here whether sound is still going out.
+ * What the panel says when nobody has just asked for anything.
+ *
+ * The mute is said *while something is playing* and not otherwise. That is the
+ * one state where it explains anything — the Queue says a Track is playing and
+ * the room cannot hear it — and the one state where its sentence names an
+ * action a member can take, because Pause is only offered for a Queue that is
+ * running. Announcing a mute over a paused or empty Queue would point at a
+ * control that is disabled or says the opposite.
  */
-export function offersStop(state: MusicPanelState) {
-  return state === "playing" || state === "muted";
+export function musicRestingKey(transport: MusicTransport): TranslationKey {
+  if (transport.playing) return transport.muted ? "music.muted" : "music.playing";
+  if (transport.currentEntryId) return "music.paused";
+  return "music.idle";
+}
+
+/**
+ * What Play/Pause asks for. One button, because pausing and resuming are the
+ * two halves of one control and a member should never be shown both.
+ */
+export function transportToggleCommand(transport: MusicTransport): MusicCommand {
+  return transport.playing ? { kind: "stop" } : { kind: "play" };
 }
 
 export function requestMusicCommand(

@@ -315,11 +315,11 @@ describe("a Track that is still being fetched", () => {
     assert.deepEqual(ended, [1]);
   });
 
-  it("plays a finished Track again rather than doing nothing", () => {
-    // The bot is still in the room after a Track ends, so the control is still
-    // there and still enabled. A start that silently did nothing would be
-    // indistinguishable from a broken button — and the audio is still buffered,
-    // so replaying costs no second fetch.
+  it("does not replay a Track that already finished", () => {
+    // What follows a Track is the Queue's answer, and the Queue loads whatever
+    // it wants played. A `play` for audio it did not just load can only be a
+    // mistake above this — and replaying on one would put the wrong Track in
+    // front of the room, which is worse than silence and much harder to spot.
     const ended: number[] = [];
     const { player, advance } = testPlayer({ source: TrackBuffer.of(packets.slice(0, 2)), onEnded: () => ended.push(1) });
     const written = capture(player.outputFor("ada"));
@@ -331,15 +331,9 @@ describe("a Track that is still being fetched", () => {
     player.start();
     advance(40);
 
-    assert.equal(player.playing, true);
-    assert.equal(written.length, 4, "two frames again, from the beginning");
-    assert.equal(written[2]?.payload, packets[0]);
-    assert.equal(written[2]?.header.marker, true, "and it opens a talkspurt of its own");
-    assert.equal(
-      written[2]?.header.sequenceNumber,
-      (written[1]!.header.sequenceNumber + 1) & 0xffff,
-      "while the Listener's stream carries straight on"
-    );
+    assert.equal(player.playing, false);
+    assert.equal(written.length, 2, "the Track played once");
+    assert.deepEqual(ended, [1], "and its end was reported once");
   });
 });
 

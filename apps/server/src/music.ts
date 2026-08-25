@@ -44,14 +44,24 @@ import type { VoiceRealtime } from "./voice.js";
 
 /**
  * The commands, as the wire carries them. A discriminated union rather than a
- * bare verb because `add` names a link and the rest name nothing; the server
- * does not interpret the link beyond its shape, because which links are
- * playable is the bot's knowledge and belongs in one place.
+ * bare verb because the ones that carry data carry different data — `add` names
+ * a link, a skip and a removal name a Queue entry — and a flat verb plus
+ * optional fields would let a `stop` arrive with a link on it. The server does
+ * not interpret either value beyond its shape: which links are playable, and
+ * which entry an id refers to, are the bot's knowledge and belong in one place.
  */
 const musicCommandSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("add"), url: z.string().min(1).max(musicLinkMaxLength) }).strict(),
   z.object({ kind: z.literal("play") }).strict(),
   z.object({ kind: z.literal("stop") }).strict(),
+  // The entry a skip or a removal names. Bounded by the same constant as every
+  // other opaque identifier on this wire, because it is the same kind of thing:
+  // a short token the server does not parse and only ever hands back to the bot
+  // that minted it. What the id *means* is the bot's business — a stale one is
+  // a request that succeeds and changes nothing, which is the Queue's rule and
+  // not a validation failure.
+  z.object({ kind: z.literal("skip"), entryId: z.string().min(1).max(musicIdentifierMaxLength) }).strict(),
+  z.object({ kind: z.literal("remove"), entryId: z.string().min(1).max(musicIdentifierMaxLength) }).strict(),
   z.object({ kind: z.literal("leave") }).strict()
 ]);
 
