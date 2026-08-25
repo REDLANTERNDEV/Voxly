@@ -33,11 +33,14 @@ no HTTP surface, and no authority over anything.
 - `src/player.ts` turns one encoded Track into one output per Listener, reading
   from a `TrackBuffer` that may still be filling.
 - `src/audio.ts` reads Ogg Opus and frames it as RTP. No codec runs here.
-- `src/track.ts` is the resolver: a pasted link and the extractor's output, both
-  turned into a Track. Pure, and the only place a source's vocabulary is known.
-- `src/stream.ts` is the audio provider: yt-dlp piped into ffmpeg. It is not
-  unit tested, and the reason is written at the top of the file: the decisions
-  it does hold — two argument lists, two timeouts, which process's exit ends a
+- `src/track.ts` holds both resolvers: a pasted link, a typed name, and the
+  extractor's output for either, turned into a Track or a list of Results. It is
+  also where an input is decided to be one or the other. Pure, and the only
+  place a source's vocabulary is known.
+- `src/stream.ts` is the audio provider: yt-dlp piped into ffmpeg, and the
+  search that asks yt-dlp the same source a different question. It is not unit
+  tested, and the reason is written at the top of the file: the decisions it
+  does hold — three argument lists, three timeouts, which process's exit ends a
   Track — have no failure mode a unit test could catch, because the way they go
   wrong is a flag meaning something other than what was intended. Only the real
   binaries can say. Put anything testable in `track.ts` instead.
@@ -57,7 +60,9 @@ no HTTP surface, and no authority over anything.
   that six one-line `ERROR:` files do not sit in the repository looking like
   logs. Read its README before trusting any of it: it was written to yt-dlp's
   documented shape rather than captured from a live run, and it is waiting to be
-  refreshed against one.
+  refreshed against one. `search.json` is the newest and the least evidenced —
+  **no query has ever been put to yt-dlp from this repository**, so the shape of
+  a flat search listing is documentation here, not a transcript.
 
 ## Authentication
 
@@ -211,7 +216,50 @@ audio. What it settles, in short:
 - **Resolvers and the audio provider stay separate.** A resolver turns input
   into the identity of a Track; the one audio provider turns that identity into
   a stream. A future Spotify link is a resolver — its terms forbid it ever being
-  a source of audio.
+  a source of audio. There are two resolvers now, a pasted link and a typed
+  name, and a third would be a third branch in `resolverFor` rather than a new
+  verb, a new event or a new subsystem.
+- **The bot decides whether an input is a link or a name, and nothing else
+  does.** `add` carries one field. `resolverFor` reads it: `http(s)` and not one
+  video on YouTube is `unsupported_link`, because somebody who pasted a Spotify
+  link wants to hear that their link is wrong rather than see YouTube results
+  for the text of a URL; no scheme gets `https://` tried in front of it through
+  the same exact-host check; anything left is a name. Only `https?` counts as a
+  link — a looser scheme test reads "Beethoven: Symphony No. 5" as a URL.
+  ADR-0007.
+- **A search Summons nothing, and has a chain of its own.** It changes no Set,
+  no Queue and no membership, so it does not queue behind a Summon — otherwise a
+  Skip waits out somebody else's ten-second search — and it must never end a Set
+  when it fails, which is what that chain's recovery would do. If the bot is
+  playing in another channel, Summoning to answer a question would cost that
+  room its Set. But it is still serialised **among searches**, because it spawns
+  an extractor and two of those at once against a source that rate-limits by
+  address is the thing this feature refuses everywhere else. Do not collapse the
+  two chains, and do not remove the second one.
+- **A Result is answered to one member and published to nobody.** It rides the
+  acknowledgement back to the socket that asked. Nothing about it goes near
+  `music:publish`; the Queue rule beside it is the opposite rule and ADR-0007
+  records why.
+- **A search asks for a flat listing** — one request that returns what the
+  search page already knew, not a full extraction per result, which would be
+  five round trips against a source that rate-limits by address for four Tracks
+  nobody will play. A chosen Result is then resolved properly through the link
+  path, because a flat entry is not evidence that a Track is playable.
+- **Ask the source for more than will be shown.** A live stream or a premiere
+  among the hits is not a Result and gets dropped, so asking for exactly
+  `musicSearchResultsMax` hands a member three — or, for a name whose every hit
+  is a broadcast, "nothing matched" for something that plainly did. It is the
+  same one request either way, and `parseSearchResults` stops at the bound.
+- **An input with nothing in it is a search that found nothing**, not a wrong
+  link. The panel will not send one, but the server bounds the field before
+  trimming, so a field of spaces arrives — and no process is spent asking the
+  source about no characters.
+- **Blame nothing on the video when there is no video.** A failed search is
+  `extractor_failed` or `bot_failed`; `classifyExtractorFailure` answers "was it
+  the video or the extractor", and a query has no video to be unavailable.
+- **A search that matched nothing is a success carrying an empty list.** Nothing
+  failed and there is nothing for a member to wait out, so the panel puts a
+  sentence to it rather than the wire carrying a refusal.
 - **One framing path.** ffmpeg is asked for Ogg Opus (`-f opus`), not a raw
   stream, so a fetched Track and a file on disk are read by the same code.
   Adding a second framing path means a second place for lacing to be got subtly
@@ -239,7 +287,12 @@ audio. What it settles, in short:
   that was never going to come.
 - **Keep `resolveTimeoutMs` under the server's `botAckTimeoutMs`**, with room
   for the join that follows it. A bot cut off by the server reports
-  `bot_timeout` in place of the reason it actually gave up.
+  `bot_timeout` in place of the reason it actually gave up. `searchTimeoutMs` has no join to leave
+  room for, because nothing follows a search — but the margin has to hold **two**
+  of it, because a search that arrives while another is running waits out both.
+  It is shorter than a resolve because a flat listing does no per-video
+  extraction, so a search that has not answered by then is not one that is
+  nearly finished.
 
 ## Boundaries
 
@@ -270,6 +323,11 @@ press the button:
 - the bot joins, its row lights, and the Track you pasted is what plays;
 - a dead link, a playlist and a live stream each produce their own sentence,
   and none of them puts a silent bot in the channel;
+- **a typed name returns results that are actually the song** — this is the one
+  nothing in the repository has evidence for, because no query has ever been put
+  to a real yt-dlp from here. Check that each result has a length and a channel,
+  that a live stream is not among them, and that choosing one plays that Track
+  and not another;
 - pausing stops the sound and resuming carries on from where it stopped rather
   than starting the Track again;
 - a skip moves to the next Track, and two browsers pressing it at the same

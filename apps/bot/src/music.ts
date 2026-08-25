@@ -16,12 +16,18 @@
  * wait for the previous one to finish, and joining a room is several round
  * trips long — two overlapping Summons would otherwise race to own the same
  * membership. A Track ending goes through the same chain, so it cannot land
- * halfway through a command that was already changing the Queue.
+ * halfway through a command that was already changing the Queue. Searches have
+ * a chain of their own: they change nothing, so making one wait for a Summon
+ * would only mean a Skip waiting behind somebody else's typing — but they do
+ * still spawn an extractor, so they take their turn among themselves
+ * (ADR-0007).
  *
  * Every request is answered. The answer travels back through the server to the
  * member who made it, because only this process can tell whether a pasted link
  * is something it can play, and a member who pasted a dead one is owed a
- * sentence rather than a room where nothing happens.
+ * sentence rather than a room where nothing happens. It also travels back
+ * *only* to them: a member's search results are the one thing here that is not
+ * the room's to see.
  */
 
 import { randomUUID } from "node:crypto";
@@ -38,8 +44,8 @@ import {
   type QueueEntry
 } from "./playback.js";
 import { createMusicSet, type MusicSet, type SetSocket } from "./set.js";
-import { fetchTrackAudio, resolveTrack, type TrackAudio } from "./stream.js";
-import { youtubeVideoUrl, type Track } from "./track.js";
+import { fetchTrackAudio, resolveTrack, searchTracks, type TrackAudio } from "./stream.js";
+import { resolverFor, type Track } from "./track.js";
 import type { IceServer } from "./voxly.js";
 
 export interface MusicResponderOptions {
@@ -56,6 +62,7 @@ export interface MusicResponderOptions {
   loadIceServers: () => Promise<IceServer[]>;
   createSet?: typeof createMusicSet;
   resolve?: typeof resolveTrack;
+  search?: typeof searchTracks;
   fetch?: typeof fetchTrackAudio;
   /** Injected so a test does not have to match a UUID it cannot predict. */
   mintEntryId?: () => string;
@@ -70,12 +77,13 @@ export interface MusicResponder {
 }
 
 /** Nothing to report: the request either worked or was about no Track at all. */
-const acknowledged: MusicCommandAck = { ok: true, track: null };
+const acknowledged: MusicCommandAck = { ok: true, kind: "track", track: null };
 
 export function createMusicResponder(options: MusicResponderOptions): MusicResponder {
   const log = options.log ?? (() => undefined);
   const createSet = options.createSet ?? createMusicSet;
   const resolveDetails = options.resolve ?? resolveTrack;
+  const searchSource = options.search ?? searchTracks;
   // Not named `fetch`: the global of that name is a very different thing to
   // find shadowed halfway down a file.
   const fetchAudio = options.fetch ?? fetchTrackAudio;
@@ -84,6 +92,18 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
   let audio: TrackAudio | null = null;
   let playback: PlaybackState = emptyPlayback();
   let queue: Promise<void> = Promise.resolve();
+  /**
+   * Searches take their turn among themselves, and nowhere near the chain
+   * above.
+   *
+   * Separate because a search changes nothing, so it has no reason to wait for
+   * a Summon and a Skip has no reason to wait for it. Serialised because it
+   * still spawns an extractor, and the one thing this feature has always
+   * refused to do is run two of those at once against a source that rate-limits
+   * by address — it is the reason nothing is prefetched. One chain each keeps
+   * both properties instead of trading one for the other.
+   */
+  let searches: Promise<void> = Promise.resolve();
   /**
    * The entry whose Track the player is holding, so that an end reported by the
    * player can name it. The player knows about audio and nothing about the
@@ -258,17 +278,18 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
   }
 
   /**
-   * A pasted link, from the paste to its place in the Queue.
+   * A link, from the paste to its place in the Queue.
    *
-   * The order matters. The link is checked before anything is spawned, a full
-   * Queue is refused before anything is spawned, and the Track is resolved
-   * before the bot joins: a member who pasted something unplayable should get
-   * told so without the bot appearing in the channel, playing nothing, and
-   * having to be sent away again.
+   * The order matters. A full Queue is refused before anything is spawned, and
+   * the Track is resolved before the bot joins: a member who pasted something
+   * unplayable should get told so without the bot appearing in the channel,
+   * playing nothing, and having to be sent away again.
+   *
+   * The link arrives already canonical, because deciding whether a member typed
+   * a link or a name is the same question as which link they meant, and it is
+   * asked once, in `handle`.
    */
   async function add(roomId: string, url: string, requestedByUserId: string): Promise<MusicCommandAck> {
-    const canonical = youtubeVideoUrl(url);
-    if (!canonical) return { ok: false, error: "unsupported_link" };
     // Only when this is the Queue the Track would join. A paste into a
     // *different* room summons the bot away, which ends that Set and takes its
     // Queue with it — so refusing on the strength of a Queue that is about to
@@ -279,9 +300,9 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
       if (full) return { ok: false, error: full };
     }
 
-    const resolved = await resolveDetails(options.environment, canonical);
+    const resolved = await resolveDetails(options.environment, url);
     if (!resolved.ok) {
-      log(`could not resolve ${canonical}: ${resolved.error}`);
+      log(`could not resolve ${url}: ${resolved.error}`);
       return resolved;
     }
 
@@ -291,12 +312,56 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
       entry: { entryId: mintEntryId(), track: resolved.track, requestedByUserId }
     });
     if (step.refusal) return { ok: false, error: step.refusal };
-    return { ok: true, track: summaryOf(resolved.track) };
+    return { ok: true, kind: "track", track: summaryOf(resolved.track) };
   }
 
-  async function apply(command: MusicCommand, roomId: string, requestedByUserId: string): Promise<MusicCommandAck> {
-    if (command.kind === "add") return add(roomId, command.url, requestedByUserId);
-    // The rest name the room they mean, so a command that raced a move does not
+  /**
+   * A typed name, answered with the Tracks it might have meant.
+   *
+   * **This touches nothing.** No Set, no Queue, no membership — a member asking
+   * what a name might mean has not asked for the bot to appear anywhere, and
+   * summoning it would take it out of whichever room it is currently playing
+   * in. That is also why the answer goes back to the one socket that asked and
+   * is never published: the Queue is the room's and everyone must see the same
+   * one, while a list of Results belongs to the member still deciding.
+   *
+   * A search that matched nothing is a success carrying an empty list. Nothing
+   * failed, and there is nothing here for a member to wait out.
+   */
+  async function runSearch(name: string): Promise<MusicCommandAck> {
+    const found = await searchSource(options.environment, name).catch((cause: unknown) => {
+      // Not the extractor's fault by default: a fault in this process would
+      // otherwise send the member away to wait for a source that never refused
+      // them.
+      log(`the search for "${name}" failed: ${String(cause)}`);
+      return { ok: false, error: "bot_failed" } as const;
+    });
+    if (!found.ok) {
+      log(`could not search for "${name}": ${found.error}`);
+      return found;
+    }
+    return { ok: true, kind: "results", results: found.results };
+  }
+
+  /**
+   * One search at a time, and never behind a Summon.
+   *
+   * The chain never rejects, because `runSearch` has already turned every
+   * failure into an answer — and it must not tear anything down when one does:
+   * the Set chain's recovery ends the Set, which would cost a room its music
+   * because somebody mistyped a name.
+   */
+  function enqueueSearch(name: string): Promise<MusicCommandAck> {
+    const answered = searches.then(() => runSearch(name));
+    searches = answered.then(() => undefined, () => undefined);
+    return answered;
+  }
+
+  async function apply(
+    command: Exclude<MusicCommand, { kind: "add" }>,
+    roomId: string
+  ): Promise<MusicCommandAck> {
+    // These name the room they mean, so a command that raced a move does not
     // silence a Set the asker was never in. They are also about a Queue that is
     // already here: with nothing loaded there is nothing for them to do, and
     // that is a request that succeeded at doing nothing rather than a failure.
@@ -329,23 +394,75 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
     }
   }
 
+  /**
+   * Puts one request through the chain and answers it whatever happens.
+   *
+   * Everything that can change the Set goes through here, one at a time. The
+   * recovery is part of the reason: a request that threw may have left a
+   * half-built Set behind, and the next one must not trip over it.
+   */
+  function enqueue(
+    what: string,
+    roomId: string,
+    run: () => Promise<MusicCommandAck>
+  ): Promise<MusicCommandAck> {
+    const answered = queue.then(run).catch(async (cause: unknown) => {
+      // A failed Summon must not take the process down, and must not leave a
+      // half-built Set behind for the next command to trip over.
+      log(`the ${what} request for room ${roomId} failed: ${String(cause)}`);
+      await endCurrentSet().catch(() => undefined);
+      // Whatever went wrong here — a refused join, a mesh that would not
+      // start — the link was not the problem, so this must not be reported as
+      // the extractor's fault. That sentence sends the member away to wait
+      // for YouTube to recover from something YouTube never did.
+      return { ok: false, error: "bot_failed" } as const;
+    });
+    // The chain the next command waits on never rejects, because `answered`
+    // has already turned every failure into an answer.
+    queue = answered.then(() => undefined);
+    return answered;
+  }
+
   return {
+    /**
+     * Which resolver a member's input is for is decided here, once, because it
+     * decides which path the request takes as well as what it means.
+     *
+     * A search is the one request that does not join *this* chain. It changes
+     * nothing — it has no Set to race and no membership to own — so making it
+     * wait behind a Summon would only mean that a member who typed a name is
+     * held up by somebody else's join, and, worse, that a Skip sits behind ten
+     * seconds of somebody else's search. It stays out of the chain's recovery
+     * for the same reason: that recovery ends the Set, which is the right
+     * answer to a Summon that failed halfway and a catastrophic one to a search
+     * that did. It has a chain of its own instead, because a search still
+     * spawns an extractor and two of those at once is the one thing this
+     * feature has always refused.
+     */
     handle(command, roomId, requestedByUserId) {
-      const answered = queue.then(() => apply(command, roomId, requestedByUserId)).catch(async (cause: unknown) => {
-        // A failed Summon must not take the process down, and must not leave a
-        // half-built Set behind for the next command to trip over.
-        log(`the ${command.kind} request for room ${roomId} failed: ${String(cause)}`);
-        await endCurrentSet().catch(() => undefined);
-        // Whatever went wrong here — a refused join, a mesh that would not
-        // start — the link was not the problem, so this must not be reported as
-        // the extractor's fault. That sentence sends the member away to wait
-        // for YouTube to recover from something YouTube never did.
-        return { ok: false, error: "bot_failed" } as const;
-      });
-      // The chain the next command waits on never rejects, because `answered`
-      // has already turned every failure into an answer.
-      queue = answered.then(() => undefined);
-      return answered;
+      if (command.kind !== "add") return enqueue(command.kind, roomId, () => apply(command, roomId));
+      const choice = resolverFor(command.input);
+      switch (choice.kind) {
+        case "search":
+          return enqueueSearch(choice.name);
+        // A link to something this bot cannot play — a playlist, a channel,
+        // another site. Refused without spawning anything and without the bot
+        // appearing in the channel to say so.
+        case "unsupported":
+          return Promise.resolve({ ok: false, error: "unsupported_link" });
+        // Neither a link nor a name. Answered as a search that found nothing,
+        // which is what it is, rather than as a wrong link — and without
+        // spending a process on asking the source about no characters.
+        case "nothing":
+          return Promise.resolve({ ok: true, kind: "results", results: [] });
+        case "link":
+          return enqueue(command.kind, roomId, () => add(roomId, choice.url, requestedByUserId));
+        default:
+          // Exhaustive, as the effect and command switches here are: a resolver
+          // added to the vocabulary should stop the build rather than fall into
+          // whichever branch happened to be last and queue the wrong thing.
+          return Promise.resolve(assertNever(choice));
+      }
     },
     close() {
       options.socket.offForceLeave(onForceLeave);
@@ -361,5 +478,5 @@ function summaryOf(track: Track) {
 }
 
 function assertNever(value: never): never {
-  throw new Error(`Unhandled music command: ${JSON.stringify(value)}`);
+  throw new Error(`Unhandled music command or resolver: ${JSON.stringify(value)}`);
 }

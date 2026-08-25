@@ -26,7 +26,7 @@
 import { z } from "zod";
 import {
   musicIdentifierMaxLength,
-  musicLinkMaxLength,
+  musicInputMaxLength,
   musicQueueMaxEntries,
   musicTitleMaxLength,
   type MusicCommand,
@@ -45,13 +45,17 @@ import type { VoiceRealtime } from "./voice.js";
 /**
  * The commands, as the wire carries them. A discriminated union rather than a
  * bare verb because the ones that carry data carry different data — `add` names
- * a link, a skip and a removal name a Queue entry — and a flat verb plus
- * optional fields would let a `stop` arrive with a link on it. The server does
- * not interpret either value beyond its shape: which links are playable, and
- * which entry an id refers to, are the bot's knowledge and belong in one place.
+ * what a member typed, a skip and a removal name a Queue entry — and a flat verb
+ * plus optional fields would let a `stop` arrive with a link on it. The server
+ * does not interpret either value beyond its shape: which links are playable,
+ * whether an input is even a link at all, and which entry an id refers to, are
+ * the bot's knowledge and belong in one place.
  */
 const musicCommandSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("add"), url: z.string().min(1).max(musicLinkMaxLength) }).strict(),
+  // A link or a name — one field, because the bot is what decides which of the
+  // two a string is (ADR-0007). Bounded and otherwise uninterpreted: a second
+  // opinion here would refuse a form the bot has since learned to accept.
+  z.object({ kind: z.literal("add"), input: z.string().min(1).max(musicInputMaxLength) }).strict(),
   z.object({ kind: z.literal("play") }).strict(),
   z.object({ kind: z.literal("stop") }).strict(),
   // The entry a skip or a removal names. Bounded by the same constant as every
@@ -209,8 +213,13 @@ async function askBot(
   payload: { roomId: string; command: MusicCommand; requestedByUserId: string }
 ): Promise<MusicControlAck> {
   try {
+    // The bot's answer, whole. A refusal is already a member-facing reason in
+    // the shared contract, and a success is either the Track that was queued or
+    // the Results a typed name found — the second of which travels back to
+    // this one member and nowhere else. Nothing here is put in front of the
+    // room: `music:queue` is the only thing that is, and it comes the other way.
     const response: MusicCommandAck = await botSocket.timeout(botAckTimeoutMs).emitWithAck("music:command", payload);
-    return response.ok ? { ok: true, track: response.track } : response;
+    return response;
   } catch {
     // A bot that has the request and has not answered is a different problem
     // from one that is not running, and only one of the two is worth waiting

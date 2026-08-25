@@ -12,6 +12,7 @@ import type {
   MusicControlAck,
   MusicControlError,
   MusicQueueState,
+  MusicSearchResult,
   MusicTrackSummary,
   VoiceMemberState
 } from "@voxly/shared";
@@ -117,14 +118,16 @@ export function requestMusicCommand(
 }
 
 /**
- * Whether a pasted link is worth sending at all.
+ * Whether what a member typed is worth sending at all.
  *
- * Deliberately only "is there something here": which links are playable is the
- * bot's knowledge, and a second opinion in the browser would be the copy that
- * drifts — refusing a form the bot has since learned to accept, with no way for
- * anyone to tell why.
+ * Still only "is there something here", and now for a stronger reason than
+ * before: the browser does not even decide whether this is a link to play or a
+ * name to search for. That is the bot's answer and one field carries both
+ * (ADR-0007), so a second opinion here would be the copy that drifts — refusing
+ * a form the bot has since learned to accept, with no way for anyone to tell
+ * why.
  */
-export function isSendableLink(input: string) {
+export function isSendableInput(input: string) {
   return input.trim().length > 0;
 }
 
@@ -151,6 +154,73 @@ export function trackAddedMessage(
   t: (key: TranslationKey, values?: Record<string, string | number>) => string
 ) {
   return t("music.queued", { title: track.title, length: trackLength(track.durationSeconds) });
+}
+
+/**
+ * One Result a search offered, ready to render.
+ *
+ * **These belong to the one member who typed the name.** Everything else this
+ * panel draws is read from the Queue the bot published to the room, so five
+ * people see one thing; a list of Results is the opposite of that, and it
+ * comes back on that member's own acknowledgement rather than through
+ * `music:queue`. It is held in the component and nowhere else, it is never
+ * merged into the room's state, and it goes as soon as one is chosen. ADR-0007
+ * records the boundary, because the rule beside it says the opposite.
+ */
+export interface MusicResultRow {
+  /**
+   * What to send to play this one — the link the bot built, handed straight
+   * back. The browser stores it and does not read it: which links are playable
+   * is not its knowledge.
+   */
+  url: string;
+  title: string;
+  /** The Track's length as a person reads it — what tells an hour-long mix apart. */
+  length: string;
+  /** Who published it — what tells a cover apart. Empty if the source said none. */
+  channel: string;
+  /**
+   * Whether this is the one on offer — the source's closest, and the one Enter
+   * takes. Read rather than derived from focus: a member who submitted with the
+   * pointer gets focus moved programmatically, which browsers deliberately do
+   * not draw a focus ring for, so "which one is selected" would be invisible to
+   * exactly the people who did not use the keyboard.
+   */
+  isClosest: boolean;
+  /**
+   * The whole row in one sentence, for the control's accessible name. A column
+   * of buttons all called "Add" tells a screen-reader user nothing about which
+   * Track they are choosing, exactly as a column called "Remove" does not.
+   */
+  label: string;
+}
+
+export function musicSearchRows(
+  results: MusicSearchResult[],
+  t: (key: TranslationKey, values?: Record<string, string | number>) => string
+): MusicResultRow[] {
+  return results.map((result, index) => {
+    const title = result.track.title;
+    const length = trackLength(result.track.durationSeconds);
+    // A flat listing does not always name the channel, and a Track without one
+    // is still perfectly playable — so the sentence loses the clause rather
+    // than the row being withheld.
+    const choice = result.channel
+      ? t("music.chooseResult", { title, length, channel: result.channel })
+      : t("music.chooseResultUnknown", { title, length });
+    const isClosest = index === 0;
+    return {
+      url: result.url,
+      title,
+      length,
+      channel: result.channel,
+      isClosest,
+      // The one on offer says so in its own name too, not only in its border.
+      // Focus announces it to whoever arrived by keyboard; this is for the
+      // reader who tabs back to the list, or who never left it.
+      label: isClosest ? t("music.chooseClosest", { choice }) : choice
+    };
+  });
 }
 
 /**

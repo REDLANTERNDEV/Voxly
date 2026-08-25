@@ -81,6 +81,8 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | The bot's WebRTC library and its encode-once property | ADR-0002; `apps/bot/AGENTS.md` — Voice and Playback |
 | Summoning the Music bot and who may control it | `apps/server/AGENTS.md` — The Music Bot; `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
 | How a pasted link becomes audio, and what happens when the fetch falls behind | ADR-0004; `apps/bot/AGENTS.md` — Sources and Fetching |
+| Whether an input is a link or a name, and who decides | ADR-0007; `apps/bot/AGENTS.md` — Sources and Fetching |
+| Where a member's search results may travel, and where they may not | ADR-0007; `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation; `packages/shared/AGENTS.md` — Music Contracts |
 | The music command vocabulary and how a refusal reaches the member | `packages/shared/AGENTS.md` — Music Contracts |
 | How the Queue reaches every member in the room, and who may publish it | ADR-0005; `apps/server/AGENTS.md` — The Music Bot; `packages/shared/AGENTS.md` — Music Contracts |
 | What the Queue does when a Track is added, ends, or is paused | `apps/bot/AGENTS.md` — The Queue |

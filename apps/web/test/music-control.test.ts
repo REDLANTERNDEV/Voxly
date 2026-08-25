@@ -2,14 +2,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import type { MusicCommand, MusicControlAck, MusicQueueState, VoiceMemberState } from "@voxly/shared";
-import { translate } from "../src/lib/i18n.js";
+import { translate, type TranslationKey } from "../src/lib/i18n.js";
 import {
-  isSendableLink,
+  isSendableInput,
   musicBotIn,
   musicErrorKey,
   musicQueueFor,
   musicQueueRows,
   musicRestingKey,
+  musicSearchRows,
   musicTransport,
   requestMusicCommand,
   trackAddedMessage,
@@ -120,7 +121,7 @@ describe("what the transport controls are looking at", () => {
 describe("asking for music", () => {
   const track = { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 };
 
-  function socketDouble(answer: MusicControlAck = { ok: true, track: null }) {
+  function socketDouble(answer: MusicControlAck = { ok: true, kind: "track", track: null }) {
     const sent: Array<{ roomId: string; command: MusicCommand }> = [];
     return {
       sent,
@@ -134,20 +135,33 @@ describe("asking for music", () => {
   }
 
   it("sends the pasted link for the named room and resolves with the Track", async () => {
-    const { sent, socket } = socketDouble({ ok: true, track });
-    const command = { kind: "add", url: "https://youtu.be/aB3dE5gH7jK" } as const;
+    const { sent, socket } = socketDouble({ ok: true, kind: "track", track });
+    const command = { kind: "add", input: "https://youtu.be/aB3dE5gH7jK" } as const;
 
     const response = await requestMusicCommand(socket, "lobby", command);
 
     assert.deepEqual(sent, [{ roomId: "lobby", command }]);
-    assert.deepEqual(response, { ok: true, track });
+    assert.deepEqual(response, { ok: true, kind: "track", track });
+  });
+
+  it("sends a typed name on the same verb, and takes back the Results", async () => {
+    // One field and one verb, because which of the two a string is is the bot's
+    // knowledge. A browser that split them would be the copy that drifts.
+    const results = [{ track, channel: "A Channel", url: "https://www.youtube.com/watch?v=aB3dE5gH7jK" }];
+    const { sent, socket } = socketDouble({ ok: true, kind: "results", results });
+    const command = { kind: "add", input: "nocturne in e flat" } as const;
+
+    const response = await requestMusicCommand(socket, "lobby", command);
+
+    assert.deepEqual(sent, [{ roomId: "lobby", command }]);
+    assert.deepEqual(response, { ok: true, kind: "results", results });
   });
 
   it("sends the commands that carry no link the same way", async () => {
     const { sent, socket } = socketDouble();
 
     for (const kind of ["play", "stop", "leave"] as const) {
-      assert.deepEqual(await requestMusicCommand(socket, "lobby", { kind }), { ok: true, track: null });
+      assert.deepEqual(await requestMusicCommand(socket, "lobby", { kind }), { ok: true, kind: "track", track: null });
     }
     assert.deepEqual(sent.map((entry) => entry.command.kind), ["play", "stop", "leave"]);
   });
@@ -175,14 +189,16 @@ describe("asking for music", () => {
     );
   });
 
-  it("does not send a link that is only whitespace", () => {
-    // The browser holds no opinion about which links are playable — that is the
-    // bot's knowledge and a second copy of it here would be the one that drifts.
-    // "Is there anything here at all" is the whole check.
-    assert.equal(isSendableLink(""), false);
-    assert.equal(isSendableLink("   \n "), false);
-    assert.equal(isSendableLink("https://youtu.be/aB3dE5gH7jK"), true);
-    assert.equal(isSendableLink("probably not a link"), true, "the bot gets to answer that one");
+  it("does not send an input that is only whitespace", () => {
+    // The browser holds no opinion about which links are playable, nor about
+    // whether this is a link at all — both are the bot's knowledge and a second
+    // copy of either here would be the one that drifts. "Is there anything here
+    // at all" is the whole check.
+    assert.equal(isSendableInput(""), false);
+    assert.equal(isSendableInput("   \n "), false);
+    assert.equal(isSendableInput("https://youtu.be/aB3dE5gH7jK"), true);
+    assert.equal(isSendableInput("nocturne in e flat"), true, "the bot gets to answer that one");
+    assert.equal(isSendableInput("probably not a link"), true);
   });
 });
 
@@ -238,8 +254,8 @@ describe("what a refusal says", () => {
     const keys = [
       "music.title",
       "music.copy",
-      "music.linkLabel",
-      "music.linkPlaceholder",
+      "music.inputLabel",
+      "music.inputPlaceholder",
       "music.add",
       "music.play",
       "music.pause",
@@ -260,7 +276,14 @@ describe("what a refusal says", () => {
       "music.queuePosition",
       "music.requestedBy",
       "music.queued",
-      "music.requesterUnknown"
+      "music.requesterUnknown",
+      "music.results",
+      "music.resultsFound",
+      "music.resultsEmpty",
+      "music.chooseResult",
+      "music.chooseResultUnknown",
+      "music.chooseClosest",
+      "music.closest"
     ] as const;
     for (const key of keys) {
       assert.notEqual(translate("en", key), translate("tr", key), `${key} must be translated`);
@@ -385,6 +408,165 @@ describe("the Queue as the panel reads it", () => {
   });
 });
 
+describe("what a search offers", () => {
+  const results = [
+    {
+      track: { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 },
+      channel: "A Channel",
+      url: "https://www.youtube.com/watch?v=aB3dE5gH7jK"
+    },
+    {
+      track: { id: "L0ngM1xH0ur", title: "Nocturne — 1 hour relaxing mix", durationSeconds: 3_714 },
+      channel: "Study Mixes",
+      url: "https://www.youtube.com/watch?v=L0ngM1xH0ur"
+    }
+  ];
+  const english = (key: TranslationKey, values?: Record<string, string | number>) => translate("en", key, values);
+
+  it("marks the one on offer, so it is not only the browser's focus ring", () => {
+    // A member who submitted with the pointer gets focus moved
+    // programmatically, and browsers deliberately draw no ring for that. The
+    // "already selected" the design asks for would be invisible to exactly the
+    // people who did not use the keyboard.
+    const rows = musicSearchRows(results, english);
+
+    assert.deepEqual(rows.map((row) => row.isClosest), [true, false]);
+    assert.match(String(rows[0]?.label), /Closest result/, "and its own name says so");
+    assert.match(String(rows[0]?.label), /Nocturne in E-flat major/);
+    assert.doesNotMatch(String(rows[1]?.label), /Closest result/);
+  });
+
+  it("gives each Result what tells it from the one above it", () => {
+    // The length is what catches the hour-long mix and the channel is what
+    // catches the cover. Both are why a member is being shown a list at all.
+    const rows = musicSearchRows(results, english);
+
+    assert.deepEqual(rows.map((row) => [row.title, row.length, row.channel]), [
+      ["Nocturne in E-flat major", "4:33", "A Channel"],
+      ["Nocturne — 1 hour relaxing mix", "1:01:54", "Study Mixes"]
+    ]);
+  });
+
+  it("hands back the link the bot built rather than one of its own", () => {
+    // The browser stores this and does not read it. Which links are playable is
+    // not its knowledge, and building one here would be that second opinion.
+    assert.deepEqual(musicSearchRows(results, english).map((row) => row.url), results.map((result) => result.url));
+  });
+
+  it("names the Track in each control, not the action", () => {
+    // A column of buttons all called "Add" tells a screen-reader user nothing
+    // about which Track they are choosing — the same reason a Queue row's
+    // Remove carries its own title.
+    const [first, second] = musicSearchRows(results, english);
+
+    assert.match(String(first?.label), /Nocturne in E-flat major/);
+    assert.match(String(first?.label), /4:33/);
+    assert.match(String(first?.label), /A Channel/);
+    assert.notEqual(first?.label, second?.label);
+    assert.notEqual(
+      musicSearchRows(results, (key, values) => translate("tr", key, values))[0]?.label,
+      first?.label,
+      "and it is translated"
+    );
+  });
+
+  it("still offers a Track whose channel the source did not name", () => {
+    const nameless = [{ ...results[0]!, channel: "" }];
+    const [row] = musicSearchRows(nameless, english);
+
+    assert.equal(row?.channel, "");
+    assert.match(String(row?.label), /Nocturne in E-flat major/);
+    assert.doesNotMatch(String(row?.label), /undefined|\bby\b\s*$/);
+  });
+
+  it("has nothing to show for a search that matched nothing", () => {
+    assert.deepEqual(musicSearchRows([], english), []);
+  });
+});
+
+describe("the results on the page", () => {
+  it("keeps a member's Results out of the room", () => {
+    // The one thing this panel shows that is not the published Queue. It lives
+    // in component state, it arrives on this member's own acknowledgement, and
+    // it must never reach `music:queue` — where the rule is the opposite,
+    // because five members have to see one Queue. ADR-0007.
+    assert.match(musicPanel, /const \[results, setResults\] = useState<MusicSearchResult\[\]>\(\[\]\);/);
+    assert.match(musicPanel, /if \(response\.kind === "results"\) \{/);
+    assert.doesNotMatch(queueHook, /result/i, "nothing about a search reaches the room's state");
+    assert.doesNotMatch(musicPanel, /setQueues\(/, "and the panel never writes the room's Queue");
+  });
+
+  it("takes a name and a link through one field and one submit", () => {
+    // Which of the two a string is is the bot's answer, so nothing here looks
+    // at it. There is no second control and no second verb.
+    assert.match(musicPanel, /if \(isSendableInput\(input\)\) void send\(\{ kind: "add", input: input\.trim\(\) \}\);/);
+    assert.doesNotMatch(musicPanel, /startsWith\("http|new URL\(|includes\("youtu/);
+    assert.doesNotMatch(musicPanel, /inputMode="url"/, "the field takes words as often as a link now");
+  });
+
+  it("gives the list a role, so the heading labelling it is not dropped", () => {
+    assert.match(musicPanel, /<section\s+aria-labelledby="musicResultsTitle"/);
+    assert.match(musicPanel, /<p className="label" id="musicResultsTitle">\{t\("music\.results"\)\}<\/p>/);
+  });
+
+  it("offers the closest Result first and puts the keyboard on it", () => {
+    // A member pressed Enter to search; pressing it again takes the obvious
+    // answer. Tab reaches the rest, which is how every other control here is
+    // reached.
+    assert.match(musicPanel, /ref=\{index === 0 \? firstResultRef : undefined\}/);
+    assert.match(musicPanel, /if \(results\.length > 0\) firstResultRef\.current\?\.focus\(\);/);
+    assert.match(musicPanel, /\}, \[results\]\);/);
+  });
+
+  it("catches the keyboard again when the list a member chose from goes away", () => {
+    // Choosing unmounts the button under the cursor, exactly as removing a
+    // Queue row does. One answer for both rather than a second mechanism.
+    assert.match(musicPanel, /droppedFocus\.current = closesWhatWasPressed \|\| command\.kind === "skip" \|\| command\.kind === "remove";/);
+    assert.match(musicPanel, /void send\(\{ kind: "add", input: row\.url \}, true\)/);
+    assert.match(musicPanel, /\}, \[rows\.length, results\.length\]\);/);
+  });
+
+  it("lets the list be dismissed from anywhere in the panel, not only from inside it", () => {
+    // Escape has to reach a member who has gone back to the field to ask a
+    // different question, so the handler sits on the panel rather than on the
+    // list it puts away.
+    const panelSection = musicPanel.slice(musicPanel.indexOf('className="music-panel"'));
+
+    assert.match(panelSection, /onKeyDown=\{\(event\) => \{/);
+    assert.match(musicPanel, /if \(event\.key === "Escape" && results\.length > 0\) dismissResults\(\);/);
+    assert.doesNotMatch(musicPanel, /className="music-results"\s*\n?\s*onKeyDown/);
+  });
+
+  it("retires the sentence with the list it was pointing at", () => {
+    // "Choose one to add it to the queue" left standing over an empty panel is
+    // the live region describing something that is no longer there.
+    assert.match(musicPanel, /setResults\(\[\]\);\s*\n\s*setAccepted\(""\);\s*\n\s*inputRef\.current\?\.focus\(\);/);
+  });
+
+  it("puts the answer to the last question away when a new one is being typed", () => {
+    assert.match(
+      musicPanel,
+      /setInput\(event\.target\.value\);\s*\n(?:\s*\/\/[^\n]*\n)*\s*setResults\(\[\]\);\s*\n\s*setAccepted\(""\);/
+    );
+  });
+
+  it("says what happened for a reader who cannot see the list appear", () => {
+    assert.match(musicPanel, /setAccepted\(t\(response\.results\.length > 0 \? "music\.resultsFound" : "music\.resultsEmpty"\)\);/);
+    assert.match(musicPanel, /aria-live="polite"/);
+  });
+
+  it("introduces no scroll region of its own either", () => {
+    // Same rule as the Queue: the call surface is the sole scroll owner, and a
+    // fixed-height block here is a stage that has to shrink for it.
+    for (const selector of ["music-results", "music-results-list", "music-result", "music-result-copy"]) {
+      const rule = styles.match(new RegExp(`\\.${selector}\\s*\\{[^}]+\\}`))?.[0];
+      assert.ok(rule, `${selector} must have a rule for this to be asserting anything`);
+      assert.doesNotMatch(rule, /overflow(?:-y|-block)?:\s*(?:auto|scroll)/, selector);
+      assert.doesNotMatch(rule, /(?:max-)?(?:block-size|height):/, selector);
+    }
+  });
+});
+
 describe("the Queue on the page", () => {
   it("renders the Queue the bot published rather than anything it remembered", () => {
     assert.match(musicPanel, /const queue = musicQueueFor\(queues, roomId, bot\);/);
@@ -477,10 +659,10 @@ describe("the control's placement", () => {
     // a row unmounts it; either way the browser drops focus to the document and
     // a keyboard user is left at the top of the page. Only this client's own
     // press counts — pulling focus for somebody else's skip would be worse.
-    assert.match(musicPanel, /droppedFocus\.current = command\.kind === "skip" \|\| command\.kind === "remove";/);
-    assert.match(musicPanel, /if \(document\.activeElement === document\.body\) linkRef\.current\?\.focus\(\);/);
-    assert.match(musicPanel, /\}, \[rows\.length\]\);/);
-    assert.match(musicPanel, /ref=\{linkRef\}/);
+    assert.match(musicPanel, /droppedFocus\.current = closesWhatWasPressed \|\| command\.kind === "skip" \|\| command\.kind === "remove";/);
+    assert.match(musicPanel, /if \(document\.activeElement === document\.body\) inputRef\.current\?\.focus\(\);/);
+    assert.match(musicPanel, /\}, \[rows\.length, results\.length\]\);/);
+    assert.match(musicPanel, /ref=\{inputRef\}/);
   });
 
   it("takes the link through a form, so Enter submits it", () => {
@@ -490,12 +672,12 @@ describe("the control's placement", () => {
   });
 
   it("labels the link field and refuses to send an empty one", () => {
-    assert.match(musicPanel, /aria-label=\{t\("music\.linkLabel"\)\}/);
-    assert.match(musicPanel, /disabled=\{busy \|\| !isSendableLink\(link\)\}/);
+    assert.match(musicPanel, /aria-label=\{t\("music\.inputLabel"\)\}/);
+    assert.match(musicPanel, /disabled=\{busy \|\| !isSendableInput\(input\)\}/);
   });
 
   it("keeps a refused link in the field rather than making it be retyped", () => {
-    assert.match(musicPanel, /if \(command\.kind === "add"\) setLink\(""\);/);
+    assert.match(musicPanel, /if \(command\.kind === "add"\) setInput\(""\);/);
   });
 
   it("announces status changes to a screen reader", () => {
@@ -536,7 +718,7 @@ describe("the control's placement", () => {
     const buttons = musicPanel.match(/<button/g) ?? [];
     const typed = musicPanel.match(/type="(?:button|submit)"/g) ?? [];
 
-    assert.equal(buttons.length, 5, "add, play/pause, skip, send away, and one per Queue row");
+    assert.equal(buttons.length, 6, "add, one per result, play/pause, skip, send away, and one per Queue row");
     assert.equal(typed.length, buttons.length);
     assert.doesNotMatch(musicPanel, /<(?:div|span|li)[^>]*onClick/);
   });

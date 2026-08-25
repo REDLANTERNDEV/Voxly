@@ -13,7 +13,13 @@
  * one place, and it is a place a test can reach without a subprocess.
  */
 
-import { musicTitleMaxLength, type MusicCommandAck } from "@voxly/shared";
+import {
+  musicSearchResultsMax,
+  musicTitleMaxLength,
+  type MusicCommandAck,
+  type MusicSearchResult,
+  type MusicTrackSummary
+} from "@voxly/shared";
 
 /** A Track the bot can play: what to show, and what to fetch. */
 export interface Track {
@@ -27,6 +33,26 @@ export interface Track {
 type TrackError = Extract<MusicCommandAck, { ok: false }>["error"];
 
 export type TrackResult = { ok: true; track: Track } | { ok: false; error: TrackError };
+
+/**
+ * What a search offered, or why it could not be read. Empty is a success: a
+ * name that matched nothing is an answer rather than a refusal, and there is
+ * nothing about it for a member to wait out.
+ */
+export type SearchResult = { ok: true; results: MusicSearchResult[] } | { ok: false; error: TrackError };
+
+/**
+ * Which resolver a member's input belongs to.
+ *
+ * `unsupported` is a link this bot cannot play — a playlist, a channel, another
+ * site — and not "that was not a link", which is now an ordinary thing to type.
+ * `nothing` is an input with no characters in it, which is neither.
+ */
+export type ResolverChoice =
+  | { kind: "link"; url: string }
+  | { kind: "search"; name: string }
+  | { kind: "unsupported" }
+  | { kind: "nothing" };
 
 /** Eleven characters of base64url. YouTube has used this shape throughout. */
 const videoIdPattern = /^[A-Za-z0-9_-]{11}$/;
@@ -66,7 +92,16 @@ export function youtubeVideoUrl(input: string): string | null {
   if (url.protocol !== "https:" && url.protocol !== "http:") return null;
 
   const id = videoIdIn(url);
-  return id && videoIdPattern.test(id) ? `https://www.youtube.com/watch?v=${id}` : null;
+  return id && videoIdPattern.test(id) ? watchUrlFor(id) : null;
+}
+
+/**
+ * The one place a watch URL is spelled out. Every link this module hands on —
+ * for a pasted one, for a Result — is built here from a validated id rather
+ * than echoed from what arrived.
+ */
+function watchUrlFor(id: string): string {
+  return `https://www.youtube.com/watch?v=${id}`;
 }
 
 function videoIdIn(url: URL): string | null {
@@ -77,6 +112,52 @@ function videoIdIn(url: URL): string | null {
   if (url.pathname === "/watch") return url.searchParams.get("v");
   const prefix = idInPath.find((candidate) => url.pathname.startsWith(candidate));
   return prefix ? url.pathname.slice(prefix.length) : null;
+}
+
+/**
+ * A string that announces itself as a web address. This is the whole test for
+ * "did somebody paste a link", and it is deliberately not a test for "is this
+ * playable" — that is `youtubeVideoUrl`, one line further down.
+ *
+ * `https?` and nothing else, because a colon on its own is not evidence of
+ * anything: "Beethoven: Symphony No. 5" is a name somebody typed, and a scheme
+ * test loose enough to accept `javascript:` accepts that too.
+ */
+const webLinkPattern = /^https?:\/\//i;
+
+/**
+ * Which of the two resolvers a member's input is for.
+ *
+ * **The bot decides this, and nothing else does.** A browser that split "play
+ * this link" from "search for this" would be holding a second opinion about
+ * what a link is worth, which is the copy that drifts — refusing a form this
+ * process has since learned to accept, with nobody able to say why. So one
+ * field carries both and the answer says which happened. ADR-0007.
+ *
+ * A pasted link brings its scheme; a typed host does not, so `https://` is
+ * tried in front of one — through the same exact-host check, so nothing new is
+ * recognised, only the same links written shorter. Anything that still is not
+ * one video on YouTube is a name, unless it announced itself as a web address,
+ * in which case the member wants to hear that their link is wrong rather than
+ * to be shown search results for its text.
+ */
+export function resolverFor(input: string): ResolverChoice {
+  const trimmed = input.trim();
+  // Neither a link nor a name. The panel will not send this, but the server's
+  // bound is applied before trimming, so a field of spaces does reach here —
+  // and it is not `unsupported`, which means "your link is wrong" and would be
+  // the wrong sentence to put in front of somebody who typed no link at all.
+  if (!trimmed) return { kind: "nothing" };
+
+  const pasted = youtubeVideoUrl(trimmed);
+  if (pasted) return { kind: "link", url: pasted };
+  if (webLinkPattern.test(trimmed)) return { kind: "unsupported" };
+
+  const typed = youtubeVideoUrl(`https://${trimmed}`);
+  // A name is one line whatever it arrived as. A paste out of a tracklist can
+  // carry a newline and a run of spaces with it, and the source is being asked
+  // about the words rather than about the spacing between them.
+  return typed ? { kind: "link", url: typed } : { kind: "search", name: trimmed.replace(/\s+/g, " ") };
 }
 
 /**
@@ -110,33 +191,114 @@ export function parseTrackMetadata(stdout: string): TrackResult {
   if (fields._type === "playlist" || Array.isArray(fields.entries)) {
     return { ok: false, error: "unsupported_link" };
   }
-  if (fields.is_live === true || notPlayableLiveStatus.has(String(fields.live_status))) {
-    return { ok: false, error: "live_stream" };
-  }
+  if (isBroadcast(fields)) return { ok: false, error: "live_stream" };
 
-  const id = fields.id;
-  const title = fields.title;
-  const duration = fields.duration;
-  if (typeof id !== "string" || !videoIdPattern.test(id)) return { ok: false, error: "extractor_failed" };
-  if (typeof title !== "string" || title.trim().length === 0) return { ok: false, error: "extractor_failed" };
-  // A missing duration is what a live stream has, and this one did not say it
-  // was live. Zero is the same: there is nothing to start playing.
-  if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) {
+  const named = playableVideo(fields);
+  if (!named) return { ok: false, error: "extractor_failed" };
+
+  return { ok: true, track: { ...named, url: watchUrlFor(named.id) } };
+}
+
+/**
+ * The three fields that make an entry a Track, read the same way whether they
+ * came from one video's page or from a line of a search listing. `null` when
+ * any of them is missing or nonsense — the two callers turn that into their own
+ * kind of answer, which is the only thing they differ on.
+ *
+ * A missing duration is what a live stream has, and an entry reaching here did
+ * not say it was live. Zero is the same: there is nothing to start playing.
+ *
+ * The title is bounded here, at the edge, rather than trusted the whole way in
+ * because it happens to be short today: it is somebody else's string on its way
+ * to everyone in the room.
+ */
+function playableVideo(fields: Record<string, unknown>): MusicTrackSummary | null {
+  const { id, title, duration } = fields;
+  if (typeof id !== "string" || !videoIdPattern.test(id)) return null;
+  if (typeof title !== "string" || title.trim().length === 0) return null;
+  if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) return null;
+  return {
+    id,
+    title: title.trim().slice(0, musicTitleMaxLength),
+    durationSeconds: Math.round(duration)
+  };
+}
+
+/** What the extractor says when there is no finite Track behind an entry. */
+function isBroadcast(fields: Record<string, unknown>): boolean {
+  return fields.is_live === true || notPlayableLiveStatus.has(String(fields.live_status));
+}
+
+/**
+ * The extractor's answer to a search, as a list of Results.
+ *
+ * The flat listing the search asks for is one request rather than one per
+ * result, so each entry carries what the listing knew and no more: an id, a
+ * title, a length and a channel. That is enough to choose between them, which
+ * is all this list is for — the Track itself is resolved properly when the
+ * member picks one, through exactly the path a pasted link takes.
+ *
+ * An entry that cannot be read is skipped rather than failing the search: the
+ * other four are still answers, and one odd row in somebody else's listing is
+ * not a reason to tell a member their search broke.
+ */
+export function parseSearchResults(stdout: string): SearchResult {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(stdout);
+  } catch {
     return { ok: false, error: "extractor_failed" };
   }
+  if (typeof raw !== "object" || raw === null) return { ok: false, error: "extractor_failed" };
+  const entries = (raw as Record<string, unknown>).entries;
+  // No `entries` at all is not an empty search — it is output of a shape this
+  // does not understand, and calling that "nothing matched" would tell a member
+  // to try another name for a fault that has nothing to do with their name.
+  if (!Array.isArray(entries)) return { ok: false, error: "extractor_failed" };
 
+  const results: MusicSearchResult[] = [];
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    if (results.length >= musicSearchResultsMax) break;
+    const result = searchResultFrom(entry);
+    // The same video twice is a choice that is not a choice, and it costs a row
+    // that could have shown a different one.
+    if (!result || seen.has(result.track.id)) continue;
+    seen.add(result.track.id);
+    results.push(result);
+  }
+  return { ok: true, results };
+}
+
+/** One entry of the listing, or `null` if it is not a Track a member could pick. */
+function searchResultFrom(entry: unknown): MusicSearchResult | null {
+  if (typeof entry !== "object" || entry === null) return null;
+  const fields = entry as Record<string, unknown>;
+
+  // Offering these would be offering a refusal: a live stream has no end and a
+  // premiere has not happened, and the bot knows both before the member clicks.
+  if (isBroadcast(fields)) return null;
+
+  const track = playableVideo(fields);
+  if (!track) return null;
   return {
-    ok: true,
-    track: {
-      id,
-      // Somebody else's string, on its way to everyone in the room. Bounded
-      // here, at the edge, rather than trusted the whole way in because it
-      // happens to be short today.
-      title: title.trim().slice(0, musicTitleMaxLength),
-      durationSeconds: Math.round(duration),
-      url: `https://www.youtube.com/watch?v=${id}`
-    }
+    track,
+    channel: channelName(fields),
+    // Rebuilt from the id, never echoed from the listing. The browser hands
+    // this straight back to play it, so it has to be a link this process built.
+    url: watchUrlFor(track.id)
   };
+}
+
+/**
+ * Who published it — the one thing that tells a cover from the original. The
+ * source names it two ways and a flat listing may name it neither, in which
+ * case the Track is still perfectly playable and the panel simply has one line
+ * fewer to draw.
+ */
+function channelName(fields: Record<string, unknown>): string {
+  const named = [fields.channel, fields.uploader].find((value) => typeof value === "string" && value.trim());
+  return typeof named === "string" ? named.trim().slice(0, musicTitleMaxLength) : "";
 }
 
 /**

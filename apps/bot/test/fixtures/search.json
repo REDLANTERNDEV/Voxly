@@ -1,0 +1,89 @@
+{
+  "_type": "playlist",
+  "id": "nocturne in e flat",
+  "title": "nocturne in e flat",
+  "extractor": "youtube:search",
+  "extractor_key": "YoutubeSearch",
+  "webpage_url": "ytsearch10:nocturne in e flat",
+  "playlist_count": 6,
+  "entries": [
+    {
+      "_type": "url",
+      "ie_key": "Youtube",
+      "id": "aB3dE5gH7jK",
+      "url": "https://www.youtube.com/watch?v=aB3dE5gH7jK",
+      "title": "Nocturne in E-flat major",
+      "duration": 273,
+      "channel": "A Channel",
+      "channel_id": "UC0000000000000000000000",
+      "uploader": "A Channel",
+      "view_count": 118273,
+      "live_status": "not_live"
+    },
+    {
+      "_type": "url",
+      "ie_key": "Youtube",
+      "id": "cV3rB4nD9pQ",
+      "url": "https://www.youtube.com/watch?v=cV3rB4nD9pQ",
+      "title": "Nocturne in E-flat major (cover)",
+      "duration": 289,
+      "channel": "Someone Else",
+      "channel_id": "UC1111111111111111111111",
+      "uploader": "Someone Else",
+      "view_count": 4021,
+      "live_status": "not_live"
+    },
+    {
+      "_type": "url",
+      "ie_key": "Youtube",
+      "id": "L0ngM1xH0ur",
+      "url": "https://www.youtube.com/watch?v=L0ngM1xH0ur",
+      "title": "Nocturne — 1 hour relaxing mix",
+      "duration": 3714,
+      "channel": "Study Mixes",
+      "channel_id": "UC2222222222222222222222",
+      "uploader": "Study Mixes",
+      "view_count": 2840119,
+      "live_status": "not_live"
+    },
+    {
+      "_type": "url",
+      "ie_key": "Youtube",
+      "id": "R4d10L1v3St",
+      "url": "https://www.youtube.com/watch?v=R4d10L1v3St",
+      "title": "Nocturne radio · 24/7 live",
+      "duration": null,
+      "channel": "Study Mixes",
+      "channel_id": "UC2222222222222222222222",
+      "uploader": "Study Mixes",
+      "view_count": 913,
+      "live_status": "is_live"
+    },
+    {
+      "_type": "url",
+      "ie_key": "Youtube",
+      "id": "N0Dur4t10nX",
+      "url": "https://www.youtube.com/watch?v=N0Dur4t10nX",
+      "title": "Nocturne (premiere)",
+      "duration": null,
+      "channel": "A Channel",
+      "channel_id": "UC0000000000000000000000",
+      "uploader": "A Channel",
+      "view_count": null,
+      "live_status": "is_upcoming"
+    },
+    {
+      "_type": "url",
+      "ie_key": "Youtube",
+      "id": "qW8eR2tY6uI",
+      "url": "https://www.youtube.com/watch?v=qW8eR2tY6uI",
+      "title": "Nocturne op. 9 no. 2",
+      "duration": 261,
+      "channel": "A Third Channel",
+      "channel_id": "UC3333333333333333333333",
+      "uploader": "A Third Channel",
+      "view_count": 55210,
+      "live_status": "not_live"
+    }
+  ]
+}

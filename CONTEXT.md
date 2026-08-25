@@ -42,6 +42,14 @@ _Avoid_: Timeout, idle window, linger
 The stretch from a Summon until the Music bot leaves the voice room. Deliberately not called a session, which Voxly already uses for authentication.
 _Avoid_: Session, playback session
 
+**Search**:
+Turning a typed name into several Results to choose between. A resolver, like a pasted link — not a separate feature and not a separate control.
+_Avoid_: Lookup, query, find
+
+**Result**:
+One Track a Search offered. It belongs to the member who typed the name, is never shown to the room, and stops existing when one is chosen.
+_Avoid_: Match, hit, candidate, suggestion, option
+
 **Set log**:
 The record of what members did during a Set — who queued a Track, who skipped one. It exists only for the duration of the Set.
 _Avoid_: History, audit log, activity feed

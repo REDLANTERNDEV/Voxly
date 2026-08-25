@@ -1,14 +1,15 @@
-import type { MusicControlAck, MusicQueueState, VoiceMemberState } from "@voxly/shared";
+import type { MusicControlAck, MusicQueueState, MusicSearchResult, VoiceMemberState } from "@voxly/shared";
 import { useEffect, useRef, useState } from "react";
 import type { Translate } from "../../app/types.js";
 import { CloseIcon } from "../../components/ui/Icons.js";
 import {
-  isSendableLink,
+  isSendableInput,
   musicBotIn,
   musicErrorKey,
   musicQueueFor,
   musicQueueRows,
   musicRestingKey,
+  musicSearchRows,
   musicTransport,
   trackAddedMessage,
   transportToggleCommand,
@@ -16,19 +17,28 @@ import {
 } from "../../lib/musicBot.js";
 
 /**
- * Pasting a link, the Queue, and telling the bot what to do with it.
+ * Typing a name or pasting a link, the Queue, and telling the bot what to do.
  *
  * Shown only to a member who is in the voice channel, because being in it is
  * what entitles them to ask — the server enforces that, and offering a control
  * that would be refused is a worse answer than not offering it.
  *
- * Everything the panel shows is read from the room rather than remembered here.
- * The Queue, what is playing, and which entry the transport controls act on all
- * come from the one thing the bot published to everyone in the room, so the
- * member who pasted the link and the four who did not are looking at the same
- * panel, a reload is not a different one, and an action the bot turns down
- * leaves every client showing what the bot shows. ADR-0006 records why that is
- * the Queue and not the bot's `speaking` flag on the voice snapshot.
+ * Almost everything the panel shows is read from the room rather than
+ * remembered here. The Queue, what is playing, and which entry the transport
+ * controls act on all come from the one thing the bot published to everyone in
+ * the room, so the member who pasted the link and the four who did not are
+ * looking at the same panel, a reload is not a different one, and an action the
+ * bot turns down leaves every client showing what the bot shows. ADR-0006
+ * records why that is the Queue and not the bot's `speaking` flag on the voice
+ * snapshot.
+ *
+ * **Search results are the exception, and they are the only one.** They arrive
+ * on this member's own acknowledgement, they live in this component and nowhere
+ * else, and they are never published: a Queue is the room's and everyone must
+ * see the same one, while a list of Results belongs to the single member who
+ * is still deciding between them. Read ADR-0007 before moving them anywhere,
+ * because the rule immediately above says the opposite and applies to
+ * everything else here.
  *
  * The transport controls appear only once a bot is here, and go quiet when
  * nothing is queued. Before either, there is nothing to pause, skip or resume,
@@ -46,11 +56,18 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
   onMusicControl: (roomId: string, command: MusicCommand) => Promise<MusicControlAck>;
   t: Translate;
 }) {
-  const [link, setLink] = useState("");
+  const [input, setInput] = useState("");
+  /**
+   * What a typed name might have meant, for this member alone. Component state
+   * on purpose — see the note above: nothing here goes near the room's Queue,
+   * and it is gone the moment one of them is chosen.
+   */
+  const [results, setResults] = useState<MusicSearchResult[]>([]);
   const [refusal, setRefusal] = useState("");
   const [accepted, setAccepted] = useState("");
   const [pending, setPending] = useState(false);
-  const linkRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const firstResultRef = useRef<HTMLButtonElement>(null);
   /**
    * Set while one of this member's own presses is in flight on a control that
    * can take away the thing it acts on. Skipping the last Track disables the
@@ -64,14 +81,21 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
   const bot = musicBotIn(members);
   const queue = musicQueueFor(queues, roomId, bot);
   const rows = musicQueueRows(queue, members, t);
+  const resultRows = musicSearchRows(results, t);
   // Play, Pause, Skip and every row's Remove all read the Queue the bot
   // published, so one message moves the whole panel and no two controls here
   // can disagree about what is happening. ADR-0006.
   const transport = musicTransport(bot, queue);
 
-  const send = async (command: MusicCommand) => {
+  /**
+   * `closesWhatWasPressed` names the controls that take away the thing they act
+   * on: a skip and a removal, and now choosing a result, which unmounts the
+   * whole list including the button under the keyboard. One answer for all
+   * three rather than a second mechanism for the newest of them.
+   */
+  const send = async (command: MusicCommand, closesWhatWasPressed = false) => {
     if (!roomId) return;
-    droppedFocus.current = command.kind === "skip" || command.kind === "remove";
+    droppedFocus.current = closesWhatWasPressed || command.kind === "skip" || command.kind === "remove";
     setPending(true);
     setRefusal("");
     setAccepted("");
@@ -84,10 +108,32 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
       setRefusal(t(musicErrorKey(response.error)));
       return;
     }
-    // The link is cleared only once it was accepted, so a refused paste is
-    // still there to be corrected rather than retyped from memory.
-    if (command.kind === "add") setLink("");
+    // A typed name that found Results. Nothing was queued and nothing is
+    // said to the room; this member is being asked which one they meant.
+    if (response.kind === "results") {
+      droppedFocus.current = false;
+      setResults(response.results);
+      setAccepted(t(response.results.length > 0 ? "music.resultsFound" : "music.resultsEmpty"));
+      return;
+    }
+    // A Track is in the Queue, so whatever was on offer has been decided.
+    setResults([]);
+    // What was typed is cleared only once it was accepted, so a refused paste
+    // is still there to be corrected rather than retyped from memory.
+    if (command.kind === "add") setInput("");
     if (response.track) setAccepted(trackAddedMessage(response.track, t));
+  };
+
+  /**
+   * Puts the list away without choosing, and gives the keyboard back. The
+   * sentence goes with it: "Choose one to add it to the queue" left standing
+   * over an empty panel is the live region describing something that is no
+   * longer there.
+   */
+  const dismissResults = () => {
+    setResults([]);
+    setAccepted("");
+    inputRef.current?.focus();
   };
 
   const busy = pending || !connected || !roomId;
@@ -103,8 +149,18 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
   useEffect(() => {
     if (!droppedFocus.current) return;
     droppedFocus.current = false;
-    if (document.activeElement === document.body) linkRef.current?.focus();
-  }, [rows.length]);
+    if (document.activeElement === document.body) inputRef.current?.focus();
+  }, [rows.length, results.length]);
+
+  /**
+   * The closest match is the one on offer, so the keyboard goes to it: a member
+   * who pressed Enter to search presses Enter again to take the obvious answer,
+   * and Tab reaches the rest. Nothing but this member's own search can produce
+   * a list, so this never pulls focus for somebody else's action.
+   */
+  useEffect(() => {
+    if (results.length > 0) firstResultRef.current?.focus();
+  }, [results]);
   /**
    * One line, and it is the live region. What is playing and what is coming are
    * the list's job now, so this carries only the outcome of what somebody just
@@ -116,7 +172,18 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
   const message = pending ? t("music.summoning") : refusal || accepted || resting;
 
   return (
-    <section className="music-panel" aria-labelledby="musicPanelTitle">
+    <section
+      className="music-panel"
+      aria-labelledby="musicPanelTitle"
+      onKeyDown={(event) => {
+        // The way out of a list of Results without choosing one, and the
+        // keyboard comes back with it — the same answer the popovers and
+        // dialogs here already give. On the panel rather than on the list
+        // itself, because the field is where a member goes to ask a different
+        // question and Escape has to reach them there too.
+        if (event.key === "Escape" && results.length > 0) dismissResults();
+      }}
+    >
       <header className="compact-section-head">
         <div>
           <p className="label" id="musicPanelTitle">{t("music.title")}</p>
@@ -127,25 +194,72 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
         className="music-panel-link"
         onSubmit={(event) => {
           event.preventDefault();
-          if (isSendableLink(link)) void send({ kind: "add", url: link.trim() });
+          if (isSendableInput(input)) void send({ kind: "add", input: input.trim() });
         }}
       >
+        {/* No URL input mode any more: this field takes a name as often as a
+            link, and a URL keyboard is the wrong one for typing words. */}
         <input
-          ref={linkRef}
-          aria-label={t("music.linkLabel")}
+          ref={inputRef}
+          aria-label={t("music.inputLabel")}
           autoComplete="off"
           disabled={busy}
-          inputMode="url"
-          name="musicLink"
-          onChange={(event) => setLink(event.target.value)}
-          placeholder={t("music.linkPlaceholder")}
+          name="musicInput"
+          onChange={(event) => {
+            setInput(event.target.value);
+            // Editing the field is the start of a different question, and the
+            // answer to the last one should not sit under it looking current —
+            // neither the list nor the sentence that pointed at it.
+            setResults([]);
+            setAccepted("");
+          }}
+          placeholder={t("music.inputPlaceholder")}
           type="text"
-          value={link}
+          value={input}
         />
-        <button className="btn btn-primary" disabled={busy || !isSendableLink(link)} type="submit">
+        <button className="btn btn-primary" disabled={busy || !isSendableInput(input)} type="submit">
           {t("music.add")}
         </button>
       </form>
+      {/* What a typed name might have meant. This member's list and nobody
+          else's — it never reaches `music:queue`, and ADR-0007 says why. */}
+      {resultRows.length > 0 ? (
+        <section aria-labelledby="musicResultsTitle" className="music-results">
+          <p className="label" id="musicResultsTitle">{t("music.results")}</p>
+          <ol className="music-results-list">
+            {resultRows.map((row, index) => (
+              <li key={row.url}>
+                {/* The whole row is the control, so the pointer target is the
+                    result rather than a word inside it, and Tab reaches each
+                    one in turn. Its accessible name is the Track, because a
+                    column of buttons all called "Add" says nothing about which
+                    one a screen-reader user is choosing. */}
+                <button
+                  aria-label={row.label}
+                  className={`btn btn-ghost music-result ${row.isClosest ? "is-closest" : ""}`}
+                  disabled={busy}
+                  onClick={() => void send({ kind: "add", input: row.url }, true)}
+                  ref={index === 0 ? firstResultRef : undefined}
+                  type="button"
+                >
+                  <span className="music-result-copy">
+                    {/* The one on offer, said rather than only shaded. Focus
+                        shows it to whoever searched with the keyboard; a
+                        member who submitted with the pointer gets focus moved
+                        programmatically, which browsers deliberately draw no
+                        ring for — so without this the "already selected" the
+                        design asks for would be invisible to them. */}
+                    {row.isClosest ? <span className="music-result-closest">{t("music.closest")}</span> : null}
+                    <strong>{row.title}</strong>
+                    {row.channel ? <span>{row.channel}</span> : null}
+                  </span>
+                  <span className="music-result-length">{row.length}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
       {queue ? (
         <section className="music-queue" aria-labelledby="musicQueueTitle">
           <p className="label" id="musicQueueTitle">{t("music.queue")}</p>

@@ -6,7 +6,7 @@ import { createMusicResponder } from "../src/music.js";
 import { TrackBuffer } from "../src/audio.js";
 import type { MusicSet, MusicSetOptions, SetSocket } from "../src/set.js";
 import type { TrackAudio } from "../src/stream.js";
-import type { TrackResult } from "../src/track.js";
+import type { SearchResult, TrackResult } from "../src/track.js";
 
 /**
  * The responder is tested against a stand-in Set, a stand-in extractor and a
@@ -28,7 +28,13 @@ const environment: BotEnvironment = {
 const link = "https://www.youtube.com/watch?v=aB3dE5gH7jK";
 const otherLink = "https://youtu.be/zY9xW7vU5tS";
 
-const add = (url = link): MusicCommand => ({ kind: "add", url });
+/**
+ * One verb carries both a pasted link and a typed name, because which of the
+ * two a string is is the bot's own knowledge. These two helpers are the same
+ * command with different contents, and that is the point.
+ */
+const add = (input = link): MusicCommand => ({ kind: "add", input });
+const search = (name: string): MusicCommand => ({ kind: "add", input: name });
 const play: MusicCommand = { kind: "play" };
 const stop: MusicCommand = { kind: "stop" };
 const leave: MusicCommand = { kind: "leave" };
@@ -39,6 +45,15 @@ const leave: MusicCommand = { kind: "leave" };
  */
 const skip = (entryId: string): MusicCommand => ({ kind: "skip", entryId });
 const remove = (entryId: string): MusicCommand => ({ kind: "remove", entryId });
+
+/** One Result a search offered, as the wire carries it. */
+function resultFor(id: string) {
+  return {
+    track: { id, title: `Track ${id}`, durationSeconds: 273 },
+    channel: "A Channel",
+    url: `https://www.youtube.com/watch?v=${id}`
+  };
+}
 
 function trackFor(id: string) {
   return {
@@ -51,12 +66,19 @@ interface FakeSet extends MusicSet {
   readonly events: string[];
 }
 
-function harness(options: { failToBegin?: string; resolveAs?: TrackResult } = {}) {
+function harness(options: {
+  failToBegin?: string;
+  resolveAs?: TrackResult;
+  searchAs?: SearchResult;
+  /** Parks the extractor mid-answer, so a test can hold the chain open. */
+  holdResolve?: boolean;
+} = {}) {
   const created: FakeSet[] = [];
   const endTrack = new Map<string, () => void>();
   const iceRequests: number[] = [];
   const log: string[] = [];
   const resolved: string[] = [];
+  const searched: string[] = [];
   const fetched: string[] = [];
   const cancelled: string[] = [];
   const forceLeaveHandlers = new Set<(payload: { roomId: string; reason: VoiceForceLeaveReason }) => void>();
@@ -108,6 +130,10 @@ function harness(options: { failToBegin?: string; resolveAs?: TrackResult } = {}
     return set;
   };
 
+  let release = () => undefined as void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   let minted = 0;
   const responder = createMusicResponder({
     socket,
@@ -122,7 +148,12 @@ function harness(options: { failToBegin?: string; resolveAs?: TrackResult } = {}
     createSet: createSet as never,
     resolve: async (_environment, url) => {
       resolved.push(url);
+      if (options.holdResolve) await held;
       return options.resolveAs ?? trackFor(url.slice(-11));
+    },
+    search: async (_environment, name) => {
+      searched.push(name);
+      return options.searchAs ?? { ok: true, results: [resultFor("aB3dE5gH7jK"), resultFor("qW8eR2tY6uI")] };
     },
     fetch: (_environment, track): TrackAudio => {
       fetched.push(track.id);
@@ -137,6 +168,7 @@ function harness(options: { failToBegin?: string; resolveAs?: TrackResult } = {}
     iceRequests,
     log,
     resolved,
+    searched,
     fetched,
     cancelled,
     published,
@@ -151,7 +183,9 @@ function harness(options: { failToBegin?: string; resolveAs?: TrackResult } = {}
     forceLeave(roomId: string, reason: VoiceForceLeaveReason = "owner_disconnect") {
       for (const handler of forceLeaveHandlers) handler({ roomId, reason });
     },
-    forceLeaveSubscribers: () => forceLeaveHandlers.size
+    forceLeaveSubscribers: () => forceLeaveHandlers.size,
+    /** Lets a parked extractor answer, and with it the command holding the chain. */
+    releaseResolve: () => release()
   };
 }
 
@@ -167,6 +201,7 @@ describe("a pasted link", () => {
 
     assert.deepEqual(answer, {
       ok: true,
+      kind: "track",
       track: { id: "aB3dE5gH7jK", title: "Track aB3dE5gH7jK", durationSeconds: 273 }
     });
     assert.deepEqual(created[0]?.events, ["begin", "load", "play"]);
@@ -219,6 +254,7 @@ describe("a pasted link", () => {
     assert.deepEqual(titles(lastPublished()), ["Track aB3dE5gH7jK", "Track zY9xW7vU5tS"]);
     assert.deepEqual(answer, {
       ok: true,
+      kind: "track",
       track: { id: "zY9xW7vU5tS", title: "Track zY9xW7vU5tS", durationSeconds: 273 }
     }, "the answer names the Track the asker added, not the one playing");
   });
@@ -311,6 +347,173 @@ describe("a pasted link", () => {
   });
 });
 
+describe("a typed name", () => {
+  it("answers with the Tracks it might have meant, and adds none of them", async () => {
+    // The member has not chosen yet. Queueing the closest match would be the
+    // bot deciding for them, which is the whole reason a list is offered.
+    const { responder, searched, resolved, created } = harness();
+
+    const answer = await responder.handle(search("nocturne in e flat"), "lobby", ada);
+
+    assert.deepEqual(answer, {
+      ok: true,
+      kind: "results",
+      results: [resultFor("aB3dE5gH7jK"), resultFor("qW8eR2tY6uI")]
+    });
+    assert.deepEqual(searched, ["nocturne in e flat"]);
+    assert.deepEqual(resolved, [], "nothing is resolved until a member picks one");
+    assert.deepEqual(created, [], "and the bot does not appear in the channel to answer a question");
+  });
+
+  it("tells only the member who asked, and never the room", async () => {
+    // The first thing this panel shows that is not the published Queue. Five
+    // members must see one Queue; a list of Results belongs to the one who
+    // is still deciding, and publishing it would put four other people's panels
+    // in front of a choice that is not theirs. ADR-0007.
+    const { responder, published } = harness();
+
+    await responder.handle(search("nocturne"), "lobby", ada);
+
+    assert.deepEqual(published, []);
+  });
+
+  it("leaves a Set that is playing somewhere else exactly where it is", async () => {
+    // A Summon moves the bot, and a search is not a Summon. Somebody in another
+    // channel typing a name must not take the music away from the room that is
+    // listening to it.
+    const { responder, created, published } = harness();
+    await responder.handle(add(), "lobby", ada);
+    const before = published.length;
+
+    await responder.handle(search("nocturne"), "annex", ada);
+
+    assert.equal(responder.currentRoomId(), "lobby");
+    assert.deepEqual(created[0]?.events, ["begin", "load", "play"], "the Set is untouched");
+    assert.equal(published.length, before, "and the room it is playing to is told nothing");
+  });
+
+  it("finds nothing without calling it a failure", async () => {
+    // Nothing broke and there is nothing to wait out. The panel says so; an
+    // error code would send the member off to fix something that is not wrong.
+    const { responder } = harness({ searchAs: { ok: true, results: [] } });
+
+    assert.deepEqual(await responder.handle(search("asdfghjkl"), "lobby", ada), {
+      ok: true,
+      kind: "results",
+      results: []
+    });
+  });
+
+  it("reports a search that failed without ending the Set it was not part of", async () => {
+    // The chain's recovery ends the Set, which is right for a Summon that broke
+    // halfway and catastrophic for a search that did — the room would lose its
+    // music because somebody else mistyped a name.
+    const { responder, created } = harness({ searchAs: { ok: false, error: "extractor_failed" } });
+    await responder.handle(add(), "lobby", ada);
+
+    const answer = await responder.handle(search("nocturne"), "lobby", ada);
+
+    assert.deepEqual(answer, { ok: false, error: "extractor_failed" });
+    assert.equal(responder.currentRoomId(), "lobby", "the Set survives somebody else's failed search");
+    assert.deepEqual(created[0]?.events, ["begin", "load", "play"]);
+  });
+
+  it("does not wait behind a Summon that is still joining", async () => {
+    // The one request that changes nothing is the one request that does not
+    // queue. Otherwise a member typing a name is held up by somebody else's
+    // join — and a Skip sits behind twelve seconds of somebody else's search.
+    const { responder, releaseResolve } = harness({ holdResolve: true });
+    const adding = responder.handle(add(), "lobby", ada);
+
+    const answer = await Promise.race([
+      responder.handle(search("nocturne"), "lobby", ada),
+      new Promise<string>((resolve) => setTimeout(() => resolve("the search waited for the Summon"), 100))
+    ]);
+
+    assert.equal(typeof answer === "object" && answer.ok && answer.kind, "results", String(answer));
+    releaseResolve();
+    await adding;
+  });
+
+  it("plays the result a member chose, through the path a paste takes", async () => {
+    // The browser hands back the link the bot built rather than one of its own,
+    // and it arrives on the same verb a paste does — so nothing about it is
+    // trusted for having been round the loop.
+    const { responder, resolved, searched } = harness();
+    const answer = await responder.handle(search("nocturne"), "lobby", ada);
+    const chosen = answer.ok && answer.kind === "results" ? answer.results[1] : undefined;
+
+    const played = await responder.handle(add(chosen?.url), "lobby", ada);
+
+    assert.deepEqual(played, {
+      ok: true,
+      kind: "track",
+      track: { id: "qW8eR2tY6uI", title: "Track qW8eR2tY6uI", durationSeconds: 273 }
+    });
+    assert.deepEqual(resolved, ["https://www.youtube.com/watch?v=qW8eR2tY6uI"]);
+    assert.deepEqual(searched, ["nocturne"], "choosing does not search again");
+  });
+
+  it("runs one search at a time, so two members cannot double the extractor", async () => {
+    // The one thing this feature has always refused is two extractor runs at
+    // once against a source that rate-limits by address — it is the reason
+    // nothing is prefetched. Taking searches out of the Set's chain must not
+    // quietly take that away with it.
+    const running: string[] = [];
+    const overlapped: string[] = [];
+    let release = () => undefined as void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const responder = createMusicResponder({
+      socket: { onForceLeave() {}, offForceLeave() {} } as unknown as SetSocket,
+      selfUserId: "aaaa-bot",
+      environment,
+      publish: () => undefined,
+      loadIceServers: async () => [],
+      search: async (_environment, name) => {
+        if (running.length > 0) overlapped.push(name);
+        running.push(name);
+        if (name === "first") await held;
+        running.pop();
+        return { ok: true, results: [] };
+      }
+    });
+
+    const first = responder.handle(search("first"), "lobby", ada);
+    const second = responder.handle(search("second"), "lobby", ada);
+    release();
+    await Promise.all([first, second]);
+
+    assert.deepEqual(overlapped, [], "the second search waited for the first");
+  });
+
+  it("answers an input with nothing in it as a search that found nothing", async () => {
+    // The panel will not send one, but the server bounds the field before
+    // trimming, so spaces do arrive. "That link is not a YouTube video" would
+    // be the wrong sentence, and asking the source about no characters would be
+    // a process spent on nothing.
+    const { responder, searched } = harness();
+
+    assert.deepEqual(await responder.handle(search("   "), "lobby", ada), {
+      ok: true,
+      kind: "results",
+      results: []
+    });
+    assert.deepEqual(searched, []);
+  });
+
+  it("refuses a link it cannot play rather than searching for the text of it", async () => {
+    const { responder, searched, resolved } = harness();
+
+    const answer = await responder.handle(add("https://open.spotify.com/track/4cOdK2wGLETKBW3"), "lobby", ada);
+
+    assert.deepEqual(answer, { ok: false, error: "unsupported_link" });
+    assert.deepEqual(searched, [], "somebody who pasted a link wants to hear that the link is wrong");
+    assert.deepEqual(resolved, []);
+  });
+});
+
 describe("telling the room", () => {
   it("publishes the Queue for the room the Set is in", async () => {
     const { responder, published } = harness();
@@ -362,7 +565,7 @@ describe("stopping and leaving", () => {
     const { responder, created } = harness();
     await responder.handle(add(), "lobby", ada);
 
-    assert.deepEqual(await responder.handle(stop, "lobby", ada), { ok: true, track: null });
+    assert.deepEqual(await responder.handle(stop, "lobby", ada), { ok: true, kind: "track", track: null });
     assert.deepEqual(created[0]?.events, ["begin", "load", "play", "stop"]);
     assert.equal(responder.currentRoomId(), "lobby", "stopping is not leaving");
   });
@@ -382,7 +585,7 @@ describe("stopping and leaving", () => {
     const { responder, created, cancelled } = harness();
     await responder.handle(add(), "lobby", ada);
 
-    assert.deepEqual(await responder.handle(leave, "lobby", ada), { ok: true, track: null });
+    assert.deepEqual(await responder.handle(leave, "lobby", ada), { ok: true, kind: "track", track: null });
     assert.deepEqual(created[0]?.events, ["begin", "load", "play", "stop", "end"]);
     assert.deepEqual(cancelled, ["aB3dE5gH7jK"]);
     assert.equal(responder.currentRoomId(), null);
@@ -407,7 +610,7 @@ describe("stopping and leaving", () => {
     const { responder, created } = harness();
 
     for (const command of [play, stop, skip("entry-1"), remove("entry-1"), leave]) {
-      assert.deepEqual(await responder.handle(command, "lobby", ada), { ok: true, track: null });
+      assert.deepEqual(await responder.handle(command, "lobby", ada), { ok: true, kind: "track", track: null });
     }
     assert.deepEqual(created, []);
   });
@@ -419,7 +622,7 @@ describe("skipping and removing", () => {
     await responder.handle(add(), "lobby", ada);
     await responder.handle(add(otherLink), "lobby", ada);
 
-    assert.deepEqual(await responder.handle(skip("entry-1"), "lobby", ada), { ok: true, track: null });
+    assert.deepEqual(await responder.handle(skip("entry-1"), "lobby", ada), { ok: true, kind: "track", track: null });
 
     assert.deepEqual(created[0]?.events, ["begin", "load", "play", "load", "play"]);
     assert.deepEqual(fetched, ["aB3dE5gH7jK", "zY9xW7vU5tS"], "the Track that was skipped to is fetched now");
@@ -459,7 +662,7 @@ describe("skipping and removing", () => {
     await responder.handle(add(), "lobby", ada);
     await responder.handle(add(otherLink), "lobby", ada);
 
-    assert.deepEqual(await responder.handle(remove("entry-2"), "lobby", ada), { ok: true, track: null });
+    assert.deepEqual(await responder.handle(remove("entry-2"), "lobby", ada), { ok: true, kind: "track", track: null });
 
     assert.deepEqual(created[0]?.events, ["begin", "load", "play"], "the player is not touched");
     assert.deepEqual(fetched, ["aB3dE5gH7jK"]);
@@ -485,7 +688,7 @@ describe("skipping and removing", () => {
     await responder.handle(skip("entry-1"), "lobby", ada);
     const before = published.length;
 
-    assert.deepEqual(await responder.handle(remove("entry-1"), "lobby", ada), { ok: true, track: null });
+    assert.deepEqual(await responder.handle(remove("entry-1"), "lobby", ada), { ok: true, kind: "track", track: null });
 
     assert.equal(published.length, before, "nothing changed, so every client keeps what the bot has");
     assert.deepEqual(titles(lastPublished()), ["Track zY9xW7vU5tS"]);

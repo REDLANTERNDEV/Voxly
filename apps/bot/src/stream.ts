@@ -12,22 +12,30 @@
  * eleven-character id rather than passed through.
  *
  * Nothing here is unit tested, and it is worth being precise about why rather
- * than claiming there is nothing in it to test. It does hold decisions: the two
- * programs' argument lists, two timeouts, and the rule that only the *encoder's*
- * exit ends a Track. What none of them have is a failure a unit test could
- * catch — a test would pin the argument list to itself and prove only that it
- * had been copied correctly, while the way these actually go wrong is that a
- * flag means something other than what was intended. Only the real binaries can
- * say. So this is verified by the end-to-end check in `AGENTS.md`, and the
- * decisions that *can* be tested were deliberately put in `track.ts`, which is
- * pure and covered.
+ * than claiming there is nothing in it to test. It does hold decisions: three
+ * argument lists — a link's, a search's and the encoder's — three timeouts, and
+ * the rule that only the *encoder's* exit ends a Track. What none of them have
+ * is a failure a unit test could catch — a test would pin the argument list to
+ * itself and prove only that it had been copied correctly, while the way these
+ * actually go wrong is that a flag means something other than what was
+ * intended. Only the real binaries can say. So this is verified by the
+ * end-to-end check in `AGENTS.md`, and the decisions that *can* be tested were
+ * deliberately put in `track.ts`, which is pure and covered.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Readable } from "node:stream";
+import { musicSearchResultsMax } from "@voxly/shared";
 import type { BotEnvironment } from "./config.js";
 import { OggOpusReader, TrackBuffer } from "./audio.js";
-import { classifyExtractorFailure, parseTrackMetadata, type TrackResult, type Track } from "./track.js";
+import {
+  classifyExtractorFailure,
+  parseSearchResults,
+  parseTrackMetadata,
+  type SearchResult,
+  type TrackResult,
+  type Track
+} from "./track.js";
 
 /**
  * How long the extractor gets to answer with a Track's details.
@@ -37,6 +45,24 @@ import { classifyExtractorFailure, parseTrackMetadata, type TrackResult, type Tr
  * in place of the reason it actually gave up, which tells the member nothing.
  */
 export const resolveTimeoutMs = 15_000;
+
+/**
+ * How long a search gets to answer.
+ *
+ * Shorter than a resolve, and not because it matters less: a flat listing does
+ * no per-video extraction, so it is one cheap round trip and a slow one is not
+ * a search that is nearly finished. Spending less than a resolve does is what
+ * keeps a member who typed a name from watching a panel do nothing for a
+ * quarter of a minute.
+ *
+ * The margin it has to fit in is **two of these**, not one. Searches are
+ * serialised among themselves (`music.ts`), so a member whose search arrives
+ * while another is running waits out both before the server's
+ * `botAckTimeoutMs` of 25s cuts them off and reports `bot_timeout` in place of
+ * an answer. Nothing else is in that budget: a search Summons nothing, so no
+ * join follows it.
+ */
+export const searchTimeoutMs = 10_000;
 
 /**
  * How long the whole fetch gets before it is abandoned mid-Track.
@@ -131,6 +157,62 @@ export async function resolveTrack(environment: BotEnvironment, url: string): Pr
   if (finished.spawnError) return { ok: false, error: "bot_failed" };
   if (finished.code !== 0) return { ok: false, error: classifyExtractorFailure(finished.stderr) };
   return parseTrackMetadata(finished.stdout);
+}
+
+/**
+ * What the source offers for a typed name.
+ *
+ * A **flat** listing on purpose: one request that returns what the search page
+ * already knew about each result, rather than a full extraction per result,
+ * which would be five round trips against a source that rate-limits by address
+ * for four Tracks nobody is going to play. What comes back is enough to choose
+ * between — a title, a length, a channel — and the one that is chosen is then
+ * resolved properly through `resolveTrack`, exactly as a pasted link is.
+ *
+ * The name never reaches a shell. It is one argument in a list, and the count
+ * in front of it is derived from the shared bound rather than written here.
+ */
+export async function searchTracks(environment: BotEnvironment, name: string): Promise<SearchResult> {
+  const child = spawn(environment.extractorPath, searchArguments(environment, name), {
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  const finished = await collect(child, searchTimeoutMs);
+
+  if (finished.spawnError) return { ok: false, error: "bot_failed" };
+  // Not `classifyExtractorFailure`: that answers "was it the video or the
+  // extractor", and a search has no video to blame. Whatever went wrong here is
+  // between the bot and the source, which is what `extractor_failed` says.
+  if (finished.code !== 0) return { ok: false, error: "extractor_failed" };
+  return parseSearchResults(finished.stdout);
+}
+
+/**
+ * The search's own argument list, kept apart from the one a link uses rather
+ * than shared with a flag. `--no-playlist` would be actively wrong here — a
+ * search *is* a playlist — and a format selector means nothing to a listing
+ * that fetches no media. The extractor client stays, because it is the
+ * operator's one lever over how yt-dlp presents itself to the source, and a
+ * search is a request to the same source.
+ */
+function searchArguments(environment: BotEnvironment, name: string) {
+  return [
+    "--dump-single-json",
+    "--flat-playlist",
+    "--no-warnings",
+    "--no-progress",
+    "--no-cache-dir",
+    "--socket-timeout", "15",
+    ...(environment.extractorClient
+      ? ["--extractor-args", `youtube:player_client=${environment.extractorClient}`]
+      : []),
+    // Ask for more than will be shown. A live stream or a premiere among the
+    // hits is not a Result and gets dropped, so asking for exactly five would
+    // hand a member three — or, for a name whose every hit is a broadcast,
+    // "nothing matched that" for something that plainly did. The extra costs
+    // nothing: it is the same one request, and `parseSearchResults` stops at
+    // the bound regardless.
+    `ytsearch${musicSearchResultsMax * 2}:${name}`
+  ];
 }
 
 /**

@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
-import { musicTitleMaxLength } from "@voxly/shared";
-import { classifyExtractorFailure, parseTrackMetadata, youtubeVideoUrl } from "../src/track.js";
-import { resolveTimeoutMs } from "../src/stream.js";
+import { musicSearchResultsMax, musicTitleMaxLength } from "@voxly/shared";
+import { classifyExtractorFailure, parseSearchResults, parseTrackMetadata, resolverFor, youtubeVideoUrl } from "../src/track.js";
+import { resolveTimeoutMs, searchTimeoutMs } from "../src/stream.js";
 import { refusedExtractor, unavailableVideo } from "./fixtures/extractorFailures.js";
 
 /**
@@ -192,5 +192,224 @@ describe("what the extractor is allowed to hand back", () => {
       resolveTimeoutMs <= 15_000,
       `resolveTimeoutMs is ${resolveTimeoutMs}ms; the server's botAckTimeoutMs is 25000ms and the join follows this`
     );
+  });
+});
+
+/**
+ * A typed name is the second resolver, beside the pasted link — ADR-0004 said
+ * one would arrive and ADR-0007 is the one that did. Both halves of it are
+ * here, and deliberately: deciding *which* resolver an input belongs to is the
+ * bot's knowledge, and reading what the extractor found is the source's own
+ * vocabulary. Neither needs a subprocess to assert.
+ */
+describe("telling a link from a name", () => {
+  it("takes anything announcing itself as a web address as a link", () => {
+    assert.deepEqual(resolverFor("https://youtu.be/aB3dE5gH7jK"), {
+      kind: "link",
+      url: "https://www.youtube.com/watch?v=aB3dE5gH7jK"
+    });
+    assert.deepEqual(resolverFor("  https://www.youtube.com/watch?v=aB3dE5gH7jK\n"), {
+      kind: "link",
+      url: "https://www.youtube.com/watch?v=aB3dE5gH7jK"
+    });
+  });
+
+  it("recognises a host that was typed rather than pasted", () => {
+    // A paste carries its scheme; a person typing one leaves it off. The one
+    // prefix goes through the same exact-host check as everything else, so
+    // nothing new is recognised — only the same links, written shorter.
+    for (const input of ["youtube.com/watch?v=aB3dE5gH7jK", "youtu.be/aB3dE5gH7jK", "www.youtube.com/watch?v=aB3dE5gH7jK"]) {
+      assert.deepEqual(resolverFor(input), { kind: "link", url: "https://www.youtube.com/watch?v=aB3dE5gH7jK" }, input);
+    }
+  });
+
+  it("refuses a link to something else rather than searching for its text", () => {
+    // Somebody who pasted a Spotify link or a playlist wants to be told the
+    // link is wrong. Searching YouTube for the text of a URL would answer a
+    // question nobody asked, with results nobody wants.
+    for (const input of [
+      "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT",
+      "https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "https://www.youtube.com/@someone",
+      "https://example.com/watch?v=aB3dE5gH7jK",
+      "http://youtube.com.evil.example/watch?v=aB3dE5gH7jK"
+    ]) {
+      assert.deepEqual(resolverFor(input), { kind: "unsupported" }, input);
+    }
+  });
+
+  it("takes everything else as a name to search for", () => {
+    for (const input of ["nocturne", "Chopin Nocturne in E-flat major", "R.E.M.", "Beethoven: Symphony No. 5"]) {
+      assert.deepEqual(resolverFor(input), { kind: "search", name: input.trim() }, input);
+    }
+    assert.deepEqual(resolverFor("  nocturne  "), { kind: "search", name: "nocturne" });
+  });
+
+  it("asks about the words rather than the spacing they arrived with", () => {
+    // A name pasted out of a tracklist brings a newline and a run of spaces.
+    assert.deepEqual(resolverFor("Chopin\n  Nocturne"), { kind: "search", name: "Chopin Nocturne" });
+  });
+
+  it("has nothing to do with an input that is empty", () => {
+    // The panel will not send one, but the server's bound is applied before
+    // trimming, so a field of spaces does arrive. It is neither a link nor a
+    // name — and it is deliberately not `unsupported`, which means "your link
+    // is wrong" and is the wrong sentence for somebody who typed no link.
+    assert.deepEqual(resolverFor("   "), { kind: "nothing" });
+    assert.deepEqual(resolverFor(""), { kind: "nothing" });
+  });
+});
+
+describe("reading what a search found", () => {
+  it("offers each result with what tells one from another", () => {
+    const found = parseSearchResults(fixture("search.json"));
+
+    assert.ok(found.ok);
+    assert.deepEqual(found.results[0], {
+      track: { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 },
+      channel: "A Channel",
+      url: "https://www.youtube.com/watch?v=aB3dE5gH7jK"
+    });
+    // The length separates the Track from the hour-long mix, and the channel
+    // separates it from the cover. Both are why a member is shown a list.
+    assert.deepEqual(
+      found.results.map((result) => [result.track.title, result.track.durationSeconds, result.channel]),
+      [
+        ["Nocturne in E-flat major", 273, "A Channel"],
+        ["Nocturne in E-flat major (cover)", 289, "Someone Else"],
+        ["Nocturne — 1 hour relaxing mix", 3714, "Study Mixes"],
+        ["Nocturne op. 9 no. 2", 261, "A Third Channel"]
+      ]
+    );
+  });
+
+  it("keeps the source's own order, so the closest one is offered first", () => {
+    const found = parseSearchResults(fixture("search.json"));
+
+    assert.equal(found.ok && found.results[0]?.track.id, "aB3dE5gH7jK");
+  });
+
+  it("drops what could not be queued anyway rather than offering it", () => {
+    // A live stream has no end and a premiere has not happened; choosing either
+    // would earn a refusal for something the bot already knew about it.
+    const found = parseSearchResults(fixture("search.json"));
+
+    assert.ok(found.ok);
+    assert.equal(found.results.some((result) => result.track.id === "R4d10L1v3St"), false, "a live stream");
+    assert.equal(found.results.some((result) => result.track.id === "N0Dur4t10nX"), false, "a premiere");
+  });
+
+  it("rebuilds each link from the id rather than echoing the one it was handed", () => {
+    // The same rule a pasted link goes through. The browser hands this string
+    // straight back to play it, so it must be one the bot built.
+    const found = parseSearchResults(JSON.stringify({
+      entries: [{
+        id: "aB3dE5gH7jK",
+        title: "Nocturne",
+        duration: 273,
+        channel: "A Channel",
+        url: "https://www.youtube.com/watch?v=aB3dE5gH7jK&list=PL0000000000&t=90"
+      }]
+    }));
+
+    assert.equal(found.ok && found.results[0]?.url, "https://www.youtube.com/watch?v=aB3dE5gH7jK");
+  });
+
+  it("bounds how many results it will offer", () => {
+    const many = Array.from({ length: musicSearchResultsMax + 6 }, (_unused, index) => ({
+      id: `aB3dE5gH7j${index}`,
+      title: `Nocturne ${index}`,
+      duration: 100,
+      channel: "A Channel"
+    }));
+
+    const found = parseSearchResults(JSON.stringify({ entries: many }));
+
+    assert.equal(found.ok && found.results.length, musicSearchResultsMax);
+  });
+
+  it("bounds every string in the list, the way one Track's title is bounded", () => {
+    const long = "x".repeat(musicTitleMaxLength + 500);
+    const found = parseSearchResults(JSON.stringify({
+      entries: [{ id: "aB3dE5gH7jK", title: long, duration: 100, channel: long }]
+    }));
+
+    assert.equal(found.ok && found.results[0]?.track.title.length, musicTitleMaxLength);
+    assert.equal(found.ok && found.results[0]?.channel.length, musicTitleMaxLength);
+  });
+
+  it("offers a result whose channel the source did not name, rather than dropping it", () => {
+    // The channel helps a member choose; a Track without one is still playable,
+    // and a missing name is the panel's problem to lay out rather than a reason
+    // to withhold the Track.
+    const found = parseSearchResults(JSON.stringify({
+      entries: [{ id: "aB3dE5gH7jK", title: "Nocturne", duration: 273 }]
+    }));
+
+    assert.equal(found.ok && found.results[0]?.channel, "");
+  });
+
+  it("falls back to the uploader when that is the name the source gave", () => {
+    const found = parseSearchResults(JSON.stringify({
+      entries: [{ id: "aB3dE5gH7jK", title: "Nocturne", duration: 273, uploader: "A Channel" }]
+    }));
+
+    assert.equal(found.ok && found.results[0]?.channel, "A Channel");
+  });
+
+  it("offers one video once, however many times the listing names it", () => {
+    // A repeated row is a choice that is not a choice, and it costs a place a
+    // different Track could have had.
+    const found = parseSearchResults(JSON.stringify({
+      entries: [
+        { id: "aB3dE5gH7jK", title: "Nocturne", duration: 273, channel: "A Channel" },
+        { id: "aB3dE5gH7jK", title: "Nocturne", duration: 273, channel: "A Channel" },
+        { id: "qW8eR2tY6uI", title: "Nocturne op. 9 no. 2", duration: 261, channel: "A Third Channel" }
+      ]
+    }));
+
+    assert.deepEqual(found.ok && found.results.map((result) => result.track.id), ["aB3dE5gH7jK", "qW8eR2tY6uI"]);
+  });
+
+  it("finds nothing rather than failing when the search matched nothing", () => {
+    // A search that ran and matched nothing is an answer, not a refusal: there
+    // is nothing wrong for the member to wait out, and the panel says so.
+    assert.deepEqual(parseSearchResults(JSON.stringify({ entries: [] })), { ok: true, results: [] });
+  });
+
+  it("refuses output it cannot make sense of instead of inventing a list", () => {
+    for (const output of ["", "not json", "null", "[]", JSON.stringify({ id: "x" })]) {
+      assert.deepEqual(parseSearchResults(output), { ok: false, error: "extractor_failed" }, output);
+    }
+  });
+
+  it("skips an entry it cannot read without losing the rest of the list", () => {
+    const found = parseSearchResults(JSON.stringify({
+      entries: [
+        null,
+        { id: "not-an-id", title: "Nocturne", duration: 100 },
+        { id: "aB3dE5gH7jK", title: "   ", duration: 100 },
+        { id: "qW8eR2tY6uI", title: "Nocturne op. 9 no. 2", duration: 261, channel: "A Third Channel" }
+      ]
+    }));
+
+    assert.equal(found.ok && found.results.length, 1);
+    assert.equal(found.ok && found.results[0]?.track.id, "qW8eR2tY6uI");
+  });
+
+  it("leaves room for a second search waiting behind the first", () => {
+    // Nothing else is in this budget — a search does not Summon the bot, so no
+    // join follows it — but searches take their turn among themselves, so a
+    // member whose search arrives while another is running waits out two of
+    // these. Over the server's 25s and they get "the bot did not answer" in
+    // place of whatever the search actually found out.
+    assert.ok(
+      searchTimeoutMs * 2 <= 20_000,
+      `searchTimeoutMs is ${searchTimeoutMs}ms; two of them must fit inside the server's botAckTimeoutMs of 25000ms`
+    );
+    // Shorter than a resolve, and strictly: a flat listing does no per-video
+    // extraction, so a search still running when a resolve would have finished
+    // is not one that is nearly done.
+    assert.ok(searchTimeoutMs < resolveTimeoutMs, `searchTimeoutMs is ${searchTimeoutMs}ms`);
   });
 });

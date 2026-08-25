@@ -6,8 +6,9 @@ extractor's answers without running it.
 Two kinds, kept apart on purpose:
 
 - **`*.json`** — what `--dump-single-json` prints for a video, a live stream, a
-  premiere and a playlist. Real multi-line captures in shape, so they stay as
-  files and refresh with a plain redirect.
+  premiere, a playlist, and (in `search.json`) a flat listing for a search. Real
+  multi-line captures in shape, so they stay as files and refresh with a plain
+  redirect.
 - **`extractorFailures.ts`** — what it prints to stderr when it gives up. Each
   is a single line beginning `ERROR:`, and a directory of one-line files like
   that reads like logs somebody committed by accident, so they are named
@@ -21,10 +22,17 @@ yt-dlp's own; the video ids and titles are invented. The JSON is reduced to the
 fields the parser reads plus enough neighbours to prove it is not reading by
 position.
 
+`search.json` deserves naming separately: **no query has ever been put to yt-dlp
+from this repository at all**, so what a flat search listing contains — whether
+every entry names a channel, whether `duration` is always there, how a live
+result is marked — is documentation rather than evidence. It is the least
+evidenced file here.
+
 Refresh the JSON against a real capture when you next have the binary to hand:
 
 ```sh
 yt-dlp --dump-single-json --no-playlist '<url>' > video.json
+yt-dlp --dump-single-json --flat-playlist 'ytsearch5:<query>' > search.json
 ```
 
 A refreshed capture that breaks a test is the test doing its job — the parser

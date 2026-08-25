@@ -1308,7 +1308,7 @@ describe("music bot control", () => {
    * member's acknowledgement is now relayed from that answer — a double that
    * stayed silent would make every test here wait out the bot timeout.
    */
-  async function connectBot(answer: MusicCommandAck = { ok: true, track: null }) {
+  async function connectBot(answer: MusicCommandAck = { ok: true, kind: "track", track: null }) {
     const exchange = await app.server.inject({
       method: "POST",
       url: "/api/bot/sessions",
@@ -1328,18 +1328,19 @@ describe("music bot control", () => {
   it("forwards a pasted link from a member who is in the voice room", async () => {
     const owner = await bootstrapOwner(app);
     const track = { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 };
-    const { received } = await connectBot({ ok: true, track });
+    const { received } = await connectBot({ ok: true, kind: "track", track });
     const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
-    const command = { kind: "add", url: "https://www.youtube.com/watch?v=aB3dE5gH7jK" } as const;
+    const command = { kind: "add", input: "https://www.youtube.com/watch?v=aB3dE5gH7jK" } as const;
     const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command });
 
-    // The link travels through untouched: which links are playable is the
+    // The input travels through untouched: which links are playable — and
+    // whether this is a link at all rather than a name to search for — is the
     // bot's knowledge, and the server holds no second opinion about it.
     assert.deepEqual(received, [{ roomId: "lobby", command, requestedByUserId: owner.user.id }]);
-    assert.deepEqual(ack, { ok: true, track }, "and the Track it resolved comes back to the asker");
+    assert.deepEqual(ack, { ok: true, kind: "track", track }, "and the Track it resolved comes back to the asker");
   });
 
   it("relays the bot's refusal rather than reporting a success it did not have", async () => {
@@ -1353,10 +1354,35 @@ describe("music bot control", () => {
 
     const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", {
       roomId: "lobby",
-      command: { kind: "add", url: "https://www.youtube.com/watch?v=G0n3F0r3v3r" }
+      command: { kind: "add", input: "https://www.youtube.com/watch?v=G0n3F0r3v3r" }
     });
 
     assert.deepEqual(ack, { ok: false, error: "track_unavailable" });
+  });
+
+  it("hands a search's results to the member who asked, and to nobody else", async () => {
+    // The first thing on this wire that is not the room's. Everyone in a voice
+    // room sees one Queue; a list of Results belongs to the one member still
+    // deciding, so it travels on the acknowledgement and never as an event to
+    // the room. ADR-0007.
+    const owner = await bootstrapOwner(app);
+    const results = [{
+      track: { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 },
+      channel: "A Channel",
+      url: "https://www.youtube.com/watch?v=aB3dE5gH7jK"
+    }];
+    const { received } = await connectBot({ ok: true, kind: "results", results });
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(ownerSocket);
+    await joinVoice(ownerSocket, "lobby");
+
+    const quiet = expectNoEvent(ownerSocket, "music:queue");
+    const command = { kind: "add", input: "nocturne in e flat" } as const;
+    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command });
+
+    assert.deepEqual(ack, { ok: true, kind: "results", results });
+    assert.deepEqual(received.map((entry) => entry.command), [command], "a name travels on the same verb a link does");
+    await quiet;
   });
 
   it("forwards the commands that carry no link", async () => {
@@ -1369,7 +1395,7 @@ describe("music bot control", () => {
     for (const kind of ["play", "stop", "leave"] as const) {
       assert.deepEqual(
         await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: { kind } }),
-        { ok: true, track: null },
+        { ok: true, kind: "track", track: null },
         kind
       );
     }
@@ -1389,7 +1415,7 @@ describe("music bot control", () => {
     for (const command of [{ kind: "skip", entryId: "entry-1" }, { kind: "remove", entryId: "entry-2" }] as const) {
       assert.deepEqual(
         await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command }),
-        { ok: true, track: null },
+        { ok: true, kind: "track", track: null },
         command.kind
       );
     }
@@ -1456,15 +1482,15 @@ describe("music bot control", () => {
     assert.deepEqual(
       await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: { kind: "add" } }),
       { ok: false, error: "room_not_found" },
-      "an add with no link is not an add"
+      "an add with nothing on it is not an add"
     );
     assert.deepEqual(
       await emitWithAck<MusicControlAck>(ownerSocket, "music:control", {
         roomId: "lobby",
-        command: { kind: "add", url: "x".repeat(4_000) }
+        command: { kind: "add", input: "x".repeat(4_000) }
       }),
       { ok: false, error: "room_not_found" },
-      "and a link is bounded before it reaches another process"
+      "and what a member typed is bounded before it reaches another process"
     );
     assert.deepEqual(
       await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: { kind: "skip" } }),

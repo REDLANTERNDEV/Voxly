@@ -2123,6 +2123,70 @@ button.reply-quote:focus-visible .reply-quote-body {
 }
 
 /*
+ * A typed name's Results, above the Queue because they belong to the field
+ * that produced them. Bounded in number rather than in height, for the same
+ * reason the Queue is: this panel owns no scroll region.
+ */
+.music-results {
+  display: grid;
+  gap: 6px;
+  padding: 12px 12px 0;
+}
+
+.music-results-list {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/*
+ * The whole row is the control, so the pointer target is the result rather than
+ * a word inside it.
+ */
+.music-result {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  inline-size: 100%;
+  justify-content: space-between;
+  text-align: start;
+}
+
+/*
+ * The one on offer — the source's closest, and the one Enter takes. Told apart
+ * by a border and a background as well as by its own line of text, and never by
+ * colour alone, exactly as the Track that is sounding is in the Queue.
+ */
+.music-result.is-closest {
+  background: color-mix(in oklab, var(--accent), var(--bg) 90%);
+  border-color: color-mix(in oklch, var(--accent), var(--border) 30%);
+}
+
+.music-result-copy {
+  display: grid;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.music-result-closest {
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.music-result-copy strong {
+  overflow-wrap: anywhere;
+}
+
+.music-result-copy span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/*
  * The Queue grows the panel, which grows the call surface — the one scroll
  * owner on this screen. No `max-block-size` and no `overflow` here on purpose:
  * a scroll region of its own would put a second scrollbar inside the page and,
@@ -2208,7 +2272,8 @@ button.reply-quote:focus-visible .reply-quote-body {
   font-size: 12px;
 }
 
-.music-queue-length {
+.music-queue-length,
+.music-result-length {
   color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -2232,7 +2297,8 @@ button.reply-quote:focus-visible .reply-quote-body {
 }
 
 .music-panel-controls .btn:disabled,
-.music-panel-link .btn:disabled {
+.music-panel-link .btn:disabled,
+.music-results .btn:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }

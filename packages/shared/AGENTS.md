@@ -86,11 +86,20 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   and the transport rules do not vary between them. Extend the union rather than
   adding an event beside it.
 - `MusicCommand` is a discriminated union on `kind`, because the verbs that
-  carry data carry different data: `add` names a link, `skip` and `remove` name
-  a Queue entry, and `play`, `stop` and `leave` name nothing. Do not flatten it
-  back to a verb plus optional fields — each one would be optional everywhere in
-  order to be absent in most cases, and nothing would then stop a `stop`
-  arriving with a link on it. A new verb that needs data is a new member here.
+  carry data carry different data: `add` names what a member typed, `skip` and
+  `remove` name a Queue entry, and `play`, `stop` and `leave` name nothing. Do
+  not flatten it back to a verb plus optional fields — each one would be
+  optional everywhere in order to be absent in most cases, and nothing would
+  then stop a `stop` arriving with a link on it. A new verb that needs data is a
+  new member here.
+- **`add` carries a link or a name on one field, and the bot decides which.**
+  `input` is what a member typed. Do not split it into two verbs or two
+  controls, and do not have the browser route on the string's shape: "is this a
+  link" and "is this a link I can play" are answered by the same host list in
+  `apps/bot/src/track.ts`, and half a rule in a process that cannot see the
+  other half is the copy that drifts. ADR-0007. `musicInputMaxLength` bounds it
+  — one bound for the link, the name and the link a chosen Result hands back,
+  because they arrive on the same field.
 - `music:command` is server-to-client and is only ever delivered to a Music bot
   account. It carries the room the request names, so a command that raced a move
   can be ignored rather than applied to the wrong Set. It is delivered to one
@@ -109,11 +118,30 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   `unsupported_link` from `track_unavailable` from `extractor_failed` — because
   only some of them are worth waiting out and only some of them mean the link
   was the problem.
-- A successful `MusicControlAck` carries `track`, explicitly `null` for a
-  request that produces none. Not optional: a consumer that forgets to handle
-  "there is no Track" should have to say so.
-- Which links are playable is the bot's knowledge and lives in `apps/bot`. The
-  server bounds the link's length and nothing else, and the browser checks only
+- A success is `MusicAnswer`, a union discriminated on `kind`, shared by both
+  acknowledgements so there is one shape for "it worked". `kind: "track"`
+  carries `track`, explicitly `null` for a request that produces none — not
+  optional: a consumer that forgets to handle "there is no Track" should have to
+  say so. `kind: "results"` carries what a typed name found. Do not collapse
+  these into one shape with two nullable fields; that is the same mistake the
+  command union already refuses, and it leaves nothing to stop an answer
+  arriving as both or as neither.
+- **A Result is the one thing on this wire that is not the room's.** It travels
+  back on the acknowledgement to the single socket that asked, never through
+  `music:publish` and never inside `MusicQueueState`. The rule beside it — the
+  Queue travels whole, so five members see one list — is the *opposite* rule and
+  the next person will read it first: ADR-0007 records why a list a member is
+  still choosing from belongs to that member alone. `musicSearchResultsMax`
+  bounds the count and `musicTitleMaxLength` bounds each title and channel,
+  because a title is somebody else's string arriving unbidden and a list of them
+  is that problem several times over.
+- `MusicSearchResult.url` is the canonical link the *bot* built, handed back
+  unread by the browser on the same `add` a paste uses. The browser never
+  constructs a link of its own, and the bot re-reads this one exactly as it
+  reads a pasted one — nothing is trusted for having been round the loop.
+- Which links are playable — and whether an input is a link at all rather than a
+  name to search for — is the bot's knowledge and lives in `apps/bot`. The
+  server bounds the input's length and nothing else, and the browser checks only
   that the field is not empty. A second opinion in either place would be the
   copy that drifts, refusing a form the bot has since learned to accept.
 - **The Queue travels one way and whole.** `music:publish` is the bot asking the

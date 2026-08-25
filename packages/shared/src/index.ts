@@ -232,8 +232,17 @@ export function shouldIgnoreIncomingOffer(
  * with a link on it.
  */
 export type MusicCommand =
-  /** Play what this link points at, Summoning the bot if it is not here yet. */
-  | { kind: "add"; url: string }
+  /**
+   * Put a Track in the Queue, from what a member typed — Summoning the bot if
+   * it is not here yet.
+   *
+   * `input` is a link *or* a name, and which one it is is not decided here.
+   * Only the bot knows what a link is worth, so it is the bot that looks: an
+   * input naming one Track is added, and an input naming several comes back as
+   * Results for the member to choose between (`MusicAnswer`). A second
+   * opinion in the browser would be the copy that drifts. ADR-0007.
+   */
+  | { kind: "add"; input: string }
   | { kind: "play" }
   | { kind: "stop" }
   /**
@@ -262,8 +271,14 @@ export type MusicCommand =
  */
 export type MusicCommandKind = MusicCommand["kind"];
 
-/** The longest link the control plane will carry. Generous; not unbounded. */
-export const musicLinkMaxLength = 2_048;
+/**
+ * The longest input the control plane will carry — a pasted link, a typed name,
+ * or the link the browser hands back when a member chooses a search result.
+ * Generous; not unbounded. One bound rather than one per kind of string: they
+ * arrive on the same field and a second constant beside this one is the one
+ * that drifts.
+ */
+export const musicInputMaxLength = 2_048;
 
 /**
  * The longest Track title the wire will carry. The source chooses the title, so
@@ -271,6 +286,17 @@ export const musicLinkMaxLength = 2_048;
  * in the room; the link a member typed is bounded and this should be too.
  */
 export const musicTitleMaxLength = 200;
+
+/**
+ * How many Results a search may answer with.
+ *
+ * Bounded for the same reason the Queue is: every string in the list is
+ * somebody else's, arriving unbidden, and a list of them is that problem
+ * several times over. Small on purpose beyond that — the point of the list is
+ * to catch the case where the closest match is a cover or an hour-long mix, and
+ * five is enough to see that without burying the Queue underneath it.
+ */
+export const musicSearchResultsMax = 5;
 
 /**
  * A Track, as much of it as anyone outside the bot needs to name it. The bot
@@ -282,6 +308,34 @@ export interface MusicTrackSummary {
   id: string;
   title: string;
   durationSeconds: number;
+}
+
+/**
+ * One Track a search offered, for the member who typed the name to choose
+ * between.
+ *
+ * **This never reaches the room.** It rides back on the acknowledgement to the
+ * one socket that asked and goes nowhere near `music:queue`: the Queue is the
+ * room's and everyone must see the same one, while a list of Results belongs
+ * to the single member who is still deciding. Publishing it would put four
+ * people's panels in front of a choice that is not theirs. ADR-0007.
+ *
+ * `url` is what the browser sends back to play this one — the same `add` a
+ * paste would have made. Opaque at that end: the browser stores it and hands it
+ * back rather than building a link of its own, and the bot re-reads it exactly
+ * as it reads a pasted one, so nothing is trusted for having been round the
+ * loop.
+ */
+export interface MusicSearchResult {
+  track: MusicTrackSummary;
+  /**
+   * Who published it. On the wire because it is what tells a cover from the
+   * original, which is half of why a member is being shown a list at all — and
+   * it is not on `MusicTrackSummary`, because the Queue does not need it and
+   * widening that shape would put it in front of every room.
+   */
+  channel: string;
+  url: string;
 }
 
 /**
@@ -383,8 +437,10 @@ export type MusicControlError =
   | "afk_room"
   | "no_music_bot"
   | "bot_offline"
-  /** Not a link to something this bot can play: a playlist, a channel, another
-   * site, or not a link at all. */
+  /** A link to something this bot cannot play: a playlist, a channel, or
+   * another site. Only ever a *link* — text that is not one is a name to search
+   * for, and an input with nothing in it is a search that found nothing, so
+   * this no longer means "that was not a link". */
   | "unsupported_link"
   /** A real video that will not play: private, deleted, blocked, or age-gated. */
   | "track_unavailable"
@@ -406,18 +462,46 @@ export type MusicControlError =
    * wait for YouTube, which would be the wrong thing to wait for. */
   | "bot_failed";
 
-export type MusicControlAck =
+/**
+ * What a request that worked produced. The success half of both
+ * acknowledgements, so there is one shape for it rather than two that drift.
+ *
+ * A union, because an `add` has two honest answers and they are not the same
+ * size. When the input named one Track it is in the Queue and the Track is
+ * reported back; when it named several the bot cannot know which was meant, so
+ * it hands back the Results and the member says. Everything else — a pause,
+ * a skip, a removal, sending the bot away — is a `track` answer carrying
+ * `null`.
+ *
+ * Discriminated rather than widened with a second optional field. Two nullable
+ * fields where exactly one is ever filled is the shape this contract already
+ * refused for `MusicCommand`, and it leaves nothing to stop an answer arriving
+ * as both or as neither. `kind` is the same discriminant word the command union
+ * uses, and the parallel is real: one says what was asked, the other says what
+ * came back.
+ */
+export type MusicAnswer =
   /**
    * `track` is the Track the request produced, or `null` for a request that
    * produces none. Explicitly null rather than absent: a caller that forgets to
    * handle "there is no Track" should be made to say so.
    */
-  | { ok: true; track: MusicTrackSummary | null }
+  | { ok: true; kind: "track"; track: MusicTrackSummary | null }
+  /**
+   * The Results a typed name found, in the source's own order — the first is
+   * the closest match and is the one a member is offered first. Possibly empty:
+   * a search that ran and matched nothing is an answer rather than a refusal,
+   * because nothing failed and there is nothing for the member to wait out.
+   */
+  | { ok: true; kind: "results"; results: MusicSearchResult[] };
+
+export type MusicControlAck =
+  | MusicAnswer
   | { ok: false; error: MusicControlError };
 
 /** What the bot answers the server. The server's own refusals never reach it. */
 export type MusicCommandAck =
-  | { ok: true; track: MusicTrackSummary | null }
+  | MusicAnswer
   | {
     ok: false;
     error: Extract<

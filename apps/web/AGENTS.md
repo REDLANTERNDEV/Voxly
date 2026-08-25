@@ -362,7 +362,8 @@ requirement.
 - The Queue grows the panel and the panel grows the page. A scroll region inside
   it would also make it a fixed-height block the stage has to shrink for, which
   is the one thing adding music must not do to somebody who was already sharing
-  a screen.
+  a screen. The same holds for a search's Results: bound the *count* — five, at
+  `musicSearchResultsMax` — rather than reaching for a height.
 - Allow the stage to contract on short viewports without covering later
   sections. Fullscreen remains exempt from in-panel height bounds.
 - The Music panel is shown only when the viewed room is the active voice room.
@@ -414,6 +415,40 @@ requirement.
 - Every refusal from `music:control` gets its own localized sentence. The whole
   output of this control is sound in someone else's headphones, so "nothing
   happened" is the one answer it cannot give.
+- **A search's Results are the one thing in this panel that is not the room's.**
+  Everything above is "read it from the published Queue"; this is the exception
+  and ADR-0007 is why. They arrive on the asking member's own acknowledgement,
+  they live in `useState` inside `MusicPanel`, and nothing merges them into
+  `queues` or sends them anywhere. Do not move them into the room's state
+  because the rule above says state comes from the room — that rule is about
+  what five people must agree on, and a list one member is still choosing from
+  is not that.
+- One field and one submit take a name and a link alike. The browser does not
+  inspect the string — which of the two it is is the bot's answer (ADR-0007) —
+  so there is no second control, no second verb, and no URL input mode on a
+  field that takes words as often as a link.
+- A successful acknowledgement now has two shapes. Branch on `kind` rather than
+  reading `track` and hoping; a Track was queued, or the bot is asking which of
+  several was meant.
+- The closest Result is offered first and takes the keyboard, so a member who
+  pressed Enter to search presses Enter again for the obvious answer. Tab
+  reaches the rest, Escape puts the list away and gives the field back — from
+  anywhere in the panel, because a member goes back to the field to ask a
+  different question — and typing in the field clears an answer that is being
+  replaced, the sentence in the live region along with the list.
+- **Mark the Result on offer in the row, not by leaving it to the focus ring.**
+  Focus does move to it, but a member who submitted with the pointer gets that
+  focus moved programmatically and browsers deliberately draw no ring for that;
+  the "already selected" the design asks for would be invisible to exactly the
+  people who did not use the keyboard. A border and its own line of text, as the
+  playing Queue row already has, and in its accessible name too.
+- A Result's control is the whole row and carries the Track in its accessible
+  name — title, length and channel — for the same reason a Queue row's Remove
+  does. The length is what catches an hour-long mix and the channel is what
+  catches a cover, which is the entire reason a list is shown rather than the
+  first hit being queued.
+- Choosing a Result sends back the link the bot built, unread, on the same `add`
+  a paste uses. Never construct a source's URL here.
 
 ## Controls, Icons, and Accessibility
 
