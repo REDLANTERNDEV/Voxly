@@ -1032,6 +1032,13 @@ function registerRoutes(
     if (!room || room.serverId !== serverId || room.kind !== "voice") {
       return reply.code(404).send({ error: "room_not_found" });
     }
+    // Whatever room is named. A move is an instruction the *client* carries out
+    // by joining, and the Music bot has no client to carry it out with — but
+    // that is the small reason. The large one is that neither half of a move
+    // means anything for it: arriving would put it in a room nobody in that
+    // room summoned it into, and leaving would destroy a Queue from a control
+    // that says nothing about destroying one. ADR-0010.
+    if (rejectBotTarget(database, userId, reply)) return;
     if (!realtime.moveVoice(serverId, userId, roomId)) {
       return reply.code(409).send({ error: "member_not_in_voice" });
     }

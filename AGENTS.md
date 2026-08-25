@@ -89,6 +89,9 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | Pausing, skipping and removing, and what a stale request does | ADR-0006; `apps/bot/AGENTS.md` — The Queue; `packages/shared/AGENTS.md` — Music Contracts |
 | Which fact the Music panel's transport controls read | ADR-0006; `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
 | Where the Set log travels, what writes a line, and where it may not be written down | ADR-0008; `apps/bot/AGENTS.md` — The Queue; `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation; `packages/shared/AGENTS.md` — Music Contracts |
+| How long the Music bot waits in an emptied room, and where that wait is held | ADR-0009; `apps/bot/AGENTS.md` — The Queue |
+| How an owner's mute reaches media the server cannot see | ADR-0009; `apps/bot/AGENTS.md` — Voice and Playback; `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
+| Which owner actions a Bot can be the subject of, and why a move is not one | ADR-0010; `apps/server/AGENTS.md` — The Music Bot; `apps/web/AGENTS.md` — Member and Owner Surfaces |
 
 ## Repository Map
 

@@ -110,6 +110,18 @@ the channel can ask for music, and the bot will not play in the AFK channel. A
 link it cannot play — a playlist, a live stream, a video that is private,
 deleted or blocked where your server is — says so rather than doing nothing.
 
+The bot leaves a channel by itself five minutes after the last person leaves it,
+and the queue goes with it. The wait is deliberate: reloading a page takes you
+out of the voice channel for a second or two, and coming straight back finds the
+music still playing rather than gone. To send it away sooner, use the panel's
+own control — or mute it from the member list exactly as you would mute anyone,
+which stops the music itself and not only the bot's row.
+
+You cannot move the bot between channels the way you can move a person. It goes
+where somebody in the channel summons it, so the way to have it play somewhere
+else is to paste a link there; moving it would either put it in a channel nobody
+there asked for it or throw away the queue it was playing from.
+
 **Expect this to break occasionally.** YouTube changes how it serves video
 several times a year, and yt-dlp stops working until it catches up. Fixes
 usually arrive in its nightly releases within days, so the repair is to update

@@ -9,7 +9,7 @@ import { ConfirmDialog } from "../../components/ui/Dialogs.js";
 import { CameraIcon,HeadsetIcon,MicIcon,PlusIcon,ScreenIcon } from "../../components/ui/Icons.js";
 import { BrandLockup,NavLink } from "../../components/ui/Navigation.js";
 import { PreferencesCard } from "../../components/ui/Primitives.js";
-import { canOwnerModerateMembership,canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
+import { canOwnerModeratePerson,canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
 import { voiceChannelActivation } from "../../lib/voiceChannelActivation.js";
 import { sidebarVoiceStatusKeys,sidebarVoiceStatusLabelKeys } from "../../lib/voiceControls.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
@@ -132,16 +132,16 @@ export function ChannelRail(props: ChannelRailProps) {
                     const canRename = canManageServer && (member.user.role === "member" || member.user.userId === props.user.id);
                     const canModerate = canOwnerVoiceModerate(activeServerRole(props), props.user.id, member.user);
                     const canVoiceModerate = canModerate;
-                    const canRemoveMember = canOwnerModerateMembership(activeServerRole(props), props.user.id, member.user);
+                    const canModeratePerson = canOwnerModeratePerson(activeServerRole(props), props.user.id, member.user);
                     const canAssignRoles = canManageServer && member.user.role === "member" && !member.user.isBot;
                     const menuHeight = memberActionMenuHeight({
                       hasVolume: isRemote,
                       canRename,
                       canDisconnect: canModerate,
-                      canModerate: canRemoveMember,
+                      canModerate: canModeratePerson,
                       canVoiceModerate,
                       canAssignRoles,
-                      canMove: canModerate && props.rooms.voice.length > 1
+                      canMove: canModeratePerson && props.rooms.voice.length > 1
                     });
                     const hasActions = isRemote || canRename || canModerate || canAssignRoles;
                     const menuKey = `rail-member:${member.user.userId}`;
@@ -205,12 +205,12 @@ export function ChannelRail(props: ChannelRailProps) {
                           onVolumeChange={isRemote ? (volume) => props.onMemberVolumeChange(member.user.userId, volume) : undefined}
                           canRename={canRename}
                           canDisconnect={canModerate}
-                          canModerate={canRemoveMember}
+                          canModerate={canModeratePerson}
                           moderation={canVoiceModerate ? member.moderation : undefined}
                           onVoiceModeration={canVoiceModerate ? (moderation) => { void props.onVoiceModeration(member.user.userId, moderation); } : undefined}
                           onToggleInviteRole={canAssignRoles ? (canInviteMember) => { void props.onUpdateMemberPermissions(member.user.userId, canInviteMember); } : undefined}
-                          moveTargets={canModerate ? props.rooms.voice.filter((target) => target.id !== room.id) : undefined}
-                          onMove={canModerate ? (targetRoomId) => props.onMoveMember(member.user.userId, targetRoomId) : undefined}
+                          moveTargets={canModeratePerson ? props.rooms.voice.filter((target) => target.id !== room.id) : undefined}
+                          onMove={canModeratePerson ? (targetRoomId) => props.onMoveMember(member.user.userId, targetRoomId) : undefined}
                           onRename={(returnFocus) => props.onRequestNickname(member.user, returnFocus)}
                           onRequestAction={(action) => props.onRequestMemberAction(member.user, action, room.id)}
                           showTrigger={false}

@@ -29,7 +29,8 @@ no HTTP surface, and no authority over anything.
 - `src/set.ts` is one Set — voice membership, mesh and player started and
   stopped together — and publishes the bot's own `speaking` state. A Set
   outlives any one Track. It also reports when the room's *roster* changes,
-  which is not the same as a snapshot arriving.
+  which is not the same as a snapshot arriving, and it is where the bot reads
+  its own moderation state and stops sending.
 - `src/mesh.ts` is the negotiation, applying `@voxly/shared`'s rules unchanged.
 - `src/player.ts` turns one encoded Track into one output per Listener, reading
   from a `TrackBuffer` that may still be filling.
@@ -126,12 +127,29 @@ for a library feature.
   much harder to recognise. Loading a Track clears it, so every real advance
   still plays. This replaced the older reading, that a Play button which did
   nothing looks broken; the panel now disables the button instead.
-- The bot must enforce its own silence. Media is peer-to-peer, so the server
-  cannot stop packets it never sees: owner mute and the AFK room's forced mute
-  are advisory for media and the bot has to honour them itself. An eviction —
-  `voice:forceLeave` — ends the Set, because holding one for a membership the
-  server has dropped leaves peer connections open and makes the next Summon
-  play into nothing.
+- **The bot enforces its own silence, by reading its own `media.mic`.** Media is
+  peer-to-peer, so the server cannot stop packets it never sees: owner mute and
+  the AFK room's forced mute are advisory for media and the bot honours them
+  itself, in `set.ts`, off the voice snapshot. Read the server's **conclusion**
+  and not its reasons — `normalizeVoiceMedia` is where both rules end up, the
+  AFK room is not on the snapshot at all, and re-deriving them from `moderation`
+  would be a second opinion that can disagree with the server's. ADR-0009.
+- **Silencing is not pausing.** The Queue is not told, goes on advancing, and
+  still reports `playing` — which is honest: the panel reads the Queue and the
+  bot's own row carries the mute the server enforced, exactly as it would for a
+  person cut off mid-sentence. So the Set holds "what the Queue asked for" apart
+  from "what the player is doing"; the microphone coming back resumes only the
+  first, because an owner lifting a mute is not a member pressing Play.
+- **The bot is summoned into a room and never moved into one.** `voice:moveTo`
+  is an instruction a client carries out by joining, and this bot deliberately
+  has no handler for it: the server refuses a move whose target is a bot, so the
+  instruction is never sent. Do not add one. ADR-0010 records what each half of
+  a move would do — arrive in a room nobody there asked it into, or destroy that
+  room's Queue from a control that never mentioned one. It is also why nothing
+  can put this bot in an AFK room.
+- An eviction — `voice:forceLeave` — ends the Set, because holding one for a
+  membership the server has dropped leaves peer connections open and makes the
+  next Summon play into nothing.
 
 ## The Queue
 
@@ -213,6 +231,60 @@ it that way.
   bot away and takes the old Queue with it, so pre-checking the one that is
   about to stop existing refuses a member for somebody else's full evening.
 - The Queue lives in memory and dies with the Set. Not persisted, by design.
+
+The Grace period is a rule here and a clock in `music.ts`, because this module
+is not allowed one. Read `docs/adr/0009-the-bot-waits-and-silences-itself.md`
+before changing when the bot leaves.
+
+- **Two events in, two effects out.** `roomEmptied` and `listenerReturned`
+  against `startGracePeriod` and `cancelGracePeriod`; `awaitingReturn` on
+  `PlaybackState` is the whole of the wait as a module with no clock can hold
+  it — *that* one is on, never how long is left of it. Name a new effect after
+  the product's word, as `startGracePeriod` is named after `CONTEXT.md`'s term
+  and not after the timer that carries it out.
+- **The wait does not pause anything and publishes nothing.** A member who comes
+  back inside it must find the music *continuing* rather than resumed, and there
+  is nobody in the room to publish to. No line is written either: nobody did
+  anything, and there is no publish for a line to ride on (ADR-0008). The
+  republish a returning member needs is the roster change they cause.
+- **Both events are idempotent**, because the hook reports every roster change
+  rather than only the interesting ones. A second emptying is the wait already
+  running — restarting it would let an empty room hold the bot for as long as
+  anything kept moving — and arriving at a room that had people in it cancels
+  nothing.
+- **An expiry a returning Listener already cancelled changes nothing.**
+  `clearTimeout` cannot un-fire a callback the runtime has picked up, so
+  `music.ts` asks `awaitingReturn` before ending anything. That is ADR-0006's
+  answer for a stale skip, said about a wait instead of an entry — and it is why
+  the state carries the flag rather than the timer handle being the only truth.
+  Do not reduce the expiry's guards to that one: the room can empty, fill and
+  empty *again* while an expiry is queued, and `awaitingReturn` is then true and
+  about the **next** wait. Which wait is the clock's knowledge, so `music.ts`
+  numbers them; dropping that check ends a Set up to five minutes early.
+- **The Queue moving does not end the wait.** A Track playing out in an empty
+  room is the Queue advancing, not somebody coming back, so every branch that
+  builds a state carries `awaitingReturn` through explicitly.
+- **Grace expiry is a new trigger for `endCurrentSet()`, not new clearing.**
+  There is no `graceExpired` event and no `leave` effect: ending a Set is
+  described in one place, which already discards the Queue and the Set log and
+  publishes the empty Queue before the membership goes. A second description
+  would drift, and the drift would be a Set that ended without telling the room.
+
+The clock lives in `music.ts`, with the five minutes.
+
+- `gracePeriodMs` is a constant, not an operator value: it is a product decision,
+  nothing on the wire mentions it, and no deployment has asked for a different
+  number. `setTimeout` is injectable for the same reason the player's interval
+  is — a test that waited five real minutes out is a test nobody runs.
+- The expiry goes through the **same chain** as a command, because ending a Set
+  is several round trips and must not land halfway through a Summon. It then
+  asks two questions that are not the same one: has the Set been replaced, and
+  is the wait still on.
+- `onListenersChanged` carries the room's Listeners, and **the bot is not among
+  them**. The Set takes itself out, because it is the only thing here that knows
+  which member it is; the bot is an ordinary member of its own voice room, so a
+  roster handed through unchanged would report a Listener for a room everybody
+  has left.
 
 Publishing the Queue belongs to `music.ts` and goes through the server, which
 authorizes it rather than relaying it. Read
@@ -370,6 +442,15 @@ press the button:
   produces a line naming the member who pressed it, the second of two
   simultaneous skips produces *no* line, and sending the bot away empties the
   log on every panel at once rather than only on the one that pressed;
+- **an owner's mute stops the sound**, not just the bot's row: mute the Music
+  account from the member list while a Track is playing and the room goes quiet,
+  and unmuting carries on from where it stopped rather than restarting the
+  Track. This is the one the ticket 03 spike found broken and **no person has
+  heard it work**;
+- **the Queue survives a reload**: refresh the only browser in the channel and
+  come back inside five minutes to find the same Queue, still playing, from
+  where it got to. Leave the channel and stay away, and the bot leaves by itself
+  with every panel's Queue and Set log emptied;
 - it is *clear* — no stutter, no metallic edge, and no gap where the fetch had
   to catch up. A skip is the easiest way to hear a Track boundary on demand, and
   how long that gap runs to is the measurement `The Queue` above is waiting for.

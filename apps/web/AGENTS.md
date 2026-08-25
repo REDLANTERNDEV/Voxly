@@ -136,11 +136,17 @@ requirement.
   in the list itself. It is always present and never joined, so counting it
   inflates the one number a member reads as "how busy is it". A new surface that
   counts members inherits this rule; the count is over people, the list is not.
-- Offer a Bot the voice actions (mute, deafen, disconnect, move) and withhold the
-  membership ones (kick, ban, invite grant, access link) in every surface that
-  presents them: both sidebars and the owner panel. The server refuses those
-  four for a Bot, so offering them would be a menu of guaranteed errors — and the
-  client hiding them is presentation, never the enforcement.
+- Offer a Bot the voice actions it can be the subject of — mute, deafen and
+  disconnect — and withhold the ones that presuppose a person: kick, ban, invite
+  grant, access link **and a move**. Do it in every surface that presents them:
+  both sidebars and the owner panel. The server refuses all five for a Bot, so
+  offering them would be a menu of guaranteed errors — and the client hiding them
+  is presentation, never the enforcement.
+- A move is the one that reads like it belongs on the other list, so gate it on
+  `canOwnerModeratePerson` rather than on the voice answer beside it. The bot is
+  summoned into a room by somebody in it and never pushed sideways; ADR-0010
+  records what each half of a move would otherwise do. Mute and disconnect are
+  honoured by the bot process itself (ADR-0009).
 - The normal server switcher is navigation for owners and members. Server
   creation and deletion belong in the selected owner-server context.
 - Reserve the top-left channel-rail lockup for the Voxly mark and application
@@ -373,16 +379,20 @@ requirement.
   (`MusicQueueState.playing`), never from local state left over from a press and
   never from the bot's `speaking` flag on the voice snapshot. Both were answers
   to the same question and they disagree — the server clamps `speaking` off for
-  a bot an owner has muted, while the music keeps playing, and the two arrive in
-  separate messages. ADR-0006 records the choice; the practical part is that the
-  buttons, the rows and the Queue all come out of one message, so nothing in the
-  panel can contradict anything else in it.
+  a bot an owner has muted, while the Queue goes on playing, and the two arrive
+  in separate messages. ADR-0006 records the choice; the practical part is that
+  the buttons, the rows and the Queue all come out of one message, so nothing in
+  the panel can contradict anything else in it. ADR-0009 retired one of the
+  reasons — a mute really does silence the bot now — and left the choice
+  standing on the rest.
 - An owner's mute stays visible as the panel's resting sentence, not as the
-  polarity of a button — and only while the Queue is playing. Media is
-  peer-to-peer, so a mute may not have silenced anything, which is worth a
-  member's while to know; but the sentence names Pause, and Pause is offered
-  only for a Queue that is running. Announcing it over a paused or empty Queue
-  points at a control that is disabled or that says the opposite.
+  polarity of a button — and only while the Queue is playing. That is the one
+  state where it explains anything: the Queue says a Track is running and the
+  room hears nothing. Over a paused or empty Queue the silence needs no
+  explaining. The sentence **reports** rather than instructs — the bot enforces
+  its own silence (ADR-0009), so it no longer asks anyone to press Pause to
+  finish the job — and the button keeps offering Pause, because a Queue nobody
+  can hear is still a Queue a member may want to stop.
 - Transport controls name the entry they act on. Skip carries the `entryId` the
   panel believes is playing and Remove carries the row's own — never a position
   — so a panel one message out of date skips nothing rather than skipping the

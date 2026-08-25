@@ -92,10 +92,11 @@ describe("what the transport controls are looking at", () => {
   });
 
   it("keeps an owner's mute as information rather than as a button state", () => {
-    // Media is peer-to-peer, so the mute does not by itself stop the bot's
-    // packets and a member is owed that sentence. What the button offers still
-    // comes from the Queue, which can now say whether there is anything to
-    // pause — so a muted bot with music running still offers Pause.
+    // The mute now really does silence the bot — it enforces its own — so the
+    // Queue and the room disagree: the Queue is running and nobody can hear it.
+    // That is what the sentence is for. What the button offers still comes from
+    // the Queue, so a muted bot with music running still offers Pause, because
+    // pausing is still a thing a member can meaningfully do to the Queue.
     const transport = musicTransport(mutedBot, sounding);
 
     assert.equal(transport.muted, true);
@@ -104,12 +105,15 @@ describe("what the transport controls are looking at", () => {
   });
 
   it("only mentions the mute while something is playing", () => {
-    // The sentence tells the member to pause the bot, and Pause is offered only
-    // for a Queue that is running. Saying it over a paused or empty Queue would
-    // point at a control that is disabled or that says the opposite.
+    // Playing is the one state the mute explains: the Queue says a Track is
+    // running and the room is silent. Over a paused or an empty Queue the
+    // silence needs no explaining and the sentence would be noise.
     assert.equal(musicRestingKey(musicTransport(mutedBot, halted)), "music.paused");
     assert.equal(musicRestingKey(musicTransport(mutedBot, null)), "music.idle");
-    assert.match(translate("en", "music.muted"), /Pause/, "the sentence names the control it means");
+    // The bot silences itself now (ticket 12), so the sentence reports a fact
+    // rather than asking the member to finish the job by pausing it.
+    assert.doesNotMatch(translate("en", "music.muted"), /Pause/i);
+    assert.doesNotMatch(translate("tr", "music.muted"), /[Dd]uraklat/);
   });
 
   it("says what the room is doing when nobody has just asked for anything", () => {

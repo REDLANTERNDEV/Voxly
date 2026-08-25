@@ -76,11 +76,18 @@ export interface MusicSetOptions {
    * are deliberately not this: a snapshot lands every time anyone starts or
    * stops talking, and this is about the roster.
    *
-   * It carries nothing, because nothing needs it to. The roster is already in
-   * the snapshots its listener receives; passing a copy here would be data
-   * whose shape nobody has had a reason to get right yet.
+   * **The bot is not in the list.** It is an ordinary member of the voice room
+   * and therefore in its own roster, so handing the roster through unchanged
+   * would report a Listener for a room that everybody has left — and the Grace
+   * period, which is the one thing that needs this, is about exactly that room.
+   * Taking itself out is the Set's job because the Set is the only thing here
+   * that knows which member it is.
+   *
+   * It used to carry nothing, on the grounds that the roster was already in the
+   * snapshots its listener receives and a copy would be a shape nobody had a
+   * reason to get right. The Grace period is that reason.
    */
-  onListenersChanged?: () => void;
+  onListenersChanged?: (listenerUserIds: string[]) => void;
   log?: (message: string) => void;
 }
 
@@ -106,6 +113,23 @@ export function createMusicSet(options: MusicSetOptions): MusicSet {
   const { socket, roomId } = options;
   let joined = false;
   let ended = false;
+  /**
+   * What the Queue asked for, which is not the same as what the player is
+   * doing. An owner's mute stops the sound without the Queue being told, so the
+   * two have to be held apart: this is what the microphone coming back resumes,
+   * and it is what a mute must not quietly turn off.
+   */
+  let playbackRequested = false;
+  /**
+   * Whether the server has taken the bot's microphone away.
+   *
+   * Media in Voxly is peer-to-peer, so the server cannot stop packets it never
+   * sees: its moderation state is *advisory* for audio and the bot has to
+   * enforce it on itself. Without this the bot goes on playing into every
+   * browser in the room while its own row shows the red locked mute — which is
+   * what the ticket 03 spike watched happen.
+   */
+  let silenced = false;
 
   const player = new TrackPlayer({
     onPlayingChange: (playing) => publishSpeaking(playing),
@@ -141,11 +165,69 @@ export function createMusicSet(options: MusicSetOptions): MusicSet {
     if (ended) return;
     mesh.applySnapshot(snapshot);
     if (snapshot.roomId !== roomId) return;
+    // A member the room does not list has no microphone here to read. That is
+    // an ordinary snapshot for a room the bot has not joined yet, and reading
+    // an absent member as a silenced one would stop a Set nobody moderated.
+    const self = snapshot.members.find((member) => member.user.userId === options.selfUserId);
+    if (self) applyModeration(self.media.mic === false);
     const next = snapshot.members.map((member) => member.user.userId).sort().join(",");
     if (next === roster) return;
     roster = next;
-    options.onListenersChanged?.();
+    // Read off the snapshot rather than from `mesh.listenerUserIds`, which
+    // looks like the same list and is not. That one is who the bot holds a peer
+    // for — a media fact — and `removePeer` is asynchronous, so the Listener
+    // who has just left is still in it here. Starting a Grace period from it
+    // would mean the last one out never starts one at all, because no further
+    // snapshot is coming.
+    options.onListenersChanged?.(
+      snapshot.members
+        .map((member) => member.user.userId)
+        .filter((userId) => userId !== options.selfUserId)
+    );
   };
+
+  /**
+   * The server's word on whether this bot may be heard, applied to the thing
+   * that is actually making the sound.
+   *
+   * What is read is the server's **conclusion**, not its reasons. `mic` is
+   * where `normalizeVoiceMedia` puts an owner's mute *and* the AFK room's
+   * forced mute, and the AFK room is not on the snapshot at all — so the
+   * microphone is the only fact here that says both, and re-deriving the rules
+   * from `moderation` would be a second opinion that could disagree with the
+   * server's.
+   *
+   * Silencing is not pausing. The Queue is not told, goes on advancing, and
+   * still says it is playing — which is honest, because it is: the room's panel
+   * reads the Queue and the bot's own row carries the mute the server enforced,
+   * exactly as it would for a person cut off mid-sentence.
+   */
+  function applyModeration(nowSilenced: boolean) {
+    if (nowSilenced === silenced) return;
+    silenced = nowSilenced;
+    log(silenced
+      ? "the server says the bot's microphone is off; stopping until it is back"
+      : `the bot's microphone is back${playbackRequested ? "; carrying on" : ""}`);
+    syncPlayer();
+  }
+
+  /**
+   * The one place the two facts are put together: the player sounds when the
+   * Queue asked for it **and** the server has left the bot a microphone.
+   *
+   * Written once rather than at each of the three places that change one of the
+   * two, so there is no direction of travel in which the rule can be half
+   * applied. Resuming is deliberately not a restart — `TrackPlayer.start()`
+   * carries on from where its clock stopped — and an owner lifting a mute is
+   * not a member pressing Play, so a Queue somebody paused stays paused.
+   */
+  function syncPlayer() {
+    if (playbackRequested && !silenced) {
+      player.start();
+      return;
+    }
+    player.stop();
+  }
 
   /**
    * Only once the join is acknowledged. A media update for a room the bot is
@@ -193,10 +275,15 @@ export function createMusicSet(options: MusicSetOptions): MusicSet {
     },
     play() {
       if (ended) return;
-      player.start();
+      // The Queue does not know about the mute and will go on advancing through
+      // Tracks while one is in force, so `syncPlayer` is not only about the
+      // Track that was playing when the mute landed.
+      playbackRequested = true;
+      syncPlayer();
     },
     stop() {
-      player.stop();
+      playbackRequested = false;
+      syncPlayer();
     },
     async end() {
       if (ended) return;

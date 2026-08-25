@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import type { PresenceUser } from "@voxly/shared";
 import { translate } from "../src/lib/i18n.js";
 import {
-  canOwnerModerateMembership,
+  canOwnerModeratePerson,
   canOwnerVoiceModerate,
   countPeople,
   groupDirectoryMembers
@@ -50,17 +50,30 @@ describe("bot moderation offers", () => {
     assert.equal(canOwnerVoiceModerate("owner", owner.userId, bot), true);
   });
 
-  it("withholds the membership actions a bot cannot be the subject of", () => {
-    assert.equal(canOwnerModerateMembership("owner", owner.userId, ada), true);
-    assert.equal(canOwnerModerateMembership("owner", owner.userId, bot), false);
-    assert.equal(canOwnerModerateMembership("member", ada.userId, bot), false);
+  it("withholds the actions a bot cannot be the subject of", () => {
+    assert.equal(canOwnerModeratePerson("owner", owner.userId, ada), true);
+    assert.equal(canOwnerModeratePerson("owner", owner.userId, bot), false);
+    assert.equal(canOwnerModeratePerson("member", ada.userId, bot), false);
   });
 
-  it("wires kick and ban in both sidebars to the membership answer, not the voice one", () => {
-    assert.match(memberPanel, /const canRemoveMember = canOwnerModerateMembership\(/);
-    assert.match(memberPanel, /canModerate=\{canRemoveMember\}/);
-    assert.match(channelRail, /const canRemoveMember = canOwnerModerateMembership\(/);
-    assert.match(channelRail, /canModerate=\{canRemoveMember\}/);
+  it("wires kick and ban in both sidebars to the person answer, not the voice one", () => {
+    assert.match(memberPanel, /const canModeratePerson = canOwnerModeratePerson\(/);
+    assert.match(memberPanel, /canModerate=\{canModeratePerson\}/);
+    assert.match(channelRail, /const canModeratePerson = canOwnerModeratePerson\(/);
+    assert.match(channelRail, /canModerate=\{canModeratePerson\}/);
+  });
+
+  it("does not offer to move a bot, which goes where it is summoned and nowhere else", () => {
+    // The same answer kick and ban read, because a move presupposes a person in
+    // the same way: it says "go there", and the bot is only ever sent for.
+    // Arriving would put it in a room nobody there summoned it into; leaving
+    // would destroy that room's Queue from a control that never said so.
+    // ADR-0010. The server refuses it too — this is presentation, not the
+    // enforcement.
+    assert.match(memberPanel, /moveTargets=\{canModeratePerson && voiceRoom \?/);
+    assert.match(memberPanel, /onMove=\{canModeratePerson && voiceRoom \?/);
+    assert.match(channelRail, /moveTargets=\{canModeratePerson \?/);
+    assert.match(channelRail, /onMove=\{canModeratePerson \?/);
   });
 
   it("does not offer a bot the invite grant it could never use", () => {

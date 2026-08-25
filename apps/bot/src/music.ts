@@ -74,6 +74,13 @@ export interface MusicResponderOptions {
    * know. In the process both are `randomUUID`.
    */
   mintLineId?: () => string;
+  /**
+   * The Grace period's clock, injected for the same reason the player's
+   * interval is: a test that waited five real minutes out is a test nobody
+   * runs. Nothing else in this module measures time.
+   */
+  setTimeout?: (callback: () => void, milliseconds: number) => NodeJS.Timeout;
+  clearTimeout?: (timer: NodeJS.Timeout) => void;
   log?: (message: string) => void;
 }
 
@@ -87,6 +94,21 @@ export interface MusicResponder {
 /** Nothing to report: the request either worked or was about no Track at all. */
 const acknowledged: MusicCommandAck = { ok: true, kind: "track", track: null };
 
+/**
+ * How long the bot waits in a room the last Listener has left before giving up
+ * on them and ending the Set.
+ *
+ * The clock is here rather than in `playback.ts` because that module performs
+ * no input or output and has no way to measure five minutes; what it holds is
+ * the rule, and this is the wait the rule asks for. Five minutes is the design's
+ * number and the reason is a page refresh: reloading takes a member out of the
+ * voice room for a second or two, and an evening's Queue should not be
+ * destroyed by one. Long enough to cover a reload, a browser restart or a
+ * dropped connection somebody comes straight back from; short enough that a bot
+ * nobody wants is gone before anyone thinks to send it away.
+ */
+export const gracePeriodMs = 5 * 60 * 1000;
+
 export function createMusicResponder(options: MusicResponderOptions): MusicResponder {
   const log = options.log ?? (() => undefined);
   const createSet = options.createSet ?? createMusicSet;
@@ -97,6 +119,8 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
   const fetchAudio = options.fetch ?? fetchTrackAudio;
   const mintEntryId = options.mintEntryId ?? (() => randomUUID());
   const mintLineId = options.mintLineId ?? (() => randomUUID());
+  const startTimer = options.setTimeout ?? ((callback, milliseconds) => setTimeout(callback, milliseconds));
+  const stopTimer = options.clearTimeout ?? ((timer) => clearTimeout(timer));
   let set: MusicSet | null = null;
   let audio: TrackAudio | null = null;
   let playback: PlaybackState = emptyPlayback();
@@ -121,6 +145,15 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
    * is gone, and acting on it would drop the one that had just started.
    */
   let loadedEntryId: string | null = null;
+  /** The Grace period's timer, while one is running. See `startGracePeriod`. */
+  let graceTimer: NodeJS.Timeout | null = null;
+  /**
+   * How many waits this Set has started, which is how an expiry says which wait
+   * it belongs to. Counted rather than named because nothing outside this
+   * closure ever sees it — it is not the per-Set sequence number ADR-0006
+   * rejected, which was a number a *client* echoed back over the wire.
+   */
+  let graceWaitsStarted = 0;
 
   /**
    * Abandons the fetch behind whatever was playing. A Track that has been
@@ -162,6 +195,12 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
         case "publish":
           publishTo(current.roomId);
           break;
+        case "startGracePeriod":
+          startGracePeriod(current);
+          break;
+        case "cancelGracePeriod":
+          cancelGracePeriod();
+          break;
         default:
           // Exhaustive: an effect added to the vocabulary should stop the build
           // rather than be silently dropped, which would look like the Queue
@@ -188,6 +227,54 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
     playback = step.state;
     applyEffects(current, step.effects);
     return step;
+  }
+
+  /**
+   * Waits the Grace period out, and ends the Set if nobody comes back.
+   *
+   * The expiry goes through the same chain as a command, for the same reason a
+   * Track ending does: ending a Set is several round trips and must not land
+   * halfway through a Summon that is already running.
+   *
+   * It then asks three questions before doing anything, and none of them
+   * implies another. `clearTimeout` cannot un-fire a callback the runtime has
+   * already picked up, so an expiry really can arrive after the wait it belongs
+   * to stopped being the wait — three different ways:
+   *
+   * - **The Set was replaced**, by a Summon into another room. This expiry
+   *   belongs to a Set that is already over, and ending the new room's would
+   *   cost it its music.
+   * - **A Listener came back.** The wait was cancelled; the Queue's own state
+   *   says so, which is ADR-0006's rule for a stale skip said about a wait
+   *   instead of about an entry.
+   * - **They came back and left again.** The Queue says a wait is on, and it is
+   *   right — but it is the *second* wait's, with nearly all five minutes still
+   *   to run, and this expiry would cut it short. Nothing about the Queue's
+   *   state can tell the two apart, because both are "a wait is on"; which wait
+   *   is the clock's own knowledge, so the clock counts them.
+   */
+  function startGracePeriod(current: MusicSet) {
+    cancelGracePeriod();
+    const wait = (graceWaitsStarted += 1);
+    log(`the last Listener left room ${current.roomId}; waiting ${gracePeriodMs}ms before leaving.`);
+    graceTimer = startTimer(() => {
+      queue = queue.then(async () => {
+        if (set !== current || wait !== graceWaitsStarted || !playback.awaitingReturn) return;
+        log(`nobody came back to room ${current.roomId}; ending the Set.`);
+        await endCurrentSet();
+      }).catch(() => undefined);
+    }, gracePeriodMs);
+  }
+
+  /**
+   * Stops the clock. Safe on one that has already gone off — clearing a fired
+   * timer does nothing, and the expiry it left in the chain is stopped by the
+   * questions above rather than from here.
+   */
+  function cancelGracePeriod() {
+    if (graceTimer === null) return;
+    stopTimer(graceTimer);
+    graceTimer = null;
   }
 
   function startFetch(current: MusicSet, entry: QueueEntry) {
@@ -276,8 +363,19 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
       // the server keeps no copy to hand them, so the bot says it again. This
       // is what makes "everyone sees the same list" true for a member who
       // joined after the music started.
-      onListenersChanged: () => {
-        if (set === started) publishTo(roomId);
+      onListenersChanged: (listenerUserIds) => {
+        if (set !== started) return;
+        publishTo(roomId);
+        // The bot is not in this list — a Set takes itself out of the roster
+        // before reporting — so an empty one is a room holding nobody but the
+        // bot, and that is what starts the Grace period. One of the two is sent
+        // on every roster change rather than only on the interesting ones,
+        // because which of them is news is the Queue's to answer: both are
+        // idempotent there, and holding a second copy of "is a wait on" here
+        // would be the copy that could disagree with it.
+        advance(started, listenerUserIds.length === 0
+          ? { kind: "roomEmptied" }
+          : { kind: "listenerReturned" });
       },
       log
     });

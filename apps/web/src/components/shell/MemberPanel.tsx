@@ -2,7 +2,7 @@ import type { PresenceUser,PublicUser,RoomSummary,VoiceModerationState,VoiceSnap
 import { initial,memberRoleLabel } from "../../app/presentation.js";
 import type { MemberAction,Translate } from "../../app/types.js";
 import { UserPlusIcon } from "../ui/Icons.js";
-import { canOwnerModerateMembership,canOwnerVoiceModerate,countPeople,currentServerPresence,groupDirectoryMembers,memberPresenceState } from "../../lib/memberDirectory.js";
+import { canOwnerModeratePerson,canOwnerVoiceModerate,countPeople,currentServerPresence,groupDirectoryMembers,memberPresenceState } from "../../lib/memberDirectory.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
 import { MemberActionMenu,memberActionMenuHeight,openSidebarMenuFromPointer,type SidebarActionMenuController } from "./SidebarMenus.js";
 export function MemberPanel({
@@ -52,7 +52,7 @@ export function MemberPanel({
     const detail = voiceRoom ? `${roleLabel} · ${voiceRoom.name}` : roleLabel;
     const canRename = canModerate && (user.role === "member" || user.userId === currentUser.id);
     const canModerateRemote = canOwnerVoiceModerate(canModerate ? "owner" : null, currentUser.id, user);
-    const canRemoveMember = canOwnerModerateMembership(canModerate ? "owner" : null, currentUser.id, user);
+    const canModeratePerson = canOwnerModeratePerson(canModerate ? "owner" : null, currentUser.id, user);
     const canAssignRoles = canModerate && user.role === "member" && !user.isBot;
     const hasRemoteActions = user.userId !== currentUser.id && Boolean(voiceRoom || canModerateRemote);
     const hasActions = hasRemoteActions || canRename || canAssignRoles;
@@ -60,10 +60,10 @@ export function MemberPanel({
       hasVolume: Boolean(voiceRoom && user.userId !== currentUser.id),
       canRename,
       canDisconnect: Boolean(voiceRoom && canModerateRemote),
-      canModerate: canRemoveMember,
+      canModerate: canModeratePerson,
       canVoiceModerate: Boolean(voiceRoom && canModerateRemote),
       canAssignRoles,
-      canMove: Boolean(voiceRoom && canModerateRemote && voiceRooms.length > 1)
+      canMove: Boolean(voiceRoom && canModeratePerson && voiceRooms.length > 1)
     });
     const menuKey = `directory-member:${user.userId}`;
     return (
@@ -95,12 +95,12 @@ export function MemberPanel({
             onVolumeChange={voiceRoom && user.userId !== currentUser.id ? (volume) => onMemberVolumeChange(user.userId, volume) : undefined}
             canRename={canRename}
             canDisconnect={Boolean(voiceRoom && canModerateRemote)}
-            canModerate={canRemoveMember}
+            canModerate={canModeratePerson}
             moderation={voiceRoom && canModerateRemote ? voiceMember?.moderation : undefined}
             onVoiceModeration={voiceRoom && canModerateRemote ? (moderation) => { void onVoiceModeration(user.userId, moderation); } : undefined}
             onToggleInviteRole={canAssignRoles ? (canInvite) => { void onUpdateMemberPermissions(user.userId, canInvite); } : undefined}
-            moveTargets={canModerateRemote && voiceRoom ? voiceRooms.filter((room) => room.id !== voiceRoom.id) : undefined}
-            onMove={canModerateRemote && voiceRoom ? (roomId) => onMoveMember(user.userId, roomId) : undefined}
+            moveTargets={canModeratePerson && voiceRoom ? voiceRooms.filter((room) => room.id !== voiceRoom.id) : undefined}
+            onMove={canModeratePerson && voiceRoom ? (roomId) => onMoveMember(user.userId, roomId) : undefined}
             onRename={(returnFocus) => onRequestNickname(user, returnFocus)}
             onRequestAction={(action) => onRequestMemberAction(user, action, action === "disconnect" ? voiceRoom?.id : undefined)}
             t={t}

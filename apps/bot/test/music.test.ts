@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { musicQueueMaxEntries, type MusicCommand, type MusicQueueState, type VoiceForceLeaveReason } from "@voxly/shared";
 import type { BotEnvironment } from "../src/config.js";
-import { createMusicResponder } from "../src/music.js";
+import { createMusicResponder, gracePeriodMs } from "../src/music.js";
 import { TrackBuffer } from "../src/audio.js";
 import type { MusicSet, MusicSetOptions, SetSocket } from "../src/set.js";
 import type { TrackAudio } from "../src/stream.js";
@@ -83,7 +83,7 @@ function harness(options: {
   const cancelled: string[] = [];
   const forceLeaveHandlers = new Set<(payload: { roomId: string; reason: VoiceForceLeaveReason }) => void>();
   const published: Array<{ roomId: string; state: MusicQueueState }> = [];
-  const rosterHooks = new Map<string, (memberUserIds: string[]) => void>();
+  const rosterHooks = new Map<string, (listenerUserIds: string[]) => void>();
   // Only the eviction hook is reached from here; everything else on the socket
   // belongs to a Set, and the Sets in this file are stand-ins.
   const socket = {
@@ -136,6 +136,16 @@ function harness(options: {
   });
   let minted = 0;
   let logged = 0;
+  /**
+   * The Grace period's clock, held rather than run. Five minutes is five
+   * minutes, and a test that waited it out would be a test nobody runs — so the
+   * responder is handed a `setTimeout` that records the wait and hands back a
+   * handle, and the test says when it expires.
+   */
+  let scheduled = 0;
+  const waits = new Map<number, { callback: () => void; milliseconds: number }>();
+  /** Every wait ever asked for, cancelled ones included. See `expireGracePeriodNumber`. */
+  const everyWait: Array<() => void> = [];
   const responder = createMusicResponder({
     socket,
     selfUserId: "aaaa-bot",
@@ -163,7 +173,16 @@ function harness(options: {
       fetched.push(track.id);
       return { buffer: new TrackBuffer(), cancel: () => cancelled.push(track.id) };
     },
-    log: (message) => log.push(message)
+    log: (message) => log.push(message),
+    setTimeout: (callback, milliseconds) => {
+      scheduled += 1;
+      waits.set(scheduled, { callback, milliseconds });
+      everyWait.push(callback);
+      return scheduled as unknown as NodeJS.Timeout;
+    },
+    clearTimeout: (timer) => {
+      waits.delete(timer as unknown as number);
+    }
   });
 
   return {
@@ -180,9 +199,35 @@ function harness(options: {
     lastPublished: () => published.at(-1)?.state,
     /** The Track that is playing reached its end, as the player reports it. */
     endTrack: (roomId: string) => endTrack.get(roomId)?.(),
-    /** Somebody joined or left the voice room the Set is in. */
-    rosterChanged(roomId: string, memberUserIds: string[]) {
-      rosterHooks.get(roomId)?.(memberUserIds);
+    /**
+     * Somebody joined or left the voice room the Set is in. The bot is not in
+     * this list: the real Set takes itself out of the roster before reporting,
+     * which is what makes an empty list mean "the last Listener left".
+     */
+    rosterChanged(roomId: string, listenerUserIds: string[]) {
+      rosterHooks.get(roomId)?.(listenerUserIds);
+    },
+    /** How long the bot has been asked to wait, for each wait still standing. */
+    waiting: () => [...waits.values()].map((wait) => wait.milliseconds),
+    /** The clock going off on the wait that is standing. */
+    expireGracePeriod() {
+      const [id, wait] = [...waits.entries()][0] ?? [];
+      if (id === undefined || !wait) return;
+      waits.delete(id);
+      wait.callback();
+    },
+    /**
+     * The clock going off for the *n*th wait the bot ever started, whether or
+     * not that wait is still the one it is on.
+     *
+     * `clearTimeout` cannot un-fire a timer whose callback the runtime has
+     * already picked up, so an expiry really can arrive after its wait stopped
+     * being the wait — a Listener came back, or came back and left again. Both
+     * are expiries the bot has to sit still through, and both are written here
+     * by firing a wait the responder has since moved on from.
+     */
+    expireGracePeriodNumber(ordinal: number) {
+      everyWait[ordinal - 1]?.();
     },
     forceLeave(roomId: string, reason: VoiceForceLeaveReason = "owner_disconnect") {
       for (const handler of forceLeaveHandlers) handler({ roomId, reason });
@@ -551,7 +596,7 @@ describe("telling the room", () => {
     await responder.handle(add(), "lobby", ada);
     const before = published.length;
 
-    rosterChanged("lobby", ["aaaa-bot", "ada-user-id"]);
+    rosterChanged("lobby", ["ada-user-id"]);
 
     assert.equal(published.length, before + 1);
     assert.deepEqual(titles(lastPublished()), ["Track aB3dE5gH7jK"]);
@@ -899,5 +944,181 @@ describe("when something goes wrong", () => {
     assert.deepEqual(created[0]?.events, ["begin", "load", "play", "stop", "end"]);
     assert.deepEqual(cancelled, ["aB3dE5gH7jK"]);
     assert.equal(responder.currentRoomId(), null);
+  });
+});
+
+/**
+ * The Grace period, from the side that owns the clock.
+ *
+ * What the wait *is* — that emptying starts one, that a return cancels it, that
+ * neither pauses anything — is proved in `playback.test.ts` without a clock at
+ * all. What is proved here is the other half: that five minutes is five
+ * minutes, that the expiry goes through the same chain as everything else, and
+ * that a Set which ended some other way leaves nothing ticking.
+ */
+describe("waiting for somebody to come back", () => {
+  it("stays in the room for the Grace period when the last Listener leaves", async () => {
+    const { responder, created, rosterChanged, waiting } = harness();
+    await responder.handle(add(), "lobby", ada);
+
+    rosterChanged("lobby", []);
+
+    assert.deepEqual(waiting(), [gracePeriodMs]);
+    assert.equal(gracePeriodMs, 5 * 60 * 1000, "the design says five minutes");
+    assert.equal(responder.currentRoomId(), "lobby", "the bot has not gone anywhere yet");
+    assert.deepEqual(created[0]?.events, ["begin", "load", "play"], "and it has not stopped playing");
+  });
+
+  it("keeps the Queue and the music running while it waits", async () => {
+    // Story 26: a member returning within the Grace period wants the music
+    // still playing. Nothing is paused, so there is nothing to resume.
+    const { responder, created, rosterChanged, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+
+    rosterChanged("lobby", []);
+    rosterChanged("lobby", [ada]);
+    await responder.handle(play, "lobby", ada);
+
+    assert.deepEqual(created[0]?.events, ["begin", "load", "play"]);
+    assert.deepEqual(titles(lastPublished()), ["Track aB3dE5gH7jK"]);
+    assert.equal(lastPublished()?.playing, true);
+  });
+
+  it("says the Queue again to whoever came back", async () => {
+    const { responder, rosterChanged, published } = harness();
+    await responder.handle(add(), "lobby", ada);
+    const before = published.length;
+
+    rosterChanged("lobby", []);
+    rosterChanged("lobby", [ada]);
+
+    assert.equal(published.length, before + 2, "a roster change republishes, empty room or not");
+  });
+
+  it("does not start the wait again every time an empty room's roster moves", async () => {
+    const { responder, rosterChanged, waiting } = harness();
+    await responder.handle(add(), "lobby", ada);
+
+    rosterChanged("lobby", []);
+    rosterChanged("lobby", []);
+
+    assert.deepEqual(waiting(), [gracePeriodMs], "one wait, not two, and not one restarted");
+  });
+
+  it("stops waiting when a Listener comes back", async () => {
+    const { responder, rosterChanged, waiting } = harness();
+    await responder.handle(add(), "lobby", ada);
+
+    rosterChanged("lobby", []);
+    rosterChanged("lobby", [bob]);
+
+    assert.deepEqual(waiting(), []);
+  });
+});
+
+describe("the Grace period running out", () => {
+  it("tells the room the Queue is empty, then leaves", async () => {
+    // The same order the `leave` command keeps, and for the same reason: a
+    // publish from a member the server has already seen leave is refused.
+    const { responder, created, rosterChanged, expireGracePeriod, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    rosterChanged("lobby", []);
+
+    expireGracePeriod();
+    await responder.handle(play, "lobby", ada);
+
+    assert.deepEqual(titles(lastPublished()), []);
+    assert.deepEqual(created[0]?.events.at(-1), "end", "the Set is torn down after the room was told");
+    assert.equal(responder.currentRoomId(), null);
+  });
+
+  it("forgets the Queue and the Set log together", async () => {
+    // One `cleared`, one empty payload. The log rides the Queue (ADR-0008), so
+    // the message that empties five panels' Queue empties their log with it.
+    const { responder, cancelled, rosterChanged, expireGracePeriod, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    await responder.handle(add(otherLink), "lobby", ada);
+    rosterChanged("lobby", []);
+
+    expireGracePeriod();
+    await responder.handle(play, "lobby", ada);
+
+    assert.deepEqual(titles(lastPublished()), []);
+    assert.deepEqual(lines(lastPublished()), []);
+    assert.deepEqual(cancelled, ["aB3dE5gH7jK"], "and the fetch behind the Track is abandoned");
+  });
+
+  it("sits still for an expiry that a returning Listener had already cancelled", async () => {
+    // `clearTimeout` cannot un-fire a timer the runtime has already picked up,
+    // so this expiry really does arrive. The Queue's own answer is what stops
+    // it — the same rule ADR-0006 gave a skip that named a Track the Queue had
+    // moved past, said about a wait instead of an entry.
+    const { responder, created, rosterChanged, expireGracePeriodNumber, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    rosterChanged("lobby", []);
+    rosterChanged("lobby", [ada]);
+
+    expireGracePeriodNumber(1);
+    await responder.handle(play, "lobby", ada);
+
+    assert.equal(responder.currentRoomId(), "lobby");
+    assert.deepEqual(titles(lastPublished()), ["Track aB3dE5gH7jK"]);
+    assert.deepEqual(created[0]?.events.filter((event) => event === "end"), []);
+  });
+
+  it("does not cut short the wait that replaced the one it expired for", async () => {
+    // The room emptied, filled and emptied again while the first expiry sat in
+    // the chain. The Queue says a wait is on and it is right — but it is the
+    // second wait's, with nearly five minutes still to run, and this expiry
+    // belongs to neither the room that is there now nor the clock that is
+    // running for it.
+    const { responder, rosterChanged, expireGracePeriodNumber, waiting, lastPublished } = harness();
+    await responder.handle(add(), "lobby", ada);
+    rosterChanged("lobby", []);
+    rosterChanged("lobby", [ada]);
+    rosterChanged("lobby", []);
+
+    expireGracePeriodNumber(1);
+    await responder.handle(play, "lobby", ada);
+
+    assert.equal(responder.currentRoomId(), "lobby", "the second wait has not run out");
+    assert.deepEqual(waiting(), [gracePeriodMs]);
+    assert.deepEqual(titles(lastPublished()), ["Track aB3dE5gH7jK"]);
+  });
+
+  it("leaves nothing ticking behind a Set that ended some other way", async () => {
+    const { responder, rosterChanged, waiting } = harness();
+    await responder.handle(add(), "lobby", ada);
+    rosterChanged("lobby", []);
+
+    await responder.handle(leave, "lobby", ada);
+
+    assert.deepEqual(waiting(), []);
+  });
+
+  it("leaves nothing ticking behind a bot the server evicted", async () => {
+    const { responder, rosterChanged, forceLeave, waiting } = harness();
+    await responder.handle(add(), "lobby", ada);
+    rosterChanged("lobby", []);
+
+    forceLeave("lobby");
+    await responder.handle(play, "lobby", ada);
+
+    assert.deepEqual(waiting(), []);
+    assert.equal(responder.currentRoomId(), null);
+  });
+
+  it("does not end the Set that replaced the one it was waiting for", async () => {
+    // A Summon into another room ends the first Set. An expiry from that Set
+    // arriving afterwards must not take the new room's music with it.
+    const { responder, rosterChanged, expireGracePeriodNumber } = harness();
+    await responder.handle(add(), "lobby", ada);
+    rosterChanged("lobby", []);
+    await responder.handle(add(otherLink), "studio", bob);
+
+    expireGracePeriodNumber(1);
+    await responder.handle(play, "studio", bob);
+
+    assert.equal(responder.currentRoomId(), "studio");
   });
 });

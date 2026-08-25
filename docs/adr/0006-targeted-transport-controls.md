@@ -1,8 +1,15 @@
 # ADR-0006 — Transport controls name the Track they mean
 
-- **Status:** accepted
+- **Status:** accepted; §3 amended by ADR-0009
 - **Date:** 2026-08-25
 - **Context:** ticket 09, "Play, pause, skip, remove"
+
+> **Amendment (ticket 12, ADR-0009).** §3's first supporting fact — that an
+> owner's mute does not necessarily stop the bot's packets — is no longer true:
+> the bot enforces its own silence. The decision is unchanged and now rests on
+> §3's remaining reasons plus a new one, that a muted bot's Queue really is
+> running, so Pause still means something. §3's consequence for the panel's
+> resting sentence changed with it; ADR-0009 §8 records both.
 
 ## Context
 

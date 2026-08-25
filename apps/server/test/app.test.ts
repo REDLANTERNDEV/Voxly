@@ -2061,6 +2061,16 @@ describe("Voxly HTTP MVP", () => {
         method: "PATCH" as const,
         url: `/api/servers/${defaultServerId}/members/${botId}/permissions`,
         payload: { canInvite: true }
+      },
+      // A move is the newest of these and the least obvious. It is refused
+      // because the bot goes where it is summoned and nowhere else: the
+      // arriving half would put it in a room nobody in that room asked for it,
+      // and the leaving half would destroy an evening's Queue from a menu entry
+      // that says nothing about destroying anything. ADR-0010.
+      {
+        method: "POST" as const,
+        url: `/api/servers/${defaultServerId}/voice/members/${botId}/move`,
+        payload: { roomId: `afk-${defaultServerId}` }
       }
     ]) {
       const response = await app.server.inject({ ...request, cookies: owner.cookies });

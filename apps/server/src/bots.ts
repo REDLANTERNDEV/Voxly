@@ -114,9 +114,16 @@ export function isBotUser(sqlite: DatabaseSync, userId: string) {
  *
  * Kicking or banning the Music bot would break the feature for that server, and
  * a global ban has no undo at all; the invite grant and an access link both hand
- * out something only a browser can use. Voice moderation is deliberately not
- * here — muting, deafening, disconnecting and moving the bot all mean exactly
- * what they mean for anyone else, and the bot honours them.
+ * out something only a browser can use. A move presupposes a person in a
+ * quieter way: it is an instruction to *go somewhere*, and the bot goes where it
+ * is summoned and nowhere else — being moved would either place it in a room
+ * nobody there asked for it or destroy that room's Queue, depending on which
+ * half of the move you look at. ADR-0010.
+ *
+ * Muting, deafening and disconnecting are deliberately not here. Those mean
+ * exactly what they mean for anyone else, and the bot honours them itself,
+ * because media is peer-to-peer and the server cannot enforce silence on
+ * packets it never sees (ADR-0009).
  */
 export function rejectBotTarget(database: VoxlyDatabase, userId: string, reply: FastifyReply) {
   if (!isBotUser(database.sqlite, userId)) return false;

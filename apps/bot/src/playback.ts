@@ -59,6 +59,21 @@ export interface PlaybackState {
    * of writing them in the branches that make the change.
    */
   readonly log: readonly MusicSetLogLine[];
+  /**
+   * Whether the room is empty and the bot is waiting for somebody to come back
+   * — the Grace period, as far as a module with no clock can hold it.
+   *
+   * The five minutes are `music.ts`'s: this says only *that* a wait is on, and
+   * it is what makes an expiry that arrives after somebody returned do nothing.
+   * A clock cannot be unfired once it has gone off, so the answer is the same
+   * one ADR-0006 gave a skip that named a Track the Queue had moved past: the
+   * event is stale, the state says so, and the request changes nothing.
+   *
+   * It is not the whole guard, and it cannot be. Two waits in a row are the same
+   * fact to this module; *which* wait an expiry belongs to is the clock's own
+   * knowledge and stays with the clock.
+   */
+  readonly awaitingReturn: boolean;
 }
 
 /**
@@ -103,6 +118,25 @@ export type PlaybackEvent =
   | ({ kind: "removed"; entryId: string } & LogContext)
   | ({ kind: "paused" } & LogContext)
   | ({ kind: "resumed" } & LogContext)
+  /**
+   * The last Listener left, so the room now holds nobody but the bot.
+   *
+   * It names no member and writes no line, because nobody did anything to the
+   * Queue: leaving a room is not an action on it, and there is no publish here
+   * for a line to ride on (ADR-0008). Repeating it is the wait that is already
+   * running rather than a second one — the roster hook reports every change,
+   * including changes to a room that was empty before and after.
+   */
+  | { kind: "roomEmptied" }
+  /**
+   * Somebody is in the room again. The Queue is untouched and the music was
+   * never stopped, so there is nothing to resume; what ends is the wait.
+   *
+   * Like its opposite, it is reported for every roster change rather than only
+   * the interesting ones, so arriving at a room that already had people in it
+   * is a Listener returning to a Grace period that was not running.
+   */
+  | { kind: "listenerReturned" }
   /** The Set is over: the Queue is discarded and nothing survives it. */
   | { kind: "cleared" };
 
@@ -125,7 +159,19 @@ export type PlaybackEffect =
   | { kind: "play" }
   | { kind: "stop" }
   /** Tell everyone in the room what the Queue now is. */
-  | { kind: "publish" };
+  | { kind: "publish" }
+  /**
+   * Start waiting for somebody to come back, and end the Set if nobody does.
+   *
+   * The Grace period is the product's word for that wait (`CONTEXT.md`) and it
+   * is what this effect is named after, rather than after the timer that will
+   * carry it out — the same rule that makes `load` "fetch this Track" rather
+   * than "spawn yt-dlp". How long five minutes is, and what runs it, is
+   * `music.ts`'s business; this module has no clock.
+   */
+  | { kind: "startGracePeriod" }
+  /** Somebody came back, or the Set ended. Nothing is being waited for now. */
+  | { kind: "cancelGracePeriod" };
 
 /** Why an event was refused. The member who asked is owed this sentence. */
 export type PlaybackRefusal = Extract<MusicCommandAck, { ok: false }>["error"];
@@ -141,7 +187,7 @@ export interface PlaybackStep {
 }
 
 export function emptyPlayback(): PlaybackState {
-  return { entries: [], playing: false, log: [] };
+  return { entries: [], playing: false, log: [], awaitingReturn: false };
 }
 
 /**
@@ -184,6 +230,10 @@ export function advancePlayback(state: PlaybackState, event: PlaybackEvent): Pla
       return pause(state, { ...event, action: "paused" });
     case "resumed":
       return resume(state, { ...event, action: "resumed" });
+    case "roomEmptied":
+      return startWaiting(state);
+    case "listenerReturned":
+      return stopWaiting(state);
     case "cleared":
       return clear(state);
     default:
@@ -237,10 +287,13 @@ function add(state: PlaybackState, entry: QueueEntry, lineId: string): PlaybackS
   if (state.entries.length > 0) {
     // Something is already at the head of the Queue, playing or paused. Adding
     // behind it touches nothing but the list.
-    return { state: { entries, playing: state.playing, log }, effects: [{ kind: "publish" }] };
+    return {
+      state: { entries, playing: state.playing, log, awaitingReturn: state.awaitingReturn },
+      effects: [{ kind: "publish" }]
+    };
   }
   return {
-    state: { entries, playing: true, log },
+    state: { entries, playing: true, log, awaitingReturn: state.awaitingReturn },
     effects: [{ kind: "load", entry }, { kind: "play" }, { kind: "publish" }]
   };
 }
@@ -284,12 +337,12 @@ function advancePast(
   const silence: PlaybackEffect[] = options.playerStillSounding ? [{ kind: "stop" }] : [];
   if (!next) {
     return {
-      state: { entries, playing: false, log },
+      state: { entries, playing: false, log, awaitingReturn: state.awaitingReturn },
       effects: [...silence, { kind: "unload" }, { kind: "publish" }]
     };
   }
   return {
-    state: { entries, playing: state.playing, log },
+    state: { entries, playing: state.playing, log, awaitingReturn: state.awaitingReturn },
     effects: [
       { kind: "load", entry: next },
       ...(state.playing ? [{ kind: "play" } as const] : []),
@@ -323,7 +376,8 @@ function remove(state: PlaybackState, entryId: string, line: LineToWrite): Playb
     state: {
       entries,
       playing: state.playing,
-      log: withLine(state.log, lineFor(line, removed.track.title))
+      log: withLine(state.log, lineFor(line, removed.track.title)),
+      awaitingReturn: state.awaitingReturn
     },
     effects: [{ kind: "publish" }]
   };
@@ -338,7 +392,12 @@ function pause(state: PlaybackState, line: LineToWrite): PlaybackStep {
     // No Track on the line: a pause is about the Queue rather than about any
     // one Track, and the Track it stopped is still at the head of the list
     // where the panel is already calling it paused.
-    state: { entries: state.entries, playing: false, log: withLine(state.log, lineFor(line, null)) },
+    state: {
+      entries: state.entries,
+      playing: false,
+      log: withLine(state.log, lineFor(line, null)),
+      awaitingReturn: state.awaitingReturn
+    },
     effects: [{ kind: "stop" }, { kind: "publish" }]
   };
 }
@@ -352,8 +411,55 @@ function pause(state: PlaybackState, line: LineToWrite): PlaybackStep {
 function resume(state: PlaybackState, line: LineToWrite): PlaybackStep {
   if (state.playing || state.entries.length === 0) return { state, effects: [] };
   return {
-    state: { entries: state.entries, playing: true, log: withLine(state.log, lineFor(line, null)) },
+    state: {
+      entries: state.entries,
+      playing: true,
+      log: withLine(state.log, lineFor(line, null)),
+      awaitingReturn: state.awaitingReturn
+    },
     effects: [{ kind: "play" }, { kind: "publish" }]
+  };
+}
+
+/**
+ * Nobody is left in the room, so the bot waits rather than leaving at once. A
+ * page refresh takes a member out of the voice room for a second or two, and
+ * the Queue should survive that — which is the whole reason the Grace period
+ * exists (`CONTEXT.md`).
+ *
+ * **Nothing is paused and nothing is published.** Not paused, because a member
+ * who comes back inside the wait should find the music *continuing* rather than
+ * needing to be restarted, and the Queue does not know the difference between
+ * five seconds and five minutes. Not published, because the Queue did not
+ * change and there is nobody there to be told about it.
+ *
+ * A second emptying is the wait that is already running. The hook that produces
+ * this reports every roster change, and a room with nobody in it can still
+ * report one; restarting the clock on each would let an empty room hold the bot
+ * for as long as anything at all kept moving.
+ */
+function startWaiting(state: PlaybackState): PlaybackStep {
+  if (state.awaitingReturn) return { state, effects: [] };
+  return {
+    state: { entries: state.entries, playing: state.playing, log: state.log, awaitingReturn: true },
+    effects: [{ kind: "startGracePeriod" }]
+  };
+}
+
+/**
+ * Somebody is in the room again, so there is nothing left to wait for.
+ *
+ * There is deliberately no `play` here. The music was never stopped, so a
+ * member who left and came back finds the Track where it got to — and a member
+ * who *paused* it before the room emptied must not have it started again by
+ * somebody walking in. What is playing is nobody's to change by arriving; that
+ * is ADR-0006 §4's rule, said about a Listener instead of about a Queue.
+ */
+function stopWaiting(state: PlaybackState): PlaybackStep {
+  if (!state.awaitingReturn) return { state, effects: [] };
+  return {
+    state: { entries: state.entries, playing: state.playing, log: state.log, awaitingReturn: false },
+    effects: [{ kind: "cancelGracePeriod" }]
   };
 }
 
@@ -363,13 +469,20 @@ function resume(state: PlaybackState, line: LineToWrite): PlaybackStep {
  * message from a member who has left, which the server refuses — correctly.
  */
 function clear(state: PlaybackState): PlaybackStep {
+  // The wait goes with the Set, whatever ended it — an eviction, a Summon into
+  // another room, or the Grace period running out. In every case there is no
+  // room left to wait in, and a clock still running would end a Set that no
+  // longer exists.
+  const stopTheClock: PlaybackEffect[] = state.awaitingReturn ? [{ kind: "cancelGracePeriod" }] : [];
   // The log counts as something to discard. A Set whose Tracks have all played
   // out has an empty Queue and a full log, and saying nothing here would leave
   // that log standing on five panels for a Set that is over.
-  if (state.entries.length === 0 && !state.playing && state.log.length === 0) return { state, effects: [] };
+  if (state.entries.length === 0 && !state.playing && state.log.length === 0) {
+    return { state: emptyPlayback(), effects: stopTheClock };
+  }
   return {
     state: emptyPlayback(),
-    effects: [{ kind: "stop" }, { kind: "unload" }, { kind: "publish" }]
+    effects: [...stopTheClock, { kind: "stop" }, { kind: "unload" }, { kind: "publish" }]
   };
 }
 

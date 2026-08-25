@@ -173,9 +173,17 @@ credential there first.
 - `is_bot` is presentation and moderation policy, never a permission. No
   authorization decision may branch on it: the bot is authorized exactly like the
   member it is.
-- Refuse kick, ban, the `can_invite` grant, and access-link creation for a bot
-  target with `cannot_moderate_bot`. Voice mute, deafen, disconnect, and move
-  stay available — they mean the same thing for a bot, and it honours them.
+- Refuse kick, ban, the `can_invite` grant, access-link creation, **and a voice
+  move** for a bot target with `cannot_moderate_bot`. A move is the surprising
+  one and ADR-0010 records why: the bot goes where it is summoned, so the
+  arriving half would place it in a room nobody there asked for it — bypassing
+  the live-voice-membership door below — and the leaving half would destroy that
+  room's Queue from a control that says nothing about destroying one. Refusing
+  also keeps the audit honest: unrefused, the route answers 204 and writes
+  `voice.moved` for a move no client carried out.
+- Voice mute, deafen and disconnect stay available. They mean the same thing for
+  a bot, and it honours them itself off the voice snapshot, because media is
+  peer-to-peer and the server cannot silence packets it never sees (ADR-0009).
 - `VOXLY_BOT_TOKEN` is held in memory only, compared on digests with
   `timingSafeEqual`, and never persisted or logged. Unset, `POST /api/bot/sessions`
   is not registered at all and the bot accounts simply appear offline.

@@ -61,6 +61,12 @@ const resumedBy = (requestedByUserId = "ada"): PlaybackEvent =>
 const paused = () => pausedBy();
 const resumed = () => resumedBy();
 const cleared: PlaybackEvent = { kind: "cleared" };
+/**
+ * The room emptied and a Listener came back. Neither names a member: nobody
+ * pressed anything, so neither writes a line and neither is refusable.
+ */
+const roomEmptied: PlaybackEvent = { kind: "roomEmptied" };
+const listenerReturned: PlaybackEvent = { kind: "listenerReturned" };
 
 /**
  * The three targeted events name an entry, so a test that means "the one that
@@ -653,5 +659,122 @@ describe("what the room is shown", () => {
       ["ada-id", "added", "Track aB3dE5gH7jK"]
     ]);
     assert.equal(published.entries.length, 1, "and the Queue the lines are about, in the same breath");
+  });
+});
+
+/**
+ * The Grace period, as a state machine.
+ *
+ * The five minutes themselves are a clock and this module has none, so what
+ * lives here is only the rule: emptying starts one, a return cancels it, and
+ * both are idempotent because the roster hook reports every change rather than
+ * only the interesting ones. `music.ts` owns the clock and asks this module,
+ * when the clock fires, whether the wait it is reporting is still on.
+ *
+ * Nothing here waits in real time, which is the point of putting the rule here.
+ */
+describe("the room emptying", () => {
+  it("starts the Grace period when the last Listener leaves", () => {
+    const { state, effects } = run([added("aB3dE5gH7jK"), roomEmptied]);
+
+    assert.deepEqual(effects, [{ kind: "startGracePeriod" }]);
+    assert.equal(state.awaitingReturn, true);
+  });
+
+  it("leaves the music playing, so a Listener who comes back finds it running", () => {
+    // The Grace period is a wait, not a pause. Story 26: a member returning
+    // within it wants the music still playing, and pausing here would make a
+    // brief disconnection audible to everyone who never left.
+    const { state, effects } = run([added("aB3dE5gH7jK"), roomEmptied]);
+
+    assert.equal(state.playing, true);
+    assert.equal(ids(state).length, 1, "and the Queue is still there to come back to");
+    assert.deepEqual(effects.filter((effect) => effect.kind === "stop"), []);
+  });
+
+  it("tells nobody, because there is nobody left to tell", () => {
+    const { effects } = run([added("aB3dE5gH7jK"), roomEmptied]);
+
+    assert.deepEqual(effects.filter((effect) => effect.kind === "publish"), []);
+  });
+
+  it("treats a second emptying as the Grace period it already started", () => {
+    // The hook reports roster changes, and a room that is already empty can
+    // report one — the bot's own entry moving, a member leaving a room it was
+    // never in. Restarting the clock would let an empty room hold the bot for
+    // as long as anything at all kept changing.
+    const { effects } = run([added("aB3dE5gH7jK"), roomEmptied, roomEmptied]);
+
+    assert.deepEqual(effects, []);
+  });
+
+  it("keeps waiting while the Queue moves on without anyone", () => {
+    // A Track playing out to its end in an empty room is the Queue advancing,
+    // not somebody coming back. The wait belongs to the room.
+    const { state } = run([added("aB3dE5gH7jK"), added("zY9xW7vU5tS"), roomEmptied, endsHead]);
+
+    assert.equal(state.awaitingReturn, true);
+    assert.deepEqual(ids(state), ["zY9xW7vU5tS"]);
+  });
+});
+
+describe("a Listener coming back", () => {
+  it("cancels the Grace period and leaves the Queue exactly as it was", () => {
+    const { state, effects } = run([added("aB3dE5gH7jK"), roomEmptied, listenerReturned]);
+
+    assert.deepEqual(effects, [{ kind: "cancelGracePeriod" }]);
+    assert.equal(state.awaitingReturn, false);
+    assert.equal(state.playing, true);
+    assert.deepEqual(ids(state), ["aB3dE5gH7jK"]);
+  });
+
+  it("has nothing to cancel when the room was never empty", () => {
+    // Somebody joining a room that already had people in it is a roster change
+    // like any other, and the same event says so.
+    const { effects } = run([added("aB3dE5gH7jK"), listenerReturned]);
+
+    assert.deepEqual(effects, []);
+  });
+
+  it("does not resume a Queue that a member had paused", () => {
+    // Coming back must not press Play for the room. ADR-0006 §4 is the same
+    // rule for a Queue that moves: what is playing is nobody's to change by
+    // arriving.
+    const { state, effects } = run([added("aB3dE5gH7jK"), paused, roomEmptied, listenerReturned]);
+
+    assert.equal(state.playing, false);
+    assert.deepEqual(effects.filter((effect) => effect.kind === "play"), []);
+  });
+
+  it("writes no line for either, because nobody did anything", () => {
+    // The log names a member who acted. Walking out of a room is not an action
+    // on the Queue, and there is no publish here for a line to ride on.
+    const { state } = run([added("aB3dE5gH7jK"), roomEmptied, listenerReturned]);
+
+    assert.deepEqual(state.log.map((line) => line.action), ["added"]);
+  });
+});
+
+describe("the Grace period and the Set", () => {
+  it("stops waiting when the Set ends, whatever ended it", () => {
+    // An eviction, a Summon into another room, or the Grace period itself: in
+    // every case there is no room left to wait in, and a clock still running
+    // would end a Set that no longer exists.
+    const { state, effects } = run([added("aB3dE5gH7jK"), roomEmptied, cleared]);
+
+    assert.equal(state.awaitingReturn, false);
+    assert.deepEqual(effects, [
+      { kind: "cancelGracePeriod" },
+      { kind: "stop" },
+      { kind: "unload" },
+      { kind: "publish" }
+    ]);
+  });
+
+  it("stops waiting even when there was no Queue left to discard", () => {
+    const waiting = run([roomEmptied]).state;
+
+    assert.deepEqual(advancePlayback(waiting, cleared).effects, [{ kind: "cancelGracePeriod" }]);
+    assert.equal(advancePlayback(waiting, cleared).state.awaitingReturn, false);
   });
 });

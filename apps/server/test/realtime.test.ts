@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
 import { musicBotNickname, musicIdentifierMaxLength, musicSetLogMaxLines } from "@voxly/shared";
-import type { MusicCommand, MusicCommandAck, MusicControlAck, MusicPublishAck, VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck } from "@voxly/shared";
+import type { MusicCommand, MusicCommandAck, MusicControlAck, MusicPublishAck, VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck, VoiceSnapshot } from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 
 describe("Voxly realtime MVP", () => {
@@ -1277,6 +1277,108 @@ describe("music bot presence", () => {
     assert.equal(online.user.userId, owner.user.id);
     assert.equal(online.user.isBot, false, "a person must never be presented as a bot");
   });
+
+  it("takes the bot's microphone away when an owner mutes it, exactly as for a person", async () => {
+    // This is the fact the bot reads in order to enforce its own silence.
+    // Media is peer-to-peer, so a mute the server records and never puts in
+    // front of the bot is a mute nobody stops hearing — and `media.mic` is
+    // where an owner's mute *and* the AFK room's forced mute both end up, which
+    // is why the bot reads the microphone rather than the flag beside it.
+    // ADR-0009.
+    const owner = await bootstrapOwner(app);
+    const exchange = await app.server.inject({
+      method: "POST",
+      url: "/api/bot/sessions",
+      headers: { authorization: `Bearer ${botToken}` }
+    });
+    const [botSession] = exchange.json().sessions as Array<{ serverId: string; userId: string; token: string }>;
+    const botSocket = await connectSocket(baseUrl, botSession.token);
+    sockets.push(botSocket);
+    await joinVoice(botSocket, "lobby", { mic: true, camera: false, screen: false, deafened: false, speaking: true });
+
+    // Waiting for the snapshot that carries the mute rather than the next one:
+    // joining publishes one of its own, and which of the two arrives first is
+    // not something this test is about.
+    const muted = nextSnapshotWhere(botSocket, (snapshot) => snapshot.members
+      .some((member) => member.user.userId === botSession.userId && member.moderation.muted));
+    const patched = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${botSession.serverId}/members/${botSession.userId}/voice-moderation`,
+      cookies: owner.cookies,
+      payload: { muted: true, deafened: false }
+    });
+    assert.equal(patched.statusCode, 200);
+
+    const self = (await muted).members.find((member) => member.user.userId === botSession.userId);
+    assert.equal(self?.moderation.muted, true);
+    assert.equal(self?.media.mic, false, "the bot is told, in its own member state, that it may not transmit");
+    assert.equal(self?.media.speaking, false);
+  });
+
+  it("takes the bot's microphone away in the AFK room, where nobody muted it by name", async () => {
+    // The other half of the same fact. The AFK room's mute is a property of the
+    // room rather than of the member, so `moderation` stays clear and only the
+    // microphone says so — which is why the bot reads the microphone and not
+    // the flag beside it. ADR-0009 §6.
+    //
+    // Nothing in the product puts the bot in here: a Summon into an AFK room is
+    // refused at the door and the bot does not follow a move. This asserts the
+    // rule rather than a journey anybody can currently take.
+    const exchange = await app.server.inject({
+      method: "POST",
+      url: "/api/bot/sessions",
+      headers: { authorization: `Bearer ${botToken}` }
+    });
+    const [botSession] = exchange.json().sessions as Array<{ serverId: string; userId: string; token: string }>;
+    const botSocket = await connectSocket(baseUrl, botSession.token);
+    sockets.push(botSocket);
+
+    const ack = await joinVoice(botSocket, `afk-${botSession.serverId}`, {
+      mic: true,
+      camera: false,
+      screen: false,
+      deafened: false,
+      speaking: true
+    });
+
+    assert.ok(ack.ok, "joining the AFK room is allowed; being heard in it is not");
+    assert.equal(ack.state.media.mic, false, "the room took the microphone");
+    assert.equal(ack.state.media.speaking, false);
+    assert.equal(ack.state.moderation.muted, false, "and no owner muted anyone to do it");
+  });
+
+  it("refuses to move the bot, and tells the owner rather than moving nothing", async () => {
+    // The bot goes where it is summoned and nowhere else (ADR-0010). Left
+    // unrefused this route emits `voice:moveTo` at a process that has no
+    // handler for it, answers 204, and writes a `voice.moved` audit row for a
+    // move that never happened.
+    const owner = await bootstrapOwner(app);
+    const exchange = await app.server.inject({
+      method: "POST",
+      url: "/api/bot/sessions",
+      headers: { authorization: `Bearer ${botToken}` }
+    });
+    const [botSession] = exchange.json().sessions as Array<{ serverId: string; userId: string; token: string }>;
+    const botSocket = await connectSocket(baseUrl, botSession.token);
+    sockets.push(botSocket);
+    await joinVoice(botSocket, "lobby");
+
+    const unmoved = expectNoEvent(botSocket, "voice:moveTo");
+    const response = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${botSession.serverId}/voice/members/${botSession.userId}/move`,
+      cookies: owner.cookies,
+      payload: { roomId: `afk-${botSession.serverId}` }
+    });
+
+    assert.equal(response.statusCode, 409, "refused even though the move would otherwise have worked");
+    assert.equal(response.json().error, "cannot_moderate_bot");
+    await unmoved;
+    const audited = app.sqlite
+      .prepare("select count(*) as count from audit_events where action = 'voice.moved'")
+      .get() as { count: number };
+    assert.equal(audited.count, 0, "and nothing was written down as having happened");
+  });
 });
 
 describe("music bot control", () => {
@@ -1844,6 +1946,27 @@ function onceEvent<T>(socket: Socket, event: string, trigger?: () => void): Prom
       resolve(payload);
     });
     trigger?.();
+  });
+}
+
+/**
+ * The next snapshot that says something in particular, rather than simply the
+ * next one. A voice room publishes on every join, leave and media change, so a
+ * test about one of those has to name the one it means.
+ */
+function nextSnapshotWhere(socket: Socket, matches: (snapshot: VoiceSnapshot) => boolean): Promise<VoiceSnapshot> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.off("voice:snapshot", onSnapshot);
+      reject(new Error("Timed out waiting for the voice:snapshot this test meant"));
+    }, 1000);
+    const onSnapshot = (snapshot: VoiceSnapshot) => {
+      if (!matches(snapshot)) return;
+      clearTimeout(timeout);
+      socket.off("voice:snapshot", onSnapshot);
+      resolve(snapshot);
+    };
+    socket.on("voice:snapshot", onSnapshot);
   });
 }
 

@@ -16,13 +16,16 @@ describe("owner member move", () => {
   });
 
   it("lists every voice room except the one the member already occupies", () => {
-    assert.match(rail, /moveTargets=\{canModerate \? props\.rooms\.voice\.filter\(\(target\) => target\.id !== room\.id\) : undefined\}/);
-    assert.match(panel, /moveTargets=\{canModerateRemote && voiceRoom \? voiceRooms\.filter\(\(room\) => room\.id !== voiceRoom\.id\) : undefined\}/);
+    assert.match(rail, /moveTargets=\{canModeratePerson \? props\.rooms\.voice\.filter\(\(target\) => target\.id !== room\.id\) : undefined\}/);
+    assert.match(panel, /moveTargets=\{canModeratePerson && voiceRoom \? voiceRooms\.filter\(\(room\) => room\.id !== voiceRoom\.id\) : undefined\}/);
   });
 
-  it("offers the move only to an owner, and only for a member who is in voice", () => {
-    assert.match(panel, /onMove=\{canModerateRemote && voiceRoom \?/);
-    assert.match(rail, /onMove=\{canModerate \?/);
+  it("offers the move only to an owner, only for a member who is in voice, and never for a bot", () => {
+    // `canModeratePerson` rather than the voice answer beside it: mute, deafen
+    // and disconnect mean the same thing for the Music bot and a move does not.
+    // ADR-0010.
+    assert.match(panel, /onMove=\{canModeratePerson && voiceRoom \?/);
+    assert.match(rail, /onMove=\{canModeratePerson \?/);
   });
 
   it("closes the menu before acting, so the flyout does not linger over the move", () => {

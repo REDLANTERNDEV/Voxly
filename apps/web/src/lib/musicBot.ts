@@ -48,12 +48,14 @@ export function musicBotIn(members: VoiceMemberState[]): VoiceMemberState | unde
  * panel picks one and it is the one the Queue's own rows already read. Play,
  * Pause, Skip and the Queue then change together, out of one message, and a
  * refusal leaves every client showing exactly what the bot shows. ADR-0006
- * records the choice.
+ * records the choice, and ADR-0009 records that one of its supporting facts has
+ * since gone: an owner's mute now really does silence the bot, because the bot
+ * enforces it on itself. The choice is unchanged — a muted bot still has a
+ * Queue that is running, and Pause still means something for it.
  *
- * A mute stays visible, but as a sentence rather than as a button state: media
- * is peer-to-peer, so an owner's mute does not by itself stop the bot's
- * packets, and a member is owed that. It no longer decides what the button
- * offers, because the Queue can now say whether there is anything to pause.
+ * A mute stays visible, but as a sentence rather than as a button state. It is
+ * what explains a room where the Queue says a Track is playing and nobody can
+ * hear a thing.
  */
 export interface MusicTransport {
   /** A Music bot is in this room, so there is something to control at all. */
@@ -65,7 +67,12 @@ export interface MusicTransport {
    * when there is nothing queued and those controls have nothing to name.
    */
   currentEntryId: string | null;
-  /** An owner muted the bot. Information for the member, not a control state. */
+  /**
+   * An owner muted the bot, so the room is hearing nothing. Information for the
+   * member, not a control state: what Play and Pause offer is still the Queue's
+   * answer, and pausing a Queue nobody can hear is still a thing a member may
+   * want to do.
+   */
   muted: boolean;
 }
 
@@ -84,12 +91,16 @@ export function musicTransport(
 /**
  * What the panel says when nobody has just asked for anything.
  *
- * The mute is said *while something is playing* and not otherwise. That is the
- * one state where it explains anything — the Queue says a Track is playing and
- * the room cannot hear it — and the one state where its sentence names an
- * action a member can take, because Pause is only offered for a Queue that is
- * running. Announcing a mute over a paused or empty Queue would point at a
- * control that is disabled or says the opposite.
+ * The mute is said *while something is playing* and not otherwise, because that
+ * is the one state where it explains anything: the Queue says a Track is
+ * playing and the room cannot hear it. Over a paused or an empty Queue the
+ * silence needs no explaining, and a sentence about a mute would be one more
+ * thing to read for a room that is behaving exactly as it looks.
+ *
+ * It used to be said for a second reason as well — that it named an action, the
+ * member being asked to press Pause to be sure the bot was quiet. That reason
+ * has gone: the bot silences itself now (ADR-0009), so the sentence reports
+ * what has already happened rather than asking anyone to finish it.
  */
 export function musicRestingKey(transport: MusicTransport): TranslationKey {
   if (transport.playing) return transport.muted ? "music.muted" : "music.playing";

@@ -5,16 +5,23 @@ export function canOwnerVoiceModerate(currentRole: UserRole | null, currentUserI
 }
 
 /**
- * Membership moderation is narrower than voice moderation, because a Bot is a
- * member of exactly one server by construction.
+ * The owner actions that presuppose a *person*, which is narrower than voice
+ * moderation.
  *
- * Kicking or banning it, delegating invites to it, or minting it a browser
+ * Kicking or banning a Bot, delegating invites to it, or minting it a browser
  * access link are all offers the server refuses; presenting them would be a
- * menu of actions that only produce errors. Muting, deafening, disconnecting
- * and moving are deliberately not in here — those mean the same thing for a Bot
- * as for anyone else.
+ * menu of actions that only produce errors. **Moving is in here too**, and it is
+ * the one that reads like it should not be: a move says "go there", and the
+ * Music bot is only ever sent for. Arriving would put it in a room nobody there
+ * summoned it into, and leaving would destroy that room's Queue from a control
+ * that never mentioned one. The server refuses it as well; this is
+ * presentation, never the enforcement. ADR-0010.
+ *
+ * Muting, deafening and disconnecting are deliberately not in here. Those mean
+ * the same thing for a Bot as for anyone else, and it honours them itself
+ * (ADR-0009).
  */
-export function canOwnerModerateMembership(currentRole: UserRole | null, currentUserId: string, target: PresenceUser) {
+export function canOwnerModeratePerson(currentRole: UserRole | null, currentUserId: string, target: PresenceUser) {
   return canOwnerVoiceModerate(currentRole, currentUserId, target) && !target.isBot;
 }
 
