@@ -450,6 +450,45 @@ audio. What it settles, in short:
   extraction, so a search that has not answered by then is not one that is
   nearly finished.
 
+## Deployment
+
+The bot has its own image and its own Compose service, and
+`docs/adr/0012-the-music-bot-ships-as-its-own-service.md` records why each of
+those is a separate thing rather than a flag on the application's. Read it
+before changing the Dockerfile's `bot` stage or the `bot` service.
+
+- **The two binaries come from the image, and the image pins them.** yt-dlp is
+  installed at `VOXLY_YTDLP_VERSION`, passed through from Compose so an operator
+  can raise it without editing the repository; ffmpeg comes from the
+  distribution, fixed by the base image tag. The build then runs `yt-dlp
+  --version` and greps `ffmpeg -encoders` for `libopus`, because an encoder
+  without it fails at the first Track rather than at start-up.
+- **Nothing updates itself.** The read-only root is not relaxed so that yt-dlp
+  can fetch its own new version, and a Compose change that makes the bot's
+  filesystem writable to work around a fetch problem is fixing the wrong thing.
+  A new extractor arrives by rebuilding.
+- **`/tmp` is scratch for yt-dlp, not room for a Track.** The audio path is a
+  pipe and nothing is written to disk (ADR-0004), so the tmpfs is sized for the
+  extractor's own use. If a change ever needs it sized for audio, the thing that
+  changed is the audio path, and that is an ADR rather than a bigger number.
+- **The service is opt-in, behind the `music` profile.** A deployment that
+  leaves `VOXLY_BOT_TOKEN` blank is supported and documented, and an always-on
+  service would restart-loop in front of those operators forever. Do not make
+  the token a required Compose variable to catch it earlier: interpolation runs
+  before profile filtering, so it fails `docker compose config` for everybody.
+- **Keep the hardening shape identical to `app` and `coturn`** — `read_only`,
+  `tmpfs`, `no-new-privileges`, `pids_limit`, and `mem_limit`/`mem_reservation`
+  as `${VOXLY_*}` with defaults. `init: true` is not decoration here: two
+  subprocesses per Track are killed mid-sentence by every skip.
+- **The bot has no healthcheck and should not grow one** that proves only that a
+  Node process exists — a bot failing to authenticate for an hour would pass it.
+  What it reports instead is its log, which names the value that is missing or
+  rejected.
+- **Configuration faults stay fatal and everything else stays survivable.** The
+  container restarts on exit, so a bot that exits on a dropped connection turns
+  a blip into a restart loop; a bot that stays up on a missing token hides the
+  one sentence that explains it.
+
 ## Boundaries
 
 - The bot uses only the server's public HTTP and Socket.IO surface. It must not
@@ -468,6 +507,20 @@ npm run test -w @voxly/bot
 npm run typecheck -w @voxly/bot
 npm run build -w @voxly/bot
 ```
+
+For a deployment change, also validate the Compose files that now carry the bot,
+with the profile enabled so that the service is actually rendered:
+
+```sh
+docker compose --profile music config --quiet
+docker compose -f compose.yaml -f compose.turn.yaml --profile music config --quiet
+docker compose -f compose.external-proxy.yaml --profile music config --quiet
+```
+
+None of that runs a binary. **Nothing in this repository has ever run yt-dlp or
+ffmpeg** — not the test suite, not CI, not the machine the image was written on.
+Pinning them into an image is what makes the end-to-end check below reproducible
+for somebody with a Docker daemon; it is not that check.
 
 For an end-to-end check, start a server with `VOXLY_BOT_TOKEN` set, then run the
 bot with the same token and `VOXLY_SERVER_URL`; the Music account appears online

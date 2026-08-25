@@ -94,6 +94,14 @@ docker compose config --quiet
 docker compose -f compose.yaml -f compose.turn.yaml config --quiet
 ```
 
+The Music bot service is behind the `music` profile, and Compose renders a
+profiled service only when its profile is enabled. A change that touches it has
+to ask for it:
+
+```sh
+docker compose --profile music config --quiet
+```
+
 The realtime server tests open a loopback listener. A restricted sandbox may
 need permission to bind `127.0.0.1`.
 

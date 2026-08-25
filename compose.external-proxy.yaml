@@ -63,6 +63,57 @@ services:
       start_period: 20s
       retries: 3
 
+  # The Music bot, deliberately its own service rather than a second process
+  # beside the application. It is a client of the application's public HTTP and
+  # Socket.IO surface exactly as a browser is, so it restarts on its own and a
+  # music problem never takes chat and voice down with it. ADR-0012.
+  #
+  # Opt-in, because a deployment that leaves VOXLY_BOT_TOKEN blank is a
+  # supported one: the bot accounts still appear in every member list, offline.
+  # Enable it with `COMPOSE_PROFILES=music` in `.env`, or with
+  # `--profile music` on the command line.
+  bot:
+    profiles:
+      - music
+    build:
+      context: .
+      target: bot
+      args:
+        # Raising this and rebuilding is the whole repair when YouTube changes
+        # how it serves video. See docs/self-hosting.md.
+        VOXLY_YTDLP_VERSION: ${VOXLY_YTDLP_VERSION:-2026.08.19}
+    restart: unless-stopped
+    # Two subprocesses per Track, killed mid-sentence by every skip. Without an
+    # init the bot accumulates zombies for the lifetime of the container.
+    init: true
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      # The application over the internal bridge, not through the public proxy:
+      # the round trip out and back exists only to arrive where this already is.
+      # Override it when the bot runs somewhere the service name does not
+      # resolve.
+      VOXLY_SERVER_URL: ${VOXLY_SERVER_URL:-http://app:3000}
+      # The same credential the application holds, presented from the other
+      # side of the exchange. ADR-0003.
+      VOXLY_BOT_TOKEN: ${VOXLY_BOT_TOKEN:-}
+      VOXLY_YTDLP_CLIENT: ${VOXLY_YTDLP_CLIENT:-}
+    networks:
+      - proxy
+    read_only: true
+    # Sized for yt-dlp's own scratch use rather than for a Track. The audio path
+    # is a pipe into ffmpeg and nothing is written to disk, so this holds no
+    # music however long the Track is.
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: ${VOXLY_BOT_MEMORY_LIMIT:-320m}
+    mem_reservation: ${VOXLY_BOT_MEMORY_RESERVATION:-128m}
+
 networks:
   proxy:
     external: true

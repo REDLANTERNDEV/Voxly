@@ -92,6 +92,7 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | How long the Music bot waits in an emptied room, and where that wait is held | ADR-0009; `apps/bot/AGENTS.md` — The Queue |
 | How an owner's mute reaches media the server cannot see | ADR-0009; `apps/bot/AGENTS.md` — Voice and Playback; `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
 | Which owner actions a Bot can be the subject of, and why a move is not one | ADR-0010; `apps/server/AGENTS.md` — The Music Bot; `apps/web/AGENTS.md` — Member and Owner Surfaces |
+| Where the Music bot runs, where its two binaries come from, and why it is opt-in | ADR-0012; `apps/bot/AGENTS.md` — Deployment; `docs/self-hosting.md` — Running the Music bot |
 
 ## Repository Map
 
@@ -105,7 +106,7 @@ docs/adr          Architecture decision records: why a design is what it is
 docs/designs      Feature designs: the problem, the stories, and what was ruled out
 CONTEXT.md        The domain glossary: agreed words, and what they are not called
 infra             Reverse-proxy and Coturn examples and helper scripts
-compose.yaml      Core application deployment
+compose.yaml      Core application deployment, with the Music bot behind a profile
 compose.turn.yaml Optional Coturn deployment overlay
 ```
 

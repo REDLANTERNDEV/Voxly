@@ -80,14 +80,54 @@ restarting them; sessions the bot already holds expire within the hour.
 ### Running the Music bot
 
 The bot plays audio from YouTube. It fetches with **yt-dlp** and encodes with
-**ffmpeg**, and both must be installed wherever the bot runs — they are ordinary
-programs rather than npm packages, so `npm install` does not bring them. The
-ffmpeg build needs `libopus`; one without it cannot encode anything. No API key
-is required or used, by the bot or by you.
+**ffmpeg** — ordinary programs rather than npm packages, so `npm install` does
+not bring them. The bot image installs both at fixed versions, so there is
+nothing to install for the Compose deployment below; a bot you run some other
+way needs both on its `PATH`, and the ffmpeg build needs `libopus`, because one
+without it cannot encode anything. No API key is required or used, by the bot or
+by you.
 
-The Music bot process is not yet part of the Compose deployment. To run it
-alongside the application today, give it the same token and the address of the
-application:
+The bot is its own Compose service, built from its own image, and it is off
+until you ask for it. Set the token above, then turn it on in `.env`:
+
+```dotenv
+COMPOSE_PROFILES=music
+```
+
+```sh
+docker compose up -d --build
+docker compose logs --tail=50 bot
+```
+
+That is all of it. The image carries yt-dlp and ffmpeg at fixed versions, the
+bot reads the token you already set, and it reaches the application over the
+internal Docker network — no extra hostname, port, or certificate. The Music
+account goes online in every server's member list within a few seconds.
+
+`COMPOSE_PROFILES=music` makes every later `docker compose` command include the
+bot. To leave `.env` alone and enable it one command at a time, use
+`--profile music` instead:
+
+```sh
+docker compose --profile music up -d --build
+```
+
+Because it is a separate service, music restarts on its own and chat and voice
+keep running while it does:
+
+```sh
+docker compose restart bot
+docker compose logs -f bot
+```
+
+To stop running the bot, remove `COMPOSE_PROFILES=music` and run
+`docker compose up -d --remove-orphans`. The accounts go back to appearing
+offline; nothing else changes.
+
+Running it outside Compose still works and is the right thing for a bot on
+another host. Give it the same token and an address that reaches the
+application from wherever it runs, and install yt-dlp and ffmpeg there
+yourself:
 
 ```sh
 VOXLY_SERVER_URL=https://chat.example.com \
@@ -95,7 +135,8 @@ VOXLY_BOT_TOKEN=<the same value> \
   npm run start -w @voxly/bot
 ```
 
-Three further values are optional:
+Three further values are optional, in `.env` for the Compose service or in the
+environment of a bot you start yourself:
 
 | Variable | Default | What it is for |
 | --- | --- | --- |
@@ -130,6 +171,23 @@ sooner — yt-dlp's own documentation lists the client names it accepts. Nothing
 else in Voxly is affected while music is broken: chat, voice and screen sharing
 carry on.
 
+The image pins the version, so updating yt-dlp means rebuilding the bot. A Voxly
+release raises the pin for you; when you would rather not wait for one, name the
+version yourself in `.env` and rebuild that one service:
+
+```dotenv
+VOXLY_YTDLP_VERSION=2026.08.19
+```
+
+```sh
+docker compose up -d --build bot
+```
+
+Releases are listed at <https://github.com/yt-dlp/yt-dlp/releases>. Nothing
+updates itself: the bot's filesystem is read-only, so a version arrives only
+when you build one. Chat and voice are untouched by that rebuild — it is the
+only service that stops.
+
 There is no account to ban, because the bot never signs in anywhere. The
 realistic failure is your server's address being rate-limited, which is
 temporary and clears on its own.
@@ -140,6 +198,28 @@ Coturn when they are behind NAT. It reads its TURN credentials from the same
 endpoint the browser does. Its bandwidth grows with the number of people
 listening, so a channel it plays into costs roughly what one more talkative
 member would.
+
+### What to check yourself, once
+
+Voxly can tell you the bot is running and authenticated. It cannot tell you that
+the music sounds right, and neither can any healthcheck — the fetch path lives
+in two external programs and ends in somebody's headphones. Check these once,
+after enabling the bot, with a browser and a voice channel:
+
+- **A pasted link plays**, and the bot's row lights while it does. This is the
+  whole path — yt-dlp, ffmpeg, and the peer connection — in one press.
+- **A typed name finds the right song.** Each result should carry a length and a
+  channel, and choosing one should play that Track and not another.
+- **An owner's mute silences it.** Mute the Music account from the member list
+  while a Track is playing; the room should go quiet, and unmuting should carry
+  on from where it stopped rather than restart the Track.
+- **It is clear** — no stutter, no metallic edge. If Listeners are behind NAT,
+  this is also the check that TURN is carrying the bot's media as well as
+  everyone else's; see [the TURN guide](turn.md).
+
+If the first one fails, `docker compose logs bot` names which program could not
+run or what the extractor said. A Track that resolves and then plays nothing is
+the one failure worth reporting as a bug rather than as YouTube changing again.
 
 ### Optional landing-page analytics
 
@@ -212,6 +292,15 @@ docker compose config --quiet
 docker compose up -d --build app
 docker compose ps
 docker compose logs --tail=100 app
+```
+
+With `COMPOSE_PROFILES=music` set, drop the `app` from the `up` line to start
+the bot alongside it, and check the rendered configuration with the profile
+enabled:
+
+```sh
+docker compose --profile music config --quiet
+docker compose up -d --build
 ```
 
 The host listener is `127.0.0.1:3000` by default. It is intentionally not
@@ -390,6 +479,13 @@ When Coturn is enabled, use both Compose files for update and status commands:
 docker compose -f compose.yaml -f compose.turn.yaml up -d --build
 ```
 
+The Music bot is updated by the same `git pull` and rebuilt separately, which is
+also how a music problem is repaired without interrupting anyone:
+
+```sh
+docker compose up -d --build bot
+```
+
 ## Backups and restore
 
 The `voxly_data` Docker volume contains the SQLite database. Create a consistent
@@ -418,6 +514,11 @@ For the core application, expose only the reverse proxy and SSH:
 Do not expose TCP 3000. TURN requires additional ports listed in
 [docs/turn.md](turn.md). If the hosting provider has a network firewall, its
 rules must match the host firewall.
+
+The Music bot needs no inbound port at all. It makes outbound HTTPS connections
+to YouTube and outbound UDP for the media it sends to Listeners, so a deployment
+that restricts *egress* has to allow both or the music will resolve and then
+never play.
 
 ## Troubleshooting
 
@@ -448,3 +549,16 @@ HTTPS URLs. Check the reverse proxy's forwarded protocol headers.
 
 Deploy Coturn and perform the relay checks in [docs/turn.md](turn.md). This is
 normally a NAT/firewall issue rather than an Nginx issue.
+
+### The Music account stays offline
+
+```sh
+docker compose ps bot
+docker compose logs --tail=100 bot
+```
+
+No `bot` container at all means the profile is not enabled — set
+`COMPOSE_PROFILES=music` in `.env` and run `docker compose up -d --build`. A
+container that keeps restarting says why on its first line: a blank or rejected
+`VOXLY_BOT_TOKEN` is the usual answer, and the value has to be identical to the
+application's. Nothing else in Voxly is affected while the bot is down.

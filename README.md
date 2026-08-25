@@ -70,6 +70,10 @@ docker compose exec app npm run owner:create -w @voxly/server -- --nickname "Own
 The application binds to `127.0.0.1:3000` by default. Put Nginx, Caddy, or an
 equivalent HTTPS reverse proxy in front of it before exposing it publicly.
 
+The Music bot is a separate service, off unless asked for: set `VOXLY_BOT_TOKEN`
+and `COMPOSE_PROFILES=music` in `.env`, then `docker compose up -d --build`. See
+[Running the Music bot](docs/self-hosting.md#running-the-music-bot).
+
 For a complete production walkthrough, including DNS, TLS, Nginx/Caddy,
 backups, updates, and troubleshooting, see
 [Self-hosting Voxly](docs/self-hosting.md).
@@ -83,13 +87,14 @@ NAT networks, deploy the optional TURN overlay described in
 ```text
 apps/server       Fastify, Socket.IO, SQLite, and owner CLI
 apps/web          React and Vite client
+apps/bot          Music bot process: joins voice rooms as a peer and plays audio
 packages/shared   Shared event and DTO types
 docs              Operator and deployment documentation
 infra             Runnable reverse-proxy and Coturn examples
 compose.yaml      Core application deployment (host-installed proxy)
 compose.external-proxy.yaml  Alternative for container-managed proxies
 compose.turn.yaml Optional Coturn overlay
-Dockerfile        Production application image
+Dockerfile        Production images: the application, and the Music bot
 ```
 
 Use `compose.yaml` when Nginx or Caddy runs on the host. Use
@@ -111,6 +116,10 @@ Docker Compose reads `.env` from the repository root. Start from
 | `DATABASE_PATH`                               | SQLite path when running without Docker                    |
 | `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Optional Cloudflare Turnstile protection                   |
 | `ANALYTICS_PROVIDER` / `ANALYTICS_SCRIPT_URL` / `ANALYTICS_WEBSITE_ID` | Optional landing-page analytics; disabled by default |
+| `VOXLY_BOT_TOKEN`                             | Credential shared by the application and the Music bot; blank runs without it |
+| `COMPOSE_PROFILES`                            | Set to `music` to run the Music bot service                |
+| `VOXLY_YTDLP_VERSION` / `VOXLY_YTDLP_CLIENT`  | The yt-dlp release built into the bot image, and the upstream client it presents |
+| `VOXLY_BOT_MEMORY_LIMIT` / `VOXLY_BOT_MEMORY_RESERVATION` | Music bot container memory ceiling and reservation |
 | `TURN_REALM` / `TURN_STATIC_AUTH_SECRET`      | Enable authenticated self-hosted TURN                      |
 | `VOXLY_TURN_MEMORY_LIMIT`                     | Hard Coturn container memory ceiling                       |
 | `VOXLY_TURN_MEMORY_RESERVATION`               | Soft Coturn memory reservation                             |
@@ -153,6 +162,12 @@ npm run typecheck
 npm test
 npm run build
 docker compose config --quiet
+```
+
+When the Music bot is enabled:
+
+```sh
+docker compose --profile music config --quiet
 ```
 
 When TURN is enabled:
