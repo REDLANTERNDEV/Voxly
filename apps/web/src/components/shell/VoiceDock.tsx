@@ -65,7 +65,7 @@ export function VoiceDock(props: VoiceDockProps) {
           </div>
         </details>
       </div>
-      {confirmingLogout ? <ConfirmDialog title="Sign out?" copy="You will need a new access link to return on this device." confirmLabel={props.t("common.logout")} onCancel={() => setConfirmingLogout(false)} onConfirm={() => { setConfirmingLogout(false); void props.onLogout(); }} /> : null}
+      {confirmingLogout ? <ConfirmDialog cancelLabel={props.t("common.cancel")} title={props.t("auth.signOutTitle")} copy={props.t("auth.signOutCopy")} confirmLabel={props.t("common.logout")} onCancel={() => setConfirmingLogout(false)} onConfirm={() => { setConfirmingLogout(false); void props.onLogout(); }} /> : null}
     </footer>
   );
 }

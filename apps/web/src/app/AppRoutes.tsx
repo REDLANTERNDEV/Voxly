@@ -36,8 +36,8 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
   textRoomOutbox: OutboxEntry[];
   textRoomActions: { send(body: string, replyTo: ChatMessageReply | null): void; retrySend(localId: string): void; discardSend(localId: string): void; update(messageId: string, body: string): Promise<void>; delete(messageId: string): Promise<void>; suppressEmbed(messageId: string, embedKey: string): Promise<void> } | null;
 }) {
-  if (startupSurface(route.name, authState) === "shell-skeleton") return renderSurface(<AppShellSkeleton />);
-  if (user && !rtcConfigReady && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<AppShellSkeleton />);
+  if (startupSurface(route.name, authState) === "shell-skeleton") return renderSurface(<AppShellSkeleton t={t} />);
+  if (user && !rtcConfigReady && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<AppShellSkeleton t={t} />);
   if (authState === "error" && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<FatalState t={t} />);
   if (route.name === "owner-claim") {
     return renderSurface(<OwnerClaimScreen token={route.token} language={language} t={t} onLanguageChange={changeLanguage} onClaimed={onOwnerClaimed} />);
@@ -62,8 +62,8 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
       }}
     />);
   }
-  if (!shellProps) return renderSurface(<AppShellSkeleton />);
-  if (route.name === "owner" && shellProps.servers.find((server) => server.id === route.serverId)?.role !== "owner") return renderSurface(<AppShellSkeleton />);
+  if (!shellProps) return renderSurface(<AppShellSkeleton t={t} />);
+  if (route.name === "owner" && shellProps.servers.find((server) => server.id === route.serverId)?.role !== "owner") return renderSurface(<AppShellSkeleton t={t} />);
   if (route.name === "owner") return renderSurface(<OwnerPanel
     user={shellProps.user}
     currentNickname={shellProps.currentNickname}
@@ -116,8 +116,8 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
     onMemberVolumeChange={shellProps.onMemberVolumeChange}
     onScreenVolumeChange={shellProps.onScreenVolumeChange}
   /></AppChrome>);
-  if (route.name !== "text" || !textRoomActions) return renderSurface(<AppShellSkeleton />);
-  return renderSurface(<AppChrome {...shellProps} mobileTitle={shellProps.currentRoom?.name ?? "Text room"}>
+  if (route.name !== "text" || !textRoomActions) return renderSurface(<AppShellSkeleton t={t} />);
+  return renderSurface(<AppChrome {...shellProps} mobileTitle={shellProps.currentRoom?.name ?? shellProps.t("room.textRoom")}>
     <TextRoomScreen
       user={shellProps.user}
       language={shellProps.language}

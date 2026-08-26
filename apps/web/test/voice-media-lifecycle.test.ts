@@ -266,7 +266,7 @@ describe("voice snapshot reconciliation", () => {
     // Nothing releases the running capture any more, so a failed reopen always
     // leaves the previous microphone to fall back to.
     assert.doesNotMatch(effect, /const release =/);
-    assert.match(effect, /setError\("The microphone could not be reopened\. Using the previous microphone\."\)/);
+    assert.match(effect, /setError\("voiceError\.microphoneReopen"\)/);
     assert.doesNotMatch(effect, /handleMicrophoneLost/, "no reopen path can now strand the user without a microphone");
     assert.doesNotMatch(source, /applyMicrophoneProcessing/);
   });
@@ -274,8 +274,8 @@ describe("voice snapshot reconciliation", () => {
   it("still reports a microphone that genuinely disappeared", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
 
-    assert.match(source, /const handleMicrophoneLost = useCallback\(\(message: string\) => \{/);
-    assert.match(source, /handleMicrophoneLost\("Microphone disconnected\."\)/);
+    assert.match(source, /const handleMicrophoneLost = useCallback\(\(message: VoiceErrorKey\) => \{/);
+    assert.match(source, /handleMicrophoneLost\("voiceError\.microphoneDisconnected"\)/);
   });
 
   it("applies refreshed ICE servers to active peer connections", () => {

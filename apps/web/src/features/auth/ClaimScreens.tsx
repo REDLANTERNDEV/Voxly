@@ -36,7 +36,7 @@ export function OwnerClaimScreen({ token, language, t, onLanguageChange, onClaim
     <main className="invite-shell">
       <div className="invite-layout invite-layout-simple">
         <section className="invite-card">
-          <BrandLockup subtitle="Owner setup" />
+          <BrandLockup subtitle={t("ownerClaim.label")} />
           <LanguageSwitch language={language} t={t} onLanguageChange={onLanguageChange} />
           <div>
             <p className="label">{t("ownerClaim.label")}</p>
@@ -79,8 +79,8 @@ export function AccessClaimScreen({ token, t, onNavigate, onClaimed }: { token: 
       <section className="invite-card">
         <BrandLockup />
         <div className={`invite-status ${status === "danger" ? "is-danger" : "is-loading"}`} aria-live="polite">
-          <strong>{status === "danger" ? "Access link is invalid" : "Restoring your account…"}</strong>
-          <span className="muted small">{status === "danger" ? "Ask the server owner for a new access link." : "This secure link can be used once."}</span>
+          <strong>{status === "danger" ? t("accessClaim.invalid") : t("accessClaim.restoring")}</strong>
+          <span className="muted small">{status === "danger" ? t("accessClaim.invalidCopy") : t("accessClaim.restoringCopy")}</span>
         </div>
         {status === "danger" ? <NavLink className="btn btn-primary full-width" href="/invite" onNavigate={onNavigate}><span>{t("landing.haveInvite")}</span></NavLink> : null}
       </section>

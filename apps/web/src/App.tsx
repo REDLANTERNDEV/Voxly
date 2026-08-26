@@ -6,6 +6,7 @@ import { AuthenticatedAppSurface } from "./app/AuthenticatedAppSurface.js";
 import { applyThemeChoice,parseRoute,readThemeChoice,saveThemeChoice,serverPath } from "./app/navigation.js";
 import type { Drawer,LiveWatchRequest,Route,ShellActions,ShellModel,ThemeChoice,Translate,VoiceJoinRequest } from "./app/types.js";
 import { useListenerAudio } from "./app/useListenerAudio.js";
+import { voiceErrorMessage } from "./app/presentation.js";
 import { useRealtimeSync } from "./app/useRealtimeSync.js";
 import { useSessionController } from "./app/useSessionController.js";
 import { useWorkspaceController } from "./app/useWorkspaceController.js";
@@ -190,7 +191,7 @@ export function App() {
     voiceModeration: audio.voice.voiceModeration,
     micLockedByRoom: Boolean(audio.voice.activeRoomId && workspace.afkRoomIds.includes(audio.voice.activeRoomId)),
     appConfig: session.appConfig,
-    voiceError: audio.voice.error || session.rtcConfigError,
+    voiceError: voiceErrorMessage(audio.voice.error || session.rtcConfigError, t),
     visualTargets: audio.voice.visualTargets,
     voiceSnapshots: audio.voice.voiceSnapshots,
     musicQueues,

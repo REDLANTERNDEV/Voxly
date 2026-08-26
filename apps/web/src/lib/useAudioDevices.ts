@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { AudioErrorKey } from "./i18n.js";
 import {
   enumerateAudioDevices,
   readAudioDevicePreference,
@@ -24,7 +25,7 @@ export interface UseAudioDevicesResult extends AudioDeviceCollection {
   selectedInputId: string;
   selectedOutputId: string;
   loading: boolean;
-  error: string;
+  error: AudioErrorKey | "";
   unavailableSelections: AudioDevicePreferenceKind[];
   outputSelectionSupported: boolean;
   refresh(requestPermission?: boolean): Promise<AudioDeviceCollection>;
@@ -56,7 +57,7 @@ export function useAudioDevices({
   const [selectedInputId, setSelectedInputId] = useState("");
   const [selectedOutputId, setSelectedOutputId] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<AudioErrorKey | "">("");
   const [unavailableSelections, setUnavailableSelections] = useState<AudioDevicePreferenceKind[]>([]);
   const selectedInputRef = useRef("");
   const selectedOutputRef = useRef("");
@@ -72,9 +73,9 @@ export function useAudioDevices({
     setUnavailableSelections([]);
     setError("");
     const requestId = ++outputSelectionRequestRef.current;
-    void selectSharedAudioOutputDevice(nextOutput).catch((cause) => {
+    void selectSharedAudioOutputDevice(nextOutput).catch(() => {
       if (requestId === outputSelectionRequestRef.current) {
-        setError(cause instanceof Error ? cause.message : "Audio output could not be restored.");
+        setError("audioError.outputRestore");
       }
     });
   }, [storage, userId]);
@@ -82,7 +83,7 @@ export function useAudioDevices({
   const refresh = useCallback(async (requestPermission = false) => {
     if (!mediaDevices) {
       setDevices(emptyDevices);
-      setError("Audio devices are unavailable in this browser.");
+      setError("audioError.unavailable");
       return emptyDevices;
     }
 
@@ -112,7 +113,7 @@ export function useAudioDevices({
       }
       return nextDevices;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Audio devices could not be loaded.");
+      setError("audioError.load");
       throw cause;
     } finally {
       setLoading(false);
@@ -146,7 +147,7 @@ export function useAudioDevices({
       if (userId && storage) writeAudioDevicePreference(storage, userId, "output", deviceId);
     } catch (cause) {
       if (requestId !== outputSelectionRequestRef.current) return;
-      setError(cause instanceof Error ? cause.message : "Audio output could not be changed.");
+      setError("audioError.outputChange");
       throw cause;
     }
   }, [storage, userId]);

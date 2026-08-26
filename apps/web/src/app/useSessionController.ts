@@ -2,6 +2,7 @@ import type { PublicUser } from "@voxly/shared";
 import { useCallback,useEffect,useRef,useState } from "react";
 import { ApiError,fetchConfig,fetchMe,fetchRtcConfig } from "../api.js";
 import { createAuthRequestGate } from "../lib/authRequestGate.js";
+import type { VoiceErrorKey } from "../lib/i18n.js";
 import { getInviteTokenFromPath,resolveInitialRoute } from "../lib/navigation.js";
 import type { AppConfigResponse,RtcConfigResponse } from "../types.js";
 import { rtcConfigAfterFetchFailure,rtcConfigRetryMs } from "./rtcConfig.js";
@@ -13,7 +14,7 @@ export function useSessionController(route: Route, navigate: (path: string) => v
   const [appConfig, setAppConfig] = useState<AppConfigResponse>({ publicUrl: null, turnstile: null, analytics: null });
   const [rtcConfig, setRtcConfig] = useState<RtcConfigResponse>({ iceServers: [], expiresAt: null });
   const [rtcConfigReady, setRtcConfigReady] = useState(false);
-  const [rtcConfigError, setRtcConfigError] = useState("");
+  const [rtcConfigError, setRtcConfigError] = useState<VoiceErrorKey | "">("");
   const authRequestGateRef = useRef(createAuthRequestGate());
   const authenticatedUserIdRef = useRef<string | null>(null);
 
@@ -66,7 +67,7 @@ export function useSessionController(route: Route, navigate: (path: string) => v
       } catch {
         if (!cancelled) {
           setRtcConfig((current) => rtcConfigAfterFetchFailure(current, hasSuccessfulConfig));
-          setRtcConfigError("RTC connection configuration could not be loaded. Retrying.");
+          setRtcConfigError("voiceError.rtcConfigUnavailable");
           refreshTimer = window.setTimeout(() => void load(), rtcConfigRetryMs);
         }
       } finally {

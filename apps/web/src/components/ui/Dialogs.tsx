@@ -1,7 +1,7 @@
 import type { PresenceUser } from "@voxly/shared";
 import { useCallback,useEffect,useRef,useState } from "react";
 import type { Translate } from "../../app/types.js";
-export function ConfirmDialog({ title, copy, confirmLabel, cancelLabel = "Cancel", confirmationText, confirmationLabel, onCancel, onConfirm }: { title: string; copy: string; confirmLabel: string; cancelLabel?: string; confirmationText?: string; confirmationLabel?: string; onCancel: () => void; onConfirm: () => void }) {
+export function ConfirmDialog({ title, copy, confirmLabel, cancelLabel, confirmationText, confirmationLabel, onCancel, onConfirm }: { title: string; copy: string; confirmLabel: string; cancelLabel: string; confirmationText?: string; confirmationLabel?: string; onCancel: () => void; onConfirm: () => void }) {
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const [confirmationValue, setConfirmationValue] = useState("");
   const isConfirmationValid = !confirmationText || confirmationValue === confirmationText;

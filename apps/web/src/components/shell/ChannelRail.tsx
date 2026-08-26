@@ -86,7 +86,7 @@ export function ChannelRail(props: ChannelRailProps) {
         onSelect={props.onSelectServer}
       />
       <section className="rail-section">
-        <div className="rail-section-head"><span className="label">{props.t("room.textRooms")}</span>{canManageServer ? <ChannelCreateControl kind="text" onCreate={props.onCreateRoom} /> : null}</div>
+        <div className="rail-section-head"><span className="label">{props.t("room.textRooms")}</span>{canManageServer ? <ChannelCreateControl kind="text" onCreate={props.onCreateRoom} t={props.t} /> : null}</div>
         {props.rooms.text.map((room) => (
           <div
             className="channel-row"
@@ -101,7 +101,7 @@ export function ChannelRail(props: ChannelRailProps) {
         ))}
       </section>
       <section className="rail-section">
-        <div className="rail-section-head"><span className="label">{props.t("room.voiceRooms")}</span>{canManageServer ? <ChannelCreateControl kind="voice" onCreate={props.onCreateRoom} /> : null}</div>
+        <div className="rail-section-head"><span className="label">{props.t("room.voiceRooms")}</span>{canManageServer ? <ChannelCreateControl kind="voice" onCreate={props.onCreateRoom} t={props.t} /> : null}</div>
         {props.rooms.voice.map((room) => {
           const members = voiceMembersForRoom(props, room.id);
           return (
@@ -246,7 +246,7 @@ export function ChannelRail(props: ChannelRailProps) {
         microphoneTestActive={props.microphoneTestActive}
         microphoneTestError={props.microphoneTestError}
         loading={props.audioDevices.loading}
-        error={props.audioDevices.error}
+        error={props.audioDevices.error ? props.t(props.audioDevices.error) : ""}
         unavailableSelections={props.audioDevices.unavailableSelections}
         outputSelectionSupported={props.audioDevices.outputSelectionSupported}
         labels={{
@@ -287,7 +287,7 @@ export function ChannelRail(props: ChannelRailProps) {
         onToggleMicrophoneTest={props.onToggleMicrophoneTest}
       />
       {deleteError ? <p className="error-text" aria-live="polite">{deleteError}</p> : null}
-      {deleteTarget ? <ConfirmDialog
+      {deleteTarget ? <ConfirmDialog cancelLabel={props.t("common.cancel")}
         title={props.t("room.deleteTitle", { channel: deleteTarget.name })}
         copy={props.t("room.deleteCopy")}
         confirmLabel={props.t("common.delete")}
@@ -307,7 +307,7 @@ export function ChannelRail(props: ChannelRailProps) {
           });
         }}
       /> : null}
-      {moveTarget ? <ConfirmDialog
+      {moveTarget ? <ConfirmDialog cancelLabel={props.t("common.cancel")}
         title={props.t("voice.moveTitle")}
         copy={props.t("voice.moveCopy", {
           current: props.rooms.voice.find((room) => room.id === props.activeVoiceRoomId)?.name ?? props.t("room.lobbyVoice"),
@@ -361,7 +361,7 @@ export function ChannelDeleteControl({
 }
 
 
-export function ChannelCreateControl({ kind, onCreate }: { kind: "text" | "voice"; onCreate: (name: string, kind: "text" | "voice") => Promise<void> }) {
+export function ChannelCreateControl({ kind, onCreate, t }: { kind: "text" | "voice"; onCreate: (name: string, kind: "text" | "voice") => Promise<void>; t: Translate }) {
   const [name, setName] = useState("");
   const [isBusy, setIsBusy] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -402,8 +402,8 @@ export function ChannelCreateControl({ kind, onCreate }: { kind: "text" | "voice
 
   return (
     <>
-      <button className="channel-create-trigger" ref={triggerRef} type="button" onClick={open} aria-label={`Create ${kind} channel`} aria-expanded={isOpen}><PlusIcon /></button>
-      {isOpen ? createPortal(<div className="channel-create-popover" ref={popoverRef} role="dialog" aria-label={`Create ${kind} channel`} style={position}>
+      <button className="channel-create-trigger" ref={triggerRef} type="button" onClick={open} aria-label={t(kind === "text" ? "channel.createText" : "channel.createVoice")} aria-expanded={isOpen}><PlusIcon /></button>
+      {isOpen ? createPortal(<div className="channel-create-popover" ref={popoverRef} role="dialog" aria-label={t(kind === "text" ? "channel.createText" : "channel.createVoice")} style={position}>
         <form onSubmit={(event) => {
         event.preventDefault();
         const nextName = name.trim();
@@ -415,8 +415,8 @@ export function ChannelCreateControl({ kind, onCreate }: { kind: "text" | "voice
           setIsOpen(false);
         });
       }}>
-          <label className="form-field"><span>{kind === "text" ? "Text channel name" : "Voice channel name"}</span><input className="input" ref={inputRef} name={`${kind}ChannelName`} value={name} onChange={(event) => setName(event.currentTarget.value)} maxLength={64} autoComplete="off" /></label>
-          <div className="channel-create-actions"><button className="btn btn-ghost" type="button" onClick={close}>Cancel</button><button className="btn btn-primary" type="submit" disabled={isBusy}>{isBusy ? "Creating…" : "Create"}</button></div>
+          <label className="form-field"><span>{t(kind === "text" ? "channel.textName" : "channel.voiceName")}</span><input className="input" ref={inputRef} name={`${kind}ChannelName`} value={name} onChange={(event) => setName(event.currentTarget.value)} maxLength={64} autoComplete="off" /></label>
+          <div className="channel-create-actions"><button className="btn btn-ghost" type="button" onClick={close}>{t("common.cancel")}</button><button className="btn btn-primary" type="submit" disabled={isBusy}>{t(isBusy ? "channel.creating" : "channel.create")}</button></div>
         </form>
       </div>, document.body) : null}
     </>

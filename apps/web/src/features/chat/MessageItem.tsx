@@ -249,9 +249,9 @@ export function MessageItem({
         </div>,
         document.body
       ) : null}
-      {confirmingDelete ? <ConfirmDialog
+      {confirmingDelete ? <ConfirmDialog cancelLabel={t("common.cancel")}
         title={t("room.deleteMessageConfirm")}
-        copy="This message will be permanently removed."
+        copy={t("room.deleteMessageCopy")}
         confirmLabel={t("common.delete")}
         onCancel={() => setConfirmingDelete(false)}
         onConfirm={() => {

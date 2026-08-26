@@ -168,7 +168,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           setNicknameTarget(null);
         }}
       /> : null}
-      {pendingMemberAction ? <ConfirmDialog
+      {pendingMemberAction ? <ConfirmDialog cancelLabel={props.t("common.cancel")}
         title={props.t(`member.${pendingMemberAction.action}Title` as TranslationKey, { nickname: pendingMemberAction.user.nickname })}
         copy={props.t(`member.${pendingMemberAction.action}Copy` as TranslationKey)}
         confirmLabel={props.t(`member.${pendingMemberAction.action}` as TranslationKey)}

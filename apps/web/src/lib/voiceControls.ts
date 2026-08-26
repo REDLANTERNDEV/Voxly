@@ -71,18 +71,6 @@ export function toggleVoiceControl(
   };
 }
 
-export function voiceDockStatus(controls: VoiceControls, connectedCount: number) {
-  if (controls.deafen.on) {
-    return "Deafened - voice output off";
-  }
-
-  if (!controls.mic.on) {
-    return `Mic muted - ${connectedCount} connected`;
-  }
-
-  return `${connectedCount} connected`;
-}
-
 export function controlPresentation(key: VoiceControlKey, controls: VoiceControls): { action: VoiceControlAction; tone: VoiceControlTone } {
   if (key === "mic") {
     return controls.mic.on ? { action: "muteMic", tone: "neutral" } : { action: "unmuteMic", tone: "neutral" };
@@ -96,16 +84,6 @@ export function controlPresentation(key: VoiceControlKey, controls: VoiceControl
   return controls.screenShare.on
     ? { action: "stopScreenShare", tone: "danger" }
     : { action: "startScreenShare", tone: "neutral" };
-}
-
-export function voiceStatusLabels(media: VoiceMediaState) {
-  const labels: string[] = [];
-  if (media.deafened) labels.push("Deafened");
-  if (!media.mic || media.deafened) labels.push("Muted");
-  if (media.screen) labels.push("Screen");
-  else if (media.camera) labels.push("Camera");
-  if (media.speaking && media.mic && !media.deafened) labels.push("Speaking");
-  return labels;
 }
 
 export function sidebarVoiceStatusKeys(media: VoiceMediaState, moderation?: VoiceModerationState): SidebarVoiceStatusKey[] {

@@ -1,7 +1,7 @@
 import type { ChatMessage,PresenceUser,PublicUser,VoiceMediaState,VoiceModerationState } from "@voxly/shared";
 import type { ReactNode } from "react";
 import { CameraIcon,HeadsetIcon,MicIcon,ScreenIcon } from "../components/ui/Icons.js";
-import { type LanguageCode,type TranslationKey } from "../lib/i18n.js";
+import { type LanguageCode,type TranslationKey,type VoiceErrorKey } from "../lib/i18n.js";
 import { sidebarVoiceStatusKeys,type VoiceControls } from "../lib/voiceControls.js";
 import type { OwnerInvite } from "../types.js";
 import type { ShellModel,ThemeChoice,Translate } from "./types.js";
@@ -103,6 +103,15 @@ export function themeLabel(theme: ThemeChoice, t: Translate) {
   if (theme === "light") return t("common.light");
   if (theme === "dark") return t("common.dark");
   return t("common.auto");
+}
+
+/**
+ * Voice and RTC failures travel up as translation keys so the sentence is
+ * chosen here, where the reader's language is known, rather than in the hook
+ * that noticed the failure.
+ */
+export function voiceErrorMessage(key: VoiceErrorKey | "", t: Translate) {
+  return key ? t(key) : "";
 }
 
 export function voiceDockStatusLabel(controls: VoiceControls, connectedCount: number, t: Translate) {

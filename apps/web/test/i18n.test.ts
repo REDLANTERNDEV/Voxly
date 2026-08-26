@@ -104,6 +104,36 @@ describe("frontend localization", () => {
     assert.equal(translate("tr", "audio.testHint"), "Geri beslemeyi önlemek için kulaklık kullanın.");
   });
 
+  it("translates the failures the voice toast reports", () => {
+    assert.equal(translate("en", "voiceError.microphonePermissionRequired"), "Microphone permission is required to join voice.");
+    assert.equal(translate("tr", "voiceError.microphonePermissionRequired"), "Ses odasına katılmak için mikrofon izni gerekiyor.");
+    assert.equal(translate("tr", "voiceError.join"), "Ses odasına katılınamadı.");
+    assert.equal(translate("tr", "voiceError.screenSharePermissionDenied"), "Ekran paylaşımı izni reddedildi.");
+    assert.equal(translate("tr", "voiceError.rtcConfigUnavailable"), "RTC bağlantı ayarları yüklenemedi. Yeniden deneniyor.");
+  });
+
+  it("translates the failures the audio settings report", () => {
+    assert.equal(translate("en", "audioError.outputChange"), "Audio output could not be changed.");
+    assert.equal(translate("tr", "audioError.outputChange"), "Ses çıkışı değiştirilemedi.");
+    assert.equal(translate("tr", "audioError.unavailable"), "Bu tarayıcıda ses cihazları kullanılamıyor.");
+  });
+
+  it("translates channel creation and the sign-out confirmation", () => {
+    assert.equal(translate("en", "channel.textName"), "Text channel name");
+    assert.equal(translate("tr", "channel.textName"), "Yazı kanalı adı");
+    assert.equal(translate("tr", "channel.voiceName"), "Ses kanalı adı");
+    assert.equal(translate("tr", "channel.creating"), "Oluşturuluyor…");
+    assert.equal(translate("tr", "auth.signOutTitle"), "Oturum kapatılsın mı?");
+    assert.equal(translate("tr", "auth.signOutCopy"), "Bu cihazda geri dönmek için yeni bir erişim linki gerekecek.");
+  });
+
+  it("translates the access link claim screen", () => {
+    assert.equal(translate("en", "accessClaim.invalid"), "Access link is invalid");
+    assert.equal(translate("tr", "accessClaim.invalid"), "Erişim linki geçersiz");
+    assert.equal(translate("tr", "accessClaim.restoring"), "Hesabın geri yükleniyor…");
+    assert.equal(translate("tr", "accessClaim.restoringCopy"), "Bu güvenli link yalnızca bir kez kullanılabilir.");
+  });
+
   it("keeps the landing invitation concise in both languages", () => {
     assert.equal(translate("en", "landing.title"), "A room for your people");
     assert.equal(translate("tr", "landing.title"), "Kendi grubun için bir oda");

@@ -172,9 +172,9 @@ export function VisualStage({
             ? <details className="volume-popover stage-volume"><summary aria-label={t("voice.screenVolume")}><VolumeIcon /></summary><VolumeControl label={t("voice.screenVolume")} value={focusedVolume} onChange={(volume) => onScreenVolumeChange(focusedStream.id, volume)} /></details>
             : <button className="icon-btn screen-audio-unavailable" type="button" disabled aria-label={t("voice.noScreenAudio")} title={t("voice.noScreenAudio")}><VolumeIcon /></button>
         ) : null}
-        <button className="icon-btn" type="button" onClick={toggleFullscreen} aria-label={isFullscreen ? "Exit full screen" : t("common.fullscreen")}>
+        <button className="icon-btn" type="button" onClick={toggleFullscreen} aria-label={isFullscreen ? t("common.exitFullscreen") : t("common.fullscreen")}>
           <MaximizeIcon />
-          <span>{isFullscreen ? "Exit full screen" : t("common.fullscreen")}</span>
+          <span>{isFullscreen ? t("common.exitFullscreen") : t("common.fullscreen")}</span>
         </button>
       </div>
     </section>

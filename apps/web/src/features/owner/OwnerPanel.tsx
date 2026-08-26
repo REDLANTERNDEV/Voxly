@@ -436,7 +436,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
           />
         ) : null}
 
-        {pendingAction ? <ConfirmDialog
+        {pendingAction ? <ConfirmDialog cancelLabel={props.t("common.cancel")}
           title={pendingAction.title}
           copy={pendingAction.copy}
           confirmLabel={pendingAction.confirmLabel}
@@ -447,7 +447,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
             void action.perform().catch(() => setStatus(props.t("owner.actionFailed")));
           }}
         /> : null}
-        {deletingServer && activeServer ? <ConfirmDialog
+        {deletingServer && activeServer ? <ConfirmDialog cancelLabel={props.t("common.cancel")}
           title={props.t("server.deleteTitle", { server: activeServer.name })}
           copy={props.t("server.deleteCopy")}
           confirmLabel={props.t("common.delete")}

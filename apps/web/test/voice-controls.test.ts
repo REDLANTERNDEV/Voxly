@@ -4,9 +4,7 @@ import {
   controlPresentation,
   createInitialVoiceControls,
   sidebarVoiceStatusKeys,
-  toggleVoiceControl,
-  voiceDockStatus,
-  voiceStatusLabels
+  toggleVoiceControl
 } from "../src/lib/voiceControls.js";
 import {
   configureScreenTrack,
@@ -25,14 +23,6 @@ describe("voice control view state", () => {
     assert.equal(controls.camera.on, false);
     assert.equal(controls.screenShare.on, false);
     assert.equal(toggleVoiceControl(controls, "camera").camera.on, true);
-  });
-
-  it("shows muted and deafened dock status from local controls", () => {
-    const muted = toggleVoiceControl(createInitialVoiceControls(), "mic");
-    const deafened = toggleVoiceControl(createInitialVoiceControls(), "deafen");
-
-    assert.equal(voiceDockStatus(muted, 3), "Mic muted - 3 connected");
-    assert.equal(voiceDockStatus(deafened, 3), "Deafened - voice output off");
   });
 
   it("restores an open mic after undeafening when a microphone remains available", () => {
@@ -76,17 +66,6 @@ describe("voice control view state", () => {
 
     assert.equal(undeafened.deafen.on, false);
     assert.equal(undeafened.mic.on, false);
-  });
-
-  it("labels combined mute, deafen, speaking, and screen state", () => {
-    assert.deepEqual(
-      voiceStatusLabels({ mic: false, camera: true, screen: true, deafened: true, speaking: true }),
-      ["Deafened", "Muted", "Screen"]
-    );
-    assert.deepEqual(
-      voiceStatusLabels({ mic: true, camera: false, screen: false, deafened: false, speaking: true }),
-      ["Speaking"]
-    );
   });
 
   it("derives compact sidebar mute and deafen indicators", () => {

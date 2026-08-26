@@ -10,6 +10,7 @@ import type {
   VoiceSnapshot
 } from "@voxly/shared";
 import type { VoxlySocket } from "../socket.js";
+import type { VoiceErrorKey } from "./i18n.js";
 import { createInitialVoiceControls, toggleVoiceControl, type VoiceControlKey, type VoiceControls } from "./voiceControls.js";
 import {
   configureScreenTrack,
@@ -99,7 +100,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const [peerConnectionStates, setPeerConnectionStates] = useState<Record<string, PeerConnectionState>>({});
   const [localPreviews, setLocalPreviews] = useState<LocalPreviewState[]>([]);
   const [microphoneMonitorStream, setMicrophoneMonitorStream] = useState<MediaStream | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<VoiceErrorKey | "">("");
   const localStreamsRef = useRef<Partial<Record<LocalStreamKind, MediaStream>>>({});
   const microphoneInputRef = useRef<MicrophoneInput | null>(null);
   const iceServersRef = useRef(iceServers);
@@ -492,7 +493,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   useEffect(() => {
     recoverPeerRef.current = (peerUserId) => {
       const peer = ensurePeer(peerUserId);
-      if (peer) void sendOffer(peerUserId, peer).catch(() => setError("Could not recover peer connection."));
+      if (peer) void sendOffer(peerUserId, peer).catch(() => setError("voiceError.recoverPeer"));
     };
     return () => {
       recoverPeerRef.current = () => undefined;
@@ -505,9 +506,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       try {
         peer.setConfiguration({ iceServers });
         peer.restartIce();
-        void sendOffer(peerUserId, peer).catch(() => setError("Could not refresh peer connection."));
+        void sendOffer(peerUserId, peer).catch(() => setError("voiceError.refreshPeer"));
       } catch {
-        setError("Could not apply refreshed RTC configuration.");
+        setError("voiceError.rtcConfig");
       }
     }
   }, [iceServers, sendOffer]);
@@ -515,7 +516,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const renegotiatePeers = useCallback(() => {
     for (const [peerUserId, peer] of peersRef.current) {
       syncLocalTracks(peer, peerUserId);
-      void sendOffer(peerUserId, peer).catch(() => setError("Could not update media."));
+      void sendOffer(peerUserId, peer).catch(() => setError("voiceError.updateMedia"));
     }
   }, [sendOffer, syncLocalTracks]);
 
@@ -530,7 +531,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
 
   // Reached when the capture is gone and no replacement is coming: the device
   // was unplugged, or a reopen failed after the previous capture was released.
-  const handleMicrophoneLost = useCallback((message: string) => {
+  const handleMicrophoneLost = useCallback((message: VoiceErrorKey) => {
     speakingRef.current = false;
     stopStream("mic");
     microphoneEnabledRef.current = false;
@@ -555,7 +556,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     setMicrophoneMonitorStream(input.monitorStream);
     microphoneEndedCleanupRef.current = watchMicrophoneStreamEnd(input.rawStream, () => {
       if (microphoneInputRef.current !== input) return;
-      handleMicrophoneLost("Microphone disconnected.");
+      handleMicrophoneLost("voiceError.microphoneDisconnected");
     });
     startSpeakingMonitor(input.voiceStream);
   }, [handleMicrophoneLost, startSpeakingMonitor]);
@@ -633,14 +634,14 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       const wasKnown = peersRef.current.has(peerUserId);
       const peer = ensurePeer(peerUserId);
       if (!wasKnown && peer && currentUserId && shouldInitiatePeerConnection(currentUserId, peerUserId)) {
-        void sendOffer(peerUserId, peer).catch(() => setError("Could not start peer connection."));
+        void sendOffer(peerUserId, peer).catch(() => setError("voiceError.startPeer"));
       }
     }
   }, [emitMediaState, ensurePeer, persistVoiceResume, removePeer, sendOffer]);
 
   const join = useCallback(async (roomId: string, restoredTargets: VisualTarget[] = [], options: VoiceJoinOptions = {}) => {
     if (!socket || !user) {
-      setError("Socket is not connected.");
+      setError("voiceError.socketDisconnected");
       return false;
     }
     setError("");
@@ -665,7 +666,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           mic = acquiredInput.voiceStream;
         } catch {
           if (attempt === joinAttemptRef.current) {
-            setError("Microphone permission is required to join voice.");
+            setError("voiceError.microphonePermissionRequired");
           }
           return false;
         }
@@ -694,7 +695,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         previousTrackStates.forEach(([track, enabled]) => { track.enabled = enabled; });
       }
       if (attempt === joinAttemptRef.current && !response.ok) {
-        setError("Could not join voice.");
+        setError("voiceError.join");
       }
       return false;
     }
@@ -789,12 +790,12 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           setError("");
         }).catch(() => {
           nextInput.dispose();
-          setError("The microphone could not be reopened. Using the previous microphone.");
+          setError("voiceError.microphoneReopen");
         });
       })
       .catch(() => {
         if (cancelled || requestId !== microphoneSwitchRef.current) return;
-        setError("The microphone could not be reopened. Using the previous microphone.");
+        setError("voiceError.microphoneReopen");
       });
 
     return () => {
@@ -874,7 +875,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         persistVoiceResume();
         renegotiatePeers();
       } catch {
-        setError("Microphone permission was denied.");
+        setError("voiceError.microphonePermissionDenied");
       }
       return;
     }
@@ -928,7 +929,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         microphoneOnBeforeDeafenRef.current = previousRestorePreference;
         controlsRef.current = previousControls;
         setControls(previousControls);
-        setError("Could not update deafen state.");
+        setError("voiceError.deafenState");
         return false;
       }
       localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
@@ -971,7 +972,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       };
       controlsRef.current = failedControls;
       setControls(failedControls);
-      setError("Could not update deafen state.");
+      setError("voiceError.deafenState");
       return false;
     }
     localStreamsRef.current.mic?.getAudioTracks().forEach((track) => {
@@ -1007,14 +1008,14 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       const ack = await emitMediaState({ camera: true });
       if (!ack.ok) {
         stopStream("camera");
-        setError(ack.error === "visual_limit_reached" ? "Visual limit reached." : "Camera could not be enabled.");
+        setError(ack.error === "visual_limit_reached" ? "voiceError.visualLimit" : "voiceError.camera");
         return;
       }
       setLocalPreviews((current) => [...current.filter((preview) => preview.kind !== "camera"), { kind: "camera", stream }]);
       setControls((current) => ({ ...current, camera: { ...current.camera, on: true } }));
       renegotiatePeers();
     } catch {
-      setError("Camera permission was denied.");
+      setError("voiceError.cameraPermissionDenied");
     }
   }, [activeRoomId, emitMediaState, renegotiatePeers, stopStream]);
 
@@ -1042,14 +1043,14 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       const ack = await emitMediaState({ screen: true });
       if (!ack.ok) {
         stopStream("screen");
-        setError(ack.error === "visual_limit_reached" ? "Visual limit reached." : "Screen share could not be enabled.");
+        setError(ack.error === "visual_limit_reached" ? "voiceError.visualLimit" : "voiceError.screenShare");
         return;
       }
       setLocalPreviews((current) => [...current.filter((preview) => preview.kind !== "screen"), { kind: "screen", stream }]);
       setControls((current) => ({ ...current, screenShare: { ...current.screenShare, on: true } }));
       renegotiatePeers();
     } catch {
-      setError("Screen share permission was denied.");
+      setError("voiceError.screenSharePermissionDenied");
     }
   }, [activeRoomId, emitMediaState, renegotiatePeers, stopStream]);
 
@@ -1114,7 +1115,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         });
       }
       if (pendingOfferPeersRef.current.delete(payload.fromUserId)) {
-        void sendOffer(payload.fromUserId, peer).catch(() => setError("Could not update media."));
+        void sendOffer(payload.fromUserId, peer).catch(() => setError("voiceError.updateMedia"));
       }
       return;
     }
@@ -1124,7 +1125,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       await peer.setRemoteDescription({ type: "answer", sdp: signal.sdp });
       await flushPendingCandidates(payload.fromUserId, peer);
       if (pendingOfferPeersRef.current.delete(payload.fromUserId)) {
-        void sendOffer(payload.fromUserId, peer).catch(() => setError("Could not update media."));
+        void sendOffer(payload.fromUserId, peer).catch(() => setError("voiceError.updateMedia"));
       }
       return;
     }
@@ -1193,7 +1194,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         const response = await requestVoiceJoin(socket, { roomId: activeRoomId, media });
         if (disposed || attempt !== joinAttemptRef.current || roomRef.current !== activeRoomId || !socket.connected) return;
         if (!response.ok) {
-          setError("Could not restore voice connection.");
+          setError("voiceError.restoreVoice");
           retry = true;
           return;
         }
@@ -1202,7 +1203,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         const subscription = await setVisualSubscriptions(visualTargetsRef.current);
         if (disposed || attempt !== joinAttemptRef.current || roomRef.current !== activeRoomId || !socket.connected) return;
         if (!subscription.ok) {
-          setError("Could not restore stream connection.");
+          setError("voiceError.restoreStream");
           retry = true;
           return;
         }
@@ -1297,10 +1298,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       if (wasKnown || !peer || !currentUserId || !shouldInitiatePeerConnection(currentUserId, joinedUser.userId)) {
         return;
       }
-      void sendOffer(joinedUser.userId, peer).catch(() => setError("Could not start peer connection."));
+      void sendOffer(joinedUser.userId, peer).catch(() => setError("voiceError.startPeer"));
     };
     const onSignal = (payload: { fromUserId: string; signal: RtcSignal }) => {
-      void handleSignal(payload).catch(() => setError("RTC signal could not be handled."));
+      void handleSignal(payload).catch(() => setError("voiceError.signal"));
     };
     const onVisualSubscriberState = (payload: { roomId: string; viewerUserId: string; subscribedKinds: VisualMediaKind[] }) => {
       if (roomRef.current !== payload.roomId) return;
@@ -1308,7 +1309,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       const peer = ensurePeer(payload.viewerUserId);
       if (!peer) return;
       syncLocalTracks(peer, payload.viewerUserId);
-      void sendOffer(payload.viewerUserId, peer).catch(() => setError("Could not update media."));
+      void sendOffer(payload.viewerUserId, peer).catch(() => setError("voiceError.updateMedia"));
     };
     socket.on("voice:snapshot", onSnapshot);
     socket.on("voice:joined", onVoiceJoined);

@@ -119,7 +119,7 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
             </label>
             {!existingUser ? <label className="form-field field-gap" htmlFor="nickname">
               <span>{t("invite.nickname")}</span>
-              <input className="input" id="nickname" name="nickname" value={nickname} onChange={(event) => setNickname(event.target.value)} placeholder="Wren…" autoComplete="nickname" maxLength={32} />
+              <input className="input" id="nickname" name="nickname" value={nickname} onChange={(event) => setNickname(event.target.value)} placeholder={t("invite.nicknamePlaceholder")} autoComplete="nickname" maxLength={32} />
             </label> : null}
             {turnstileSiteKey && !existingUser ? (
               <div className="form-field field-gap">
