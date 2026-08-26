@@ -32,7 +32,12 @@ export function PreferencesCard({
 }) {
   return (
     <section className="theme-card">
-      <div className="theme-card-head"><span className="label">{t("common.appearance")}</span><span className="small muted">{themeLabel(theme, t)}</span></div>
+      {/* The heading names the setting and nothing else. Which of the three
+          is in force is what the pressed segment below already says — in the
+          same words, six pixels away — and `aria-pressed` says it to a screen
+          reader, so a second copy up here was one more thing to read for a
+          question the control had already answered. */}
+      <div className="theme-card-head"><span className="label">{t("common.appearance")}</span></div>
       <div className="theme-options" role="group" aria-label={t("common.appearance")}>
         {(["auto", "light", "dark"] as const).map((option) => (
           <button className="theme-option" type="button" key={option} aria-pressed={theme === option} onClick={() => onThemeChange(option)}>{themeLabel(option, t)}</button>
@@ -47,7 +52,7 @@ export function LanguageSwitch({ language, t, onLanguageChange }: { language: La
   return (
     <div className="language-switch">
       <div className="theme-card-head"><span className="label">{t("common.language")}</span></div>
-      <div className="theme-options theme-options-compact" role="group" aria-label={t("common.language")}>
+      <div className="theme-options" role="group" aria-label={t("common.language")}>
         {(["en", "tr"] as const).map((option) => (
           <button className="theme-option" type="button" key={option} aria-pressed={language === option} onClick={() => onLanguageChange(option)}>{languageLabel(option)}</button>
         ))}

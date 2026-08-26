@@ -923,18 +923,24 @@ h3 {
   right: 0;
 }
 
+/*
+ * Segments sized to their own words rather than to an equal share of the row.
+ *
+ * Equal thirds are only equal in English. "Auto", "Light" and "Dark" are
+ * within a character of each other, so thirds looked deliberate; "Otomatik" is
+ * twice the length of "Açık" and "Koyu", and a third of this row is narrower
+ * than the word — the label spilled out of its own pill and sat against its
+ * neighbour. Flex gives every segment the width of its label plus an equal
+ * share of what is left over, so the longest word still fits and every label
+ * is centred in the pill it belongs to, in either language.
+ */
 .theme-options {
   background: color-mix(in oklab, var(--surface-2), var(--bg) 50%);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-md);
-  display: grid;
+  display: flex;
   gap: 4px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 4px;
-}
-
-.theme-options-compact {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .language-switch {
@@ -948,13 +954,20 @@ h3 {
   border-radius: 9px;
   color: var(--muted);
   cursor: pointer;
+  /* Its label plus an equal share of the leftover room. `auto` and not `0`:
+     the basis has to be the word, or thirds come back under another name. */
+  flex: 1 1 auto;
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 650;
-  letter-spacing: 0.06em;
+  /* Loosened type is what turned an eight-letter word into an overflowing
+     one, so the tracking buys back the millimetres the longest label needs
+     and the padding stops squeezing it against its own border. */
+  letter-spacing: 0.04em;
   line-height: 1.1;
   min-height: 36px;
-  padding: 5px 7px;
+  min-inline-size: 0;
+  padding: 5px 6px;
   text-transform: uppercase;
   white-space: normal;
 }
@@ -2130,12 +2143,25 @@ button.reply-quote:focus-visible .reply-quote-body {
 .music-results {
   display: grid;
   gap: 6px;
+  /*
+   * One bounded column, here and on every other list in this panel.
+   *
+   * A grid with no columns declared makes one `auto` track, and an `auto`
+   * track is at least as wide as its widest item's min-content. A Track's
+   * title is as long as whoever uploaded it felt like making it, so the track
+   * grew, the list grew with it, and the rows ran out past the panel's own
+   * edge — the durations and the remove buttons went with them. `minmax(0,
+   * 1fr)` is what says the column may be narrower than its contents want,
+   * which is what lets the titles wrap instead.
+   */
+  grid-template-columns: minmax(0, 1fr);
   padding: 12px 12px 0;
 }
 
 .music-results-list {
   display: grid;
   gap: 4px;
+  grid-template-columns: minmax(0, 1fr);
   list-style: none;
   margin: 0;
   padding: 0;
@@ -2147,11 +2173,27 @@ button.reply-quote:focus-visible .reply-quote-body {
  */
 .music-result {
   align-items: center;
+  /* A row rather than a shape drawn in text: the same surface the waiting
+     Queue rows carry, so the list reads as a stack of things to choose
+     between rather than five paragraphs on the panel's own background. */
+  background: var(--bg);
+  border-color: var(--border-soft);
   display: flex;
   gap: 10px;
   inline-size: 100%;
   justify-content: space-between;
   text-align: start;
+  /*
+   * `.btn` sets `nowrap`, which is right for a button whose face is one word
+   * and wrong for one whose face is somebody's video title. Left inherited, it
+   * made every row as wide as its longest title, which made the list wider
+   * than the panel and pushed the durations and the removals off the edge.
+   */
+  white-space: normal;
+}
+
+.music-result:hover {
+  background: var(--surface);
 }
 
 /*
@@ -2196,20 +2238,34 @@ button.reply-quote:focus-visible .reply-quote-body {
 .music-queue {
   display: grid;
   gap: 6px;
+  /* Bounded for the reason the Results list is — see the note there. */
+  grid-template-columns: minmax(0, 1fr);
   padding: 12px 12px 0;
 }
 
 .music-queue-list {
   display: grid;
   gap: 4px;
+  grid-template-columns: minmax(0, 1fr);
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
+/*
+ * Every row sits on its own surface, the Track that is sounding included.
+ *
+ * A transparent row on a panel that is itself a card left the waiting Tracks
+ * looking sunk into the background — the same complaint in both themes, and
+ * the reason is that nothing but the gap between them said where one ended.
+ * `--bg` is a step away from the panel in either direction (down in dark, up
+ * in light) and is what the field above them already uses, so the panel reads
+ * as one idea rather than two.
+ */
 .music-queue-row {
   align-items: center;
-  border: 1px solid transparent;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
   border-radius: var(--radius-md);
   display: grid;
   gap: 4px 10px;
@@ -2220,14 +2276,28 @@ button.reply-quote:focus-visible .reply-quote-body {
 /*
  * Square, so the hit area does not shrink to the width of a glyph, and its
  * label lives in `aria-label` because the icon says nothing on its own.
+ *
+ * Filled and in the app's own colour for a loss, because that is what it is:
+ * this takes a Track off the room's Queue and there is no undo. A ghost
+ * button on a ghost row was a cross floating on the panel — the one control
+ * here a member could press by accident was the one hardest to see.
  */
 .music-queue-remove {
   align-items: center;
+  background: var(--danger-soft);
   block-size: 28px;
+  border-color: color-mix(in oklch, var(--danger), var(--border) 42%);
+  color: var(--danger);
   display: inline-flex;
   inline-size: 28px;
   justify-content: center;
   padding: 0;
+}
+
+.music-queue-remove:hover,
+.music-leave:hover {
+  background: color-mix(in oklab, var(--danger), var(--bg) 74%);
+  border-color: var(--danger);
 }
 
 .music-queue-remove .ui-icon {
@@ -2280,8 +2350,12 @@ button.reply-quote:focus-visible .reply-quote-body {
 .music-queue-length,
 .music-result-length {
   color: var(--muted);
+  /* Four characters that must not be the ones a narrow panel drops: the copy
+     beside them wraps, this does not shrink. */
+  flex: 0 0 auto;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /*
@@ -2297,6 +2371,7 @@ button.reply-quote:focus-visible .reply-quote-body {
   border-top: 1px solid var(--border);
   display: grid;
   gap: 6px;
+  grid-template-columns: minmax(0, 1fr);
   /* Its own bottom padding: it is the last block in the panel, so nothing
      below it supplies one the way the controls do for the Queue. */
   margin: 0 12px;
@@ -2308,6 +2383,7 @@ button.reply-quote:focus-visible .reply-quote-body {
   display: grid;
   font-size: 12px;
   gap: 3px;
+  grid-template-columns: minmax(0, 1fr);
   list-style: none;
   margin: 0;
   padding: 0;
@@ -2329,16 +2405,37 @@ button.reply-quote:focus-visible .reply-quote-body {
   flex: 1 1 12ch;
 }
 
-/* Square while it holds only a mark, so the two transport controls read as a
-   pair rather than as two buttons that happen to sit together. */
+/*
+ * Square while it holds only a mark, so the two transport controls read as a
+ * pair rather than as two buttons that happen to sit together — and filled,
+ * in the same ink as the button that queues a Track.
+ *
+ * Outlined, they were a hairline on a surface a shade away from them: the two
+ * controls a member opens this panel to press were the hardest things in it
+ * to find. This is `.btn-primary`'s treatment written out in tokens rather
+ * than the class itself, because the mark inside is what names the control
+ * and the primary class carries type styles a glyph does not want.
+ */
 .music-transport {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--bg);
   padding: 0;
   width: 38px;
 }
 
+.music-transport:hover:not(:disabled) {
+  background: var(--fg-2);
+  border-color: var(--fg-2);
+}
+
 /* Keeps its word: there is no shared mark for sending the bot away, and it is
-   the one control here whose undo costs the room its Queue. */
+   the one control here whose undo costs the room its Queue — so it carries the
+   same fill and the same colour as the removals, one step louder. */
 .music-leave {
+  background: var(--danger-soft);
+  border-color: color-mix(in oklch, var(--danger), var(--border) 30%);
+  color: var(--danger);
   gap: 6px;
   margin-inline-start: auto;
 }
