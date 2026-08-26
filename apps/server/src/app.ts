@@ -27,10 +27,8 @@ import {
   revokeSession,
   revokeSessionsForUser,
   sessionCookieName,
-  setSessionCookie,
-  type AuthUser
+  setSessionCookie
 } from "./auth/sessions.js";
-import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import {
   bearerToken,
   isBotTokenValid,
@@ -51,7 +49,6 @@ import {
   mayCreateInvites,
   presenceStatusOf,
   publicPresence,
-  requireServerInviter,
   requireServerMember,
   requireServerOwner,
   serverMembership,
@@ -62,7 +59,6 @@ import {
 } from "./members.js";
 import { roomById } from "./rooms.js";
 import {
-  authenticatedWriteLimit,
   messageLimit,
   requireJoinedServer,
   requireOwnedServer,
@@ -73,7 +69,9 @@ import {
   type RealtimeModeration,
   type RouteContext
 } from "./http.js";
+import { registerInviteRoutes, revokeInvitesCreatedBy } from "./invites.js";
 import { registerServerRoutes } from "./servers.js";
+import { createUser, nicknameSchema, publicUser } from "./users.js";
 import { roomIdPayloadSchema, safeSocketHandler, socketsForUser } from "./socket.js";
 import { createMusicRealtime } from "./music.js";
 import { createVoiceRealtime } from "./voice.js";
@@ -115,13 +113,6 @@ export interface VoxlyApp {
   close: () => Promise<void>;
 }
 
-type UserRow = {
-  id: string;
-  nickname: string;
-  role: "owner" | "member";
-  banned_at: string | null;
-};
-
 interface IceServer {
   urls: string | string[];
   username?: string;
@@ -148,23 +139,6 @@ function errorStatusCode(error: unknown) {
   const candidate = (error as { statusCode?: unknown } | null)?.statusCode;
   return typeof candidate === "number" ? candidate : 500;
 }
-
-/**
- * Resource ceilings.
- *
- * Voxly targets small private groups, so these are deliberately far above any
- * legitimate use and exist only to stop unbounded growth on a single-file SQLite
- * database. Tune them freely — nothing else depends on the exact values.
- */
-const defaultInviteExpiryMinutes = 10080; // 7 days, when the caller omits an expiry
-// Comfortably above the 56-entry preset matrix an owner can legitimately create
-// (see the invite-preset test), while still bounding growth.
-const maxActiveInvitesPerCreator = 200;
-const inviteBodySchema = z.object({
-  label: z.string().trim().min(1).max(80),
-  expiresInMinutes: z.union([z.literal(30), z.literal(60), z.literal(360), z.literal(720), z.literal(1440), z.literal(10080), z.literal(43200), z.null()]).optional(),
-  maxUses: z.union([z.literal(1), z.literal(5), z.literal(10), z.literal(25), z.literal(50), z.literal(100), z.null()]).optional()
-}).strict();
 
 const voiceModerationBodySchema = z.object({
   muted: z.boolean().optional(),
@@ -212,10 +186,21 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
   });
 
   const realtime = registerRealtime(io, database);
-  registerRoutes(server, database, options, io, realtime);
+  // What a route group is handed, and deliberately nothing more; `http.ts` says
+  // why each field is here.
+  const context: RouteContext = {
+    fastify: server,
+    database,
+    io,
+    realtime,
+    secureCookies: options.secureCookies,
+    turnstile: options.turnstile
+  };
+  registerRoutes(options, context);
   // Route groups that own their own rules register themselves against the same
   // Fastify instance; see `http.ts` for what they are handed and why.
-  registerServerRoutes({ fastify: server, database, io, realtime, secureCookies: options.secureCookies });
+  registerServerRoutes(context);
+  registerInviteRoutes(context);
   if (options.webDistPath) {
     await registerWebStatic(server, options.webDistPath);
   }
@@ -249,17 +234,17 @@ async function registerWebStatic(server: FastifyInstance, webDistPath: string) {
   });
 }
 
-function registerRoutes(
-  server: FastifyInstance,
-  database: VoxlyDatabase,
-  options: CreateVoxlyAppOptions,
-  io: Server<ClientToServerEvents, ServerToClientEvents>,
-  realtime: RealtimeModeration
-) {
-  // The same handshake the extracted route modules are given, so the shared
-  // route preambles read identically on either side of the boundary.
-  const context: RouteContext = { fastify: server, database, io, realtime, secureCookies: options.secureCookies };
-
+/**
+ * The routes no domain module owns yet: health and config, the session
+ * endpoints, the member directory, membership moderation, messages, and the
+ * owner panel.
+ *
+ * Takes the same `RouteContext` the extracted modules are handed rather than
+ * the pieces of it, so there is no way for the handshake these routes use and
+ * the one `servers.ts` and `invites.ts` use to drift apart.
+ */
+function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext) {
+  const { fastify: server, database, io, realtime } = context;
   server.get("/api/health", async () => {
     // Deliberately unauthenticated and dependency-checking: container and load
     // balancer probes need a signal that the process can still reach SQLite,
@@ -375,130 +360,6 @@ function registerRoutes(
     return reply.code(201).send({ user: publicUser(user) });
   });
 
-  server.post("/api/invites/accept", { config: unauthenticatedWriteLimit }, async (request, reply) => {
-    const body = z.object({
-      inviteToken: z.string().min(24),
-      nickname: nicknameSchema.optional(),
-      turnstileToken: z.string().optional()
-    }).parse(request.body);
-
-    const existingUser = authenticateHttp(database, request, reply, options.secureCookies);
-
-    if (!existingUser && options.turnstile?.enabled) {
-      const ok = await verifyTurnstile(options.turnstile.secretKey, body.turnstileToken, options.turnstile.expectedHostname);
-      if (!ok) {
-        return reply.code(403).send({ error: "turnstile_failed" });
-      }
-    }
-
-    if (!existingUser && !body.nickname) {
-      return reply.code(400).send({ error: "nickname_required" });
-    }
-
-    let user: { id: string; nickname: string; role: "owner" | "member"; bannedAt: string | null } | null = existingUser;
-    let serverId = "";
-    database.sqlite.exec("begin immediate");
-    try {
-      const invite = one<{
-        id: string;
-        server_id: string;
-        max_uses: number | null;
-        expires_at: string | null;
-        revoked_at: string | null;
-      }>(
-        database.sqlite,
-        `select id, server_id, max_uses, expires_at, revoked_at
-         from invites where token_hash = ?`,
-        [hashToken(body.inviteToken)]
-      );
-      if (!invite || invite.revoked_at || isExpired(invite.expires_at)) {
-        database.sqlite.exec("rollback");
-        return reply.code(404).send({ error: "invite_invalid" });
-      }
-
-      const member = existingUser ? serverMembership(database.sqlite, invite.server_id, existingUser.id) : null;
-      const priorUse = existingUser
-        ? one<{ used_at: string }>(database.sqlite, "select used_at from invite_uses where invite_id = ? and user_id = ?", [invite.id, existingUser.id])
-        : null;
-      if (member?.banned_at) {
-        database.sqlite.exec("rollback");
-        return reply.code(403).send({ error: "server_banned" });
-      }
-      if (member && !member.removed_at && priorUse) {
-        database.sqlite.exec("rollback");
-        return reply.code(409).send({ error: "already_server_member", serverId: invite.server_id });
-      }
-      if (priorUse) {
-        database.sqlite.exec("rollback");
-        return reply.code(404).send({ error: "invite_invalid" });
-      }
-
-      const usedCount = inviteUseCount(database.sqlite, invite.id);
-      if (invite.max_uses !== null && usedCount >= invite.max_uses) {
-        database.sqlite.exec("rollback");
-        return reply.code(404).send({ error: "invite_invalid" });
-      }
-      if (member && !member.removed_at) {
-        database.sqlite.exec("rollback");
-        return reply.code(409).send({ error: "already_server_member", serverId: invite.server_id });
-      }
-
-      user = existingUser ?? createUser(database, body.nickname as string, "member");
-      const now = new Date().toISOString();
-      activateServerMembership(database, invite.server_id, user.id, "member", now);
-      run(database.sqlite, "insert into invite_uses (invite_id, user_id, used_at) values (?, ?, ?)", [invite.id, user.id, now]);
-      run(
-        database.sqlite,
-        `update invites
-         set used_by_user_id = coalesce(used_by_user_id, ?), used_at = coalesce(used_at, ?)
-         where id = ?`,
-        [user.id, now, invite.id]
-      );
-      serverId = invite.server_id;
-      database.sqlite.exec("commit");
-    } catch (cause) {
-      database.sqlite.exec("rollback");
-      throw cause;
-    }
-    if (!user) throw new Error("invite acceptance completed without a user");
-    database.save();
-    await realtime.grantServerAccess(serverId, user.id);
-    if (!existingUser) {
-      const token = createSession(database, user.id);
-      setSessionCookie(reply, token, options.secureCookies);
-    }
-
-    return reply.code(existingUser ? 200 : 201).send({ user: publicUser(user), serverId });
-  });
-
-  server.post("/api/invites/preview", { config: unauthenticatedWriteLimit }, async (request, reply) => {
-    const { inviteToken } = z.object({ inviteToken: z.string().min(24) }).parse(request.body);
-    const invite = one<{
-      server_name: string;
-      invite_id: string;
-      max_uses: number | null;
-      expires_at: string | null;
-      revoked_at: string | null;
-    }>(
-      database.sqlite,
-      `select servers.name as server_name, invites.id as invite_id, invites.max_uses,
-        invites.expires_at, invites.revoked_at
-       from invites
-       join servers on servers.id = invites.server_id
-       where invites.token_hash = ?`,
-      [hashToken(inviteToken)]
-    );
-    const usedCount = invite ? inviteUseCount(database.sqlite, invite.invite_id) : 0;
-    if (!invite || invite.revoked_at || isExpired(invite.expires_at) || (invite.max_uses !== null && usedCount >= invite.max_uses)) {
-      return reply.code(404).send({ error: "invite_invalid" });
-    }
-    return {
-      serverName: invite.server_name,
-      expiresAt: invite.expires_at,
-      remainingUses: invite.max_uses === null ? null : invite.max_uses - usedCount
-    };
-  });
-
   server.post("/api/logout", async (request, reply) => {
     const user = authenticateWithoutRenewal(database.sqlite, request);
     if (user) {
@@ -578,43 +439,6 @@ function registerRoutes(
         moderation: { muted: Boolean(moderatorMuted), deafened: Boolean(moderatorDeafened) }
       }))
     };
-  });
-
-  server.post("/api/servers/:serverId/invites", { config: authenticatedWriteLimit }, async (request, reply) => {
-    const user = requireUser(database, request, reply, options.secureCookies);
-    if (!user) return;
-    const { serverId } = z.object({ serverId: serverIdParam }).parse(request.params);
-    const membership = requireServerInviter(database, serverId, user.id, reply);
-    if (!membership) return;
-    const body = inviteBodySchema.parse(request.body ?? {});
-    // A never-expiring link is a standing credential. Delegated inviters can add
-    // people; handing them a permanent one exceeds what that grant is meant to be.
-    if (body.expiresInMinutes === null && membership.role !== "owner") {
-      return reply.code(403).send({ error: "invite_expiry_required" });
-    }
-    if (activeInviteCount(database.sqlite, serverId, user.id) >= maxActiveInvitesPerCreator) {
-      return reply.code(409).send({ error: "invite_limit_reached" });
-    }
-    const invite = createInviteForServer(database, serverId, user.id, body);
-    audit(database, user.id, "invite.created", null, serverId);
-    database.save();
-    return reply.code(201).send({ invite });
-  });
-
-  server.get("/api/servers/:serverId/invites", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply);
-    if (!scope) return;
-    return { invites: serverInvites(database.sqlite, scope.serverId) };
-  });
-
-  server.post("/api/servers/:serverId/invites/:inviteId/revoke", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply, { inviteId: z.string().uuid() });
-    if (!scope) return;
-    const { owner, serverId, inviteId } = scope;
-    const result = revokeServerInvite(database, serverId, inviteId, owner.id);
-    if (result === "not_found") return reply.code(404).send({ error: "invite_not_found" });
-    if (result === "inactive") return reply.code(409).send({ error: "invite_not_active" });
-    return reply.code(204).send();
   });
 
   server.patch("/api/servers/:serverId/members/:userId/permissions", async (request, reply) => {
@@ -805,95 +629,6 @@ function registerRoutes(
     }
     audit(database, owner.id, "voice.moved", userId, serverId);
     database.save();
-    return reply.code(204).send();
-  });
-
-  server.post("/api/servers/:serverId/members/:userId/access-links", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply, { userId: userIdParam });
-    if (!scope) return;
-    const { owner, serverId, userId } = scope;
-    const member = serverMembership(database.sqlite, serverId, userId);
-    if (!member || member.removed_at || member.banned_at) return reply.code(404).send({ error: "member_not_found" });
-    if (rejectBotTarget(database, userId, reply)) return;
-    const token = createOpaqueToken();
-    const now = new Date();
-    const nowIso = now.toISOString();
-    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
-    run(
-      database.sqlite,
-      `update access_claims
-       set revoked_at = ?
-       where server_id = ?
-         and user_id = ?
-         and consumed_at is null
-         and revoked_at is null
-         and expires_at > ?`,
-      [nowIso, serverId, userId, nowIso]
-    );
-    run(
-      database.sqlite,
-      "insert into access_claims (id, token_hash, user_id, server_id, created_by_user_id, created_at, expires_at) values (?, ?, ?, ?, ?, ?, ?)",
-      [crypto.randomUUID(), hashToken(token), userId, serverId, owner.id, nowIso, expiresAt]
-    );
-    audit(database, owner.id, "access_link.created", userId, serverId);
-    database.save();
-    return reply.code(201).send({ token, expiresAt });
-  });
-
-  server.post("/api/access/claim", { config: unauthenticatedWriteLimit }, async (request, reply) => {
-    const { token } = z.object({ token: z.string().min(24) }).parse(request.body);
-    const claim = one<{ id: string; user_id: string; server_id: string; expires_at: string; consumed_at: string | null; revoked_at: string | null }>(
-      database.sqlite,
-      "select id, user_id, server_id, expires_at, consumed_at, revoked_at from access_claims where token_hash = ?",
-      [hashToken(token)]
-    );
-    if (!claim || claim.consumed_at || claim.revoked_at || isExpired(claim.expires_at)) return reply.code(404).send({ error: "access_claim_invalid" });
-    const user = one<UserRow>(database.sqlite, "select id, nickname, role, banned_at from users where id = ?", [claim.user_id]);
-    if (!user) return reply.code(404).send({ error: "access_claim_invalid" });
-    run(database.sqlite, "update access_claims set consumed_at = ? where id = ?", [new Date().toISOString(), claim.id]);
-    audit(database, user.id, "access_link.consumed", user.id);
-    const sessionToken = createSession(database, user.id);
-    setSessionCookie(reply, sessionToken, options.secureCookies);
-    return reply.code(201).send({
-      user: publicUser({ ...user, bannedAt: user.banned_at }),
-      serverId: claim.server_id
-    });
-  });
-
-  server.post("/api/owner/invites", { config: authenticatedWriteLimit }, async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) {
-      return;
-    }
-    if (activeInviteCount(database.sqlite, defaultServerId, owner.id) >= maxActiveInvitesPerCreator) {
-      return reply.code(409).send({ error: "invite_limit_reached" });
-    }
-    const invite = createInviteForServer(database, defaultServerId, owner.id, inviteBodySchema.parse(request.body ?? {}));
-    audit(database, owner.id, "invite.created", null, defaultServerId);
-    database.save();
-    return reply.code(201).send({ invite });
-  });
-
-  server.get("/api/owner/invites", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) {
-      return;
-    }
-
-    return {
-      invites: serverInvites(database.sqlite, defaultServerId)
-    };
-  });
-
-  server.post("/api/owner/invites/:inviteId/revoke", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) {
-      return;
-    }
-    const { inviteId } = z.object({ inviteId: z.string().uuid() }).parse(request.params);
-    const result = revokeServerInvite(database, defaultServerId, inviteId, owner.id);
-    if (result === "not_found") return reply.code(404).send({ error: "invite_not_found" });
-    if (result === "inactive") return reply.code(409).send({ error: "invite_not_active" });
     return reply.code(204).send();
   });
 
@@ -1364,133 +1099,6 @@ function registerRealtime(
   };
 }
 
-function createUser(database: VoxlyDatabase, nickname: string, role: "owner" | "member") {
-  const user = {
-    id: crypto.randomUUID(),
-    nickname,
-    role,
-    bannedAt: null
-  };
-  run(database.sqlite, "insert into users (id, nickname, role) values (?, ?, ?)", [
-    user.id,
-    user.nickname,
-    user.role
-  ]);
-  audit(database, user.id, "user.created", user.id);
-  database.save();
-  return user;
-}
-
-function createInviteForServer(
-  database: VoxlyDatabase,
-  serverId: string,
-  createdByUserId: string,
-  body: z.infer<typeof inviteBodySchema>
-) {
-  const token = createOpaqueToken();
-  const id = crypto.randomUUID();
-  const now = new Date();
-  // An omitted expiry used to mean "never", which made every such link a
-  // permanent account-creation credential — the opposite of how `maxUses`
-  // defaults. Omission now means the bounded default; only an explicit `null`
-  // from an owner produces a link that never expires.
-  const expiresInMinutes = body.expiresInMinutes === undefined
-    ? defaultInviteExpiryMinutes
-    : body.expiresInMinutes;
-  const expiresAt = expiresInMinutes === null
-    ? null
-    : new Date(now.getTime() + expiresInMinutes * 60 * 1000).toISOString();
-  const maxUses = body.maxUses === undefined ? 1 : body.maxUses;
-  run(
-    database.sqlite,
-    `insert into invites
-      (id, server_id, token_hash, label, created_by_user_id, expires_at, max_uses, created_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, serverId, hashToken(token), body.label, createdByUserId, expiresAt, maxUses, now.toISOString()]
-  );
-  return { id, token, label: body.label, expiresAt, maxUses, usedCount: 0, serverId };
-}
-
-function serverInvites(sqlite: DatabaseSync, serverId: string) {
-  return all(
-    sqlite,
-    `select invites.id, invites.server_id as serverId, coalesce(invites.label, '') as label,
-      invites.created_by_user_id as createdByUserId,
-      invites.used_by_user_id as usedByUserId, invites.used_at as usedAt,
-      invites.expires_at as expiresAt, invites.revoked_at as revokedAt,
-      invites.max_uses as maxUses, count(invite_uses.user_id) as usedCount,
-      invites.created_at as createdAt
-     from invites
-     left join invite_uses on invite_uses.invite_id = invites.id
-     where invites.server_id = ?
-     group by invites.id
-     order by invites.created_at desc`,
-    [serverId]
-  );
-}
-
-function revokeServerInvite(database: VoxlyDatabase, serverId: string, inviteId: string, ownerId: string) {
-  const invite = one<{ id: string; max_uses: number | null; expires_at: string | null; revoked_at: string | null }>(
-    database.sqlite,
-    "select id, max_uses, expires_at, revoked_at from invites where id = ? and server_id = ?",
-    [inviteId, serverId]
-  );
-  if (!invite) return "not_found" as const;
-  const usedCount = inviteUseCount(database.sqlite, invite.id);
-  if (invite.revoked_at || isExpired(invite.expires_at) || (invite.max_uses !== null && usedCount >= invite.max_uses)) {
-    return "inactive" as const;
-  }
-  run(database.sqlite, "update invites set revoked_at = ? where id = ?", [new Date().toISOString(), inviteId]);
-  audit(database, ownerId, "invite.revoked", inviteId, serverId);
-  database.save();
-  return "revoked" as const;
-}
-
-/**
- * Revoke the still-active invites a member issued on one server.
- *
- * Called when that member loses access or loses the invite grant. Already-revoked
- * and already-expired rows are left alone so the audit trail keeps their original
- * timestamps.
- */
-function revokeInvitesCreatedBy(database: VoxlyDatabase, serverId: string, userId: string, now: string) {
-  run(
-    database.sqlite,
-    `update invites
-     set revoked_at = ?
-     where server_id = ?
-       and created_by_user_id = ?
-       and revoked_at is null
-       and (expires_at is null or expires_at > ?)`,
-    [now, serverId, userId, now]
-  );
-}
-
-/** Invites a member has outstanding on one server: neither revoked nor expired. */
-function activeInviteCount(sqlite: DatabaseSync, serverId: string, createdByUserId: string) {
-  return one<{ count: number }>(
-    sqlite,
-    `select count(*) as count from invites
-     where server_id = ? and created_by_user_id = ?
-       and revoked_at is null
-       and (expires_at is null or expires_at > ?)`,
-    [serverId, createdByUserId, new Date().toISOString()]
-  )?.count ?? 0;
-}
-
-function inviteUseCount(sqlite: DatabaseSync, inviteId: string) {
-  return one<{ count: number }>(sqlite, "select count(*) as count from invite_uses where invite_id = ?", [inviteId])?.count ?? 0;
-}
-
-function publicUser(user: AuthUser | { id: string; nickname: string; role: "owner" | "member"; bannedAt: string | null }) {
-  return {
-    id: user.id,
-    nickname: user.nickname,
-    role: user.role,
-    bannedAt: user.bannedAt
-  };
-}
-
 function messageById(sqlite: DatabaseSync, roomId: string, messageId: string) {
   const row = one<MessageRow>(
     sqlite,
@@ -1578,35 +1186,6 @@ const replyJoinClause = `left join messages quoted
        on quoted_members.server_id = rooms.server_id
       and quoted_members.user_id = quoted.user_id`;
 
-function isExpired(value: string | null) {
-  return value ? new Date(value).getTime() <= Date.now() : false;
-}
-
 function normalizePublicUrl(value: string | undefined) {
   return value ? value.replace(/\/+$/, "") : null;
 }
-
-async function verifyTurnstile(secretKey: string, token: string | undefined, expectedHostname?: string) {
-  if (!token) {
-    return false;
-  }
-
-  try {
-    const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
-      method: "POST",
-      body: new URLSearchParams({
-        secret: secretKey,
-        response: token
-      })
-    });
-    if (!response.ok) {
-      return false;
-    }
-    const result = z.object({ success: z.boolean(), hostname: z.string().optional() }).parse(await response.json());
-    return result.success && (!expectedHostname || result.hostname === expectedHostname);
-  } catch {
-    return false;
-  }
-}
-
-const nicknameSchema = z.string().trim().min(2).max(32);

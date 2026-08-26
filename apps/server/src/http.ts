@@ -26,6 +26,7 @@ import { requireOwner, requireUser } from "./auth/sessions.js";
 import type { VoxlyDatabase } from "./db/database.js";
 import { requireServerMember, requireServerOwner } from "./members.js";
 import type { VoxlyIoServer } from "./socket.js";
+import type { TurnstileConfig } from "./turnstile.js";
 
 /**
  * The moderation and teardown surface routes call. Routes speak this
@@ -64,6 +65,13 @@ export interface RouteContext {
   realtime: RealtimeModeration;
   /** Cookie transport policy; the session guards in `auth/sessions.ts` need it. */
   secureCookies: boolean;
+  /**
+   * The operator's Turnstile challenge, when they configured one. Read by
+   * exactly one route — invite acceptance without a session, the only endpoint
+   * that mints an account for a stranger (`invites.ts`). Absent means no
+   * challenge is asked for anywhere.
+   */
+  turnstile?: TurnstileConfig;
 }
 
 /**

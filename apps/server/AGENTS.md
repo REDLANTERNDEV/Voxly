@@ -36,6 +36,25 @@ web serving, and owner recovery CLIs.
   them. A room only exists inside a server and the two lifecycles are one, so
   the last-room floor, the last-owner-server refusal and the single deletion
   transaction stay together here.
+- `src/invites.ts` owns both ways into a server without an existing session:
+  invites and access links. One module because they are one flow with two
+  credentials — minting, listing, revoking, use counting, acceptance and the
+  access claim — and the rules that keep them safe would otherwise be restated
+  twice. The `/api/owner/invites` routes live here too: they are the same three
+  operations with `defaultServerId` substituted for a path parameter, so
+  splitting them would give the capacity ceiling and the active/inactive
+  distinction two call sites in two modules. `revokeInvitesCreatedBy` is
+  exported back to `app.ts`, which calls it from the two membership-moderation
+  routes that take a member's outstanding links with them.
+- `src/users.ts` owns the account itself: creating one, the name bounds, and
+  `publicUser`, the whole outward shape of an account. A leaf rather than a
+  route group, for the reason `rooms.ts` is one — four route groups read these
+  three things, and a module importing them from `app.ts` would close a cycle.
+  An account is global; a membership is per-server and belongs to `members.ts`.
+- `src/turnstile.ts` owns the optional Cloudflare challenge: the operator's
+  configuration and the verification an unauthenticated caller has to pass.
+  Invite acceptance without a session is the only route that asks, and it
+  receives the config through its `RouteContext`.
 - `src/db/schema.ts` defines Drizzle table metadata.
 - `src/db/database.ts` initializes SQLite and performs compatibility migrations.
 - `src/auth` owns token hashing, owner-claim behavior, and sessions.
@@ -85,6 +104,12 @@ web serving, and owner recovery CLIs.
   revocation, and cookie attributes the same way.
 - `test/servers.test.ts` covers room creation, the AFK timeout fallback, the
   name bounds, and the exact set of routes that module claims.
+- `test/invites.test.ts` covers the invite presets, the bounded default expiry,
+  hash-only token storage, use and active-link counting, what a member's
+  revocation does and does not touch, and the exact set of routes that module
+  claims.
+- `test/users.test.ts` covers the name bounds, what creating an account writes,
+  and that `publicUser` exposes four fields and nothing else.
 - `test/audit.test.ts` covers what an audit line records and that it stays
   inside the caller's transaction.
 - `test/http.test.ts` covers the shared route preamble: which callers it lets
