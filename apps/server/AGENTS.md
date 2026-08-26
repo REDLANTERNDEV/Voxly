@@ -46,6 +46,15 @@ web serving, and owner recovery CLIs.
   distinction two call sites in two modules. `revokeInvitesCreatedBy` is
   exported back to `app.ts`, which calls it from the two membership-moderation
   routes that take a member's outstanding links with them.
+- `src/messages.ts` owns a message in a text room: the history, posting,
+  editing, preview suppression, deletion, and the lookup and outward shape all
+  five answer with. A route group with private helpers rather than a leaf —
+  nothing outside message code reads a message row or emits `message:*`. The
+  five routes deliberately do not share one preamble: reading, editing,
+  suppressing and deleting answer a voice room with the same 404 as a missing
+  room, before membership is consulted, while posting checks membership first
+  and then refuses a real room with a 400. `test/messages.test.ts` pins that
+  asymmetry; do not flatten it into one guard to tidy the file.
 - `src/users.ts` owns the account itself: creating one, the name bounds, and
   `publicUser`, the whole outward shape of an account. A leaf rather than a
   route group, for the reason `rooms.ts` is one — four route groups read these
@@ -108,6 +117,9 @@ web serving, and owner recovery CLIs.
   hash-only token storage, use and active-link counting, what a member's
   revocation does and does not touch, and the exact set of routes that module
   claims.
+- `test/messages.test.ts` covers the defensive read of the stored suppression
+  list, the reply excerpt, the exact set of routes that module claims, and how
+  each of the five answers a room that cannot hold the message.
 - `test/users.test.ts` covers the name bounds, what creating an account writes,
   and that `publicUser` exposes four fields and nothing else.
 - `test/audit.test.ts` covers what an audit line records and that it stays

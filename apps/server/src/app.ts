@@ -5,9 +5,7 @@ import staticPlugin from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { Server } from "socket.io";
 import { z } from "zod";
-import { replyExcerptMaxLength } from "@voxly/shared";
 import type {
-  ChatMessage,
   ClientToServerEvents,
   PresenceUser,
   ServerToClientEvents
@@ -45,11 +43,9 @@ import {
   activateServerMembership,
   activeServerIds,
   hasActiveServerMembership,
-  isServerOwner,
   mayCreateInvites,
   presenceStatusOf,
   publicPresence,
-  requireServerMember,
   requireServerOwner,
   serverMembership,
   serverPresenceUser,
@@ -59,7 +55,6 @@ import {
 } from "./members.js";
 import { roomById } from "./rooms.js";
 import {
-  messageLimit,
   requireJoinedServer,
   requireOwnedServer,
   roomIdParam,
@@ -70,6 +65,7 @@ import {
   type RouteContext
 } from "./http.js";
 import { registerInviteRoutes, revokeInvitesCreatedBy } from "./invites.js";
+import { registerMessageRoutes } from "./messages.js";
 import { registerServerRoutes } from "./servers.js";
 import { createUser, nicknameSchema, publicUser } from "./users.js";
 import { roomIdPayloadSchema, safeSocketHandler, socketsForUser } from "./socket.js";
@@ -118,21 +114,6 @@ interface IceServer {
   username?: string;
   credential?: string;
 }
-
-type MessageRow = {
-  id: string;
-  roomId: string;
-  userId: string;
-  nickname: string;
-  body: string;
-  createdAt: string;
-  editedAt: string | null;
-  suppressedEmbedKeysJson: string | null;
-  replyToMessageId: string | null;
-  replyToUserId: string | null;
-  replyToNickname: string | null;
-  replyToBody: string | null;
-};
 
 /** Fastify attaches `statusCode` to framework errors; anything without one is a fault. */
 function errorStatusCode(error: unknown) {
@@ -201,6 +182,7 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
   // Fastify instance; see `http.ts` for what they are handed and why.
   registerServerRoutes(context);
   registerInviteRoutes(context);
+  registerMessageRoutes(context);
   if (options.webDistPath) {
     await registerWebStatic(server, options.webDistPath);
   }
@@ -236,8 +218,8 @@ async function registerWebStatic(server: FastifyInstance, webDistPath: string) {
 
 /**
  * The routes no domain module owns yet: health and config, the session
- * endpoints, the member directory, membership moderation, messages, and the
- * owner panel.
+ * endpoints, the member directory, membership moderation, and the owner
+ * panel.
  *
  * Takes the same `RouteContext` the extracted modules are handed rather than
  * the pieces of it, so there is no way for the handshake these routes use and
@@ -664,217 +646,6 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext) {
     };
   });
 
-  server.get("/api/rooms/:roomId/messages", async (request, reply) => {
-    const user = requireUser(database, request, reply, options.secureCookies);
-    if (!user) {
-      return;
-    }
-    const { roomId } = z.object({ roomId: roomIdParam }).parse(request.params);
-    const room = roomById(database.sqlite, roomId);
-    if (!room || room.kind !== "text") {
-      return reply.code(404).send({ error: "room_not_found" });
-    }
-    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
-    const { limit } = z.object({
-      limit: z.coerce.number().int().positive().max(200).default(100)
-    }).parse(request.query ?? {});
-
-    const messages = all<MessageRow>(
-        database.sqlite,
-        `select messages.id, messages.room_id as roomId, messages.user_id as userId,
-          coalesce(server_members.nickname, users.nickname) as nickname,
-          messages.body, messages.created_at as createdAt,
-          messages.edited_at as editedAt,
-          messages.suppressed_embed_keys as suppressedEmbedKeysJson,
-          messages.reply_to_message_id as replyToMessageId,
-          ${replyJoinColumns}
-         from messages
-         join rooms on rooms.id = messages.room_id
-         join server_members
-           on server_members.server_id = rooms.server_id
-          and server_members.user_id = messages.user_id
-         join users on users.id = messages.user_id
-         ${replyJoinClause}
-         where messages.room_id = ?
-          and messages.deleted_at is null
-         order by messages.created_at desc, messages.rowid desc
-         limit ?`,
-        [roomId, limit]
-      ).reverse().map(publicMessage);
-
-    return {
-      messages
-    };
-  });
-
-  server.post("/api/rooms/:roomId/messages", { config: messageLimit }, async (request, reply) => {
-    const user = requireUser(database, request, reply, options.secureCookies);
-    if (!user) {
-      return;
-    }
-    const { roomId } = z.object({ roomId: roomIdParam }).parse(request.params);
-    const body = z.object({
-      body: z.string().trim().min(1).max(2000),
-      replyToMessageId: z.string().min(1).max(64).optional()
-    }).parse(request.body);
-    const room = roomById(database.sqlite, roomId);
-    if (!room) {
-      return reply.code(404).send({ error: "room_not_found" });
-    }
-    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
-    if (room.kind !== "text") {
-      return reply.code(400).send({ error: "messages_require_text_room" });
-    }
-
-    // Scoped to this room, so a reply can never quote a message the author
-    // could not otherwise read.
-    const replyTarget = body.replyToMessageId
-      ? messageById(database.sqlite, roomId, body.replyToMessageId)
-      : null;
-    if (body.replyToMessageId && !replyTarget) {
-      return reply.code(404).send({ error: "reply_target_not_found" });
-    }
-
-    const sender = serverPresenceUser(database.sqlite, room.serverId, user.id);
-    if (!sender) return reply.code(403).send({ error: "server_forbidden" });
-    const message: ChatMessage = {
-      id: crypto.randomUUID(),
-      roomId,
-      userId: user.id,
-      nickname: sender.nickname,
-      body: body.body,
-      createdAt: new Date().toISOString(),
-      editedAt: null,
-      suppressedEmbedKeys: [],
-      replyToMessageId: replyTarget?.id ?? null,
-      replyTo: replyTarget
-        ? {
-          messageId: replyTarget.id,
-          userId: replyTarget.userId,
-          nickname: replyTarget.nickname,
-          body: replyExcerpt(replyTarget.body)
-        }
-        : null
-    };
-
-    run(
-      database.sqlite,
-      "insert into messages (id, room_id, user_id, body, created_at, reply_to_message_id) values (?, ?, ?, ?, ?, ?)",
-      [message.id, message.roomId, message.userId, message.body, message.createdAt, message.replyToMessageId]
-    );
-    database.save();
-    // Every active server member needs the lightweight notification so clients
-    // can maintain unread counts for text rooms they have not opened yet.
-    io.to(`server:${room.serverId}`).emit("message:new", message);
-
-    return reply.code(201).send({ message });
-  });
-
-  server.patch("/api/rooms/:roomId/messages/:messageId", { config: messageLimit }, async (request, reply) => {
-    const user = requireUser(database, request, reply, options.secureCookies);
-    if (!user) {
-      return;
-    }
-    const { roomId, messageId } = z.object({
-      roomId: roomIdParam,
-      messageId: z.string().uuid()
-    }).parse(request.params);
-    const body = z.object({ body: z.string().trim().min(1).max(2000) }).parse(request.body);
-    const room = roomById(database.sqlite, roomId);
-    if (!room || room.kind !== "text") {
-      return reply.code(404).send({ error: "room_not_found" });
-    }
-    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
-    const current = messageById(database.sqlite, roomId, messageId);
-    if (!current) {
-      return reply.code(404).send({ error: "message_not_found" });
-    }
-    if (current.userId !== user.id) {
-      return reply.code(403).send({ error: "forbidden" });
-    }
-
-    const editedAt = new Date().toISOString();
-    run(database.sqlite, "update messages set body = ?, edited_at = ? where id = ?", [
-      body.body,
-      editedAt,
-      messageId
-    ]);
-    database.save();
-    const message = messageById(database.sqlite, roomId, messageId);
-    if (!message) {
-      return reply.code(404).send({ error: "message_not_found" });
-    }
-    io.to(`room:${roomId}`).emit("message:updated", message);
-    return { message };
-  });
-
-  server.patch("/api/rooms/:roomId/messages/:messageId/embeds", { config: messageLimit }, async (request, reply) => {
-    const user = requireUser(database, request, reply, options.secureCookies);
-    if (!user) return;
-    const { roomId, messageId } = z.object({
-      roomId: roomIdParam,
-      messageId: z.string().uuid()
-    }).parse(request.params);
-    const { embedKey } = z.object({
-      embedKey: z.string().min(3).max(160).regex(/^(youtube|x|vimeo|spotify):[A-Za-z0-9:_-]+$/u)
-    }).parse(request.body);
-    const room = roomById(database.sqlite, roomId);
-    if (!room || room.kind !== "text") return reply.code(404).send({ error: "room_not_found" });
-    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
-    const current = messageById(database.sqlite, roomId, messageId);
-    if (!current) return reply.code(404).send({ error: "message_not_found" });
-    if (current.userId !== user.id && !isServerOwner(database.sqlite, room.serverId, user.id)) {
-      return reply.code(403).send({ error: "forbidden" });
-    }
-
-    if (!current.suppressedEmbedKeys.includes(embedKey)) {
-      if (current.suppressedEmbedKeys.length >= 16) {
-        return reply.code(409).send({ error: "embed_suppression_limit" });
-      }
-      run(database.sqlite, "update messages set suppressed_embed_keys = ? where id = ?", [
-        JSON.stringify([...current.suppressedEmbedKeys, embedKey]),
-        messageId
-      ]);
-      database.save();
-    }
-    const message = messageById(database.sqlite, roomId, messageId);
-    if (!message) return reply.code(404).send({ error: "message_not_found" });
-    io.to(`room:${roomId}`).emit("message:updated", message);
-    return { message };
-  });
-
-  server.delete("/api/rooms/:roomId/messages/:messageId", { config: messageLimit }, async (request, reply) => {
-    const user = requireUser(database, request, reply, options.secureCookies);
-    if (!user) {
-      return;
-    }
-    const { roomId, messageId } = z.object({
-      roomId: roomIdParam,
-      messageId: z.string().uuid()
-    }).parse(request.params);
-    const room = roomById(database.sqlite, roomId);
-    if (!room || room.kind !== "text") {
-      return reply.code(404).send({ error: "room_not_found" });
-    }
-    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
-    const current = messageById(database.sqlite, roomId, messageId);
-    if (!current) {
-      return reply.code(404).send({ error: "message_not_found" });
-    }
-    if (current.userId !== user.id && !isServerOwner(database.sqlite, room.serverId, user.id)) {
-      return reply.code(403).send({ error: "forbidden" });
-    }
-
-    run(database.sqlite, "update messages set deleted_at = ?, deleted_by_user_id = ? where id = ?", [
-      new Date().toISOString(),
-      user.id,
-      messageId
-    ]);
-    database.save();
-    io.to(`room:${roomId}`).emit("message:deleted", { roomId, messageId });
-    return reply.code(204).send();
-  });
-
   server.post("/api/owner/users/:userId/ban", async (request, reply) => {
     const owner = requireOwner(database, request, reply, options.secureCookies);
     if (!owner) {
@@ -1098,93 +869,6 @@ function registerRealtime(
     }
   };
 }
-
-function messageById(sqlite: DatabaseSync, roomId: string, messageId: string) {
-  const row = one<MessageRow>(
-    sqlite,
-    `select messages.id, messages.room_id as roomId, messages.user_id as userId,
-      coalesce(server_members.nickname, users.nickname) as nickname,
-      messages.body, messages.created_at as createdAt,
-      messages.edited_at as editedAt,
-      messages.suppressed_embed_keys as suppressedEmbedKeysJson,
-      messages.reply_to_message_id as replyToMessageId,
-      ${replyJoinColumns}
-     from messages
-     join rooms on rooms.id = messages.room_id
-     join server_members
-       on server_members.server_id = rooms.server_id
-      and server_members.user_id = messages.user_id
-     join users on users.id = messages.user_id
-     ${replyJoinClause}
-     where messages.room_id = ?
-      and messages.id = ?
-      and messages.deleted_at is null`,
-    [roomId, messageId]
-  );
-  return row ? publicMessage(row) : null;
-}
-
-function publicMessage(row: MessageRow): ChatMessage {
-  let suppressedEmbedKeys: string[] = [];
-  try {
-    const parsed = JSON.parse(row.suppressedEmbedKeysJson ?? "[]") as unknown;
-    if (Array.isArray(parsed)) {
-      suppressedEmbedKeys = parsed.filter((key): key is string => typeof key === "string").slice(0, 16);
-    }
-  } catch {
-    suppressedEmbedKeys = [];
-  }
-  return {
-    id: row.id,
-    roomId: row.roomId,
-    userId: row.userId,
-    nickname: row.nickname,
-    body: row.body,
-    createdAt: row.createdAt,
-    editedAt: row.editedAt,
-    suppressedEmbedKeys,
-    replyToMessageId: row.replyToMessageId,
-    // Null while `replyToMessageId` is set means the quoted message has since
-    // been deleted. The reply itself stays; only the excerpt goes.
-    replyTo: row.replyToMessageId !== null && row.replyToUserId !== null
-      ? {
-        messageId: row.replyToMessageId,
-        userId: row.replyToUserId,
-        nickname: row.replyToNickname ?? "",
-        body: replyExcerpt(row.replyToBody ?? "")
-      }
-      : null
-  };
-}
-
-/**
- * The quote strip is one line. Trimming server-side keeps a 2,000-character
- * message from being sent in full behind every reply to it.
- */
-function replyExcerpt(body: string) {
-  const collapsed = body.replace(/\s+/g, " ").trim();
-  return collapsed.length > replyExcerptMaxLength
-    ? `${collapsed.slice(0, replyExcerptMaxLength)}…`
-    : collapsed;
-}
-
-/**
- * A reply may only quote a live message in the same room, so the join is scoped
- * to the room rather than trusting the stored id. A quote that escaped its room
- * would disclose another room's content to someone who cannot read it.
- */
-const replyJoinColumns = `quoted.user_id as replyToUserId,
-      coalesce(quoted_members.nickname, quoted_users.nickname) as replyToNickname,
-      quoted.body as replyToBody`;
-
-const replyJoinClause = `left join messages quoted
-       on quoted.id = messages.reply_to_message_id
-      and quoted.room_id = messages.room_id
-      and quoted.deleted_at is null
-     left join users quoted_users on quoted_users.id = quoted.user_id
-     left join server_members quoted_members
-       on quoted_members.server_id = rooms.server_id
-      and quoted_members.user_id = quoted.user_id`;
 
 function normalizePublicUrl(value: string | undefined) {
   return value ? value.replace(/\/+$/, "") : null;
