@@ -89,23 +89,23 @@ export function musicTransport(
 }
 
 /**
- * What the panel says when nobody has just asked for anything.
+ * What the panel says about the room when nobody has just asked for anything —
+ * and it is almost always nothing.
  *
- * The mute is said *while something is playing* and not otherwise, because that
- * is the one state where it explains anything: the Queue says a Track is
- * playing and the room cannot hear it. Over a paused or an empty Queue the
- * silence needs no explaining, and a sentence about a mute would be one more
- * thing to read for a room that is behaving exactly as it looks.
+ * Playing and paused are already on the transport control and on the head of
+ * the Queue. Saying them a third time here is one more thing to read about a
+ * room that is doing exactly what it appears to be doing, so this stays empty
+ * for them. "Ready" is worse than redundant: a bot that has not been summoned
+ * and a server with no Music bot at all look identical from here, so the word
+ * is a promise the panel cannot keep.
  *
- * It used to be said for a second reason as well — that it named an action, the
- * member being asked to press Pause to be sure the bot was quiet. That reason
- * has gone: the bot silences itself now (ADR-0009), so the sentence reports
- * what has already happened rather than asking anyone to finish it.
+ * The mute is the one thing left, because it is the one state the room cannot
+ * see: the Queue says a Track is playing and nobody can hear it. `null` for
+ * everything else, so a caller has to decide what an empty line looks like
+ * rather than being handed a sentence to render.
  */
-export function musicRestingKey(transport: MusicTransport): TranslationKey {
-  if (transport.playing) return transport.muted ? "music.muted" : "music.playing";
-  if (transport.currentEntryId) return "music.paused";
-  return "music.idle";
+export function musicRestingKey(transport: MusicTransport): TranslationKey | null {
+  return transport.playing && transport.muted ? "music.muted" : null;
 }
 
 /**

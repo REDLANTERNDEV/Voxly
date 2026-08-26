@@ -54,6 +54,10 @@ _Avoid_: Match, hit, candidate, suggestion, option
 The record of what happened during a Set — who queued a Track, who skipped one, and the Tracks that would not play when their turn came. Every line but those names a member; a Track failing is the one thing in it the Music bot says about itself. It exists only for the duration of the Set.
 _Avoid_: History, audit log, activity feed
 
+**Reply**:
+What the Music bot says back to the one member who just asked for something — whether the request was taken or refused. It belongs to that member, is never shown to the room, and gives way to their next request. Distinct from the Set log, which is the room's record; wider than an *answer*, which in the control protocol names only a request that succeeded.
+_Avoid_: Answer, response, status, notification, toast
+
 ### Where a source's own words are allowed
 
 **Track** is what *Voxly* calls a piece of audio, and nothing in Voxly should

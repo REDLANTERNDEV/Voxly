@@ -1,7 +1,7 @@
 import type { MusicControlAck, MusicQueueState, MusicSearchResult, VoiceMemberState } from "@voxly/shared";
 import { useEffect, useRef, useState } from "react";
 import type { Translate } from "../../app/types.js";
-import { CloseIcon } from "../../components/ui/Icons.js";
+import { CloseIcon, LeaveIcon, PauseIcon, PlayIcon, PlayingIcon, SkipIcon } from "../../components/ui/Icons.js";
 import {
   isSendableInput,
   musicBotIn,
@@ -144,7 +144,7 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
   // Nothing queued is nothing to play, pause or skip. A control that is visible
   // and enabled and does nothing is indistinguishable from a broken one.
   const transportDisabled = busy || !transport.currentEntryId;
-  const resting = t(musicRestingKey(transport));
+  const restingKey = musicRestingKey(transport);
 
   // Put the keyboard back on the field that queues the next Track, rather than
   // at the top of the document, when the control a member just used went away
@@ -166,14 +166,18 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
     if (results.length > 0) firstResultRef.current?.focus();
   }, [results]);
   /**
-   * One line, and it is the live region. What is playing and what is coming are
-   * the list's job now, so this carries only the outcome of what somebody just
-   * asked for: the sentence a refusal earned, or the confirmation that a paste
-   * landed — which is the feedback a screen-reader user gets in place of
-   * watching the link field empty itself — and otherwise what the room says the
-   * bot is doing.
+   * The member's Reply: what the bot said back to *this* member about what they
+   * just asked for, refusal or acknowledgement alike. It sits under the field
+   * that produced it and it is the live region, because it is the feedback a
+   * screen-reader user gets in place of watching the field empty itself.
+   *
+   * Separate from the room's notice below, which belongs to everybody and says
+   * only the one thing the room cannot see for itself. They used to share a
+   * line and therefore took turns: a member whose request was refused while the
+   * bot was muted saw one of the two and never learned about the other.
    */
-  const message = pending ? t("music.summoning") : refusal || accepted || resting;
+  const reply = pending ? t("music.summoning") : refusal || accepted;
+  const roomNotice = restingKey ? t(restingKey) : "";
 
   return (
     <section
@@ -191,7 +195,6 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
       <header className="compact-section-head">
         <div>
           <p className="label" id="musicPanelTitle">{t("music.title")}</p>
-          <span>{t("music.copy")}</span>
         </div>
       </header>
       <form
@@ -216,6 +219,7 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
             // neither the list nor the sentence that pointed at it.
             setResults([]);
             setAccepted("");
+            setRefusal("");
           }}
           placeholder={t("music.inputPlaceholder")}
           type="text"
@@ -225,6 +229,14 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
           {t("music.add")}
         </button>
       </form>
+      {/* Always rendered, never conditionally: a live region has to be in the
+          document before its content arrives, or the first Reply is the one
+          nobody hears. Its role stays put for the same reason — swapping
+          between status and alert as the Reply changes is not something screen
+          readers follow reliably. The colour is what changes, and it is the
+          app's own colour for a failure rather than the muted grey this used
+          to share with the room's status. */}
+      <p className={`music-reply ${refusal ? "error-text" : "muted small"}`} role="status" aria-live="polite">{reply}</p>
       {/* What a typed name might have meant. This member's list and nobody
           else's — it never reaches `music:queue`, and ADR-0007 says why. */}
       {resultRows.length > 0 ? (
@@ -271,9 +283,19 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
             <ol className="music-queue-list">
               {rows.map((row) => (
                 <li className={`music-queue-row ${row.isCurrent ? "is-current" : ""}`} key={row.entryId}>
-                  {/* The Track that is playing is named, not merely shaded: a
-                      member who cannot tell two greys apart still reads it. */}
-                  <span className="music-queue-position">{row.positionLabel}</span>
+                  {/* The Track that is playing is marked, not merely shaded: a
+                      member who cannot tell two greys apart still gets the word,
+                      because `role="img"` gives the mark the accessible name the
+                      row used to spend a whole column of text on. The words moved
+                      into the mark rather than being dropped — the transport
+                      control and this row were saying the same thing twice. */}
+                  {row.isCurrent ? (
+                    <span className="music-queue-position is-current" role="img" aria-label={row.positionLabel}>
+                      {transport.playing ? <PlayingIcon /> : <PauseIcon />}
+                    </span>
+                  ) : (
+                    <span className="music-queue-position">{row.positionLabel}</span>
+                  )}
                   <span className="music-queue-copy">
                     <strong>{row.title}</strong>
                     <span>{t("music.requestedBy", { nickname: row.requester })}</span>
@@ -300,46 +322,59 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
           )}
         </section>
       ) : null}
+      {transport.present || roomNotice ? (
       <div className="music-panel-controls">
         {transport.present ? (
           <>
-            {/* One button, and its own label says which half it is. No pressed
-                state announced beside that: "Pause, pressed" leaves a listener
-                working out whether the music is running or stopped, which is
-                the one thing the label has already told them. */}
+            {/* One button, and the mark on it says which half it is. The word
+                moved from the face into the accessible name when the face
+                became an icon: it is still the only place the pressed state is
+                said, because "Pause, pressed" leaves a listener working out
+                whether the music is running or stopped, which is the one thing
+                the name has already told them. */}
             <button
-              className={`btn ${transport.playing ? "is-active" : ""}`}
-              type="button"
+              aria-label={transport.playing ? t("music.pause") : t("music.play")}
+              className="icon-btn music-transport"
               disabled={transportDisabled}
               onClick={() => void send(transportToggleCommand(transport))}
+              title={transport.playing ? t("music.pause") : t("music.play")}
+              type="button"
             >
-              {transport.playing ? t("music.pause") : t("music.play")}
+              {transport.playing ? <PauseIcon /> : <PlayIcon />}
             </button>
             {/* The skip names the entry it believes is playing. A panel one
                 message out of date therefore skips nothing rather than skipping
                 whatever moved up — which is what makes two members pressing it
                 together cost one Track. */}
             <button
-              className="btn"
-              type="button"
+              aria-label={t("music.skip")}
+              className="icon-btn music-transport"
               disabled={transportDisabled}
               onClick={() => {
                 // Narrowing, not a second guard: `disabled` has already ruled
                 // this out, and the command cannot carry a null entry.
                 if (transport.currentEntryId) void send({ kind: "skip", entryId: transport.currentEntryId });
               }}
+              title={t("music.skip")}
+              type="button"
             >
-              {t("music.skip")}
-            </button>
-            <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => void send({ kind: "leave" })}>
-              {t("music.leave")}
+              <SkipIcon />
             </button>
           </>
         ) : null}
-        <span className="muted small" aria-live="polite">
-          {message}
-        </span>
+        {/* The room's own notice, and the only thing left in it: the mute,
+            which is the one state the room cannot see for itself. Before the
+            control that sends the bot away, so that control keeps the same
+            place on the row whether or not an owner has muted anything. */}
+        {roomNotice ? <span className="music-room-notice muted small">{roomNotice}</span> : null}
+        {transport.present ? (
+          <button className="btn btn-ghost music-leave" type="button" disabled={busy} onClick={() => void send({ kind: "leave" })}>
+            <LeaveIcon />
+            <span>{t("music.leave")}</span>
+          </button>
+        ) : null}
       </div>
+      ) : null}
       {/* Last on the page, because it is the part that grows. The Queue grows
           when somebody adds; this grows on every press anyone in the room
           makes, including a pause that changes nothing else here — so anything

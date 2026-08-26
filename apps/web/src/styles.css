@@ -2257,6 +2257,11 @@ button.reply-quote:focus-visible .reply-quote-body {
   color: var(--accent);
 }
 
+.music-queue-position.is-current {
+  align-items: center;
+  display: flex;
+}
+
 .music-queue-copy {
   display: grid;
   gap: 2px;
@@ -2320,16 +2325,35 @@ button.reply-quote:focus-visible .reply-quote-body {
   padding: 12px;
 }
 
-.music-panel-controls .muted {
+.music-panel-controls .music-room-notice {
   flex: 1 1 12ch;
 }
 
-.music-panel-controls .btn.is-active {
-  background: color-mix(in oklab, var(--accent), var(--bg) 89%);
-  border-color: color-mix(in oklch, var(--accent), var(--border) 28%);
+/* Square while it holds only a mark, so the two transport controls read as a
+   pair rather than as two buttons that happen to sit together. */
+.music-transport {
+  padding: 0;
+  width: 38px;
+}
+
+/* Keeps its word: there is no shared mark for sending the bot away, and it is
+   the one control here whose undo costs the room its Queue. */
+.music-leave {
+  gap: 6px;
+  margin-inline-start: auto;
+}
+
+/* The member's Reply, under the field that earned it. Space is reserved even
+   when it is empty so an arriving sentence does not push the Queue down the
+   page under somebody reaching for it. */
+.music-reply {
+  margin: 0;
+  min-block-size: 18px;
+  padding: 6px 12px 0;
 }
 
 .music-panel-controls .btn:disabled,
+.music-panel-controls .icon-btn:disabled,
 .music-panel-link .btn:disabled,
 .music-results .btn:disabled {
   cursor: not-allowed;

@@ -30,3 +30,9 @@ export function ScreenIcon({ off }: { off: boolean }) {
   );
 }
 export function ReplyIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 8 5 12l4 4" /><path d="M5 12h8a6 6 0 0 1 6 6v1" /></svg>; }
+export function PlayIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5 18.5 12 8 18.5z" /></svg>; }
+export function PauseIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5.5v13" /><path d="M15 5.5v13" /></svg>; }
+export function SkipIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5.5 15 12 6 18.5z" /><path d="M18.5 5.5v13" /></svg>; }
+/** The Queue's head while it is sounding. Bars of unequal height so it reads as
+ *  level rather than as a third play control. */
+export function PlayingIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 13v6" /><path d="M12 6v13" /><path d="M18 10v9" /></svg>; }

@@ -108,19 +108,24 @@ describe("what the transport controls are looking at", () => {
     // Playing is the one state the mute explains: the Queue says a Track is
     // running and the room is silent. Over a paused or an empty Queue the
     // silence needs no explaining and the sentence would be noise.
-    assert.equal(musicRestingKey(musicTransport(mutedBot, halted)), "music.paused");
-    assert.equal(musicRestingKey(musicTransport(mutedBot, null)), "music.idle");
+    assert.equal(musicRestingKey(musicTransport(mutedBot, halted)), null);
+    assert.equal(musicRestingKey(musicTransport(mutedBot, null)), null);
     // The bot silences itself now (ticket 12), so the sentence reports a fact
     // rather than asking the member to finish the job by pausing it.
     assert.doesNotMatch(translate("en", "music.muted"), /Pause/i);
     assert.doesNotMatch(translate("tr", "music.muted"), /[Dd]uraklat/);
   });
 
-  it("says what the room is doing when nobody has just asked for anything", () => {
-    assert.equal(musicRestingKey(musicTransport(bot, sounding)), "music.playing");
-    assert.equal(musicRestingKey(musicTransport(bot, halted)), "music.paused");
-    assert.equal(musicRestingKey(musicTransport(bot, null)), "music.idle");
-    assert.equal(musicRestingKey(musicTransport(undefined, null)), "music.idle");
+  it("says nothing while the room is behaving exactly as it looks", () => {
+    // Playing and paused are on the transport control and on the Queue's head
+    // already. A third telling is one more thing to read for a room that is
+    // doing what it appears to be doing, so this line stays empty for it.
+    assert.equal(musicRestingKey(musicTransport(bot, sounding)), null);
+    assert.equal(musicRestingKey(musicTransport(bot, halted)), null);
+    assert.equal(musicRestingKey(musicTransport(bot, null)), null);
+    // No bot has been summoned. Saying "ready" here would be a promise the
+    // panel cannot keep: a server with no Music bot at all looks identical.
+    assert.equal(musicRestingKey(musicTransport(undefined, null)), null);
   });
 
   it("asks for the half of the toggle the member cannot see", () => {
@@ -264,7 +269,6 @@ describe("what a refusal says", () => {
   it("translates the controls themselves in both languages", () => {
     const keys = [
       "music.title",
-      "music.copy",
       "music.inputLabel",
       "music.inputPlaceholder",
       "music.add",
@@ -274,9 +278,6 @@ describe("what a refusal says", () => {
       "music.remove",
       "music.removeTrack",
       "music.leave",
-      "music.playing",
-      "music.paused",
-      "music.idle",
       "music.muted",
       "music.summoning",
       "music.queue",
@@ -927,9 +928,59 @@ describe("the control's placement", () => {
     assert.match(musicPanel, /if \(command\.kind === "add"\) setInput\(""\);/);
   });
 
-  it("announces status changes to a screen reader", () => {
-    assert.match(musicPanel, /aria-live="polite"/);
-    assert.match(musicPanel, /const resting = t\(musicRestingKey\(transport\)\);/);
+  it("keeps the Reply's live region in the document even while it is empty", () => {
+    // A live region that is rendered only once it has something to say is a
+    // region the screen reader never registered, so the first Reply is the one
+    // nobody hears. Rendered unconditionally, with the text as the only thing
+    // that changes.
+    assert.match(musicPanel, /<p className=\{`music-reply [^`]*`\} role="status" aria-live="polite">\{reply\}<\/p>/);
+    assert.doesNotMatch(musicPanel, /\{reply \? <p/);
+  });
+
+  it("does not swap the Reply's role as the Reply changes", () => {
+    // Screen readers do not reliably follow a region that changes between
+    // status and alert, so the colour carries the difference and the role
+    // stays put.
+    assert.doesNotMatch(musicPanel, /role=\{/);
+    assert.match(musicPanel, /className=\{`music-reply \$\{refusal \? "error-text" : "muted small"\}`\}/);
+  });
+
+  it("separates what the room is told from what this member is told", () => {
+    // They shared one line and therefore took turns: a refusal while the bot
+    // was muted showed one of the two and lost the other.
+    assert.match(musicPanel, /const reply = pending \? t\("music\.summoning"\) : refusal \|\| accepted;/);
+    assert.match(musicPanel, /const roomNotice = restingKey \? t\(restingKey\) : "";/);
+  });
+
+  it("clears the Reply when the member starts asking something else", () => {
+    // Editing the field is the start of a different question, and the answer
+    // to the last one must not sit under it looking current. The refusal is
+    // held to the same rule the Results and the acknowledgement already were.
+    const onChange = musicPanel.match(/onChange=\{\(event\) => \{[\s\S]*?\}\}/)?.[0] ?? "";
+
+    assert.match(onChange, /setResults\(\[\]\);/);
+    assert.match(onChange, /setAccepted\(""\);/);
+    assert.match(onChange, /setRefusal\(""\);/);
+  });
+
+  it("marks the head of the Queue instead of describing it", () => {
+    // The transport control and this row were saying the same thing twice.
+    // The word survives as the mark's accessible name rather than as a column
+    // of text, so nothing is lost to a member who reads rather than looks.
+    assert.match(musicPanel, /role="img" aria-label=\{row\.positionLabel\}/);
+    assert.match(musicPanel, /\{transport\.playing \? <PlayingIcon \/> : <PauseIcon \/>\}/);
+    assert.doesNotMatch(musicPanel, /<span className="music-queue-position">\{row\.positionLabel\}<\/span>\s*<span className="music-queue-copy">/);
+  });
+
+  it("keeps a word on the control that sends the bot away", () => {
+    // There is no shared mark for it, and it is the one control here whose
+    // undo costs the room its Queue.
+    assert.match(musicPanel, /<LeaveIcon \/>\s*<span>\{t\("music\.leave"\)\}<\/span>/);
+  });
+
+  it("does not repeat the placeholder as a paragraph above the field", () => {
+    assert.doesNotMatch(musicPanel, /music\.copy/);
+    assert.match(musicPanel, /placeholder=\{t\("music\.inputPlaceholder"\)\}/);
   });
 
   it("labels the one toggle by what pressing it does, and not also by a state", () => {
