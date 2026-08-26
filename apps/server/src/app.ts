@@ -2,7 +2,7 @@ import cookie from "@fastify/cookie";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import staticPlugin from "@fastify/static";
-import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
 import { Server } from "socket.io";
 import { z } from "zod";
 import type {
@@ -14,7 +14,6 @@ import type { DatabaseSync } from "node:sqlite";
 import type { AnalyticsConfig } from "./analytics.js";
 import { audit } from "./audit.js";
 import {
-  allSessions,
   authenticateHttp,
   authenticateSocket,
   authenticateWithoutRenewal,
@@ -23,7 +22,6 @@ import {
   requireOwner,
   requireUser,
   revokeSession,
-  revokeSessionsForUser,
   sessionCookieName,
   setSessionCookie
 } from "./auth/sessions.js";
@@ -66,6 +64,7 @@ import {
 } from "./http.js";
 import { registerInviteRoutes, revokeInvitesCreatedBy } from "./invites.js";
 import { registerMessageRoutes } from "./messages.js";
+import { registerOwnerPanelRoutes } from "./ownerPanel.js";
 import { registerServerRoutes } from "./servers.js";
 import { createUser, nicknameSchema, publicUser } from "./users.js";
 import { roomIdPayloadSchema, safeSocketHandler, socketsForUser } from "./socket.js";
@@ -107,12 +106,6 @@ export interface VoxlyApp {
   sqlite: DatabaseSync;
   dumpTables: () => Record<string, unknown>;
   close: () => Promise<void>;
-}
-
-interface IceServer {
-  urls: string | string[];
-  username?: string;
-  credential?: string;
 }
 
 /** Fastify attaches `statusCode` to framework errors; anything without one is a fault. */
@@ -183,6 +176,7 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
   registerServerRoutes(context);
   registerInviteRoutes(context);
   registerMessageRoutes(context);
+  registerOwnerPanelRoutes(context);
   if (options.webDistPath) {
     await registerWebStatic(server, options.webDistPath);
   }
@@ -217,9 +211,15 @@ async function registerWebStatic(server: FastifyInstance, webDistPath: string) {
 }
 
 /**
- * The routes no domain module owns yet: health and config, the session
- * endpoints, the member directory, membership moderation, and the owner
- * panel.
+ * The routes no domain module owns yet: health, config and RTC configuration;
+ * `/api/me`; everything that mints or ends a session — owner bootstrap, the
+ * owner claim, the bot exchange and logout; and the member directory alongside
+ * the membership-moderation routes.
+ *
+ * Membership moderation stays here rather than following the owner panel out.
+ * The two look alike and are not: these routes are server-scoped and answer to
+ * `requireOwnedServer`, while the panel in `ownerPanel.ts` is global-owner and
+ * addresses accounts and sessions across the installation.
  *
  * Takes the same `RouteContext` the extracted modules are handed rather than
  * the pieces of it, so there is no way for the handshake these routes use and
@@ -610,85 +610,6 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext) {
       return reply.code(409).send({ error: "member_not_in_voice" });
     }
     audit(database, owner.id, "voice.moved", userId, serverId);
-    database.save();
-    return reply.code(204).send();
-  });
-
-  server.get("/api/owner/users", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) {
-      return;
-    }
-
-    return {
-      users: all(
-        database.sqlite,
-        `select users.id,
-          coalesce(server_members.nickname, users.nickname) as nickname,
-          server_members.role,
-          server_members.banned_at as bannedAt
-         from server_members join users on users.id = server_members.user_id
-         where server_members.server_id = ? and server_members.removed_at is null
-         order by nickname asc`,
-        [defaultServerId]
-      )
-    };
-  });
-
-  server.get("/api/owner/sessions", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) {
-      return;
-    }
-
-    return {
-      sessions: allSessions(database.sqlite)
-    };
-  });
-
-  server.post("/api/owner/users/:userId/ban", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) {
-      return;
-    }
-    const { userId } = z.object({ userId: userIdParam }).parse(request.params);
-    // A global ban has no undo — the only unban clears a server membership, not
-    // `users.banned_at` — and seeding will not replace an account whose
-    // membership row still exists. Banning a bot here is unrecoverable.
-    if (rejectBotTarget(database, userId, reply)) return;
-    const now = new Date().toISOString();
-    const target = one<{ role: "owner" | "member" }>(
-      database.sqlite,
-      "select role from users where id = ?",
-      [userId]
-    );
-    run(database.sqlite, "update users set banned_at = ? where id = ? and role != 'owner'", [
-      now,
-      userId
-    ]);
-    // A ban that leaves the account usable is not a ban. Revoking the sessions
-    // closes the HTTP path; evicting the sockets closes the realtime path, which
-    // otherwise keeps serving messages and WebRTC signalling on the connection
-    // that was already open. Owners are exempt above, so skip the cascade for them.
-    if (target && target.role !== "owner") {
-      revokeSessionsForUser(database.sqlite, userId, now);
-    }
-    audit(database, owner.id, "user.banned", userId);
-    database.save();
-    if (target && target.role !== "owner") {
-      realtime.disconnectUser(userId);
-    }
-    return reply.code(204).send();
-  });
-
-  server.post("/api/owner/sessions/:sessionId/revoke", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) {
-      return;
-    }
-    const { sessionId } = z.object({ sessionId: z.string().uuid() }).parse(request.params);
-    revokeSession(database.sqlite, sessionId);
-    audit(database, owner.id, "session.revoked", sessionId);
     database.save();
     return reply.code(204).send();
   });

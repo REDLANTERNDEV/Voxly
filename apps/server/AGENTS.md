@@ -15,7 +15,11 @@ web serving, and owner recovery CLIs.
   events; `docs/adr/0013-route-modules-register-their-own-routes.md` records the
   shape and why. What stays is composition: the plugins, the error handler, the
   Socket.IO server, the connection and presence registry, and the routes no
-  domain module owns.
+  domain module owns — health, config and RTC, `/api/me`, the four endpoints
+  that mint or end a session (owner bootstrap, the owner claim, the bot
+  exchange, logout), and the member directory with the membership-moderation
+  routes. Those last are server-scoped and speak `requireOwnedServer`; do not
+  move them to `ownerPanel.ts`, which is the global role.
 - `src/http.ts` owns the plumbing every route module shares, as `socket.ts` does
   for socket handlers: the `RouteContext` a route module is handed, the
   `RealtimeModeration` vocabulary it speaks to reach live state, the shared
@@ -55,6 +59,19 @@ web serving, and owner recovery CLIs.
   room, before membership is consulted, while posting checks membership first
   and then refuses a real room with a 400. `test/messages.test.ts` pins that
   asymmetry; do not flatten it into one guard to tidy the file.
+- `src/ownerPanel.ts` owns the global-owner panel: the user list, the session
+  list, the global ban, and closing one session. "Owner" means the
+  installation-wide `users.role` here, not server ownership, which is why these
+  four do not use the `requireOwnedServer` preamble and membership moderation
+  stays in `app.ts`. It is not owner recovery (`auth/ownerClaims.ts`) and not
+  `/api/owner/invites` (`invites.ts`). Two things in it are recorded rather than
+  endorsed, and `test/ownerPanel.test.ts` pins both: the ban answers 204 and
+  writes its `user.banned` line even for an owner or a user id that names
+  nobody, and `POST /api/owner/sessions/:sessionId/revoke` does the same for an
+  unknown session; and the user list is default-server members while the session
+  list is global, so an owner can see a session belonging to somebody they
+  cannot ban from this panel. Fixing either changes what a caller and the audit
+  log are told — a behaviour change with its own ticket, not a tidy-up.
 - `src/users.ts` owns the account itself: creating one, the name bounds, and
   `publicUser`, the whole outward shape of an account. A leaf rather than a
   route group, for the reason `rooms.ts` is one — four route groups read these
@@ -120,6 +137,9 @@ web serving, and owner recovery CLIs.
 - `test/messages.test.ts` covers the defensive read of the stored suppression
   list, the reply excerpt, the exact set of routes that module claims, and how
   each of the five answers a room that cannot hold the message.
+- `test/ownerPanel.test.ts` covers the exact set of routes that module claims,
+  the different scopes of its two lists, and what the ban and the session
+  revocation do for a target that does not exist or is exempt.
 - `test/users.test.ts` covers the name bounds, what creating an account writes,
   and that `publicUser` exposes four fields and nothing else.
 - `test/audit.test.ts` covers what an audit line records and that it stays
