@@ -37,7 +37,14 @@ import {
   requireServerOwner
 } from "./members.js";
 import { publicRoom, roomById, roomColumns, type RoomRow } from "./rooms.js";
-import { authenticatedWriteLimit, type RouteContext } from "./http.js";
+import {
+  authenticatedWriteLimit,
+  requireJoinedServer,
+  requireOwnedServer,
+  roomIdParam,
+  serverIdParam,
+  type RouteContext
+} from "./http.js";
 
 /**
  * Resource ceilings.
@@ -52,7 +59,8 @@ const maxServersPerOwner = 50;
 export const serverNameSchema = z.string().trim().min(2).max(64);
 export const roomNameSchema = z.string().trim().min(2).max(64);
 
-export function registerServerRoutes({ fastify, database, io, realtime, secureCookies }: RouteContext) {
+export function registerServerRoutes(context: RouteContext) {
+  const { fastify, database, io, realtime, secureCookies } = context;
   fastify.get("/api/servers", async (request, reply) => {
     const user = requireUser(database, request, reply, secureCookies);
     if (!user) return;
@@ -111,10 +119,9 @@ export function registerServerRoutes({ fastify, database, io, realtime, secureCo
   });
 
   fastify.get("/api/servers/:serverId/rooms", async (request, reply) => {
-    const user = requireUser(database, request, reply, secureCookies);
-    if (!user) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    if (!requireServerMember(database, serverId, user.id, reply)) return;
+    const scope = requireJoinedServer(context, request, reply);
+    if (!scope) return;
+    const { serverId } = scope;
     return {
       rooms: all<RoomRow>(
         database.sqlite,
@@ -125,10 +132,9 @@ export function registerServerRoutes({ fastify, database, io, realtime, secureCo
   });
 
   fastify.post("/api/servers/:serverId/rooms", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, secureCookies);
-    if (!owner) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const scope = requireOwnedServer(context, request, reply);
+    if (!scope) return;
+    const { owner, serverId } = scope;
     const body = z.object({ name: roomNameSchema, kind: z.enum(["text", "voice"]) }).parse(request.body);
     const roomTotal = one<{ count: number }>(
       database.sqlite,
@@ -154,10 +160,9 @@ export function registerServerRoutes({ fastify, database, io, realtime, secureCo
   });
 
   fastify.patch("/api/servers/:serverId/afk", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, secureCookies);
-    if (!owner) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const scope = requireOwnedServer(context, request, reply);
+    if (!scope) return;
+    const { owner, serverId } = scope;
     const { afkTimeoutMinutes } = z.object({
       afkTimeoutMinutes: z.number().int().refine(isAfkTimeoutMinutes, { message: "unsupported_timeout" })
     }).parse(request.body);
@@ -171,9 +176,12 @@ export function registerServerRoutes({ fastify, database, io, realtime, secureCo
   });
 
   fastify.patch("/api/servers/:serverId", async (request, reply) => {
+    // Spelled out rather than using `requireOwnedServer`: this route answers a
+    // malformed body before it answers a caller who does not own the server,
+    // and which of the two a client sees is observable.
     const owner = requireOwner(database, request, reply, secureCookies);
     if (!owner) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    const { serverId } = z.object({ serverId: serverIdParam }).parse(request.params);
     const { name } = z.object({ name: serverNameSchema }).parse(request.body);
     if (!requireServerOwner(database, serverId, owner.id, reply)) return;
     run(database.sqlite, "update servers set name = ? where id = ?", [name, serverId]);
@@ -184,13 +192,9 @@ export function registerServerRoutes({ fastify, database, io, realtime, secureCo
   });
 
   fastify.delete("/api/servers/:serverId/rooms/:roomId", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, secureCookies);
-    if (!owner) return;
-    const { serverId, roomId } = z.object({
-      serverId: z.string().min(1),
-      roomId: z.string().min(1)
-    }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const scope = requireOwnedServer(context, request, reply, { roomId: roomIdParam });
+    if (!scope) return;
+    const { owner, serverId, roomId } = scope;
     const room = roomById(database.sqlite, roomId);
     if (!room || room.serverId !== serverId) return reply.code(404).send({ error: "room_not_found" });
     const roomCount = one<{ count: number }>(database.sqlite, "select count(*) as count from rooms where server_id = ?", [serverId])?.count ?? 0;
@@ -213,10 +217,9 @@ export function registerServerRoutes({ fastify, database, io, realtime, secureCo
   });
 
   fastify.delete("/api/servers/:serverId", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, secureCookies);
-    if (!owner) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const scope = requireOwnedServer(context, request, reply);
+    if (!scope) return;
+    const { owner, serverId } = scope;
     const otherAccessibleServers = one<{ count: number }>(
       database.sqlite,
       `select count(*) as count from server_members

@@ -64,8 +64,14 @@ import { roomById } from "./rooms.js";
 import {
   authenticatedWriteLimit,
   messageLimit,
+  requireJoinedServer,
+  requireOwnedServer,
+  roomIdParam,
+  serverIdParam,
   unauthenticatedWriteLimit,
-  type RealtimeModeration
+  userIdParam,
+  type RealtimeModeration,
+  type RouteContext
 } from "./http.js";
 import { registerServerRoutes } from "./servers.js";
 import { roomIdPayloadSchema, safeSocketHandler, socketsForUser } from "./socket.js";
@@ -250,6 +256,10 @@ function registerRoutes(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
   realtime: RealtimeModeration
 ) {
+  // The same handshake the extracted route modules are given, so the shared
+  // route preambles read identically on either side of the boundary.
+  const context: RouteContext = { fastify: server, database, io, realtime, secureCookies: options.secureCookies };
+
   server.get("/api/health", async () => {
     // Deliberately unauthenticated and dependency-checking: container and load
     // balancer probes need a signal that the process can still reach SQLite,
@@ -500,10 +510,9 @@ function registerRoutes(
   });
 
   server.get("/api/servers/:serverId/directory", async (request, reply) => {
-    const user = requireUser(database, request, reply, options.secureCookies);
-    if (!user) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    if (!requireServerMember(database, serverId, user.id, reply)) return;
+    const scope = requireJoinedServer(context, request, reply);
+    if (!scope) return;
+    const { serverId } = scope;
     const members = all<{ userId: string; nickname: string; role: "owner" | "member"; canInvite: number; isBot: number }>(
       database.sqlite,
       `select users.id as userId,
@@ -529,10 +538,9 @@ function registerRoutes(
   });
 
   server.get("/api/servers/:serverId/members", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const scope = requireOwnedServer(context, request, reply);
+    if (!scope) return;
+    const { serverId } = scope;
     const members = all<{
       id: string;
       nickname: string;
@@ -575,7 +583,7 @@ function registerRoutes(
   server.post("/api/servers/:serverId/invites", { config: authenticatedWriteLimit }, async (request, reply) => {
     const user = requireUser(database, request, reply, options.secureCookies);
     if (!user) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    const { serverId } = z.object({ serverId: serverIdParam }).parse(request.params);
     const membership = requireServerInviter(database, serverId, user.id, reply);
     if (!membership) return;
     const body = inviteBodySchema.parse(request.body ?? {});
@@ -594,18 +602,15 @@ function registerRoutes(
   });
 
   server.get("/api/servers/:serverId/invites", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
-    return { invites: serverInvites(database.sqlite, serverId) };
+    const scope = requireOwnedServer(context, request, reply);
+    if (!scope) return;
+    return { invites: serverInvites(database.sqlite, scope.serverId) };
   });
 
   server.post("/api/servers/:serverId/invites/:inviteId/revoke", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const { serverId, inviteId } = z.object({ serverId: z.string().min(1), inviteId: z.string().uuid() }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const scope = requireOwnedServer(context, request, reply, { inviteId: z.string().uuid() });
+    if (!scope) return;
+    const { owner, serverId, inviteId } = scope;
     const result = revokeServerInvite(database, serverId, inviteId, owner.id);
     if (result === "not_found") return reply.code(404).send({ error: "invite_not_found" });
     if (result === "inactive") return reply.code(409).send({ error: "invite_not_active" });
@@ -613,12 +618,12 @@ function registerRoutes(
   });
 
   server.patch("/api/servers/:serverId/members/:userId/permissions", async (request, reply) => {
+    // Spelled out rather than using `requireOwnedServer`: this route answers a
+    // malformed body before it answers a caller who does not own the server,
+    // and which of the two a client sees is observable.
     const owner = requireOwner(database, request, reply, options.secureCookies);
     if (!owner) return;
-    const { serverId, userId } = z.object({
-      serverId: z.string().min(1),
-      userId: z.string().uuid()
-    }).parse(request.params);
+    const { serverId, userId } = z.object({ serverId: serverIdParam, userId: userIdParam }).parse(request.params);
     const { canInvite } = z.object({ canInvite: z.boolean() }).strict().parse(request.body);
     if (!requireServerOwner(database, serverId, owner.id, reply)) return;
     const target = serverMembership(database.sqlite, serverId, userId);
@@ -657,12 +662,12 @@ function registerRoutes(
   });
 
   server.patch("/api/servers/:serverId/members/:userId/nickname", async (request, reply) => {
+    // Spelled out rather than using `requireOwnedServer`: this route answers a
+    // malformed body before it answers a caller who does not own the server,
+    // and which of the two a client sees is observable.
     const owner = requireOwner(database, request, reply, options.secureCookies);
     if (!owner) return;
-    const { serverId, userId } = z.object({
-      serverId: z.string().min(1),
-      userId: z.string().uuid()
-    }).parse(request.params);
+    const { serverId, userId } = z.object({ serverId: serverIdParam, userId: userIdParam }).parse(request.params);
     const { nickname } = z.object({ nickname: nicknameSchema }).parse(request.body);
     if (!requireServerOwner(database, serverId, owner.id, reply)) return;
     const target = serverMembership(database.sqlite, serverId, userId);
@@ -685,12 +690,12 @@ function registerRoutes(
   });
 
   server.patch("/api/servers/:serverId/members/:userId/voice-moderation", async (request, reply) => {
+    // Spelled out rather than using `requireOwnedServer`: this route answers a
+    // malformed body before it answers a caller who does not own the server,
+    // and which of the two a client sees is observable.
     const owner = requireOwner(database, request, reply, options.secureCookies);
     if (!owner) return;
-    const { serverId, userId } = z.object({
-      serverId: z.string().min(1),
-      userId: z.string().uuid()
-    }).parse(request.params);
+    const { serverId, userId } = z.object({ serverId: serverIdParam, userId: userIdParam }).parse(request.params);
     const body = voiceModerationBodySchema.parse(request.body ?? {});
     if (!requireServerOwner(database, serverId, owner.id, reply)) return;
     const target = serverMembership(database.sqlite, serverId, userId);
@@ -718,14 +723,12 @@ function registerRoutes(
   });
 
   server.post("/api/servers/:serverId/members/:userId/:action", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const { serverId, userId, action } = z.object({
-      serverId: z.string().min(1),
-      userId: z.string().uuid(),
+    const scope = requireOwnedServer(context, request, reply, {
+      userId: userIdParam,
       action: z.enum(["ban", "unban", "kick"])
-    }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    });
+    if (!scope) return;
+    const { owner, serverId, userId, action } = scope;
     if (userId === owner.id) return reply.code(409).send({ error: "cannot_moderate_owner" });
     const member = serverMembership(database.sqlite, serverId, userId);
     if (!member) return reply.code(404).send({ error: "member_not_found" });
@@ -768,14 +771,9 @@ function registerRoutes(
   });
 
   server.post("/api/servers/:serverId/voice/:roomId/members/:userId/disconnect", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const { serverId, roomId, userId } = z.object({
-      serverId: z.string().min(1),
-      roomId: z.string().min(1),
-      userId: z.string().uuid()
-    }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const scope = requireOwnedServer(context, request, reply, { roomId: roomIdParam, userId: userIdParam });
+    if (!scope) return;
+    const { owner, serverId, roomId, userId } = scope;
     const room = roomById(database.sqlite, roomId);
     if (!room || room.serverId !== serverId || room.kind !== "voice") return reply.code(404).send({ error: "room_not_found" });
     if (!realtime.disconnectVoice(serverId, roomId, userId)) return reply.code(409).send({ error: "member_not_in_voice" });
@@ -785,14 +783,10 @@ function registerRoutes(
   });
 
   server.post("/api/servers/:serverId/voice/members/:userId/move", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const { serverId, userId } = z.object({
-      serverId: z.string().min(1),
-      userId: z.string().uuid()
-    }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
-    const { roomId } = z.object({ roomId: z.string().min(1) }).parse(request.body);
+    const scope = requireOwnedServer(context, request, reply, { userId: userIdParam });
+    if (!scope) return;
+    const { owner, serverId, userId } = scope;
+    const { roomId } = z.object({ roomId: roomIdParam }).parse(request.body);
     const room = roomById(database.sqlite, roomId);
     // Scoped to this server, so a move can never place a member in a room they
     // have no membership for.
@@ -815,10 +809,9 @@ function registerRoutes(
   });
 
   server.post("/api/servers/:serverId/members/:userId/access-links", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const { serverId, userId } = z.object({ serverId: z.string().min(1), userId: z.string().uuid() }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const scope = requireOwnedServer(context, request, reply, { userId: userIdParam });
+    if (!scope) return;
+    const { owner, serverId, userId } = scope;
     const member = serverMembership(database.sqlite, serverId, userId);
     if (!member || member.removed_at || member.banned_at) return reply.code(404).send({ error: "member_not_found" });
     if (rejectBotTarget(database, userId, reply)) return;
@@ -941,7 +934,7 @@ function registerRoutes(
     if (!user) {
       return;
     }
-    const { roomId } = z.object({ roomId: z.string().min(1) }).parse(request.params);
+    const { roomId } = z.object({ roomId: roomIdParam }).parse(request.params);
     const room = roomById(database.sqlite, roomId);
     if (!room || room.kind !== "text") {
       return reply.code(404).send({ error: "room_not_found" });
@@ -984,7 +977,7 @@ function registerRoutes(
     if (!user) {
       return;
     }
-    const { roomId } = z.object({ roomId: z.string().min(1) }).parse(request.params);
+    const { roomId } = z.object({ roomId: roomIdParam }).parse(request.params);
     const body = z.object({
       body: z.string().trim().min(1).max(2000),
       replyToMessageId: z.string().min(1).max(64).optional()
@@ -1048,7 +1041,7 @@ function registerRoutes(
       return;
     }
     const { roomId, messageId } = z.object({
-      roomId: z.string().min(1),
+      roomId: roomIdParam,
       messageId: z.string().uuid()
     }).parse(request.params);
     const body = z.object({ body: z.string().trim().min(1).max(2000) }).parse(request.body);
@@ -1084,7 +1077,7 @@ function registerRoutes(
     const user = requireUser(database, request, reply, options.secureCookies);
     if (!user) return;
     const { roomId, messageId } = z.object({
-      roomId: z.string().min(1),
+      roomId: roomIdParam,
       messageId: z.string().uuid()
     }).parse(request.params);
     const { embedKey } = z.object({
@@ -1121,7 +1114,7 @@ function registerRoutes(
       return;
     }
     const { roomId, messageId } = z.object({
-      roomId: z.string().min(1),
+      roomId: roomIdParam,
       messageId: z.string().uuid()
     }).parse(request.params);
     const room = roomById(database.sqlite, roomId);
@@ -1152,7 +1145,7 @@ function registerRoutes(
     if (!owner) {
       return;
     }
-    const { userId } = z.object({ userId: z.string().uuid() }).parse(request.params);
+    const { userId } = z.object({ userId: userIdParam }).parse(request.params);
     // A global ban has no undo — the only unban clears a server membership, not
     // `users.banned_at` — and seeding will not replace an account whose
     // membership row still exists. Banning a bot here is unrecoverable.

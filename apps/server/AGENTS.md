@@ -18,9 +18,16 @@ web serving, and owner recovery CLIs.
   domain module owns.
 - `src/http.ts` owns the plumbing every route module shares, as `socket.ts` does
   for socket handlers: the `RouteContext` a route module is handed, the
-  `RealtimeModeration` vocabulary it speaks to reach live state, and the shared
-  rate-limit tiers. It decides nothing. Give a route group a new setting by
-  adding a field here, not by passing it the whole `CreateVoxlyAppOptions`.
+  `RealtimeModeration` vocabulary it speaks to reach live state, the shared
+  rate-limit tiers, and the preamble every server-scoped route runs —
+  `requireOwnedServer` / `requireJoinedServer`, plus the `serverIdParam`,
+  `roomIdParam` and `userIdParam` path vocabulary. A new server-scoped route
+  starts from that preamble rather than restating the guard order; the
+  exceptions are routes that must answer a malformed body before a forbidden
+  caller, which spell the steps out and say so in a comment. It decides nothing
+  itself — `auth/sessions.ts` and `members.ts` still own the answers. Give a
+  route group a new setting by adding a field here, not by passing it the whole
+  `CreateVoxlyAppOptions`.
 - `src/audit.ts` owns the one line every consequential action writes. The write
   joins the caller's transaction and never saves on its own, so an audit row can
   never outlive a rollback of the thing it describes.
@@ -80,6 +87,9 @@ web serving, and owner recovery CLIs.
   name bounds, and the exact set of routes that module claims.
 - `test/audit.test.ts` covers what an audit line records and that it stays
   inside the caller's transaction.
+- `test/http.test.ts` covers the shared route preamble: which callers it lets
+  past, whether a refusal is 401 or 403, and the path vocabulary — including
+  that a member id must be a UUID.
 
 Keep SQL explicit and server-scoped. Prefer a small helper for repeated
 authorization or normalization rules rather than duplicating subtly different

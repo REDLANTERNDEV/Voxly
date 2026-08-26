@@ -133,6 +133,15 @@ composition may reach.
 - `RouteContext` will grow — `invites.ts` needs the Turnstile config, and the
   owner panel needs the bootstrap settings. Each addition is a line in this
   contract that says out loud which route group reads which option.
+- `http.ts` grew the preamble every server-scoped route shares —
+  `requireOwnedServer` and `requireJoinedServer`, over the `serverIdParam` /
+  `roomIdParam` / `userIdParam` path vocabulary — because the same four lines
+  had been retyped at fifteen call sites, `userId: z.string().uuid()` among
+  them, and that one is load-bearing: a bot account is given a UUID so that a
+  readable id cannot make it unmuteable. A rule retyped per route is a rule the
+  sixteenth route can drop silently. The routes that must answer a malformed
+  body before a forbidden caller keep the steps written out, because which of
+  the two a client sees is observable.
 - `auth/ownerClaims.ts` keeps a private `audit()` of its own, with a different
   signature and no `server_id`. It is now visibly a duplicate rather than an
   unremarkable local helper. Unifying it changes what those rows contain, so it
