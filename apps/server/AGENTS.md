@@ -9,7 +9,26 @@ The server workspace owns Fastify HTTP routes, cookie sessions, SQLite schema
 and migrations, Socket.IO authorization and state, RTC configuration, static
 web serving, and owner recovery CLIs.
 
-- `src/app.ts` is the HTTP and realtime composition root.
+- `src/app.ts` is the HTTP and realtime composition root. A route group that
+  owns its own rules registers itself against the Fastify instance rather than
+  handing handlers back here, the way `voice.ts` registers its own socket
+  events; `docs/adr/0013-route-modules-register-their-own-routes.md` records the
+  shape and why. What stays is composition: the plugins, the error handler, the
+  Socket.IO server, the connection and presence registry, and the routes no
+  domain module owns.
+- `src/http.ts` owns the plumbing every route module shares, as `socket.ts` does
+  for socket handlers: the `RouteContext` a route module is handed, the
+  `RealtimeModeration` vocabulary it speaks to reach live state, and the shared
+  rate-limit tiers. It decides nothing. Give a route group a new setting by
+  adding a field here, not by passing it the whole `CreateVoxlyAppOptions`.
+- `src/audit.ts` owns the one line every consequential action writes. The write
+  joins the caller's transaction and never saves on its own, so an audit row can
+  never outlive a rollback of the thing it describes.
+- `src/servers.ts` owns a server and the rooms inside it: creation, rename,
+  deletion, the room list, the AFK timeout, and the request handlers for all of
+  them. A room only exists inside a server and the two lifecycles are one, so
+  the last-room floor, the last-owner-server refusal and the single deletion
+  transaction stay together here.
 - `src/db/schema.ts` defines Drizzle table metadata.
 - `src/db/database.ts` initializes SQLite and performs compatibility migrations.
 - `src/auth` owns token hashing, owner-claim behavior, and sessions.
@@ -36,7 +55,10 @@ web serving, and owner recovery CLIs.
 - `src/music.ts` owns the Music bot's control plane: whether a member's request
   reaches the bot, and nothing about what the bot then does.
 - `src/rooms.ts` owns the room row shape and the lookup both routes and voice
-  authorize against.
+  authorize against. It stays a leaf that reaches for nothing live, so
+  `servers.ts`, `voice.ts` and `music.ts` may all import it. Room *routes*
+  belong in `servers.ts`; they need `io` and the realtime handles, and putting
+  them here would buy a cycle back through `voice.ts`.
 - `src/socket.ts` owns the plumbing every socket handler shares: the throwing
   guard, the optional-ack helper, and the per-user socket lookup.
 - `src/rtcConfig.ts` produces authenticated browser ICE configuration.
@@ -54,6 +76,10 @@ web serving, and owner recovery CLIs.
   minting the same way.
 - `test/sessions.test.ts` covers session creation, authentication, renewal,
   revocation, and cookie attributes the same way.
+- `test/servers.test.ts` covers room creation, the AFK timeout fallback, the
+  name bounds, and the exact set of routes that module claims.
+- `test/audit.test.ts` covers what an audit line records and that it stays
+  inside the caller's transaction.
 
 Keep SQL explicit and server-scoped. Prefer a small helper for repeated
 authorization or normalization rules rather than duplicating subtly different

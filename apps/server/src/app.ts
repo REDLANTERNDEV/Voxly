@@ -5,23 +5,16 @@ import staticPlugin from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { Server } from "socket.io";
 import { z } from "zod";
-import {
-  afkRoomName,
-  DEFAULT_AFK_TIMEOUT_MINUTES,
-  isAfkTimeoutMinutes,
-  replyExcerptMaxLength,
-  type AfkTimeoutMinutes
-} from "@voxly/shared";
+import { replyExcerptMaxLength } from "@voxly/shared";
 import type {
   ChatMessage,
-  RoomSummary,
   ClientToServerEvents,
   PresenceUser,
-  ServerToClientEvents,
-  VoiceModerationState
+  ServerToClientEvents
 } from "@voxly/shared";
 import type { DatabaseSync } from "node:sqlite";
 import type { AnalyticsConfig } from "./analytics.js";
+import { audit } from "./audit.js";
 import {
   allSessions,
   authenticateHttp,
@@ -40,7 +33,6 @@ import {
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import {
   bearerToken,
-  createMusicBotAccount,
   isBotTokenValid,
   issueBotSession,
   musicBotAccounts,
@@ -68,7 +60,14 @@ import {
   serverPresenceUsers,
   type OnlineRegistry
 } from "./members.js";
-import { publicRoom, roomColumns, roomById, type RoomRow } from "./rooms.js";
+import { roomById } from "./rooms.js";
+import {
+  authenticatedWriteLimit,
+  messageLimit,
+  unauthenticatedWriteLimit,
+  type RealtimeModeration
+} from "./http.js";
+import { registerServerRoutes } from "./servers.js";
 import { roomIdPayloadSchema, safeSocketHandler, socketsForUser } from "./socket.js";
 import { createMusicRealtime } from "./music.js";
 import { createVoiceRealtime } from "./voice.js";
@@ -138,19 +137,6 @@ type MessageRow = {
   replyToBody: string | null;
 };
 
-interface RealtimeModeration {
-  disconnectVoice: (serverId: string, roomId: string, userId: string) => boolean;
-  moveVoice: (serverId: string, userId: string, targetRoomId: string) => boolean;
-  /** Evict every live socket for a user, across all servers. Used by the global ban. */
-  disconnectUser: (userId: string) => void;
-  deleteRoom: (serverId: string, roomId: string) => void;
-  deleteServer: (serverId: string, roomIds: string[], affectedUserIds: string[]) => void;
-  grantServerAccess: (serverId: string, userId: string) => Promise<void>;
-  refreshMemberIdentity: (serverId: string, userId: string) => PresenceUser | null;
-  revokeServerAccess: (serverId: string, userId: string, reason: "banned" | "kicked") => void;
-  updateVoiceModeration: (serverId: string, userId: string, moderation: VoiceModerationState) => void;
-}
-
 /** Fastify attaches `statusCode` to framework errors; anything without one is a fault. */
 function errorStatusCode(error: unknown) {
   const candidate = (error as { statusCode?: unknown } | null)?.statusCode;
@@ -168,10 +154,6 @@ const defaultInviteExpiryMinutes = 10080; // 7 days, when the caller omits an ex
 // Comfortably above the 56-entry preset matrix an owner can legitimately create
 // (see the invite-preset test), while still bounding growth.
 const maxActiveInvitesPerCreator = 200;
-const maxRoomsPerServer = 100;
-const maxServersPerOwner = 50;
-const serverNameSchema = z.string().trim().min(2).max(64);
-const roomNameSchema = z.string().trim().min(2).max(64);
 const inviteBodySchema = z.object({
   label: z.string().trim().min(1).max(80),
   expiresInMinutes: z.union([z.literal(30), z.literal(60), z.literal(360), z.literal(720), z.literal(1440), z.literal(10080), z.literal(43200), z.null()]).optional(),
@@ -225,6 +207,9 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
 
   const realtime = registerRealtime(io, database);
   registerRoutes(server, database, options, io, realtime);
+  // Route groups that own their own rules register themselves against the same
+  // Fastify instance; see `http.ts` for what they are handed and why.
+  registerServerRoutes({ fastify: server, database, io, realtime, secureCookies: options.secureCookies });
   if (options.webDistPath) {
     await registerWebStatic(server, options.webDistPath);
   }
@@ -257,18 +242,6 @@ async function registerWebStatic(server: FastifyInstance, webDistPath: string) {
     reply.sendFile("index.html");
   });
 }
-
-/**
- * Rate limit tiers.
- *
- * Tokens are 256-bit and stored hashed, so these are not a guessing defence —
- * they bound resource abuse: unauthenticated endpoints that hit the database
- * before any session exists, and authenticated writes that a single account
- * could otherwise flood.
- */
-const unauthenticatedWriteLimit = { rateLimit: { max: 20, timeWindow: "1 minute" } };
-const authenticatedWriteLimit = { rateLimit: { max: 60, timeWindow: "1 minute" } };
-const messageLimit = { rateLimit: { max: 120, timeWindow: "1 minute" } };
 
 function registerRoutes(
   server: FastifyInstance,
@@ -523,201 +496,6 @@ function registerRoutes(
       database.save();
     }
     clearSessionCookie(reply);
-    return reply.code(204).send();
-  });
-
-  server.get("/api/servers", async (request, reply) => {
-    const user = requireUser(database, request, reply, options.secureCookies);
-    if (!user) return;
-    const memberships = all<{ id: string; name: string; role: "owner" | "member"; canInvite: number; afkTimeoutMinutes: number | null }>(
-      database.sqlite,
-      `select servers.id, servers.name, server_members.role,
-        server_members.can_invite as canInvite,
-        servers.afk_timeout_minutes as afkTimeoutMinutes
-       from server_members
-       join servers on servers.id = server_members.server_id
-       where server_members.user_id = ?
-         and server_members.banned_at is null
-         and server_members.removed_at is null
-       order by servers.created_at asc`,
-      [user.id]
-    );
-    return {
-      servers: memberships.map((membership) => ({
-        ...membership,
-        canInvite: mayCreateInvites(membership.role, membership.canInvite),
-        afkTimeoutMinutes: afkTimeoutOf(membership.afkTimeoutMinutes)
-      }))
-    };
-  });
-
-  server.post("/api/servers", { config: authenticatedWriteLimit }, async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const body = z.object({ name: serverNameSchema }).parse(request.body);
-    const ownedServers = one<{ count: number }>(
-      database.sqlite,
-      "select count(*) as count from servers where created_by_user_id = ?",
-      [owner.id]
-    )?.count ?? 0;
-    if (ownedServers >= maxServersPerOwner) {
-      return reply.code(409).send({ error: "server_limit_reached" });
-    }
-    const serverId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    run(database.sqlite, "insert into servers (id, name, created_by_user_id, created_at) values (?, ?, ?, ?)", [
-      serverId,
-      body.name,
-      owner.id,
-      now
-    ]);
-    activateServerMembership(database, serverId, owner.id, "owner", now);
-    createServerRoom(database, serverId, "general", "text", 10);
-    createServerRoom(database, serverId, "Lobby", "voice", 20);
-    createServerRoom(database, serverId, afkRoomName, "voice", 30, true);
-    const bot = createMusicBotAccount(database, serverId, now);
-    audit(database, owner.id, "server.created", null, serverId);
-    audit(database, owner.id, "bot.created", bot.userId, serverId);
-    database.save();
-    await realtime.grantServerAccess(serverId, owner.id);
-    return reply.code(201).send({ server: { id: serverId, name: body.name, role: "owner", canInvite: true } });
-  });
-
-  server.get("/api/servers/:serverId/rooms", async (request, reply) => {
-    const user = requireUser(database, request, reply, options.secureCookies);
-    if (!user) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    if (!requireServerMember(database, serverId, user.id, reply)) return;
-    return {
-      rooms: all<RoomRow>(
-        database.sqlite,
-        `select ${roomColumns} from rooms where server_id = ? order by position asc`,
-        [serverId]
-      ).map(publicRoom)
-    };
-  });
-
-  server.post("/api/servers/:serverId/rooms", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
-    const body = z.object({ name: roomNameSchema, kind: z.enum(["text", "voice"]) }).parse(request.body);
-    const roomTotal = one<{ count: number }>(
-      database.sqlite,
-      "select count(*) as count from rooms where server_id = ?",
-      [serverId]
-    )?.count ?? 0;
-    if (roomTotal >= maxRoomsPerServer) {
-      return reply.code(409).send({ error: "room_limit_reached" });
-    }
-    const position = one<{ position: number | null }>(
-      database.sqlite,
-      "select max(position) as position from rooms where server_id = ?",
-      [serverId]
-    )?.position ?? 0;
-    const room = createServerRoom(database, serverId, body.name, body.kind, position + 10);
-    audit(database, owner.id, "room.created", null, serverId);
-    database.save();
-    // Members already in the server hold a cached room list, so a new channel is
-    // invisible until they reload unless the same signal that covers deletion
-    // also covers creation.
-    io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
-    return reply.code(201).send({ room });
-  });
-
-  server.patch("/api/servers/:serverId/afk", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
-    const { afkTimeoutMinutes } = z.object({
-      afkTimeoutMinutes: z.number().int().refine(isAfkTimeoutMinutes, { message: "unsupported_timeout" })
-    }).parse(request.body);
-    run(database.sqlite, "update servers set afk_timeout_minutes = ? where id = ?", [afkTimeoutMinutes, serverId]);
-    audit(database, owner.id, "server.afkTimeoutChanged", null, serverId);
-    database.save();
-    // Every member runs their own idle clock, so all of them need the new value
-    // rather than only the owner who set it.
-    io.to(`server:${serverId}`).emit("server:afkUpdated", { serverId, afkTimeoutMinutes });
-    return { afkTimeoutMinutes };
-  });
-
-  server.patch("/api/servers/:serverId", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    const { name } = z.object({ name: serverNameSchema }).parse(request.body);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
-    run(database.sqlite, "update servers set name = ? where id = ?", [name, serverId]);
-    audit(database, owner.id, "server.renamed", null, serverId);
-    database.save();
-    io.to(`server:${serverId}`).emit("server:updated", { serverId, name });
-    return { server: { id: serverId, name, role: "owner" as const, canInvite: true } };
-  });
-
-  server.delete("/api/servers/:serverId/rooms/:roomId", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const { serverId, roomId } = z.object({
-      serverId: z.string().min(1),
-      roomId: z.string().min(1)
-    }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
-    const room = roomById(database.sqlite, roomId);
-    if (!room || room.serverId !== serverId) return reply.code(404).send({ error: "room_not_found" });
-    const roomCount = one<{ count: number }>(database.sqlite, "select count(*) as count from rooms where server_id = ?", [serverId])?.count ?? 0;
-    if (roomCount <= 1) return reply.code(409).send({ error: "last_room" });
-
-    database.sqlite.exec("begin immediate");
-    try {
-      run(database.sqlite, "delete from messages where room_id = ?", [roomId]);
-      run(database.sqlite, "delete from rooms where id = ? and server_id = ?", [roomId, serverId]);
-      audit(database, owner.id, "room.deleted", null, serverId);
-      database.sqlite.exec("commit");
-    } catch (cause) {
-      database.sqlite.exec("rollback");
-      throw cause;
-    }
-    database.save();
-    realtime.deleteRoom(serverId, roomId);
-    io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId, deletedRoomId: roomId });
-    return reply.code(204).send();
-  });
-
-  server.delete("/api/servers/:serverId", async (request, reply) => {
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
-    const otherAccessibleServers = one<{ count: number }>(
-      database.sqlite,
-      `select count(*) as count from server_members
-       where user_id = ? and server_id != ?
-         and banned_at is null and removed_at is null`,
-      [owner.id, serverId]
-    )?.count ?? 0;
-    if (otherAccessibleServers === 0) return reply.code(409).send({ error: "last_owner_server" });
-
-    const roomIds = all<{ id: string }>(database.sqlite, "select id from rooms where server_id = ?", [serverId]).map((room) => room.id);
-    const affectedUserIds = all<{ user_id: string }>(database.sqlite, "select user_id from server_members where server_id = ?", [serverId]).map((membership) => membership.user_id);
-    database.sqlite.exec("begin immediate");
-    try {
-      run(database.sqlite, "delete from messages where room_id in (select id from rooms where server_id = ?)", [serverId]);
-      run(database.sqlite, "delete from invite_uses where invite_id in (select id from invites where server_id = ?)", [serverId]);
-      run(database.sqlite, "delete from invites where server_id = ?", [serverId]);
-      run(database.sqlite, "delete from access_claims where server_id = ?", [serverId]);
-      run(database.sqlite, "delete from server_members where server_id = ?", [serverId]);
-      run(database.sqlite, "delete from rooms where server_id = ?", [serverId]);
-      audit(database, owner.id, "server.deleted", null, serverId);
-      run(database.sqlite, "delete from servers where id = ?", [serverId]);
-      database.sqlite.exec("commit");
-    } catch (cause) {
-      database.sqlite.exec("rollback");
-      throw cause;
-    }
-    database.save();
-    realtime.deleteServer(serverId, roomIds, affectedUserIds);
     return reply.code(204).send();
   });
 
@@ -1155,18 +933,6 @@ function registerRoutes(
 
     return {
       sessions: allSessions(database.sqlite)
-    };
-  });
-
-  server.get("/api/rooms", async (request, reply) => {
-    const user = requireUser(database, request, reply, options.secureCookies);
-    if (!user) {
-      return;
-    }
-    if (!requireServerMember(database, defaultServerId, user.id, reply)) return;
-
-    return {
-      rooms: all<RoomRow>(database.sqlite, `select ${roomColumns} from rooms where server_id = ? order by position asc`, [defaultServerId]).map(publicRoom)
     };
   });
 
@@ -1622,36 +1388,6 @@ function createUser(database: VoxlyDatabase, nickname: string, role: "owner" | "
   return user;
 }
 
-/** Legacy rows carry no timeout, so the default is applied on read. */
-function afkTimeoutOf(stored: number | null | undefined): AfkTimeoutMinutes {
-  return isAfkTimeoutMinutes(stored) ? stored : DEFAULT_AFK_TIMEOUT_MINUTES;
-}
-
-function createServerRoom(
-  database: VoxlyDatabase,
-  serverId: string,
-  name: string,
-  kind: "text" | "voice",
-  position: number,
-  isAfk = false
-) {
-  const id = serverId === defaultServerId && name === "general" && kind === "text"
-    ? "general"
-    : serverId === defaultServerId && name === "Lobby" && kind === "voice"
-      ? "lobby"
-      : crypto.randomUUID();
-  const room: RoomSummary = { id, serverId, name, kind, position, isAfk };
-  run(database.sqlite, "insert into rooms (id, server_id, name, kind, position, is_afk) values (?, ?, ?, ?, ?, ?)", [
-    room.id,
-    room.serverId,
-    room.name,
-    room.kind,
-    room.position,
-    room.isAfk ? 1 : 0
-  ]);
-  return room;
-}
-
 function createInviteForServer(
   database: VoxlyDatabase,
   serverId: string,
@@ -1848,20 +1584,6 @@ const replyJoinClause = `left join messages quoted
      left join server_members quoted_members
        on quoted_members.server_id = rooms.server_id
       and quoted_members.user_id = quoted.user_id`;
-
-function audit(
-  database: VoxlyDatabase,
-  actorUserId: string | null,
-  action: string,
-  targetUserId: string | null,
-  serverId: string = defaultServerId
-) {
-  run(
-    database.sqlite,
-    "insert into audit_events (id, actor_user_id, action, target_user_id, server_id, created_at) values (?, ?, ?, ?, ?, ?)",
-    [crypto.randomUUID(), actorUserId, action, targetUserId, serverId, new Date().toISOString()]
-  );
-}
 
 function isExpired(value: string | null) {
   return value ? new Date(value).getTime() <= Date.now() : false;
