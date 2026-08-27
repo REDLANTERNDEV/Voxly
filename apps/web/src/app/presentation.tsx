@@ -114,6 +114,20 @@ export function voiceErrorMessage(key: VoiceErrorKey | "", t: Translate) {
   return key ? t(key) : "";
 }
 
+/**
+ * Whether the member has silenced themselves — in either direction.
+ *
+ * The one rule behind two signals: the sentence the dock writes and the colour
+ * the button wears. Both ask "can this member be heard, and can they hear", and
+ * they were never going to stay in step if each worked it out for itself.
+ *
+ * Only the member's own doing. An owner's mute is a different sentence with a
+ * different remedy, and the controls carry it in their own language.
+ */
+export function voiceDockSilenced(controls: VoiceControls) {
+  return controls.deafen.on || !controls.mic.on;
+}
+
 export function voiceDockStatusLabel(controls: VoiceControls, connectedCount: number, t: Translate) {
   if (controls.deafen.on) {
     return t("status.deafenedOutputOff");

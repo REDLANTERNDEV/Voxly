@@ -61,9 +61,27 @@ export function LanguageSwitch({ language, t, onLanguageChange }: { language: La
   );
 }
 
-export function ControlButton({ label, active, tone, enabled, onClick, children }: { label: string; active: boolean; tone: "neutral" | "danger"; enabled: boolean; onClick: () => void; children: ReactNode }) {
+/**
+ * One dock control, and the two different questions it has to answer at once.
+ *
+ * `active` is whether the toggle is pressed, and it is what `aria-pressed`
+ * says. It is *not* a judgement about the member: it means "the microphone is
+ * live" on one control and "this member cannot hear" on the next, because
+ * Deafen is a control you turn **on** in order to switch something **off**.
+ * Deriving the whole appearance from it put a silenced member in the colour of
+ * a healthy one — a self-muted microphone rendered exactly like a working
+ * headset, and being deafened rendered exactly like a live microphone.
+ *
+ * `silenced` is the second question and the one a member glancing at the dock
+ * is actually asking: can I be heard, and can I hear. It is deliberately
+ * separate rather than derived, because no expression over `active` is right
+ * for both controls — and separate from the owner-enforced `danger` tone,
+ * because "you did this and can undo it" and "somebody did this to you" are
+ * different sentences that must not look alike.
+ */
+export function ControlButton({ label, active, tone, enabled, silenced = false, onClick, children }: { label: string; active: boolean; tone: "neutral" | "danger"; enabled: boolean; silenced?: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button className={`icon-btn control-icon ${active ? "is-active" : "is-off"} ${tone === "danger" ? "is-danger-state" : ""}`} type="button" aria-pressed={active} aria-label={label} title={label} disabled={!enabled} onClick={onClick}>
+    <button className={`icon-btn control-icon ${active ? "is-active" : "is-off"} ${silenced ? "is-self-off" : ""} ${tone === "danger" ? "is-danger-state" : ""}`} type="button" aria-pressed={active} aria-label={label} title={label} disabled={!enabled} onClick={onClick}>
       {children}
     </button>
   );
