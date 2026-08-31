@@ -12,13 +12,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@fastify/cookie": "^11.0.2",
-    "@fastify/helmet": "^13.1.0",
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/helmet": "^13.1.1",
     "@fastify/rate-limit": "^11.2.0",
-    "@fastify/static": "^10.1.2",
+    "@fastify/static": "^10.1.3",
     "@voxly/shared": "file:../../packages/shared",
     "drizzle-orm": "^0.45.2",
-    "fastify": "^5.5.0",
+    "fastify": "^5.12.1",
     "socket.io": "^4.8.1",
     "zod": "^4.1.11"
   },
