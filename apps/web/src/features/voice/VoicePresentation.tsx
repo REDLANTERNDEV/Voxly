@@ -18,18 +18,28 @@ export interface StageSource {
   target: VisualTarget | null;
   connectionStatus: "connecting" | "failed" | "ready";
 }
-export function VoiceStatusBadges({ media, moderation, t, compact = false }: { media: VoiceMediaState | undefined; moderation?: VoiceModerationState; t: Translate; compact?: boolean }) {
+/**
+ * What is true of a participant right now, at the end of their row.
+ *
+ * Marks, not labelled pills. The pills sat under the nickname, which cost the
+ * row a second line the moment anyone muted themselves, right-aligned their
+ * words under a left-aligned name, and wrapped once two of them were true. The
+ * left rail already says these same facts with these same marks, so the stage
+ * says them the same way; the label it dropped survives as the accessible name
+ * and the tooltip, and the colour keeps the one distinction that matters —
+ * red is an owner's doing, grey is your own.
+ */
+export function VoiceStatusBadges({ media, moderation, t }: { media: VoiceMediaState | undefined; moderation?: VoiceModerationState; t: Translate }) {
   const items = voiceStatusItems(media, moderation, t);
   if (items.length === 0) {
     return null;
   }
 
   return (
-    <span className={`voice-status-list ${compact ? "is-compact" : ""}`}>
+    <span className="voice-status-list">
       {items.map((item) => (
-        <span className={`voice-status-chip ${item.tone}`} key={item.label}>
+        <span className={`voice-status-icon is-${item.tone}`} key={item.label} role="img" aria-label={item.label} title={item.label}>
           {item.icon}
-          <span>{item.label}</span>
         </span>
       ))}
     </span>

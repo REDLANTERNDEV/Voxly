@@ -235,17 +235,24 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
                   return (
                     <li className={`participant-row ${isSpeaking ? "is-speaking" : ""}`} key={participant.userId}>
                       <span className="call-avatar" aria-hidden="true">{initial(participant.nickname)}</span>
-                      <span className="participant-copy"><strong>{participant.nickname}</strong><VoiceStatusBadges media={media} moderation={moderation} t={props.t} /></span>
-                      {audioStream ? (
-                        <details className="volume-popover">
-                          <summary aria-label={props.t("voice.memberVolume", { nickname: participant.nickname })}><VolumeIcon /></summary>
-                          <VolumeControl
-                            label={props.t("voice.memberVolume", { nickname: participant.nickname })}
-                            value={props.memberVolumes[participant.userId] ?? DEFAULT_VOLUME_PERCENT}
-                            onChange={(volume) => props.onMemberVolumeChange(participant.userId, volume)}
-                          />
-                        </details>
-                      ) : null}
+                      <span className="participant-copy"><strong>{participant.nickname}</strong></span>
+                      {/* The end of the row holds what is true of them and the
+                          one thing you can do about it. Both stay out of the
+                          name's line, so a member muting themselves does not
+                          move anybody's nickname. */}
+                      <span className="participant-status">
+                        <VoiceStatusBadges media={media} moderation={moderation} t={props.t} />
+                        {audioStream ? (
+                          <details className="volume-popover">
+                            <summary aria-label={props.t("voice.memberVolume", { nickname: participant.nickname })}><VolumeIcon /></summary>
+                            <VolumeControl
+                              label={props.t("voice.memberVolume", { nickname: participant.nickname })}
+                              value={props.memberVolumes[participant.userId] ?? DEFAULT_VOLUME_PERCENT}
+                              onChange={(volume) => props.onMemberVolumeChange(participant.userId, volume)}
+                            />
+                          </details>
+                        ) : null}
+                      </span>
                     </li>
                   );
                 })}

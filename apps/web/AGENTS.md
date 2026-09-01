@@ -299,6 +299,15 @@ requirement.
 - Compute row action availability from target-specific permissions after all
   filters are applied. Do not render an ellipsis or custom context menu when the
   resulting menu would contain no action.
+- Anything portalled to the document body and opened from inside a drawer sits
+  on `--layer-menu`, above `--layer-drawer`. Below it the surface still opens,
+  still traps the next tap, and is drawn behind the drawer and its scrim — on a
+  phone that reads as a control that does nothing. This covers the shared menu
+  and the rail's invite popover; the dialogs above them keep `--layer-modal`.
+- Menu rows are a mark and a label, laid out as a centered flex row rather than
+  left to sit the glyph on the text baseline. In a menu where any row has a
+  mark, the rows without one indent by the same gutter so every label starts in
+  one column; a menu with no marks at all keeps its plain padding.
 - Only one sidebar menu may be mounted at a time. Opening another replaces the
   current descriptor before the next overlay renders.
 - Outside pointer input, Escape, navigation, drawer changes, and action
@@ -332,6 +341,14 @@ requirement.
   surface alike, and never as a status chip. It changes several times a
   sentence, so a chip appearing and disappearing at that rate reads as flicker
   and a filled row arrives too abruptly to follow. Transition the ring.
+- Every other participant state — the two silences, owner-enforced or their
+  own, and the camera — is a mark at the end of the row, in the rail and on the
+  stage alike. Labelled pills under the nickname cost the row a second line the
+  moment anybody muted themselves, right-aligned their words under a
+  left-aligned name, and wrapped once two were true. Keep the dropped label as
+  the mark's accessible name and its tooltip, and let colour carry the only
+  distinction a member acts on: danger for an owner's doing, muted for their
+  own, and the accent reserved for the LIVE screen share.
 - Fullscreen removes the stage panel border. With no page behind it, that border
   reads as a coloured line drawn around the video.
 - Rail status icons cover both moderation and media. Owner-enforced deafen

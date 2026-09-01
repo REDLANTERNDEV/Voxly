@@ -36,4 +36,26 @@ describe("exclusive sidebar context menus", () => {
     assert.match(styles, /\.sidebar-menu-trigger/);
     assert.match(styles, /\.sidebar-context-menu/);
   });
+
+  /**
+   * Both of these are opened from inside a drawer. Drawn under it they still
+   * open and still swallow the next tap, so the failure is a control that looks
+   * dead rather than one that looks broken.
+   */
+  it("draws body-portalled menus above the drawers they are opened from", () => {
+    const styles = readFileSync("src/styles.css", "utf8");
+    const layer = (name: string) => Number(styles.match(new RegExp(`--layer-${name}: (\\d+);`))?.[1]);
+
+    assert.ok(layer("menu") > layer("drawer"), "the menu layer must clear the drawers");
+    assert.ok(layer("menu") < layer("modal"), "and stay under the dialogs");
+    assert.match(styles, /\.context-menu,\s*\.message-context-menu \{[^}]*z-index: var\(--layer-menu\)/s);
+    assert.match(styles, /\.invite-popover \{[^}]*z-index: var\(--layer-menu\)/s);
+  });
+
+  it("lays a menu row out as a mark and a label in one column", () => {
+    const styles = readFileSync("src/styles.css", "utf8");
+
+    assert.match(styles, /\.context-menu button,\s*\.message-context-menu button \{[^}]*align-items: center;[^}]*display: flex;[^}]*gap: 9px;/s);
+    assert.match(styles, /\.context-menu:has\(\.ui-icon\) button:not\(:has\(> \.ui-icon\)\)/);
+  });
 });

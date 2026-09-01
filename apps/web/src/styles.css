@@ -37,9 +37,6 @@
   --speaking-soft: color-mix(in oklab, var(--accent), var(--bg) 84%);
   --warn-soft: color-mix(in oklab, var(--warn), var(--bg) 74%);
   --danger-soft: color-mix(in oklab, var(--danger), var(--bg) 88%);
-  --status-live-fg: var(--black);
-  --status-online-fg: var(--fg);
-  --status-warn-fg: var(--black);
   --shadow: 0 16px 44px rgba(10, 10, 9, 0.1);
   --font-display: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-body: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -53,6 +50,10 @@
   --layer-dock: 20;
   --layer-popover: 30;
   --layer-drawer: 40;
+  /* Above the drawers. A menu portalled to the body is opened from inside one
+     of them as often as not, and on a phone the drawer covers the screen — so
+     anything under this layer opens where nobody can see or reach it. */
+  --layer-menu: 45;
   --layer-modal: 50;
 }
 
@@ -83,8 +84,6 @@
   --speaking-soft: color-mix(in oklab, var(--accent), var(--bg) 78%);
   --warn-soft: color-mix(in oklab, var(--warn), var(--bg) 82%);
   --danger-soft: color-mix(in oklab, var(--danger), var(--bg) 86%);
-  --status-live-fg: var(--fg);
-  --status-warn-fg: var(--fg);
   --shadow: 0 18px 52px rgba(0, 0, 0, 0.38);
 }
 
@@ -111,8 +110,6 @@
     --rail-fg: var(--ivory);
     --rail-muted: #b8b8b2;
     --rail-border: #343430;
-    --status-live-fg: var(--fg);
-    --status-warn-fg: var(--fg);
     --shadow: 0 18px 52px rgba(0, 0, 0, 0.38);
   }
 }
@@ -1234,20 +1231,36 @@ h3 {
   min-width: 160px;
   padding: 5px;
   position: fixed;
-  z-index: var(--layer-popover);
+  z-index: var(--layer-menu);
 }
 
 .context-menu button,
 .message-context-menu button {
+  align-items: center;
   background: transparent;
   border: 0;
   border-radius: 7px;
   color: var(--fg);
   cursor: pointer;
+  display: flex;
   font: inherit;
+  gap: 9px;
   min-height: 36px;
   padding: 7px 10px;
   text-align: left;
+}
+
+/*
+ * One column of marks, and every label starting at the same place.
+ *
+ * Left inline, the glyph sat on the text baseline with nothing between the two
+ * — and the rows carrying one were the only rows whose words were indented.
+ * The gutter is the width a mark takes: 15 pixels and the gap beside it, and
+ * it is only opened in a menu that has a mark to put in it.
+ */
+.context-menu:has(.ui-icon) button:not(:has(> .ui-icon)),
+.message-context-menu:has(.ui-icon) button:not(:has(> .ui-icon)) {
+  padding-left: 34px;
 }
 
 .context-menu button:hover,
@@ -2729,8 +2742,14 @@ button.reply-quote:focus-visible .reply-quote-body {
 
 .participant-copy {
   display: grid;
-  gap: 4px;
   min-width: 0;
+}
+
+.participant-status {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
 }
 
 .participant-copy > strong {
@@ -2800,63 +2819,38 @@ button.reply-quote:focus-visible .reply-quote-body {
   min-height: 18px;
 }
 
+/*
+ * The same marks the left rail uses, at the end of a participant's row.
+ *
+ * Two colours carry the whole distinction, which is the one a member acts on:
+ * red is somebody else's doing and cannot be undone from here, grey is their
+ * own. Screen share is the exception because it is the room's LIVE state and
+ * has to be findable at a glance.
+ */
 .voice-status-list {
   align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  justify-content: flex-end;
-  min-width: 0;
-}
-
-.voice-status-list.is-compact {
-  justify-content: flex-start;
-}
-
-.voice-status-chip {
-  align-items: center;
-  border: 1px solid var(--border-soft);
-  border-radius: 999px;
   display: inline-flex;
-  font-size: 11px;
-  font-weight: 590;
-  gap: 4px;
-  line-height: 1;
-  min-height: 22px;
-  padding: 4px 7px;
+  flex: 0 0 auto;
+  gap: 7px;
 }
 
-.voice-status-chip .ui-icon {
-  height: 12px;
-  width: 12px;
+.voice-status-icon {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
 }
 
-.voice-status-chip.live {
-  background: color-mix(in oklab, var(--accent), var(--bg) 90%);
-  border-color: color-mix(in oklab, var(--accent), var(--border) 34%);
-  color: var(--status-live-fg);
+.voice-status-icon .ui-icon {
+  height: 16px;
+  width: 16px;
 }
 
-.voice-status-chip.online {
-  background: var(--success-soft);
-  border-color: color-mix(in oklab, var(--success), var(--border) 50%);
-  color: var(--status-online-fg);
-}
-
-.voice-status-chip.warn {
-  background: var(--warn-soft);
-  color: var(--status-warn-fg);
-}
-
-.voice-status-chip.danger {
-  background: var(--danger-soft);
-  border-color: color-mix(in oklab, var(--danger), var(--border) 40%);
+.voice-status-icon.is-danger {
   color: var(--danger);
 }
 
-.voice-status-chip.neutral {
-  background: var(--surface-2);
-  color: var(--muted);
+.voice-status-icon.is-live {
+  color: var(--accent);
 }
 
 .feature-placeholder {
@@ -3917,7 +3911,7 @@ button.reply-quote:focus-visible .reply-quote-body {
   padding: 16px;
   position: fixed;
   width: min(300px, calc(100vw - 16px));
-  z-index: var(--layer-popover);
+  z-index: var(--layer-menu);
 }
 
 .invite-popover-head {

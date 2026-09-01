@@ -29,7 +29,7 @@ describe("member volume menus", () => {
     assert.match(app, /pendingMemberAction/);
   });
 
-  it("keeps voice status chips readable and separates owner member actions", () => {
+  it("says a participant's state with marks and separates owner member actions", () => {
     const app = readAppSource();
     const styles = readFileSync("src/styles.css", "utf8");
 
@@ -39,9 +39,14 @@ describe("member volume menus", () => {
     assert.match(app, /className="dash-cell is-actions"/);
     assert.match(app, /memberRoleLabel\(member, props\.t\)/);
     assert.match(app, /member\.bannedAt \? props\.t\("common\.banned"\) : props\.t\("common\.active"\)/);
-    assert.match(styles, /\.voice-status-chip\.live\s*\{[^}]*background:[^}]*color:\s*var\(--status-live-fg\)/s);
-    assert.match(styles, /\.voice-status-chip\.online\s*\{[^}]*background:[^}]*color:\s*var\(--status-online-fg\)/s);
-    assert.match(styles, /\.voice-status-chip\.warn\s*\{[^}]*background:[^}]*color:\s*var\(--status-warn-fg\)/s);
+    // The mark dropped its label, so the label has to survive as the name.
+    assert.match(app, /className=\{`voice-status-icon is-\$\{item\.tone\}`\}[^>]*aria-label=\{item\.label\} title=\{item\.label\}/);
+    // Red is an owner's doing; everything a member did to themselves is grey.
+    assert.match(styles, /\.voice-status-icon \{[^}]*color: var\(--muted\)/s);
+    assert.match(styles, /\.voice-status-icon\.is-danger \{\s*color: var\(--danger\);/);
+    // And it stays out of the nickname's line.
+    assert.doesNotMatch(app, /<span className="participant-copy">[^\n]*<VoiceStatusBadges/);
+    assert.match(app, /className="participant-status"[\s\S]{0,200}?<VoiceStatusBadges/);
   });
 
   it("uses one explicit column contract for owner and member rows", () => {
