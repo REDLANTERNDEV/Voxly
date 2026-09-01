@@ -233,7 +233,6 @@ export function ChannelRail(props: ChannelRailProps) {
                           } : undefined}
                           onRename={(returnFocus) => props.onRequestNickname(member.user, returnFocus)}
                           onRequestAction={(action) => props.onRequestMemberAction(member.user, action, room.id)}
-                          showTrigger={false}
                           t={props.t}
                         />
                       ) : null}

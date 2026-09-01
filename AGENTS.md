@@ -77,6 +77,7 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | Sidebar context menus and popover layering | `apps/web/AGENTS.md` — Context Menus and Layering |
 | Sidebar voice status and stage layout | `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
 | Sidebar channel and participant-count presentation | `apps/web/AGENTS.md` — LIVE Watch and Voice Presentation |
+| Breakpoints, what a phone drops, and what it may never drop | `apps/web/AGENTS.md` — Narrow Layout |
 | Music bot accounts and how the bot authenticates | `apps/server/AGENTS.md` — The Music Bot; ADR-0003 |
 | The bot's place in the voice mesh and what it must self-enforce | ADR-0001; `apps/bot/AGENTS.md` — Voice and Playback |
 | The bot's WebRTC library and its encode-once property | ADR-0002; `apps/bot/AGENTS.md` — Voice and Playback |

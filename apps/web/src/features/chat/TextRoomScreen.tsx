@@ -181,7 +181,7 @@ export function TextRoomScreen(props: TextRoomProps) {
           ) : null}
           <form onSubmit={submit}>
             <label className="form-field" htmlFor="messageInput">
-              <span className="label">{props.t("room.messageLabel", { room: props.currentRoom?.name ?? "lobby" })}</span>
+              <span className="label composer-field-label">{props.t("room.messageLabel", { room: props.currentRoom?.name ?? "lobby" })}</span>
               <textarea
                 ref={composerRef}
                 className="textarea"
@@ -207,7 +207,7 @@ export function TextRoomScreen(props: TextRoomProps) {
                 }}
               />
             </label>
-            <button className="btn btn-primary" type="submit">
+            <button className="btn btn-primary composer-send" type="submit" aria-label={props.t("common.send")} title={props.t("common.send")}>
               <ArrowIcon />
               <span>{props.t("common.send")}</span>
             </button>

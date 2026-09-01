@@ -283,10 +283,19 @@ requirement.
 ## Context Menus and Layering
 
 - Sidebar rows with actions open the shared portal menu from secondary click or
-  ellipsis. Left-rail voice-participant rows are the deliberate exception: omit
-  their ellipsis to preserve status-icon symmetry, keep the row focusable, and
-  open the same menu with secondary click, the Context Menu key, or Shift+F10.
-  Rows without actions retain the browser context menu.
+  ellipsis. Left-rail voice-participant rows are the deliberate exception on a
+  fine pointer: hide their ellipsis in CSS to preserve status-icon symmetry,
+  keep the row focusable, and open the same menu with secondary click, the
+  Context Menu key, or Shift+F10. Rows without actions retain the browser
+  context menu.
+- Render that ellipsis into the document on every device and take it away with
+  a pointer query, rather than withholding it from the markup. A coarse pointer
+  has none of the three ways in above, and the row carries a member's own two
+  silences, a listener's volume and an owner's moderation — so it gets the
+  ellipsis back and the symmetry gives way. On a coarse pointer, sidebar
+  triggers are 36 pixels; the two message triggers stay at 28, because they sit
+  against each other in a reserved strip and widening them there costs the
+  message its text column.
 - Compute row action availability from target-specific permissions after all
   filters are applied. Do not render an ellipsis or custom context menu when the
   resulting menu would contain no action.
@@ -540,6 +549,36 @@ requirement.
   acquire an acknowledged temporary deafen state, lock the dock deafen action,
   and restore only a state that monitoring itself changed; preserve users who
   were already deafened and never restore across a different room.
+
+## Narrow Layout
+
+The breakpoints are 1180px (rail and member-bar widths), 900px (the phone and
+tablet layout: both sidebars become drawers behind the mobile top bar) and
+560px (a small phone). Coarse-pointer rules are a separate axis and must not be
+folded into a width: a touchscreen laptop is wide and cannot right-click.
+
+- Under 900px the room header is not drawn, so `.main-panel` carries two rows
+  rather than three. Leaving the three-row template in place hands the composer
+  the track that grows and stops the message list at the height of its own
+  messages.
+- The composer stays one row: the field's heading goes off screen but stays in
+  the document, the send control keeps its mark and drops its word, and the
+  error line collapses while it is empty.
+- The dock is two rows — connection and account above, call controls below —
+  and drops the second row when there are no controls to show. `--dock` and
+  `--dock-quiet` are the heights the shell reserves for each; a change to the
+  dock's mobile contents is incomplete until they match it. Dock controls keep
+  the 40px hit area named under Controls, Icons, and Accessibility.
+- A control may drop its label at a narrow width only when it already carries
+  that same wording as an accessible name. Add the name in the same change, and
+  from the translation tables — never a bare English literal.
+- Nothing a member can only reach on one surface may be hidden by a width.
+  Signing out lives behind the dock's account chip alone, which is why the chip
+  survives 560px while the words beside it do not.
+- Owner-dashboard sections scroll as a strip rather than dividing the width
+  between them, and a table row folds into a card: who and the row's actions on
+  the first line, the facts about them on the second. Cells stacked into one
+  column draw a status pill as a full-width bar.
 
 ## Theme and Contrast
 

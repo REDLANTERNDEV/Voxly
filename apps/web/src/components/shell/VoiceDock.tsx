@@ -53,19 +53,19 @@ export function VoiceDock(props: VoiceDockProps) {
               : <ControlButton label={props.t(`common.${deafenControl.action}` as TranslationKey)} active={props.controls.deafen.on} silenced={props.controls.deafen.on} tone={deafenControl.tone} enabled={props.controls.deafen.enabled && !props.microphoneTestActive && props.socketState === "live"} onClick={() => props.onToggleControl("deafen")}><HeadsetIcon off={props.controls.deafen.on} /></ControlButton>}
             <ControlButton label={props.t(`common.${cameraControl.action}` as TranslationKey)} active={props.controls.camera.on} tone={cameraControl.tone} enabled={props.controls.camera.enabled && props.socketState === "live"} onClick={() => props.onToggleControl("camera")}><CameraIcon off={!props.controls.camera.on} /></ControlButton>
             <ControlButton label={props.t(`common.${screenControl.action}` as TranslationKey)} active={props.controls.screenShare.on} tone={screenControl.tone} enabled={props.controls.screenShare.enabled && props.socketState === "live"} onClick={() => props.onToggleControl("screenShare")}><ScreenIcon off={props.controls.screenShare.on} /></ControlButton>
-            <button className="btn btn-danger" type="button" onClick={props.onLeaveVoice}><LeaveIcon /><span>{props.t("common.leave")}</span></button>
+            <button className="btn btn-danger dock-leave" type="button" aria-label={props.t("common.leave")} title={props.t("common.leave")} onClick={props.onLeaveVoice}><LeaveIcon /><span>{props.t("common.leave")}</span></button>
           </>
         ) : null}
       </div>
       <div className="dock-self">
         {canManageServer ? (
-          <NavLink className="btn btn-ghost" href={`/app/server/${encodeURIComponent(props.activeServerId)}/owner`} onNavigate={props.onNavigate}><ShieldIcon /><span>{props.t("owner.panel")}</span></NavLink>
+          <NavLink className="btn btn-ghost dock-owner" href={`/app/server/${encodeURIComponent(props.activeServerId)}/owner`} label={props.t("owner.panel")} onNavigate={props.onNavigate}><ShieldIcon /><span>{props.t("owner.panel")}</span></NavLink>
         ) : null}
         <button className="btn btn-ghost dock-settings" type="button" aria-label={props.t("settings.open")} title={props.t("settings.open")} onClick={props.onOpenSettings}>
           <GearIcon />
         </button>
         <details className="account-menu">
-          <summary aria-label={`${props.currentNickname} account menu`}>
+          <summary aria-label={props.t("shell.accountMenu", { nickname: props.currentNickname })}>
             <span className={`avatar ${props.user.role === "owner" ? "owner" : ""}`} title={props.currentNickname}>{initial(props.currentNickname)}</span>
           </summary>
           <div className="account-menu-panel">

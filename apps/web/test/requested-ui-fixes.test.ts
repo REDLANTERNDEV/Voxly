@@ -20,13 +20,21 @@ describe("requested UI fixes", () => {
     assert.doesNotMatch(owner, /serverPath\(props\.activeServerId, "text", "general"\)/);
   });
 
-  it("removes the left voice-row ellipsis while preserving row context and keyboard menus", () => {
+  it("hides the left voice-row ellipsis from a mouse while preserving row context and keyboard menus", () => {
     const app = readAppSource();
     const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelDeleteControl/)?.[0] ?? "";
+    const styles = readFileSync("src/styles.css", "utf8");
 
     assert.match(rail, /onContextMenu=/);
     assert.match(rail, /onKeyDown=/);
-    assert.match(rail, /<MemberActionMenu[\s\S]*?showTrigger=\{false\}/);
+    // The trigger is rendered on every device and taken away by CSS, because a
+    // touchscreen has no secondary click, no Context Menu key and no Shift+F10.
+    assert.doesNotMatch(rail, /showTrigger=/);
+    assert.match(styles, /\.voice-channel-user \.sidebar-menu-trigger \{\s*display: none;/);
+    assert.match(
+      styles,
+      /@media \(pointer: coarse\) \{[\s\S]*?\.voice-channel-user \.sidebar-menu-trigger \{\s*display: inline-flex;/
+    );
   });
 
   it("masks owner secrets behind an accessible reveal control", () => {

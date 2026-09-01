@@ -793,6 +793,28 @@ h3 {
   position: relative;
 }
 
+/*
+ * The rail's voice rows keep their status-icon symmetry on a mouse: no
+ * ellipsis, and the menu opens from secondary click, the Context Menu key or
+ * Shift+F10. A touchscreen has none of those three, which left every action on
+ * the row — a member's own two silences, a listener's volume, an owner's
+ * moderation — with no way in at all. So the trigger is always rendered and
+ * hidden here, and a coarse pointer is the one case that gets it back.
+ */
+.voice-channel-user .sidebar-menu-trigger {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .voice-channel-user {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+  }
+
+  .voice-channel-user .sidebar-menu-trigger {
+    display: inline-flex;
+  }
+}
+
 .voice-channel-statuses {
   align-items: center;
   display: inline-flex;
@@ -4239,6 +4261,16 @@ button.reply-quote:focus-visible .reply-quote-body {
 }
 
 @media (max-width: 900px) {
+  :root {
+    /* The dock is two rows on a phone — status and account above, the call
+       controls below — and one row when there is no call to control. */
+    --dock: 108px;
+    --dock-quiet: 60px;
+    /* The bar the two drawers hang off: one 40px control tall, plus its own
+       padding and rule. The shell subtracts exactly this. */
+    --topbar: 57px;
+  }
+
   .app-shell-skeleton {
     grid-template-columns: minmax(0, 1fr);
     padding: 8px 8px calc(var(--dock) + 16px);
@@ -4250,22 +4282,48 @@ button.reply-quote:focus-visible .reply-quote-body {
   }
   .app-shell {
     display: block;
-    height: calc(100dvh - 54px);
-    padding: 8px 8px 126px;
+    height: calc(100dvh - var(--topbar));
+    padding: 8px 8px calc(var(--dock) + 16px);
+  }
+
+  /* Reserving the taller dock in a text room costs the message list a visible
+     slice of a short screen, and a text room is where a phone mostly sits. */
+  body:has(.dock-controls:empty) .app-shell {
+    padding-bottom: calc(var(--dock-quiet) + 16px);
   }
 
   .mobile-topbar {
     align-items: center;
     background: var(--bg);
     border-bottom: 1px solid var(--border);
-    display: flex;
+    display: grid;
     gap: 8px;
-    justify-content: space-between;
-    min-height: 54px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: var(--topbar);
     padding: 8px 10px;
     position: sticky;
     top: 0;
     z-index: var(--layer-dock);
+  }
+
+  /* Both buttons already carry their name as an accessible label, and dropping
+     the word beside the glyph is what gives the room title the middle of a
+     375-pixel bar instead of the sliver left between two chips. */
+  .mobile-topbar .icon-btn {
+    flex: none;
+    height: 40px;
+    min-width: 40px;
+    padding: 0;
+    width: 40px;
+  }
+
+  .mobile-topbar .icon-btn span {
+    display: none;
+  }
+
+  .mobile-topbar .brand-lockup {
+    justify-self: center;
+    min-width: 0;
   }
 
   .rail,
@@ -4313,7 +4371,15 @@ button.reply-quote:focus-visible .reply-quote-body {
     pointer-events: auto;
   }
 
+  /*
+   * Three rows for the room header, the room, and the composer — and the
+   * header is not drawn at this width, so the room took the `auto` track and
+   * the composer took the one that grows. The message list stopped at the
+   * height of its own messages and an empty composer stood 436 pixels tall
+   * under it. Two rows, for the two things actually here.
+   */
   .main-panel {
+    grid-template-rows: minmax(0, 1fr) auto;
     height: 100%;
     min-height: 0;
   }
@@ -4332,10 +4398,12 @@ button.reply-quote:focus-visible .reply-quote-body {
     padding: 10px;
   }
 
-  .composer form,
-  .voice-dock,
   .dash,
   .dash-split,
+  /* The invite ledger's wider split is a compound selector, so it outranks the
+     plain `.dash-split` above and stayed two columns — with the ledger itself
+     laid out past the right edge of the screen. */
+  .dash-split.is-invites,
   .dash-topbar,
   .owner-server-context,
   .owner-server-rename-form,
@@ -4343,27 +4411,95 @@ button.reply-quote:focus-visible .reply-quote-body {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /*
+   * The composer stays one row on a phone. Stacked — a heading, a field, then
+   * a full-width Send — it stood 384 pixels tall on an 812-pixel screen, more
+   * than the message list it was supposed to sit under. The heading names the
+   * field for a screen reader and nothing else, and the button's mark says
+   * send on its own.
+   */
+  .composer {
+    gap: 6px;
+    padding-bottom: 8px;
+  }
+
+  .composer form {
+    align-items: end;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .composer-field-label {
+    border: 0;
+    clip-path: inset(50%);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .composer-send {
+    flex: none;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    width: 44px;
+  }
+
+  .composer-send span {
+    display: none;
+  }
+
+  /* Empty, it is 18 reserved pixels between the field and the dock. */
+  .composer .error-text:empty {
+    display: none;
+  }
+
   .dash-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  /* Stacked, the sidebar is a header band. Left spread apart it kept the
+     `space-between` it wears as a column, and a short section pushed the
+     sections a third of the way down the screen away from the mark. */
+  .dash {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
   .dash-sidebar {
+    align-content: start;
     border-bottom: 1px solid var(--border);
     border-right: 0;
+    gap: 12px;
     grid-template-rows: none;
     height: auto;
+    padding: 14px 16px;
     position: static;
   }
 
+  /* Four equal columns gave every section the same 84 pixels, and the longest
+     name wrapped and spilled out of its own chip. A strip that scrolls holds
+     whatever the words actually measure, which is what the settings dialog's
+     sections already do at this width. */
   .dash-nav {
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 1fr);
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .dash-nav::-webkit-scrollbar {
+    display: none;
   }
 
   .dash-nav-item {
+    flex: 0 0 auto;
     font-size: 13px;
-    padding: 8px 6px;
-    text-align: center;
+    padding: 8px 12px;
+    white-space: nowrap;
   }
 
   .dash-sidebar-foot {
@@ -4372,20 +4508,80 @@ button.reply-quote:focus-visible .reply-quote-body {
 
   .dash-topbar {
     align-items: stretch;
+    gap: 10px;
+    margin: 0 -16px;
+    padding: 14px 16px 12px;
     position: static;
+  }
+
+  .dash-topbar-copy h1 {
+    font-size: 19px;
+  }
+
+  /* The switch takes what is left after the escape hatch rather than claiming
+     180 pixels and pushing it onto a line of its own. */
+  .dash-topbar-actions {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .dash-server-switch {
+    min-width: 0;
+  }
+
+  .dash-main {
+    margin: 0;
+    padding: 0 16px 40px;
+  }
+
+  .dash-panel {
+    padding: 14px;
   }
 
   .dash-table-head {
     display: none;
   }
 
+  /*
+   * A row becomes a card rather than four stacked blocks: who, with the
+   * actions beside them, and the two facts about them on a line underneath.
+   * Given a column each, a status that reads "Active" was drawn as a
+   * full-width bar and the ellipsis sat alone on a fourth line.
+   */
   .dash-table-row {
-    gap: 6px;
-    grid-template-columns: minmax(0, 1fr);
+    gap: 8px 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .dash-table-row > .dash-cell:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .dash-table-row > .dash-cell.is-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .dash-table-row > .dash-cell:nth-child(2) {
+    align-content: start;
+    grid-column: 1;
+    grid-row: 2;
+    justify-items: start;
+  }
+
+  .dash-table-row > .dash-cell:nth-child(3) {
+    align-content: start;
+    grid-column: 2;
+    grid-row: 2;
+    justify-items: end;
+    text-align: end;
   }
 
   .dash-cell.is-actions {
-    justify-items: start;
+    align-content: center;
+    justify-items: end;
   }
 
   .owner-server-rename-field,
@@ -4403,27 +4599,81 @@ button.reply-quote:focus-visible .reply-quote-body {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /*
+   * Two rows rather than three stacked blocks: who you are and how you are
+   * connected on the first, the call controls on the second. Given a column
+   * each, the four controls and Leave grew into half-width slabs and the dock
+   * took a third of the screen.
+   */
+  .voice-dock {
+    align-items: center;
+    column-gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 0;
+    row-gap: 8px;
+  }
+
+  .dock-room {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  /* One line each, so the dock keeps the height the shell reserves for it
+     rather than growing a row every time the connection has more to say. */
+  .dock-status strong,
+  .dock-status span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dock-self {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
   .dock-controls {
-    justify-content: stretch;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: center;
+  }
+
+  /* Out of a call there is no second row to leave room for. */
+  .dock-controls:empty {
+    display: none;
   }
 
   .dock-controls .icon-btn,
   .dock-controls .btn {
-    flex: 1 1 calc(50% - 4px);
-    height: auto;
+    flex: 0 0 auto;
     min-height: 40px;
-    white-space: normal;
   }
 
   .dock-controls .control-icon {
     flex: 0 0 40px;
     height: 40px;
+    min-height: 40px;
     padding: 0;
     white-space: nowrap;
+    width: 40px;
   }
 
-  .dock-self {
-    justify-content: space-between;
+  /* Each one named by its own label, so the word can go — which is what lets
+     the control row hold five across a 375-pixel screen, and the account group
+     survive beside it. */
+  .dock-leave,
+  .dock-owner,
+  .dock-settings {
+    flex: 0 0 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    width: 40px;
+  }
+
+  .dock-leave span,
+  .dock-owner span {
+    display: none;
   }
 
   .landing-nav {
@@ -4520,9 +4770,18 @@ button.reply-quote:focus-visible .reply-quote-body {
     aspect-ratio: auto;
   }
 
-  .room-actions .status-pill,
-  .dock-self {
+  .room-actions .status-pill {
     display: none;
+  }
+
+  /*
+   * The account chip stays. Signing out lives behind it and nowhere else, so
+   * hiding the group to save width took the only way off a phone with it —
+   * and once the two buttons beside it are marks rather than words, the whole
+   * group is 128 pixels.
+   */
+  .dock-self {
+    gap: 6px;
   }
 }
 
@@ -4531,6 +4790,16 @@ button.reply-quote:focus-visible .reply-quote-body {
   .message-reply-trigger,
   .sidebar-menu-trigger {
     opacity: 1;
+  }
+
+  /* A finger is not a cursor. 28 pixels is a comfortable target to click and a
+     miss to tap, and on a touchscreen this is the only way into the actions on
+     its row — there is no secondary click to fall back on. The two message
+     triggers keep their size: they are placed against each other in a reserved
+     strip, and widening them there costs the message its text column. */
+  .sidebar-menu-trigger {
+    height: 36px;
+    width: 36px;
   }
 }
 
@@ -4869,6 +5138,14 @@ button.reply-quote:focus-visible .reply-quote-body {
   .settings-nav-item {
     flex: 0 0 auto;
     white-space: nowrap;
+  }
+
+  .settings-close {
+    margin: 8px 12px 0;
+  }
+
+  .settings-content {
+    padding: 8px 16px 24px;
   }
 }
 

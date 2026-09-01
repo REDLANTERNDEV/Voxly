@@ -19,15 +19,21 @@ export function BrandLockup({ title = "Voxly", subtitle = "The Basement", href =
   );
 }
 
-export function NavLink({ href, className, onNavigate, onClick, children }: {
+export function NavLink({ href, className, label, onNavigate, onClick, children }: {
   href: string;
   className: string;
+  /**
+   * Names the link when its own text is hidden, which is what a narrow screen
+   * does to the dock's labels. Passing it also sets the tooltip, so the two
+   * cannot drift apart.
+   */
+  label?: string;
   onNavigate: (path: string) => void;
   onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
   children: ReactNode;
 }) {
   const navigateOnClick = linkHandler(href, onNavigate);
-  return <a className={className} href={href} onClick={(event) => {
+  return <a className={className} href={href} aria-label={label} title={label} onClick={(event) => {
     onClick?.(event);
     navigateOnClick(event);
   }}>{children}</a>;
