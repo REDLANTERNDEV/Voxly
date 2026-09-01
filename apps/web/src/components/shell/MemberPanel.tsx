@@ -20,6 +20,7 @@ export function MemberPanel({
   onRequestNickname,
   onRequestMemberAction,
   actionMenu,
+  selfVoice,
   t
 }: {
   members: PresenceUser[];
@@ -27,6 +28,17 @@ export function MemberPanel({
   voiceRooms: RoomSummary[];
   voiceSnapshots: Record<string, VoiceSnapshot>;
   currentUser: PublicUser;
+  /**
+   * The member's own microphone and headset, when they are in a call. Absent
+   * outside one, which is when there is nothing to silence.
+   */
+  selfVoice?: {
+    mic: boolean;
+    deafen: boolean;
+    micEnabled: boolean;
+    deafenEnabled: boolean;
+    onToggle: (control: "mic" | "deafen") => void;
+  };
   canModerate: boolean;
   memberVolumes: Record<string, number>;
   onMemberVolumeChange: (userId: string, volume: number) => void;
@@ -50,12 +62,16 @@ export function MemberPanel({
     const voiceMember = voiceRoom ? voiceSnapshots[voiceRoom.id]?.members.find((member) => member.user.userId === user.userId) : undefined;
     const roleLabel = memberRoleLabel(user, t);
     const detail = voiceRoom ? `${roleLabel} · ${voiceRoom.name}` : roleLabel;
-    const canRename = canModerate && (user.role === "member" || user.userId === currentUser.id);
+    const isSelf = user.userId === currentUser.id;
+    // Your own name is yours; somebody else's is the owner's.
+    const canRename = isSelf || (canModerate && user.role === "member");
+    // The two self-silences belong on your own row here as much as in the rail.
+    const selfControls = isSelf && selfVoice ? selfVoice : undefined;
     const canModerateRemote = canOwnerVoiceModerate(canModerate ? "owner" : null, currentUser.id, user);
     const canModeratePerson = canOwnerModeratePerson(canModerate ? "owner" : null, currentUser.id, user);
     const canAssignRoles = canModerate && user.role === "member" && !user.isBot;
     const hasRemoteActions = user.userId !== currentUser.id && Boolean(voiceRoom || canModerateRemote);
-    const hasActions = hasRemoteActions || canRename || canAssignRoles;
+    const hasActions = hasRemoteActions || canRename || canAssignRoles || Boolean(selfControls);
     const menuHeight = memberActionMenuHeight({
       hasVolume: Boolean(voiceRoom && user.userId !== currentUser.id),
       canRename,
@@ -63,7 +79,8 @@ export function MemberPanel({
       canModerate: canModeratePerson,
       canVoiceModerate: Boolean(voiceRoom && canModerateRemote),
       canAssignRoles,
-      canMove: Boolean(voiceRoom && canModeratePerson && voiceRooms.length > 1)
+      canMove: Boolean(voiceRoom && canModeratePerson && voiceRooms.length > 1),
+      hasSelfControls: Boolean(selfControls)
     });
     const menuKey = `directory-member:${user.userId}`;
     return (
@@ -101,6 +118,7 @@ export function MemberPanel({
             onToggleInviteRole={canAssignRoles ? (canInvite) => { void onUpdateMemberPermissions(user.userId, canInvite); } : undefined}
             moveTargets={canModeratePerson && voiceRoom ? voiceRooms.filter((room) => room.id !== voiceRoom.id) : undefined}
             onMove={canModeratePerson && voiceRoom ? (roomId) => onMoveMember(user.userId, roomId) : undefined}
+            selfControls={selfControls}
             onRename={(returnFocus) => onRequestNickname(user, returnFocus)}
             onRequestAction={(action) => onRequestMemberAction(user, action, action === "disconnect" ? voiceRoom?.id : undefined)}
             t={t}

@@ -3024,13 +3024,17 @@ button.reply-quote:focus-visible .reply-quote-body {
  */
 .dock-status-silenced {
   /*
-   * The danger hue pulled towards whichever foreground this theme uses, which
-   * darkens it on the light dock and lifts it on the dark one. Bare
-   * `var(--danger)` is what the rest of the app writes danger text in, and at
-   * 12px on the light dock it measures 2.5:1 — this is a sentence whose whole
-   * job is to be read on the way past, so it does not get to inherit that.
+   * The *warning* hue, not the danger one, pulled towards whichever foreground
+   * this theme uses — which darkens it on the light dock and lifts it on the
+   * dark one, because a bare hue at 12px measures around 2.5:1 and this is a
+   * sentence whose whole job is to be read on the way past.
+   *
+   * It was danger, and read as an error. A muted microphone is a state the
+   * member chose and can see on the button beside it; the line under the room
+   * name is an information panel, and the loudest colour in the app does not
+   * belong to something nothing went wrong with.
    */
-  color: color-mix(in oklab, var(--danger), var(--fg) 34%);
+  color: color-mix(in oklab, var(--warn), var(--fg) 30%);
   font-weight: 600;
 }
 
@@ -4550,4 +4554,479 @@ button.reply-quote:focus-visible .reply-quote-body {
     animation-duration: 0s !important;
     animation-delay: 0s !important;
   }
+}
+
+/* A member's own Devices. Rows rather than a table: the rail is narrow, and a
+   Device is a name and one action, which is a list and not a grid. */
+.device-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.device-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.device-identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* The label is derived from a browser string and can be longer than the rail.
+   Truncating keeps the sign-out button reachable, which is the point of the row. */
+.device-identity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-error {
+  color: var(--danger);
+}
+
+/* The Link code and the confirmation number are read off one screen and typed
+   or compared on another, so both are set large, monospaced and widely tracked.
+   Two glyphs that look alike at 11px are the failure mode this avoids. */
+.link-code,
+.link-confirmation {
+  font-size: 28px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.link-input {
+  font-size: 22px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.link-dialog,
+.link-panel {
+  display: grid;
+  gap: 12px;
+  justify-items: stretch;
+}
+
+.link-panel {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin: 0 auto;
+  max-width: 380px;
+  min-width: 0;
+  padding: 20px;
+  width: 100%;
+}
+
+/* Nothing inside the panel may set its width — a long code, a wide QR or a
+   dragged field would otherwise push the card past the column it lives in. */
+.link-panel > * {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.device-link-action {
+  justify-self: start;
+}
+
+/* The arriving Device is nearly always a phone held in one hand, so the panel
+   is centred in the viewport rather than pinned under the wordmark. */
+.link-screen {
+  align-content: center;
+  display: grid;
+  gap: 24px;
+  justify-items: center;
+  min-height: 100dvh;
+  padding: 24px;
+}
+
+/* The Recovery code is dressed unlike the Link code on purpose. One is worth
+   ninety seconds, the other is worth the account until it is replaced — if they
+   look alike, the second gets treated like the first. */
+.recovery-reveal {
+  display: grid;
+  gap: 12px;
+  justify-items: stretch;
+}
+
+.recovery-code {
+  background: var(--scene);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  line-height: 1.7;
+  padding: 12px;
+  word-break: break-all;
+}
+
+.recovery-confirm {
+  align-items: start;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+}
+
+.recovery-warning {
+  color: var(--warn);
+}
+
+.recovery-link {
+  justify-self: center;
+  text-align: center;
+}
+
+/* A call that moved to the member's other device is not a failure, so it does
+   not wear the failure colour. */
+.toast-neutral {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+/* Shown to a member who was signed out because their session was seen in two
+   places. It has to read before the page, not inside it. */
+.landing-signed-out {
+  background: var(--bg);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  margin: 16px auto 0;
+  max-width: 720px;
+  padding: 12px 16px;
+  width: calc(100% - 32px);
+}
+
+/* A Device that appeared by Recovery is worth a second look — everything else
+   in the account was signed out when it did. */
+.device-origin {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.device-origin.is-recovery {
+  color: var(--warn);
+  opacity: 1;
+}
+
+/* The ways back for somebody who already has an account. Deliberately quiet
+   and below the invite: this page is for people arriving, not returning. */
+.landing-returning {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+/* Settings, in a window over the room.
+   The channel rail is a navigation surface; preferences stacked below the
+   channel list pushed the channels out of sight. */
+.settings-backdrop {
+  align-items: center;
+  background: rgb(0 0 0 / 0.6);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 60;
+}
+
+.settings-dialog {
+  background: var(--scene);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  /*
+   * The row has to be constrained as well as the columns. Without it the body
+   * grows to whatever the tallest section needs, the dialog overflows its own
+   * height, and the section that was supposed to scroll inside instead pushes
+   * the navigation off the top — which is exactly how the audio settings came
+   * out: a panel taller than the window it lived in.
+   */
+  grid-template-rows: minmax(0, 1fr);
+  height: min(680px, 100%);
+  max-width: 900px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.settings-nav {
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  /* `min-height: 0` is what lets a grid child scroll rather than stretch. */
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 12px;
+}
+
+.settings-nav-label {
+  padding: 0 10px 10px;
+}
+
+.settings-nav-item {
+  background: none;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  padding: 9px 10px;
+  text-align: start;
+}
+
+.settings-nav-item:hover {
+  background: var(--scene);
+  color: var(--text);
+}
+
+.settings-nav-item[aria-current="true"] {
+  background: var(--scene);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.settings-body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+}
+
+.settings-close {
+  justify-self: end;
+  margin: 12px 16px 0;
+}
+
+.settings-content {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 20px 20px;
+}
+
+/* Inside the window the audio controls are the section, not a card within it —
+   the navigation already named them, and a bordered box inside a bordered
+   panel inside a dialog is three frames for one list of controls. */
+.audio-device-card.is-inline {
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+.audio-device-card.is-inline > .theme-card-head {
+  display: none;
+}
+
+/* Inside the dialog the cards no longer need the rail's stacking margin. */
+.settings-content .theme-card {
+  margin-top: 14px;
+}
+
+/* On a phone the dialog is the screen — a 900px panel inside a 375px viewport
+   is a scrollbar, not a layout. */
+@media (max-width: 720px) {
+  .settings-backdrop {
+    padding: 0;
+  }
+
+  .settings-dialog {
+    border: 0;
+    border-radius: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
+    max-width: none;
+  }
+
+  .settings-nav {
+    border-bottom: 1px solid var(--border);
+    border-right: 0;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 12px;
+  }
+
+  .settings-nav-label {
+    display: none;
+  }
+
+  .settings-nav-item {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+/* The three steps of linking. Two of them happen on the other device, which is
+   the one place this interface cannot reach — so it has to say them. */
+.link-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-inline-start: 20px;
+}
+
+.link-steps li {
+  font-size: 13px;
+}
+
+.link-address {
+  background: var(--scene);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin-top: 4px;
+  padding: 3px 7px;
+  user-select: all;
+  word-break: break-all;
+}
+
+/* The rail's own way into settings. On a phone the rail *is* the drawer and
+   the dock's button is hidden, so this is the only entry point there. */
+.rail-settings {
+  justify-content: start;
+  margin-top: 18px;
+  width: 100%;
+}
+
+/* The QR sits above the typed code, not instead of it. White ground and a quiet
+   zone are part of the drawing — a code flush against a dark dialog does not
+   scan, however sharp the modules are. */
+.link-qr {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  margin: 0;
+}
+
+.link-qr svg {
+  background: #fff;
+  border-radius: var(--radius-md);
+  display: block;
+  height: auto;
+  /*
+   * Bigger than it was. A camera needs a few screen pixels per module to lock
+   * on, and a version 4 code is 33 across — at 200px that is six pixels each,
+   * which is marginal on a laptop held at arm's length. `image-rendering` is
+   * deliberately absent: this is vector, and asking for pixelation only makes
+   * a browser guess.
+   */
+  width: min(280px, 72vw);
+}
+
+.link-qr figcaption {
+  text-align: center;
+}
+
+/*
+ * How a code looks, everywhere it is shown *or* typed.
+ *
+ * The display and the field had drifted: the same characters read clearly in
+ * the settings dialog and ambiguously in the entry field, which is the worst
+ * possible split — a member checks one against the other.
+ *
+ * `slashed-zero` is what actually settles it. The alphabet has no O, I, L or U
+ * at all, so an ambiguous glyph can only ever be the digit; a slashed zero says
+ * so instead of leaving the member to know that. `tabular-nums` keeps the
+ * groups aligned, and the tracking gives each character room to be read alone.
+ */
+.code-face {
+  font-family: var(--font-mono);
+  font-feature-settings: "zero" 1, "ss01" 1;
+  font-variant-numeric: slashed-zero tabular-nums;
+  letter-spacing: 0.12em;
+}
+
+/* The code and the QR are one block so that running out can cover both at once
+   — a member who is told "invalid" while looking at a code on screen has been
+   left to work out why on their own. */
+.link-code-block {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  position: relative;
+}
+
+.link-code-block.is-expired > .link-qr,
+.link-code-block.is-expired > .link-code {
+  filter: blur(4px);
+  opacity: 0.4;
+  pointer-events: none;
+  user-select: none;
+}
+
+.link-renew {
+  position: absolute;
+  /* Centred over what it replaces, so the eye lands on the way out rather than
+     on the thing that stopped working. */
+  inset-block-start: 50%;
+  translate: 0 -50%;
+}
+
+/* The countdown reads as one sentence with one number in it. Only the number
+   carries the colour: the words around it are not the alarming part, and a
+   whole line in red reads as a failure rather than as a clock. */
+.link-countdown {
+  font-size: 14px;
+  margin: 0;
+  text-align: center;
+}
+
+.link-countdown strong {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.link-countdown strong.is-urgent {
+  color: var(--danger);
+}
+
+.link-copy {
+  justify-self: center;
+}
+
+/* Twenty-five characters and four dashes do not fit on one line at a readable
+   size, and a field that scrolls sideways hides the half a member is checking.
+   A textarea-shaped input wraps instead, so the whole code stays visible while
+   it is typed. */
+.recovery-input {
+  font-size: 16px;
+  line-height: 1.8;
+  /* A textarea is user-resizable by default, and a member who catches the grip
+     can drag this one over the whole page. It exists to wrap twenty-nine
+     characters, not to be adjustable. */
+  resize: none;
+  height: 78px;
+  max-width: 100%;
+  /* Breaks at the dashes rather than mid-group. `break-all` split
+     `…-64XY2-H05 / SY`, which is the one place a member is checking character
+     by character against something written down. */
+  overflow-wrap: break-word;
+  padding: 10px 12px;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: normal;
+}
+
+/* Signing a device out is a destructive act and now looks like one. */
+.device-sign-out {
+  flex: 0 0 auto;
 }

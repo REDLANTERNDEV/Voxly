@@ -1644,13 +1644,26 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(edited.statusCode, 200);
     assert.equal(edited.json().message.nickname, "Basement Ece");
 
-    const memberDenied = await app.server.inject({
+    // Changed deliberately: what a member is called is theirs. Needing to ask
+    // the owner to change your own name is the kind of small indignity that
+    // makes a private group feel like somebody else's property.
+    const renamedSelf = await app.server.inject({
       method: "PATCH",
       url: `/api/servers/${defaultServerId}/members/${member.user.id}/nickname`,
       cookies: member.cookies,
+      payload: { nickname: "Ece Herself" }
+    });
+    assert.equal(renamedSelf.statusCode, 200);
+    assert.equal(renamedSelf.json().user.nickname, "Ece Herself");
+
+    // Renaming *somebody else* is still moderation, and still the owner's.
+    const renamedOwner = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${owner.user.id}/nickname`,
+      cookies: member.cookies,
       payload: { nickname: "Not allowed" }
     });
-    assert.equal(memberDenied.statusCode, 403);
+    assert.equal(renamedOwner.statusCode, 403);
 
     const invalid = await app.server.inject({
       method: "PATCH",

@@ -17,10 +17,11 @@ import type {
   ServerSummary,
   ServersResponse
 } from "./types.js";
-import type { VoiceModerationState } from "@voxly/shared";
+import type { DeviceSummary, VoiceModerationState } from "@voxly/shared";
 
 type JsonBody = Record<string, unknown>;
 type AccessClaimResponse = CurrentUserResponse & { serverId: string };
+type InviteAcceptResponse = CurrentUserResponse & { serverId: string };
 
 export class ApiError extends Error {
   constructor(
@@ -45,6 +46,74 @@ export async function apiPost<T>(path: string, body?: JsonBody): Promise<T> {
     method: "POST",
     body: body ? JSON.stringify(body) : undefined
   });
+}
+
+/**
+ * The member's own Devices. Deliberately not the owner's session console, which
+ * answers an operator's question about everybody; this one answers "what is
+ * signed in as me, and how do I get rid of it?" (`devices.ts`).
+ */
+export async function fetchDevices() {
+  return apiGet<{ devices: DeviceSummary[] }>("/api/devices");
+}
+
+export async function signOutDevice(deviceId: string) {
+  await request<void>(`/api/devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
+}
+
+/**
+ * Linking a second Device. Four calls because there are four moments, and the
+ * middle one is the point: claiming asks, and only approval on the Device that
+ * minted the code turns that into a session (ADR-0014).
+ */
+export async function createDeviceLink() {
+  return apiPost<{ code: string; expiresAt: string; expiresInSeconds: number; linkId: string }>("/api/devices/links");
+}
+
+/**
+ * Retires one code by id, never "whatever is outstanding". A client that mints
+ * twice in quick succession would otherwise have its live code killed by the
+ * previous one's cleanup.
+ */
+export async function cancelDeviceLink(linkId: string) {
+  await request<void>(`/api/devices/links/${encodeURIComponent(linkId)}`, { method: "DELETE" });
+}
+
+export async function fetchWaitingDeviceLink() {
+  return apiGet<{ waiting: { confirmation: string; label: string; expiresAt: string } | null }>(
+    "/api/devices/links/waiting"
+  );
+}
+
+export async function answerDeviceLink(approve: boolean) {
+  return apiPost<{ ok: boolean }>("/api/devices/links/approve", { approve });
+}
+
+export async function claimDeviceLink(code: string, turnstileToken?: string) {
+  return apiPost<{ claimToken: string; confirmation: string }>("/api/devices/links/claim", { code, turnstileToken });
+}
+
+export type DeviceLinkOutcome = "pending" | "approved" | "refused" | "expired";
+
+export async function collectDeviceLink(claimToken: string) {
+  return apiPost<{ status: DeviceLinkOutcome; user?: PublicUser }>("/api/devices/links/collect", { claimToken });
+}
+
+/**
+ * The Recovery code. `present` never carries the value — it is shown once when
+ * it is created and nothing can read it back, which is what stops every session
+ * from being a way to steal it.
+ */
+export async function fetchRecoveryStatus() {
+  return apiGet<{ present: boolean }>("/api/recovery");
+}
+
+export async function createRecoveryCode() {
+  return apiPost<{ code: string; signedOutOthers: boolean }>("/api/recovery");
+}
+
+export async function redeemRecoveryCode(code: string, turnstileToken?: string) {
+  return apiPost<{ user: PublicUser }>("/api/recovery/redeem", { code, turnstileToken });
 }
 
 export async function fetchMe() {
@@ -142,7 +211,7 @@ export async function suppressMessageEmbed(roomId: string, messageId: string, em
 }
 
 export async function acceptInvite(inviteToken: string, nickname: string, turnstileToken?: string) {
-  return apiPost<CurrentUserResponse & { serverId: string }>("/api/invites/accept", { inviteToken, nickname: nickname || undefined, turnstileToken });
+  return apiPost<InviteAcceptResponse>("/api/invites/accept", { inviteToken, nickname: nickname || undefined, turnstileToken });
 }
 
 export async function previewInvite(inviteToken: string) {

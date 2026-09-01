@@ -9,6 +9,8 @@ export type PathRoute =
   | { name: "landing" }
   | { name: "invite"; token: string }
   | { name: "owner-claim" }
+  | { name: "link-device" }
+  | { name: "recover" }
   | { name: "access-claim"; token: string }
   | { name: "text"; serverId: string; roomId: string }
   | { name: "voice"; serverId: string; roomId: string }
@@ -40,6 +42,14 @@ export function parsePathRoute(pathname: string): PathRoute {
   if (pathname === "/invite") return { name: "invite", token: "" };
   if (pathname.startsWith("/owner")) return { name: "owner", serverId: defaultServerId };
   if (pathname === "/setup/owner") return { name: "owner-claim" };
+  // The arriving Device has no session, so this route must resolve before any
+  // authenticated one. It is the only screen a signed-out member reaches on
+  // purpose that is not an invite.
+  // `/link-device` says what it is; `/link` alone reads like a hyperlink. The
+  // short form stays valid because it may have been written down or scanned
+  // before the rename, and an address that used to work should keep working.
+  if (pathname === "/link-device" || pathname === "/link") return { name: "link-device" };
+  if (pathname === "/recover") return { name: "recover" };
   if (pathname === "/access/claim") return { name: "access-claim", token: getAccessClaimTokenFromHash(window.location.hash) };
   const serverRoute = pathname.match(/^\/app\/server\/([^/]+)\/(text|voice)\/([^/]+)$/);
   if (serverRoute) {

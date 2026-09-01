@@ -1,4 +1,4 @@
-import type { ChatMessage,MusicCommand,PublicUser } from "@voxly/shared";
+import type { ChatMessage,MusicCommand,PublicUser,VoiceForceLeaveReason } from "@voxly/shared";
 import { useCallback,useEffect,useRef,useState,type ReactNode } from "react";
 import { logout } from "./api.js";
 import { AppRoutes } from "./app/AppRoutes.js";
@@ -6,7 +6,7 @@ import { AuthenticatedAppSurface } from "./app/AuthenticatedAppSurface.js";
 import { applyThemeChoice,parseRoute,readThemeChoice,saveThemeChoice,serverPath } from "./app/navigation.js";
 import type { Drawer,LiveWatchRequest,Route,ShellActions,ShellModel,ThemeChoice,Translate,VoiceJoinRequest } from "./app/types.js";
 import { useListenerAudio } from "./app/useListenerAudio.js";
-import { voiceErrorMessage } from "./app/presentation.js";
+import { forceLeaveNoticeKey, voiceErrorMessage } from "./app/presentation.js";
 import { useRealtimeSync } from "./app/useRealtimeSync.js";
 import { useSessionController } from "./app/useSessionController.js";
 import { useWorkspaceController } from "./app/useWorkspaceController.js";
@@ -34,6 +34,10 @@ export function App() {
   const activeVoiceRoomRef = useRef<string | null>(null);
   const leaveVoiceRef = useRef<() => void>(() => undefined);
   const moveVoiceRef = useRef<(roomId: string) => void>(() => undefined);
+  const [forceLeaveReason, setForceLeaveReason] = useState<VoiceForceLeaveReason | null>(null);
+  const forceLeaveNoticeRef = useRef<(reason: VoiceForceLeaveReason) => void>(() => undefined);
+  forceLeaveNoticeRef.current = setForceLeaveReason;
+  const checkStillSignedInRef = useRef<() => Promise<void>>(async () => undefined);
   const notifyMessageRef = useRef<(message: ChatMessage) => void>(() => undefined);
 
   const navigate = useCallback((path: string) => {
@@ -66,6 +70,7 @@ export function App() {
   useEffect(() => { document.documentElement.lang = language; }, [language]);
 
   const session = useSessionController(route, navigate);
+  checkStillSignedInRef.current = session.checkStillSignedIn;
   const workspace = useWorkspaceController({
     user: session.user,
     route,
@@ -96,6 +101,8 @@ export function App() {
     activeVoiceRoomRef,
     leaveVoiceRef,
     moveVoiceRef,
+    forceLeaveNoticeRef,
+    checkStillSignedInRef,
     handlers: {
       presenceSnapshot: workspace.applyPresenceSnapshot,
       presenceOnline: workspace.applyPresenceOnline,
@@ -186,12 +193,14 @@ export function App() {
     serverMembers: workspace.serverMembers,
     socketState: realtime.socketState,
     connectionHealth: audio.connectionHealth,
+    voiceQuality: audio.voiceQuality,
     activeVoiceRoomId: audio.voice.activeRoomId,
     controls: audio.voice.controls,
     voiceModeration: audio.voice.voiceModeration,
     micLockedByRoom: Boolean(audio.voice.activeRoomId && workspace.afkRoomIds.includes(audio.voice.activeRoomId)),
     appConfig: session.appConfig,
     voiceError: voiceErrorMessage(audio.voice.error || session.rtcConfigError, t),
+    voiceNotice: forceLeaveReason ? t(forceLeaveNoticeKey(forceLeaveReason)) : "",
     visualTargets: audio.voice.visualTargets,
     voiceSnapshots: audio.voice.voiceSnapshots,
     musicQueues,
@@ -272,6 +281,7 @@ export function App() {
     t={t}
     renderSurface={renderSurface}
     turnstileSiteKey={session.appConfig.turnstile?.siteKey ?? null}
+    signedOutReason={session.signedOutReason}
     analytics={session.appConfig.analytics}
     completeAuthentication={session.completeAuthentication}
     loadAcceptedServer={workspace.loadAcceptedServer}

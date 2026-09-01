@@ -2,7 +2,7 @@ import type { PresenceUser,RoomSummary,VoiceModerationState } from "@voxly/share
 import type { MouseEvent } from "react";
 import { useRef } from "react";
 import type { MemberAction,Translate } from "../../app/types.js";
-import { MoreIcon } from "../../components/ui/Icons.js";
+import { HeadsetIcon,MicIcon,MoreIcon } from "../../components/ui/Icons.js";
 import { VolumeControl } from "../../components/ui/Primitives.js";
 import { type ContextMenuDescriptor } from "../../lib/contextMenu.js";
 import { ContextMenu } from "../ContextMenu.js";
@@ -78,7 +78,7 @@ export function openSidebarMenuFromPointer(
 }
 
 
-export function memberActionMenuHeight({ hasVolume, canRename, canDisconnect, canModerate, canVoiceModerate = false, canAssignRoles = false, canMove = false }: {
+export function memberActionMenuHeight({ hasVolume, canRename, canDisconnect, canModerate, canVoiceModerate = false, canAssignRoles = false, canMove = false, hasSelfControls = false }: {
   hasVolume: boolean;
   canRename: boolean;
   canDisconnect: boolean;
@@ -86,8 +86,9 @@ export function memberActionMenuHeight({ hasVolume, canRename, canDisconnect, ca
   canVoiceModerate?: boolean;
   canAssignRoles?: boolean;
   canMove?: boolean;
+  hasSelfControls?: boolean;
 }) {
-  return 20 + (hasVolume ? 64 : 0) + (canRename ? 40 : 0) + (canAssignRoles ? 62 : 0) + (canVoiceModerate ? 80 : 0) + (canMove ? 40 : 0) + (canDisconnect ? 40 : 0) + (canModerate ? 80 : 0);
+  return 20 + (hasVolume ? 64 : 0) + (hasSelfControls ? 80 : 0) + (canRename ? 40 : 0) + (canAssignRoles ? 62 : 0) + (canVoiceModerate ? 80 : 0) + (canMove ? 40 : 0) + (canDisconnect ? 40 : 0) + (canModerate ? 80 : 0);
 }
 
 export function MemberActionMenu({
@@ -106,6 +107,7 @@ export function MemberActionMenu({
   onMove,
   onRename,
   onRequestAction,
+  selfControls,
   showTrigger = true,
   t
 }: {
@@ -125,6 +127,27 @@ export function MemberActionMenu({
   onMove?: (roomId: string) => void;
   onRename: (returnFocus: HTMLButtonElement | null) => void;
   onRequestAction: (action: MemberAction) => void;
+  /**
+   * Your own microphone and headset, on your own row.
+   *
+   * The dock already has these as buttons, and this is the same two switches
+   * where a member is already right-clicking themselves — which is where every
+   * other application of this shape puts them, and where somebody looking for
+   * "mute me" looks second.
+   */
+  selfControls?: {
+    mic: boolean;
+    deafen: boolean;
+    /**
+     * Whether each switch may be thrown at all — the same rules the dock
+     * buttons follow. An owner's mute, and the AFK channel's, are not something
+     * a member can undo from a menu any more than from the dock, and offering
+     * it as if they could is the worse half of that.
+     */
+    micEnabled: boolean;
+    deafenEnabled: boolean;
+    onToggle: (control: "mic" | "deafen") => void;
+  };
   showTrigger?: boolean;
   t: Translate;
 }) {
@@ -136,7 +159,8 @@ export function MemberActionMenu({
     canModerate,
     canVoiceModerate: Boolean(moderation && onVoiceModeration),
     canAssignRoles: Boolean(onToggleInviteRole),
-    canMove: Boolean(onMove && moveTargets && moveTargets.length > 0)
+    canMove: Boolean(onMove && moveTargets && moveTargets.length > 0),
+    hasSelfControls: Boolean(selfControls)
   });
   return (
     <>
@@ -148,6 +172,32 @@ export function MemberActionMenu({
             value={volume}
             onChange={onVolumeChange}
           /> : null}
+          {selfControls ? (
+            <>
+              <button
+                className={selfControls.mic ? "" : "is-danger"}
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={!selfControls.mic}
+                disabled={!selfControls.micEnabled}
+                onClick={() => selfControls.onToggle("mic")}
+              >
+                <MicIcon off={!selfControls.mic} />
+                <span>{selfControls.mic ? t("member.muteSelf") : t("member.unmuteSelf")}</span>
+              </button>
+              <button
+                className={selfControls.deafen ? "is-danger" : ""}
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={selfControls.deafen}
+                disabled={!selfControls.deafenEnabled}
+                onClick={() => selfControls.onToggle("deafen")}
+              >
+                <HeadsetIcon off={selfControls.deafen} />
+                <span>{selfControls.deafen ? t("member.undeafenSelf") : t("member.deafenSelf")}</span>
+              </button>
+            </>
+          ) : null}
           {canRename ? <button type="button" onClick={() => {
             const returnFocus = actionMenu.active?.trigger ?? null;
             actionMenu.close();

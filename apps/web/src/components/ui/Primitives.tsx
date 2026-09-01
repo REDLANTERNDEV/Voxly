@@ -87,7 +87,13 @@ export function ControlButton({ label, active, tone, enabled, silenced = false, 
   );
 }
 
-export function Toast({ message }: { message: string }) {
+/**
+ * `tone` exists because not everything worth saying is a failure. A call that
+ * moved to the member's other Device is something they need told and nothing
+ * went wrong, and dressing it in the danger colour would report a working
+ * feature as a fault.
+ */
+export function Toast({ message, tone = "danger" }: { message: string; tone?: "danger" | "neutral" }) {
   const [visibleMessage, setVisibleMessage] = useState("");
 
   useEffect(() => {
@@ -97,7 +103,7 @@ export function Toast({ message }: { message: string }) {
     return () => window.clearTimeout(timeout);
   }, [message]);
 
-  return visibleMessage ? <div className="toast toast-danger" role="alert">{visibleMessage}</div> : null;
+  return visibleMessage ? <div className={`toast toast-${tone}`} role={tone === "danger" ? "alert" : "status"}>{visibleMessage}</div> : null;
 }
 
 

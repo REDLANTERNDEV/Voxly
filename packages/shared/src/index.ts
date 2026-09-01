@@ -9,6 +9,29 @@ export interface PublicUser {
   bannedAt: string | null;
 }
 
+/**
+ * One browser holding one session for a member, as that member sees it
+ * (`CONTEXT.md` — Devices and access).
+ *
+ * `label` is coarse and derived — "Chrome on Windows" — never the raw
+ * User-Agent. The member only needs to tell their own Devices apart, and a
+ * fingerprint would be a privacy cost with no matching benefit.
+ */
+export interface DeviceSummary {
+  id: string;
+  label: string;
+  /**
+   * How this Device arrived. A Device that appeared by Recovery is a very
+   * different event from one somebody linked while holding both, and "was that
+   * me?" is much easier to answer when the list says which.
+   */
+  origin: "invite" | "link" | "recovery";
+  createdAt: string;
+  lastSeenAt: string | null;
+  /** The Device asking. It is the one thing a member may not sign out here. */
+  current: boolean;
+}
+
 export interface RoomSummary {
   id: string;
   serverId: string;
@@ -151,7 +174,22 @@ export interface VoiceSnapshot {
   members: VoiceMemberState[];
 }
 
-export type VoiceForceLeaveReason = "joined_another_room" | "owner_disconnect" | "server_access_revoked" | "room_deleted" | "server_deleted";
+/**
+ * Why a member stopped being in a voice room without asking to be.
+ *
+ * `joined_another_device` is the one that is not a fault: the same member
+ * joined from a second Device, and voice follows the newest one. It is listed
+ * with the rest because the client's handling is identical — tear down and
+ * leave — but the copy for it must not read as an error, because nothing went
+ * wrong (ADR-0014).
+ */
+export type VoiceForceLeaveReason =
+  | "joined_another_room"
+  | "joined_another_device"
+  | "owner_disconnect"
+  | "server_access_revoked"
+  | "room_deleted"
+  | "server_deleted";
 
 export type VisualMediaKind = "camera" | "screen";
 

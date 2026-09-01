@@ -86,7 +86,7 @@ function AudioSwitchControl({ label, hint, checked, onChange }: { label: string;
   );
 }
 
-export function AudioDeviceSettings(props: AudioDeviceSettingsProps) {
+export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [testPending, setTestPending] = useState(false);
   const [position, setPosition] = useState({ left: 8, top: 8, width: 320 });
@@ -118,6 +118,19 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps) {
     void props.onOpen().catch(() => undefined);
   }, [props.onOpen]);
 
+  // Inline has no "open" moment, so it refreshes on mount instead — otherwise
+  // the member sees an empty device list until something else happens to ask.
+  //
+  // Through a ref, because callers build `onOpen` inline and a fresh identity
+  // every render would turn this into an enumeration loop.
+  const inline = props.inline === true;
+  const requestDevicesRef = useRef(props.onOpen);
+  requestDevicesRef.current = props.onOpen;
+  useEffect(() => {
+    if (!inline) return;
+    void requestDevicesRef.current().catch(() => undefined);
+  }, [inline]);
+
   useEffect(() => {
     if (!isOpen) return;
     closeButtonRef.current?.focus();
@@ -145,17 +158,7 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps) {
       ? props.labels.testUnavailable
       : "";
 
-  return (
-    <section className="audio-device-card">
-      <button ref={triggerRef} className="audio-device-trigger" type="button" aria-haspopup="dialog" aria-expanded={isOpen} onClick={() => isOpen ? close() : open()}>
-        <span>{props.labels.title}</span><span aria-hidden="true">{isOpen ? "−" : "+"}</span>
-      </button>
-      {isOpen ? createPortal(
-        <div ref={popoverRef} className="audio-device-popover" role="dialog" aria-label={props.labels.title} style={position}>
-          <div className="audio-device-popover-head">
-            <strong>{props.labels.title}</strong>
-            <button ref={closeButtonRef} className="audio-device-close" type="button" aria-label={props.labels.closeSettings} onClick={close}>×</button>
-          </div>
+  const fields = (
           <div className="audio-device-fields">
             <label className="form-field">
               <span>{props.labels.microphone}</span>
@@ -217,6 +220,32 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps) {
             <button className="btn btn-ghost" type="button" disabled={props.loading} onClick={() => void props.onRefresh()}>{props.loading ? `${props.labels.refresh}…` : props.labels.refresh}</button>
             <p className="error-text" aria-live="polite">{deviceStatus || testStatus}</p>
           </div>
+  );
+
+  // Inside the settings window there is nothing to pop over: the page *is* the
+  // place these belong, and a popover inside a dialog is a second layer over a
+  // first for no reason. Same controls, no trigger, no portal.
+  if (props.inline) {
+    return (
+      <section className="theme-card audio-device-card is-inline">
+        <div className="theme-card-head"><span className="label">{props.labels.title}</span></div>
+        {fields}
+      </section>
+    );
+  }
+
+  return (
+    <section className="audio-device-card">
+      <button ref={triggerRef} className="audio-device-trigger" type="button" aria-haspopup="dialog" aria-expanded={isOpen} onClick={() => isOpen ? close() : open()}>
+        <span>{props.labels.title}</span><span aria-hidden="true">{isOpen ? "−" : "+"}</span>
+      </button>
+      {isOpen ? createPortal(
+        <div ref={popoverRef} className="audio-device-popover" role="dialog" aria-label={props.labels.title} style={position}>
+          <div className="audio-device-popover-head">
+            <strong>{props.labels.title}</strong>
+            <button ref={closeButtonRef} className="audio-device-close" type="button" aria-label={props.labels.closeSettings} onClick={close}>×</button>
+          </div>
+          {fields}
         </div>,
         document.body
       ) : null}

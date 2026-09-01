@@ -513,6 +513,14 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     }
   }, [iceServers, sendOffer]);
 
+  /**
+   * The live peer connections, for the quality sampler. Exposed as an accessor
+   * rather than state so reading the receiving decoders never re-renders the
+   * tree, and so the sampler always sees the current set rather than the set as
+   * it stood when it last rendered.
+   */
+  const peerConnections = useCallback(() => peersRef.current.values(), []);
+
   const renegotiatePeers = useCallback(() => {
     for (const [peerUserId, peer] of peersRef.current) {
       syncLocalTracks(peer, peerUserId);
@@ -1337,6 +1345,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     leave,
     localPreviews,
     microphoneMonitorStream,
+    peerConnections,
     requestSnapshot,
     remoteStreams,
     setDeafened,

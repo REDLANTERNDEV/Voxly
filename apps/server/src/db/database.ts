@@ -97,7 +97,41 @@ function migrate(sqlite: DatabaseSync) {
       user_id text not null,
       created_at text not null,
       expires_at text not null,
-      revoked_at text
+      revoked_at text,
+      label text,
+      last_seen_at text,
+      token_issued_at text,
+      origin text
+    );
+
+    create table if not exists device_links (
+      id text primary key,
+      token_hash text not null unique,
+      user_id text not null,
+      created_at text not null,
+      expires_at text not null,
+      consumed_at text,
+      claim_token_hash text,
+      claimed_at text,
+      claim_label text,
+      confirmation text,
+      approved_at text,
+      refused_at text
+    );
+
+    create table if not exists session_tokens (
+      token_hash text primary key,
+      session_id text not null,
+      superseded_at text not null
+    );
+
+    create table if not exists recovery_codes (
+      id text primary key,
+      token_hash text not null unique,
+      user_id text not null,
+      created_at text not null,
+      used_at text,
+      replaced_at text
     );
 
     create table if not exists owner_claims (
@@ -194,6 +228,10 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "server_members", "moderator_muted", "integer not null default 0");
   addColumnIfMissing(sqlite, "server_members", "moderator_deafened", "integer not null default 0");
   addColumnIfMissing(sqlite, "server_members", "can_invite", "integer not null default 0");
+  addColumnIfMissing(sqlite, "sessions", "label", "text");
+  addColumnIfMissing(sqlite, "sessions", "last_seen_at", "text");
+  addColumnIfMissing(sqlite, "sessions", "token_issued_at", "text");
+  addColumnIfMissing(sqlite, "sessions", "origin", "text");
 
   run(
     sqlite,

@@ -33,7 +33,64 @@ export const sessions = sqliteTable("sessions", {
   userId: text("user_id").notNull(),
   createdAt: text("created_at").notNull(),
   expiresAt: text("expires_at").notNull(),
-  revokedAt: text("revoked_at")
+  revokedAt: text("revoked_at"),
+  /** Coarse and derived, never the raw User-Agent; see `auth/deviceLabel.ts`. */
+  label: text("label"),
+  lastSeenAt: text("last_seen_at"),
+  /** When the *current* token value was issued; the row is older. */
+  tokenIssuedAt: text("token_issued_at"),
+  /** How this Device arrived: joined, linked, or recovered. */
+  origin: text("origin", { enum: ["invite", "link", "recovery"] })
+});
+
+/**
+ * A Link code in flight: minted by one Device, claimed by another, and worth
+ * ninety seconds and one use. The claim half is separate from the mint half
+ * because approval happens between them — see ADR-0014.
+ */
+export const deviceLinks = sqliteTable("device_links", {
+  id: text("id").primaryKey(),
+  tokenHash: text("token_hash").notNull().unique(),
+  userId: text("user_id").notNull(),
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  consumedAt: text("consumed_at"),
+  /** Held only by the Device that claimed the code, so only it can collect. */
+  claimTokenHash: text("claim_token_hash"),
+  claimedAt: text("claimed_at"),
+  claimLabel: text("claim_label"),
+  /** Shown on both Devices while approval is waiting. Not a secret. */
+  confirmation: text("confirmation"),
+  approvedAt: text("approved_at"),
+  refusedAt: text("refused_at")
+});
+
+/**
+ * The durable secret a member holds so they can reach their account with no
+ * signed-in Device left. One live row per account: regenerating replaces it,
+ * and redeeming replaces it too — see ADR-0014 on why using one is loud.
+ */
+export const recoveryCodes = sqliteTable("recovery_codes", {
+  id: text("id").primaryKey(),
+  tokenHash: text("token_hash").notNull().unique(),
+  userId: text("user_id").notNull(),
+  createdAt: text("created_at").notNull(),
+  usedAt: text("used_at"),
+  replacedAt: text("replaced_at")
+});
+
+/**
+ * Tokens a session has already carried.
+ *
+ * A session outlives any single token value: the value rotates while the row,
+ * and everything bound to it, stays. These are the retired values, kept so that
+ * one turning up again can be recognised for what it is — two parties holding
+ * the same cookie. See ADR-0015.
+ */
+export const sessionTokens = sqliteTable("session_tokens", {
+  tokenHash: text("token_hash").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  supersededAt: text("superseded_at").notNull()
 });
 
 export const ownerClaims = sqliteTable("owner_claims", {

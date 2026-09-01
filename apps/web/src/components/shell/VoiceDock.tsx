@@ -1,20 +1,22 @@
 import { useState } from "react";
-import { activeServerRole,connectionCopy,connectionLabel,initial,voiceDockSilenced,voiceDockStatusLabel } from "../../app/presentation.js";
+import { activeServerRole,connectionCopy,connectionLabel,initial,voiceDockSilenced,voiceDockStatusLabel,voiceSignalPresentation } from "../../app/presentation.js";
 import type { ShellActions,ShellModel,Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
-import { CameraIcon,HeadsetIcon,LeaveIcon,MicIcon,ScreenIcon,ShieldIcon } from "../../components/ui/Icons.js";
+import { CameraIcon,GearIcon,HeadsetIcon,LeaveIcon,MicIcon,ScreenIcon,ShieldIcon } from "../../components/ui/Icons.js";
 import { NavLink } from "../../components/ui/Navigation.js";
 import { ControlButton } from "../../components/ui/Primitives.js";
 import { type TranslationKey } from "../../lib/i18n.js";
 import type { ConnectionHealth } from "../../lib/useConnectionHealth.js";
+import type { VoiceQuality } from "../../lib/useVoiceQuality.js";
 import { controlPresentation } from "../../lib/voiceControls.js";
 type VoiceDockProps = Pick<ShellModel,
   "activeServerId" | "activeVoiceRoomId" | "connectionHealth" | "controls" |
   "currentNickname" | "currentRoom" | "microphoneTestActive" | "route" |
-  "servers" | "socketState" | "t" | "user" | "voiceModeration" | "micLockedByRoom"
+  "servers" | "socketState" | "t" | "user" | "voiceModeration" | "micLockedByRoom" |
+  "voiceQuality"
 > & Pick<ShellActions,
   "onJoinVoice" | "onLeaveVoice" | "onLogout" | "onNavigate" | "onToggleControl"
-> & { connectedCount: number };
+> & { connectedCount: number; onOpenSettings: () => void };
 
 export function VoiceDock(props: VoiceDockProps) {
   const canManageServer = activeServerRole(props) === "owner";
@@ -28,12 +30,12 @@ export function VoiceDock(props: VoiceDockProps) {
   return (
     <footer className="voice-dock">
       <div className="dock-room">
-        <ConnectionSignal health={props.connectionHealth} t={props.t} />
+        <ConnectionSignal health={props.connectionHealth} quality={props.voiceQuality} inCall={Boolean(props.activeVoiceRoomId)} t={props.t} />
         {/* The sentence carries the same alarm as the button, because the two are
             the same fact and a member scanning the dock may read either one
             first. It is also the half that says *which* — a colour on a button
             cannot distinguish a muted microphone from a deafened headset. */}
-        <span className="dock-status"><strong>{roomName}</strong><span className={`small ${props.activeVoiceRoomId && voiceDockSilenced(props.controls) ? "dock-status-silenced" : "muted"}`}>{props.activeVoiceRoomId ? `${voiceDockStatusLabel(props.controls, props.connectedCount, props.t)} · ${connectionLabel(props.socketState, props.t)}` : connectionCopy(props.socketState, props.t)}</span></span>
+        <span className="dock-status"><strong>{roomName}</strong><span className={`small ${props.activeVoiceRoomId && voiceDockSilenced(props.controls) ? "dock-status-silenced" : "muted"}`}>{props.activeVoiceRoomId ? voiceDockStatusLabel(props.controls, props.connectedCount, props.socketState, props.t) : connectionCopy(props.socketState, props.t)}</span></span>
       </div>
       <div className="dock-controls">
         {canJoinCurrentVoice ? (
@@ -59,6 +61,9 @@ export function VoiceDock(props: VoiceDockProps) {
         {canManageServer ? (
           <NavLink className="btn btn-ghost" href={`/app/server/${encodeURIComponent(props.activeServerId)}/owner`} onNavigate={props.onNavigate}><ShieldIcon /><span>{props.t("owner.panel")}</span></NavLink>
         ) : null}
+        <button className="btn btn-ghost dock-settings" type="button" aria-label={props.t("settings.open")} title={props.t("settings.open")} onClick={props.onOpenSettings}>
+          <GearIcon />
+        </button>
         <details className="account-menu">
           <summary aria-label={`${props.currentNickname} account menu`}>
             <span className={`avatar ${props.user.role === "owner" ? "owner" : ""}`} title={props.currentNickname}>{initial(props.currentNickname)}</span>
@@ -74,18 +79,22 @@ export function VoiceDock(props: VoiceDockProps) {
   );
 }
 
-export function ConnectionSignal({ health, t }: { health: ConnectionHealth; t: Translate }) {
-  const tone = health.quality === "good" ? "good" : health.quality === "fair" || health.quality === "measuring" ? "fair" : "poor";
-  const label = health.rttMs === null ? t("connection.measuring") : t("connection.latency", { value: Math.round(health.rttMs) });
+export function ConnectionSignal({ health, quality, inCall, t }: {
+  health: ConnectionHealth;
+  quality: VoiceQuality;
+  inCall: boolean;
+  t: Translate;
+}) {
+  const { tone, value, label } = voiceSignalPresentation(health, quality, inCall, t);
   return (
-    <span className={`connection-signal is-${tone}`} role="status" aria-label={label}>
+    <span className={`connection-signal is-${tone}`} role="status" aria-label={label} title={label}>
       <svg viewBox="0 0 20 16" aria-hidden="true">
         <rect x="1" y="11" width="3" height="4" rx="1" />
         <rect x="6" y="8" width="3" height="7" rx="1" />
         <rect x="11" y="4" width="3" height="11" rx="1" />
         <rect x="16" y="1" width="3" height="14" rx="1" />
       </svg>
-      <span>{health.rttMs === null ? "-- ms" : `${Math.round(health.rttMs)} ms`}</span>
+      <span>{value}</span>
     </span>
   );
 }

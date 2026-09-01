@@ -264,6 +264,31 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   A reconnect alone does not dismiss it; wait for the first successful probe in
   the current generation.
 
+## Voice Quality Measurement
+
+- The Socket.IO round trip and the voice path are different connections and
+  must never stand in for each other. Report the round trip outside a call;
+  report the media inside one. A green round trip beside audibly broken audio is
+  the failure this exists to prevent.
+- Sample `getStats` on the live peer connections, not on a snapshot of them.
+  Keep counters per peer connection and rebuild the map from the current peers
+  each tick, so a peer that leaves takes its totals with it and a reconnected
+  one is measured from its own zero.
+- Normalise every rate by `jitterBufferEmittedCount`, never by elapsed wall
+  clock. A throttled background tab samples less often, and dividing by time
+  reports that throttling as a network fault.
+- Subtract `silentConcealedSamples` from `concealedSamples`. Discontinuous
+  transmission conceals silence by design and is inaudible.
+- Floor every counter delta at zero. `packetsLost` is signed and a receiver may
+  revise it downwards when a packet it had given up on arrives.
+- Grade a room by its worst peer, not its average. One rough speaker ruins a
+  call, and an average over four peers divides that fault by four.
+- Name the symptom rather than the figure in the signal itself, and keep the
+  figures in the detail. A member can confirm or deny "the voice is breaking
+  up"; they can do nothing with a percentage. Separate loss from jitter — both
+  are heard as crackle and they have different remedies — and separate speeding
+  up from slowing down, which are the words members actually use.
+
 ## Screen Sharing
 
 - Capture screen video at an ideal and maximum 1280x720 and 30 FPS.

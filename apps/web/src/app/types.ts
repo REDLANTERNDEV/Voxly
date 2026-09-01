@@ -4,6 +4,7 @@ import type { RoomHistory } from "../lib/channelState.js";
 import { type LanguageCode,type TranslationKey } from "../lib/i18n.js";
 import type { UseAudioDevicesResult } from "../lib/useAudioDevices.js";
 import type { ConnectionHealth } from "../lib/useConnectionHealth.js";
+import type { VoiceQuality } from "../lib/useVoiceQuality.js";
 import type { NotificationSoundPreferences } from "../lib/notificationSounds.js";
 import type { MicrophoneTestError } from "../lib/useMicrophoneTest.js";
 import { type VoiceControls } from "../lib/voiceControls.js";
@@ -16,6 +17,8 @@ export type Route =
   | { name: "landing" }
   | { name: "invite"; token: string }
   | { name: "owner-claim"; token: string }
+  | { name: "link-device" }
+  | { name: "recover" }
   | { name: "access-claim"; token: string }
   | { name: "text"; serverId: string; roomId: string }
   | { name: "voice"; serverId: string; roomId: string }
@@ -39,6 +42,7 @@ export interface ShellModel {
   serverMembers: PresenceUser[];
   socketState: "connecting" | "live" | "reconnecting" | "offline";
   connectionHealth: ConnectionHealth;
+  voiceQuality: VoiceQuality;
   activeVoiceRoomId: string | null;
   controls: VoiceControls;
   voiceModeration: VoiceModerationState;
@@ -46,6 +50,8 @@ export interface ShellModel {
   micLockedByRoom: boolean;
   appConfig: AppConfigResponse;
   voiceError: string;
+  /** Why voice ended when the member did not end it themselves. Not a failure. */
+  voiceNotice: string;
   visualTargets: VisualTarget[];
   voiceSnapshots: Record<string, VoiceSnapshot>;
   /**
@@ -114,7 +120,7 @@ export interface ShellActions {
 }
 
 export interface VoiceChromeModel extends Pick<ShellModel,
-  "activeVoiceRoomId" | "controls" | "voiceModeration" | "voiceError" |
+  "activeVoiceRoomId" | "controls" | "voiceModeration" | "voiceError" | "voiceNotice" |
   "visualTargets" | "voiceSnapshots" | "musicQueues" | "remoteStreams" | "peerConnectionStates" |
   "localPreviews" | "memberVolumes" | "screenVolumes" | "pendingLiveWatch" |
   "audioDevices" | "audioLevels" | "microphoneTestActive" | "microphoneTestError"

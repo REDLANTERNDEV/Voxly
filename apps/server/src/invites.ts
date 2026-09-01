@@ -174,8 +174,16 @@ export function registerInviteRoutes(context: RouteContext) {
     if (!user) throw new Error("invite acceptance completed without a user");
     database.save();
     await realtime.grantServerAccess(serverId, user.id);
+    // No Recovery code is minted here.
+    //
+    // Joining is not the moment to hand somebody a secret to look after: they
+    // came to talk to their friends, they will click past it, and a code nobody
+    // saved is worse than none because it looks like a safety net. The owner can
+    // still issue a fresh invite for anybody who loses everything, so the
+    // account is not stranded — and a member who wants the code can make one
+    // from settings, where it is offered plainly.
     if (!existingUser) {
-      const token = createSession(database, user.id);
+      const token = createSession(database, user.id, request.headers["user-agent"]);
       setSessionCookie(reply, token, secureCookies);
     }
 
@@ -302,7 +310,7 @@ export function registerInviteRoutes(context: RouteContext) {
     if (!user) return reply.code(404).send({ error: "access_claim_invalid" });
     run(database.sqlite, "update access_claims set consumed_at = ? where id = ?", [new Date().toISOString(), claim.id]);
     audit(database, user.id, "access_link.consumed", user.id);
-    const sessionToken = createSession(database, user.id);
+    const sessionToken = createSession(database, user.id, request.headers["user-agent"]);
     setSessionCookie(reply, sessionToken, secureCookies);
     return reply.code(201).send({
       user: publicUser({ ...user, bannedAt: user.banned_at }),

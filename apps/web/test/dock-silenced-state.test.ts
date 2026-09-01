@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { translate, type TranslationKey } from "../src/lib/i18n.js";
 import { createInitialVoiceControls, toggleVoiceControl } from "../src/lib/voiceControls.js";
 
 /**
@@ -88,5 +89,55 @@ describe("dock self-silenced state", () => {
     assert.equal(voiceDockSilenced(toggleVoiceControl(live, "deafen")), true);
     // A camera changes neither question.
     assert.equal(voiceDockSilenced(toggleVoiceControl(live, "camera")), false);
+  });
+});
+
+/**
+ * The line under the room name is an information panel, not an alarm.
+ *
+ * It read *"Mic muted - 1 connected · Connected"* — the word "connected" twice,
+ * meaning two unrelated things, the second of them restating that a working
+ * application was working, all in the danger colour. These pin each half of
+ * that being gone.
+ */
+describe("dock status line", () => {
+  it("says 'connected' once, about the people in the room", async () => {
+    const { voiceDockStatusLabel } = await import("../src/app/presentation.js");
+    const { createInitialVoiceControls, toggleVoiceControl } = await import("../src/lib/voiceControls.js");
+    const t = (key: TranslationKey, values?: Record<string, string | number>) => translate("en", key, values);
+    const muted = toggleVoiceControl(createInitialVoiceControls(), "mic");
+
+    const line = voiceDockStatusLabel(muted, 1, "live", t);
+
+    assert.equal(line, "Mic muted · 1 connected");
+    assert.equal(line.match(/connected/gi)?.length, 1);
+  });
+
+  it("does not restate that a working connection is working", async () => {
+    const { voiceDockStatusLabel } = await import("../src/app/presentation.js");
+    const { createInitialVoiceControls } = await import("../src/lib/voiceControls.js");
+    const t = (key: TranslationKey, values?: Record<string, string | number>) => translate("en", key, values);
+
+    assert.equal(voiceDockStatusLabel(createInitialVoiceControls(), 3, "live", t), "3 connected");
+  });
+
+  it("names the link state only when it is worth naming", async () => {
+    // A link that is *not* live is the version of this a member can act on.
+    const { voiceDockStatusLabel } = await import("../src/app/presentation.js");
+    const { createInitialVoiceControls } = await import("../src/lib/voiceControls.js");
+    const t = (key: TranslationKey, values?: Record<string, string | number>) => translate("en", key, values);
+
+    assert.match(voiceDockStatusLabel(createInitialVoiceControls(), 2, "reconnecting", t), /Reconnecting/);
+    assert.match(voiceDockStatusLabel(createInitialVoiceControls(), 2, "offline", t), /Offline/);
+  });
+
+  it("writes the silenced line in the warning hue, not the danger one", async () => {
+    // A muted microphone is a state the member chose and can see on the button
+    // beside it. The loudest colour in the app does not belong to it.
+    const styles = readFileSync("src/styles.css", "utf8");
+    const rule = styles.match(/\.dock-status-silenced \{[\s\S]*?\}/)?.[0] ?? "";
+
+    assert.match(rule, /var\(--warn\)/);
+    assert.doesNotMatch(rule, /var\(--danger\)/);
   });
 });

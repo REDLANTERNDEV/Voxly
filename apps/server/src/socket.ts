@@ -50,3 +50,15 @@ export function socketsForUser(io: VoxlyIoServer, userId: string) {
     return socketUser?.userId === userId;
   });
 }
+
+/**
+ * The sockets of one Device rather than one account.
+ *
+ * A member holding several Devices is now ordinary, so anything addressed at a
+ * Device — signing one out, handing a call to another — has to be able to say
+ * which. The session id is stamped on the socket at handshake because that is
+ * the only moment the cookie is read.
+ */
+export function socketsForSession(io: VoxlyIoServer, userId: string, sessionId: string) {
+  return socketsForUser(io, userId).filter((socket) => socket.data.sessionId === sessionId);
+}

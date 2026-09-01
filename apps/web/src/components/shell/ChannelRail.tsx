@@ -6,14 +6,12 @@ import { serverPath } from "../../app/navigation.js";
 import { activeServerRole,canInviteToActiveServer,initial,voiceMembersForRoom } from "../../app/presentation.js";
 import type { MemberAction,ShellActions,ShellModel,Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
-import { CameraIcon,HeadsetIcon,MicIcon,PlusIcon,ScreenIcon } from "../../components/ui/Icons.js";
+import { CameraIcon,GearIcon,HeadsetIcon,MicIcon,PlusIcon,ScreenIcon } from "../../components/ui/Icons.js";
 import { BrandLockup,NavLink } from "../../components/ui/Navigation.js";
-import { PreferencesCard } from "../../components/ui/Primitives.js";
 import { canOwnerModeratePerson,canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
 import { voiceChannelActivation } from "../../lib/voiceChannelActivation.js";
 import { sidebarVoiceStatusKeys,sidebarVoiceStatusLabelKeys } from "../../lib/voiceControls.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
-import { AudioDeviceSettings } from "../AudioDeviceSettings.js";
 import { ContextMenu } from "../ContextMenu.js";
 import { LiveStreamPopover } from "../LiveStreamPopover.js";
 import { ServerSwitcher } from "../ServerSwitcher.js";
@@ -25,18 +23,19 @@ type ChannelRailProps = Pick<ShellModel,
   "microphoneTestActive" | "microphoneTestError" | "noiseSuppression" |
   "noiseSuppressionSupported" | "notificationSounds" | "rooms" | "route" |
   "servers" | "socketState" | "t" | "theme" | "unreadByRoom" | "user" |
-  "voiceModeration" | "voiceSnapshots"
+  "voiceModeration" | "voiceSnapshots" | "micLockedByRoom"
 > & Pick<ShellActions,
   "onCloseAudioSettings" | "onCreateRoom" | "onDeleteRoom" |
   "onInputVolumeChange" | "onJoinVoice" | "onLanguageChange" |
   "onMemberVolumeChange" | "onNavigate" | "onNoiseSuppressionChange" |
   "onNotificationSoundsChange" | "onOutputVolumeChange" |
-  "onSelectServer" | "onThemeChange" | "onToggleMicrophoneTest" |
+  "onSelectServer" | "onThemeChange" | "onToggleControl" | "onToggleMicrophoneTest" |
   "onUpdateMemberPermissions" | "onVoiceModeration" | "onWatchLive" | "onMoveMember"
 > & {
   actionMenu: SidebarActionMenuController;
   onRequestNickname: (user: PresenceUser, returnFocus: HTMLButtonElement | null) => void;
   onRequestMemberAction: (user: PresenceUser, action: MemberAction, roomId?: string) => void;
+  onOpenSettings: () => void;
 };
 
 export function ChannelRail(props: ChannelRailProps) {
@@ -129,7 +128,9 @@ export function ChannelRail(props: ChannelRailProps) {
                 <div className="voice-channel-users">
                   {members.map((member) => {
                     const isRemote = member.user.userId !== props.user.id;
-                    const canRename = canManageServer && (member.user.role === "member" || member.user.userId === props.user.id);
+                    // Your own name is yours. Somebody else's is the owner's.
+                    const canRename = !isRemote
+                      || (canManageServer && member.user.role === "member");
                     const canModerate = canOwnerVoiceModerate(activeServerRole(props), props.user.id, member.user);
                     const canVoiceModerate = canModerate;
                     const canModeratePerson = canOwnerModeratePerson(activeServerRole(props), props.user.id, member.user);
@@ -141,9 +142,12 @@ export function ChannelRail(props: ChannelRailProps) {
                       canModerate: canModeratePerson,
                       canVoiceModerate,
                       canAssignRoles,
-                      canMove: canModeratePerson && props.rooms.voice.length > 1
+                      canMove: canModeratePerson && props.rooms.voice.length > 1,
+                      hasSelfControls: !isRemote && Boolean(props.activeVoiceRoomId)
                     });
-                    const hasActions = isRemote || canRename || canModerate || canAssignRoles;
+                    // Own row: rename and the two self-silences. Remote row:
+                    // volume, and whatever moderation the caller is allowed.
+                    const hasActions = isRemote || canRename || canModerate || canAssignRoles || !isRemote;
                     const menuKey = `rail-member:${member.user.userId}`;
                     return (
                     <div
@@ -211,6 +215,22 @@ export function ChannelRail(props: ChannelRailProps) {
                           onToggleInviteRole={canAssignRoles ? (canInviteMember) => { void props.onUpdateMemberPermissions(member.user.userId, canInviteMember); } : undefined}
                           moveTargets={canModeratePerson ? props.rooms.voice.filter((target) => target.id !== room.id) : undefined}
                           onMove={canModeratePerson ? (targetRoomId) => props.onMoveMember(member.user.userId, targetRoomId) : undefined}
+                          selfControls={!isRemote && props.activeVoiceRoomId ? {
+                            mic: props.controls.mic.on,
+                            deafen: props.controls.deafen.on,
+                            // The dock's rules, restated here rather than
+                            // guessed at: an owner's silence and the AFK
+                            // channel's are not a member's to undo.
+                            micEnabled: !props.micLockedByRoom
+                              && !props.voiceModeration.muted
+                              && props.controls.mic.enabled
+                              && props.socketState === "live",
+                            deafenEnabled: !props.voiceModeration.deafened
+                              && props.controls.deafen.enabled
+                              && !props.microphoneTestActive
+                              && props.socketState === "live",
+                            onToggle: props.onToggleControl
+                          } : undefined}
                           onRename={(returnFocus) => props.onRequestNickname(member.user, returnFocus)}
                           onRequestAction={(action) => props.onRequestMemberAction(member.user, action, room.id)}
                           showTrigger={false}
@@ -226,66 +246,14 @@ export function ChannelRail(props: ChannelRailProps) {
           );
         })}
       </section>
-      <PreferencesCard
-        language={props.language}
-        theme={props.theme}
-        t={props.t}
-        onLanguageChange={props.onLanguageChange}
-        onThemeChange={props.onThemeChange}
-      />
-      <AudioDeviceSettings
-        inputs={props.audioDevices.inputs}
-        outputs={props.audioDevices.outputs}
-        selectedInputId={props.audioDevices.selectedInputId}
-        selectedOutputId={props.audioDevices.selectedOutputId}
-        inputVolume={props.audioLevels.input}
-        outputVolume={props.audioLevels.output}
-        noiseSuppression={props.noiseSuppression}
-        noiseSuppressionSupported={props.noiseSuppressionSupported}
-        notificationSounds={props.notificationSounds}
-        microphoneTestActive={props.microphoneTestActive}
-        microphoneTestError={props.microphoneTestError}
-        loading={props.audioDevices.loading}
-        error={props.audioDevices.error ? props.t(props.audioDevices.error) : ""}
-        unavailableSelections={props.audioDevices.unavailableSelections}
-        outputSelectionSupported={props.audioDevices.outputSelectionSupported}
-        labels={{
-          title: props.t("audio.title"),
-          microphone: props.t("audio.microphone"),
-          output: props.t("audio.output"),
-          systemDefault: props.t("audio.systemDefault"),
-          browserControlled: props.t("audio.browserControlled"),
-          refresh: props.t("audio.refresh"),
-          unavailable: props.t("audio.unavailable"),
-          inputVolume: props.t("audio.inputVolume"),
-          outputVolume: props.t("audio.outputVolume"),
-          noiseSuppression: props.t("audio.noiseSuppression"),
-          noiseSuppressionHint: props.t("audio.noiseSuppressionHint"),
-          noiseSuppressionUnsupported: props.t("audio.noiseSuppressionUnsupported"),
-          notificationSounds: props.t("audio.notificationSounds"),
-          notificationSoundsHint: props.t("audio.notificationSoundsHint"),
-          notificationVolume: props.t("audio.notificationVolume"),
-          notificationVoice: props.t("audio.notificationVoice"),
-          notificationMessage: props.t("audio.notificationMessage"),
-          notificationConnection: props.t("audio.notificationConnection"),
-          startTest: props.t("audio.startTest"),
-          stopTest: props.t("audio.stopTest"),
-          testHint: props.t("audio.testHint"),
-          testPermission: props.t("audio.testPermission"),
-          testUnavailable: props.t("audio.testUnavailable"),
-          closeSettings: props.t("audio.closeSettings")
-        }}
-        onOpen={() => props.audioDevices.refresh(true)}
-        onClose={props.onCloseAudioSettings}
-        onRefresh={() => props.audioDevices.refresh(true)}
-        onSelectInput={props.audioDevices.selectInput}
-        onSelectOutput={props.audioDevices.selectOutput}
-        onInputVolumeChange={props.onInputVolumeChange}
-        onOutputVolumeChange={props.onOutputVolumeChange}
-        onNoiseSuppressionChange={props.onNoiseSuppressionChange}
-        onNotificationSoundsChange={props.onNotificationSoundsChange}
-        onToggleMicrophoneTest={props.onToggleMicrophoneTest}
-      />
+      {/* The rail is the drawer a phone opens with "Rooms", and the dock's own
+          settings button is hidden at that width — so this is the mobile way
+          in. On a wide screen it sits below the channels, out of the way of
+          the list people actually use. */}
+      <button className="btn btn-ghost rail-settings" type="button" onClick={props.onOpenSettings}>
+        <GearIcon />
+        <span>{props.t("settings.open")}</span>
+      </button>
       {deleteError ? <p className="error-text" aria-live="polite">{deleteError}</p> : null}
       {deleteTarget ? <ConfirmDialog cancelLabel={props.t("common.cancel")}
         title={props.t("room.deleteTitle", { channel: deleteTarget.name })}

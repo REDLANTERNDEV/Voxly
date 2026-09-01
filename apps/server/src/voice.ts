@@ -42,6 +42,7 @@ import {
   callAck,
   roomIdPayloadSchema,
   safeSocketHandler,
+  socketsForSession,
   socketsForUser,
   type VoxlyIoServer,
   type VoxlySocket
@@ -88,6 +89,19 @@ interface VoiceContext {
   database: VoxlyDatabase;
   membership: Map<string, VoiceRoomMembership>;
   subscriptions: Map<string, VisualSubscriptions>;
+  /**
+   * Which Device currently holds each member's call.
+   *
+   * Voice membership is keyed by account — one slot per member, everywhere —
+   * so once a member can hold several Devices, something has to say *which* of
+   * them the call belongs to. Without it two Devices signed in as one account
+   * both answer every negotiation from every peer, which breaks the mesh for
+   * everybody else in the room rather than just for the member who linked.
+   *
+   * A member is in at most one voice room globally, so this is keyed by user
+   * rather than by room. See ADR-0014.
+   */
+  holders: Map<string, { roomId: string; sessionId: string }>;
 }
 
 /**
@@ -130,7 +144,8 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
     io,
     database,
     membership: new Map<string, VoiceRoomMembership>(),
-    subscriptions: new Map<string, VisualSubscriptions>()
+    subscriptions: new Map<string, VisualSubscriptions>(),
+    holders: new Map<string, { roomId: string; sessionId: string }>()
   };
 
   return {
@@ -141,6 +156,15 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
       return context.membership.get(roomId)?.has(userId) === true;
     },
     leaveAllRooms(socket, userId) {
+      // Only the Device holding the call may end it by going away. A laptop
+      // that was displaced by a phone still has a socket, and closing that tab
+      // must not hang up the call the phone is now on.
+      const sessionId = typeof socket.data.sessionId === "string" ? socket.data.sessionId : "";
+      const holder = context.holders.get(userId);
+      if (holder && sessionId && holder.sessionId !== sessionId) {
+        socket.leave(`voice:${holder.roomId}`);
+        return;
+      }
       for (const [roomId, members] of context.membership) {
         if (members.has(userId)) {
           leaveVoice(context, socket, roomId, userId);
@@ -245,16 +269,42 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
       return;
     }
 
+    // Voice follows the newest Device.
+    //
+    // Membership is keyed by account, so two Devices cannot both hold a call —
+    // the second would overwrite the first's member state while the first kept
+    // its peer connections and went on answering every negotiation. Rather than
+    // let that happen, the Device that was holding it is told plainly that it
+    // has been displaced, and stops.
+    //
+    // Only voice moves. The displaced Device keeps its session, its chat and
+    // its presence; nothing about it is signed out.
+    const sessionId = typeof socket.data.sessionId === "string" ? socket.data.sessionId : "";
+    const holder = context.holders.get(user.userId);
+    if (holder && holder.sessionId !== sessionId) {
+      emitVoiceForceLeave(context, user.userId, holder.roomId, "joined_another_device", holder.sessionId);
+    }
+
     // A user account is in at most one voice room globally, so joining leaves
     // whatever they were in before — including the subscriptions it carried.
+    //
+    // Deliberately only *other* rooms. Taking over a call in the room the
+    // member is already in must not emit `voice:left` — to everybody else this
+    // is one member throughout, not a member who left and came back, and a
+    // leave would fire the join and leave cues at the whole room for something
+    // that did not happen to them.
     for (const [activeRoomId, activeMembers] of context.membership) {
       if (activeRoomId !== roomId && activeMembers.has(user.userId)) {
         leaveVoiceMember(context, activeRoomId, user.userId);
       }
     }
     socket.join(`voice:${roomId}`);
+    // Media and moderation are rebuilt from the request and the membership row
+    // above, so the member arrives on the new Device muted if they were muted,
+    // and stays muted if an owner muted them.
     const memberState: VoiceMemberState = { user: roomUser, media, moderation };
     members.set(user.userId, memberState);
+    context.holders.set(user.userId, { roomId, sessionId });
     ack({ ok: true, state: memberState });
     emitVoiceSnapshot(context, roomId, members);
     socket.to(`server:${room.serverId}`).emit("voice:joined", { roomId, user: roomUser });
@@ -263,6 +313,18 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
   socket.on("voice:leave", safeSocketHandler("voice:leave", (roomId) => {
     const parsed = roomIdPayloadSchema.safeParse(roomId);
     if (!parsed.success) return;
+    // Only the Device holding the call may end it.
+    //
+    // A displaced Device answers `voice:forceLeave` by tearing down, and
+    // tearing down emits this. Without the guard the laptop's own goodbye
+    // would remove the account from the room the phone had just taken over —
+    // the handoff would undo itself a moment after it succeeded.
+    const sessionId = typeof socket.data.sessionId === "string" ? socket.data.sessionId : "";
+    const holder = context.holders.get(user.userId);
+    if (holder && sessionId && holder.sessionId !== sessionId) {
+      socket.leave(`voice:${parsed.data}`);
+      return;
+    }
     leaveVoice(context, socket, parsed.data, user.userId);
   }));
 
@@ -358,8 +420,26 @@ function* serverVoiceRoomsOf(context: VoiceContext, serverId: string, userId: st
   }
 }
 
-function emitVoiceForceLeave(context: VoiceContext, userId: string, roomId: string, reason: VoiceForceLeaveReason) {
-  for (const socket of socketsForUser(context.io, userId)) {
+/**
+ * `sessionId` narrows this to one Device. Every other reason concerns the
+ * account and reaches all of them; a handoff concerns exactly the Device being
+ * displaced, and telling the Device that just *took* the call that it has been
+ * removed from it would undo the handoff it just performed.
+ */
+function emitVoiceForceLeave(
+  context: VoiceContext,
+  userId: string,
+  roomId: string,
+  reason: VoiceForceLeaveReason,
+  sessionId?: string
+) {
+  const sockets = sessionId
+    ? socketsForSession(context.io, userId, sessionId)
+    : socketsForUser(context.io, userId);
+  for (const socket of sockets) {
+    // Leaving the Socket.IO room is what actually stops signalling reaching
+    // this Device: `forwardRtcSignal` addresses whoever is in `voice:<room>`.
+    socket.leave(`voice:${roomId}`);
     socket.emit("voice:forceLeave", { roomId, reason });
   }
 }
@@ -372,6 +452,7 @@ function leaveVoice(context: VoiceContext, socket: VoxlySocket, roomId: string, 
 function leaveVoiceMember(context: VoiceContext, roomId: string, userId: string) {
   const members = context.membership.get(roomId);
   if (!members?.has(userId)) return;
+  if (context.holders.get(userId)?.roomId === roomId) context.holders.delete(userId);
   clearViewerVisualSubscriptions(context, roomId, userId);
   clearPublisherVisualSubscriptions(context, roomId, userId);
   members.delete(userId);

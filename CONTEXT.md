@@ -58,6 +58,34 @@ _Avoid_: History, audit log, activity feed
 What the Music bot says back to the one member who just asked for something — whether the request was taken or refused. It belongs to that member, is never shown to the room, and gives way to their next request. Distinct from the Set log, which is the room's record; wider than an *answer*, which in the control protocol names only a request that succeeded.
 _Avoid_: Answer, response, status, notification, toast
 
+### Devices and access
+
+**Device**:
+One browser holding one session for a member. Shown to that member as something
+they can see and sign out. A member has as many as they have signed in.
+_Avoid_: Client, browser, login, terminal
+
+**Link code**:
+The short code a signed-in Device shows so another Device can join the same
+account. Worth ninety seconds and one use.
+_Avoid_: Pairing code, transfer code, one-time password, OTP
+
+**Recovery code**:
+The durable secret a member holds so they can reach their account with no
+signed-in Device left. Redeeming it signs every other Device out.
+_Avoid_: Backup code, master key, password, seed
+
+**Link**:
+The act of bringing a second Device onto an account with a Link code. Distinct
+from *Recovery*, which is the path taken when no Device is left to link from.
+_Avoid_: Pair, connect, transfer, add
+
+**Invite**:
+Unchanged, and deliberately not either of the above: an Invite admits a new
+*person*, and only the owner may issue one. Linking a Device and recovering
+access are a member's own business and never route through the owner.
+_Avoid_: using "invite" for anything a member does to their own account
+
 ### Where a source's own words are allowed
 
 **Track** is what *Voxly* calls a piece of audio, and nothing in Voxly should

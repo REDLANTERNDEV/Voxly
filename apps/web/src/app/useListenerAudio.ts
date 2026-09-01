@@ -8,6 +8,7 @@ import { useAudioDevices } from "../lib/useAudioDevices.js";
 import { useConnectionHealth } from "../lib/useConnectionHealth.js";
 import { useMicrophoneTest } from "../lib/useMicrophoneTest.js";
 import { useVoiceMedia } from "../lib/useVoiceMedia.js";
+import { useVoiceQuality } from "../lib/useVoiceQuality.js";
 import { clampVolumePercent,pruneVolumes,readUserVolumes,setVolume,writeUserVolumes } from "../lib/voiceVolume.js";
 import type { VoxlySocket } from "../socket.js";
 import type { LiveWatchRequest } from "./types.js";
@@ -38,6 +39,10 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
     noiseSuppression
   });
   const connectionHealth = useConnectionHealth(socket);
+  // Only while there is a call to measure. Outside a voice room the signalling
+  // round trip is the only connection a member has, and reporting on it is
+  // exactly right; inside one it is the wrong path to be looking at.
+  const voiceQuality = useVoiceQuality(voice.activeRoomId ? voice.peerConnections : null);
   const notifications = useNotificationSounds({
     user,
     activeVoiceRoomId: voice.activeRoomId,
@@ -136,7 +141,7 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
   }, []);
 
   return {
-    voice, connectionHealth, audioDevices, audioLevels, microphoneTest,
+    voice, connectionHealth, voiceQuality, audioDevices, audioLevels, microphoneTest,
     noiseSuppression, noiseSuppressionSupported,
     notificationSounds: notifications.notificationSounds,
     notifyMessage: notifications.notifyMessage,

@@ -23,6 +23,8 @@ import {
   requireUser,
   revokeSession,
   sessionCookieName,
+  reportSessionReuse,
+  takeAuthFailure,
   setSessionCookie
 } from "./auth/sessions.js";
 import {
@@ -62,12 +64,15 @@ import {
   type RealtimeModeration,
   type RouteContext
 } from "./http.js";
+import { registerDeviceLinkRoutes } from "./deviceLinks.js";
+import { registerDeviceRoutes } from "./devices.js";
+import { registerRecoveryRoutes } from "./recovery.js";
 import { registerInviteRoutes, revokeInvitesCreatedBy } from "./invites.js";
 import { registerMessageRoutes } from "./messages.js";
 import { registerOwnerPanelRoutes } from "./ownerPanel.js";
 import { registerServerRoutes } from "./servers.js";
 import { createUser, nicknameSchema, publicUser } from "./users.js";
-import { roomIdPayloadSchema, safeSocketHandler, socketsForUser } from "./socket.js";
+import { roomIdPayloadSchema, safeSocketHandler, socketsForSession, socketsForUser } from "./socket.js";
 import { createMusicRealtime } from "./music.js";
 import { createVoiceRealtime } from "./voice.js";
 import type { TurnstileConfig } from "./turnstile.js";
@@ -173,6 +178,9 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
   registerRoutes(options, context);
   // Route groups that own their own rules register themselves against the same
   // Fastify instance; see `http.ts` for what they are handed and why.
+  registerDeviceRoutes(context);
+  registerDeviceLinkRoutes(context);
+  registerRecoveryRoutes(context);
   registerServerRoutes(context);
   registerInviteRoutes(context);
   registerMessageRoutes(context);
@@ -260,7 +268,15 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext) {
   server.get("/api/me", async (request, reply) => {
     const user = authenticateHttp(database, request, reply, options.secureCookies);
     if (!user) {
-      return reply.code(401).send({ error: "unauthorized" });
+      // The endpoint every client hits on startup, so it is where a member
+      // learns they were signed out because their session was seen in two
+      // places rather than simply refused (ADR-0015).
+      const failure = takeAuthFailure();
+      if (failure.reason === "reused") {
+        reportSessionReuse(database, failure.userId);
+        clearSessionCookie(reply);
+      }
+      return reply.code(401).send({ error: failure.reason === "reused" ? "session_reused" : "unauthorized" });
     }
 
     return { user: publicUser(user) };
@@ -287,7 +303,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext) {
 
       const user = createUser(database, body.nickname, "owner");
       activateServerMembership(database, defaultServerId, user.id, "owner", new Date().toISOString());
-      const token = createSession(database, user.id);
+      const token = createSession(database, user.id, request.headers["user-agent"]);
       setSessionCookie(reply, token, options.secureCookies);
 
       return reply.code(201).send({ user: publicUser(user) });
@@ -336,7 +352,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext) {
       return reply.code(404).send({ error: "owner_claim_invalid" });
     }
 
-    const token = createSession(database, user.id);
+    const token = createSession(database, user.id, request.headers["user-agent"]);
     setSessionCookie(reply, token, options.secureCookies);
 
     return reply.code(201).send({ user: publicUser(user) });
@@ -471,16 +487,26 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext) {
     // Spelled out rather than using `requireOwnedServer`: this route answers a
     // malformed body before it answers a caller who does not own the server,
     // and which of the two a client sees is observable.
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
+    const caller = requireUser(database, request, reply, options.secureCookies);
+    if (!caller) return;
     const { serverId, userId } = z.object({ serverId: serverIdParam, userId: userIdParam }).parse(request.params);
     const { nickname } = z.object({ nickname: nicknameSchema }).parse(request.body);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+
+    // Renaming *somebody else* is moderation and stays the owner's. Renaming
+    // yourself is not: what a member is called is theirs, and needing to ask
+    // the owner to change it is the kind of small indignity that makes a
+    // private group feel like somebody else's property.
+    const renamingSelf = userId === caller.id;
+    if (!renamingSelf && !requireServerOwner(database, serverId, caller.id, reply)) return;
+    if (renamingSelf && !hasActiveServerMembership(database.sqlite, serverId, caller.id)) {
+      return reply.code(403).send({ error: "not_a_member" });
+    }
+
     const target = serverMembership(database.sqlite, serverId, userId);
     if (!target || target.removed_at) {
       return reply.code(404).send({ error: "member_not_found" });
     }
-    if (target.role === "owner" && userId !== owner.id) {
+    if (target.role === "owner" && !renamingSelf) {
       return reply.code(409).send({ error: "cannot_rename_owner" });
     }
     run(
@@ -488,7 +514,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext) {
       "update server_members set nickname = ? where server_id = ? and user_id = ?",
       [nickname, serverId, userId]
     );
-    audit(database, owner.id, "member.nickname_updated", userId, serverId);
+    audit(database, caller.id, "member.nickname_updated", userId, serverId);
     database.save();
     const updated = realtime.refreshMemberIdentity(serverId, userId);
     if (!updated) return reply.code(404).send({ error: "member_not_found" });
@@ -631,6 +657,10 @@ function registerRealtime(
     }
 
     socket.data.user = publicPresence(user);
+    // The only moment the cookie is read, so the only moment the Device this
+    // connection belongs to can be known. Everything addressed at one Device
+    // rather than one account reads it from here.
+    socket.data.sessionId = user.sessionId;
     next();
   });
 
@@ -728,6 +758,14 @@ function registerRealtime(
     disconnectUser(userId) {
       voice.forceLeave(userId, "server_access_revoked");
       for (const socket of socketsForUser(io, userId)) socket.disconnect(true);
+    },
+    disconnectDevice(userId, sessionId) {
+      for (const socket of socketsForSession(io, userId, sessionId)) socket.disconnect(true);
+    },
+    disconnectOtherDevices(userId, keepSessionId) {
+      for (const socket of socketsForUser(io, userId)) {
+        if (socket.data.sessionId !== keepSessionId) socket.disconnect(true);
+      }
     },
     deleteRoom(_serverId, roomId) {
       voice.deleteRoom(roomId, "room_deleted");

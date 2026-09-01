@@ -1,4 +1,4 @@
-import type { AfkTimeoutMinutes,ChatMessage,PresenceStatus,PresenceUser,PublicUser } from "@voxly/shared";
+import type { AfkTimeoutMinutes,ChatMessage,PresenceStatus,PresenceUser,PublicUser,VoiceForceLeaveReason } from "@voxly/shared";
 import { useEffect,useRef,useState,type RefObject } from "react";
 import { createVoxlySocket,type VoxlySocket } from "../socket.js";
 import type { Route } from "./types.js";
@@ -20,7 +20,7 @@ interface RealtimeHandlers {
   accessRevoked(serverId: string): void;
 }
 
-export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, leaveVoiceRef, moveVoiceRef }: {
+export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, leaveVoiceRef, moveVoiceRef, forceLeaveNoticeRef, checkStillSignedInRef }: {
   user: PublicUser | null;
   route: Route;
   handlers: RealtimeHandlers;
@@ -28,6 +28,10 @@ export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, lea
   leaveVoiceRef: RefObject<() => void>;
   /** Carries out an owner's move through the ordinary join path. */
   moveVoiceRef: RefObject<(roomId: string) => void>;
+  /** Says why voice ended when the member did not end it themselves. */
+  forceLeaveNoticeRef: RefObject<(reason: VoiceForceLeaveReason) => void>;
+  /** Re-asks the server who this Device is, after a connection is lost. */
+  checkStillSignedInRef: RefObject<() => Promise<void>>;
 }) {
   const [socket, setSocket] = useState<VoxlySocket | null>(null);
   const [socketState, setSocketState] = useState<"connecting" | "live" | "reconnecting" | "offline">("connecting");
@@ -41,7 +45,15 @@ export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, lea
     setSocketState("connecting");
     next.on("connect", () => setSocketState("live"));
     next.io.on("reconnect_attempt", () => setSocketState("reconnecting"));
-    next.on("disconnect", () => setSocketState("offline"));
+    next.on("disconnect", () => {
+      setSocketState("offline");
+      // A dropped socket is usually the network. But it is also exactly what a
+      // member signing this Device out from another one looks like, and sitting
+      // on a room the account no longer has any claim to — until somebody
+      // happens to refresh — is the worst version of that. Asking who we are
+      // settles it either way, and costs one request.
+      void checkStillSignedInRef.current();
+    });
     next.on("presence:serverSnapshot", ({ serverId, users }) => handlersRef.current.presenceSnapshot(serverId, users));
     next.on("presence:serverOnline", ({ serverId, user: nextUser }) => handlersRef.current.presenceOnline(serverId, nextUser));
     next.on("presence:serverOffline", ({ serverId, userId }) => handlersRef.current.presenceOffline(serverId, userId));
@@ -55,7 +67,14 @@ export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, lea
     next.on("message:new", (message) => handlersRef.current.messageNew(message));
     next.on("message:updated", (message) => handlersRef.current.messageUpdated(message));
     next.on("message:deleted", ({ roomId, messageId }) => handlersRef.current.messageDeleted(roomId, messageId));
-    next.on("voice:forceLeave", ({ roomId }) => { if (activeVoiceRoomRef.current === roomId) leaveVoiceRef.current(); });
+    next.on("voice:forceLeave", ({ roomId, reason }) => {
+      if (activeVoiceRoomRef.current !== roomId) return;
+      leaveVoiceRef.current();
+      // The member has to be told, or a call that moved is indistinguishable
+      // from a call that dropped — and "did it break?" is exactly the question
+      // a silent teardown leaves them with.
+      forceLeaveNoticeRef.current(reason);
+    });
     next.on("voice:moveTo", ({ roomId }) => moveVoiceRef.current(roomId));
     next.on("server:accessRevoked", ({ serverId }) => handlersRef.current.accessRevoked(serverId));
     return () => { next.disconnect(); setSocket(null); };

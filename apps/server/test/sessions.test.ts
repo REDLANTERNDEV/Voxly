@@ -12,6 +12,8 @@ import {
   requireUser,
   revokeSession,
   revokeSessionsForUser,
+  hostSessionCookieName,
+  readSessionToken,
   sessionCookieName,
   setSessionCookie
 } from "../src/auth/sessions.js";
@@ -208,12 +210,22 @@ describe("sessions", () => {
       assert.ok(Math.abs(lifetime - 180 * day) < 60_000, `expected ~180 days, got ${lifetime}ms`);
       // The answer the caller holds must not disagree with the row.
       assert.equal(user?.sessionExpiresAt, stored?.expires_at);
-      assert.deepEqual(cookies.map((entry) => entry.name), [sessionCookieName]);
+      // Secure transport, so the prefixed name — and the unprefixed one is
+      // retired alongside it, which is how an upgrade moves members over.
+      assert.deepEqual(
+        cookies.map((entry) => entry.name),
+        [hostSessionCookieName, sessionCookieName]
+      );
       assert.equal(cookies[0]?.value, token);
       assert.equal(cookies[0]?.options.expires?.toISOString(), stored?.expires_at);
     });
 
-    it("leaves a session that is nowhere near expiry alone", async () => {
+    it("slides a session forward on use rather than counting it down", async () => {
+      // Changed deliberately: the session used to sit still until it was near
+      // expiry. It now renews whenever the member is seen, so somebody who
+      // keeps using Voxly is never signed out — the only sensible behaviour for
+      // a self-hosted group, and the alternative asks people to prove who they
+      // are again for no event that happened.
       const db = await seed({ member: {} });
       const expiresAt = new Date(Date.now() + 90 * day);
       const token = placeSession(db, "fresh", "member", expiresAt);
@@ -222,7 +234,21 @@ describe("sessions", () => {
       authenticateHttp(db, requestDouble({ [sessionCookieName]: token }), reply, true);
 
       const stored = one<{ expires_at: string }>(db.sqlite, "select expires_at from sessions where id = ?", ["fresh"]);
-      assert.equal(stored?.expires_at, expiresAt.toISOString());
+      const remaining = new Date(stored!.expires_at).getTime() - Date.now();
+      assert.ok(remaining > 170 * day, `expected a full window, got ${Math.round(remaining / day)} days`);
+      assert.ok(cookies.length > 0, "the browser was not told the new expiry");
+    });
+
+    it("does not write on every request while sliding", async () => {
+      // Renewal rides on the touch throttle, so an active member costs one
+      // write per quarter hour rather than one per request.
+      const db = await seed({ member: {} });
+      const token = placeSession(db, "busy", "member", new Date(Date.now() + 90 * day));
+      authenticateHttp(db, requestDouble({ [sessionCookieName]: token }), replyDouble().reply, true);
+
+      const { reply, cookies } = replyDouble();
+      authenticateHttp(db, requestDouble({ [sessionCookieName]: token }), reply, true);
+
       assert.deepEqual(cookies, []);
     });
 
@@ -327,7 +353,11 @@ describe("sessions", () => {
 
         setSessionCookie(reply, "token", secure);
 
-        assert.equal(cookies[0]?.name, sessionCookieName);
+        // Over HTTPS the name carries the `__Host-` prefix, which makes the
+        // browser enforce what we already ask for and stops a sibling subdomain
+        // writing a session cookie this host would then read. The prefix
+        // *requires* Secure, so plain HTTP keeps the plain name.
+        assert.equal(cookies[0]?.name, secure ? hostSessionCookieName : sessionCookieName);
         assert.equal(cookies[0]?.value, "token");
         assert.deepEqual(
           { ...cookies[0]?.options, expires: undefined },
@@ -336,12 +366,37 @@ describe("sessions", () => {
       }
     });
 
+    it("retires the unprefixed name once it is writing the prefixed one", () => {
+      // An upgrading deployment leaves members holding the old name too. Both
+      // would be read, and two copies of one credential is how they drift apart.
+      const { reply, cookies } = replyDouble();
+
+      setSessionCookie(reply, "token", true);
+
+      assert.deepEqual(cookies[1], { name: sessionCookieName, value: null, options: { path: "/" } });
+    });
+
+    it("prefers the prefixed cookie when a browser is holding both", () => {
+      // Mid-upgrade a browser can carry both. The prefixed one wins because it
+      // is the one a subdomain could not have written.
+      assert.equal(
+        readSessionToken({ [sessionCookieName]: "old", [hostSessionCookieName]: "new" }),
+        "new"
+      );
+      assert.equal(readSessionToken({ [sessionCookieName]: "old" }), "old");
+      assert.equal(readSessionToken({}), undefined);
+    });
+
     it("is cleared across the whole site, so no stale copy survives on a sub-path", () => {
       const { reply, cookies } = replyDouble();
 
       clearSessionCookie(reply);
 
-      assert.deepEqual(cookies, [{ name: sessionCookieName, value: null, options: { path: "/" } }]);
+      // Both names, or an upgrade would leave the old one behind on sign-out.
+      assert.deepEqual(cookies, [
+        { name: sessionCookieName, value: null, options: { path: "/" } },
+        { name: hostSessionCookieName, value: null, options: { path: "/" } }
+      ]);
     });
   });
 });

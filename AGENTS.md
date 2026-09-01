@@ -68,6 +68,7 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | Voice activity privacy and owner voice enforcement | Server Atomic Voice; web Deafen and Remote Streams; shared Voice sections |
 | Reconnect retries and deafen restoration | `apps/web/src/lib/AGENTS.md` — Reconnect and Deafen sections |
 | Connection RTT and reconnect overlay | `apps/web/AGENTS.md` — Controls, Icons, and Accessibility |
+| What the dock signal measures, and voice quality grading | `apps/web/src/lib/AGENTS.md` — Voice Quality Measurement |
 | Multi-use invite limits and consumption | Server Authentication; web Member and Owner Surfaces; shared Invite Contracts |
 | Chat composition, scrolling, actions, and edits | Web Chat Interaction and server Messages sections |
 | Message dates, safe links, rich previews, and preview suppression | Web Chat Interaction; server Messages; shared Contract Rules |

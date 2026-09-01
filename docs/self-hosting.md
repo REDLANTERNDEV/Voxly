@@ -403,6 +403,24 @@ enters its final 30 days. Clearing browser storage, explicitly signing out, or
 losing a device removes that device's local access; it does not delete the
 global user account, server memberships, roles, or message history.
 
+Members can usually resolve both cases themselves and do not need the operator:
+
+- **Adding a device** — on a device that is already signed in, open the sidebar
+  and choose **Link a device**. The code it shows is worth 90 seconds and one
+  use, and the new device is not signed in until the first one approves it.
+  Nothing is signed out; both devices keep working.
+- **Lost every device** — go to `/recover` and enter the recovery code saved
+  when the account was created. This signs the account out **everywhere** and
+  issues a replacement code, which is deliberate: it means a stolen recovery
+  code cannot be used without the member noticing.
+
+Accounts created before this existed have no recovery code until the member
+creates one from **Recovery code** in the sidebar. It is worth asking members to
+do that before they need it.
+
+The operator paths below remain the backstop for an owner who has lost
+everything, and for a member who lost their devices *and* their recovery code.
+
 ### Owner lost browser access
 
 Do not run `owner:create` again. Create a short-lived, one-use login claim for

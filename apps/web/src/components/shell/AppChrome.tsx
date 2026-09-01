@@ -13,10 +13,12 @@ import { type TranslationKey } from "../../lib/i18n.js";
 import { countPeople } from "../../lib/memberDirectory.js";
 import { ChannelRail } from "./ChannelRail.js";
 import { MemberPanel } from "./MemberPanel.js";
+import { SettingsDialog } from "./SettingsDialog.js";
 import type { SidebarActionMenuController } from "./SidebarMenus.js";
 import { VoiceDock } from "./VoiceDock.js";
 export function AppChrome(props: ShellModel & ShellActions & { children: ReactNode; mobileTitle: string }) {
   const canModerate = activeServerRole(props) === "owner";
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [nicknameTarget, setNicknameTarget] = useState<{ user: PresenceUser; returnFocus: HTMLButtonElement | null } | null>(null);
   const [pendingMemberAction, setPendingMemberAction] = useState<{ user: PresenceUser; roomId?: string; action: MemberAction } | null>(null);
   const [activeActionMenu, dispatchActionMenu] = useReducer(contextMenuReducer, null);
@@ -64,6 +66,9 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
       </div>
       <div className={`app-shell drawer-${props.drawer ?? "none"}`}>
         <ChannelRail
+          onOpenSettings={() => setSettingsOpen(true)}
+          onToggleControl={props.onToggleControl}
+          micLockedByRoom={props.micLockedByRoom}
           activeServerId={props.activeServerId}
           activeVoiceRoomId={props.activeVoiceRoomId}
           appConfig={props.appConfig}
@@ -115,6 +120,19 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         />
         {props.children}
         <MemberPanel
+          selfVoice={props.activeVoiceRoomId ? {
+            mic: props.controls.mic.on,
+            deafen: props.controls.deafen.on,
+            micEnabled: !props.micLockedByRoom
+              && !props.voiceModeration.muted
+              && props.controls.mic.enabled
+              && props.socketState === "live",
+            deafenEnabled: !props.voiceModeration.deafened
+              && props.controls.deafen.enabled
+              && !props.microphoneTestActive
+              && props.socketState === "live",
+            onToggle: props.onToggleControl
+          } : undefined}
           members={props.serverMembers}
           onlineUsers={props.onlineUsers}
           voiceRooms={props.rooms.voice}
@@ -139,6 +157,8 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         activeServerId={props.activeServerId}
         activeVoiceRoomId={props.activeVoiceRoomId}
         connectionHealth={props.connectionHealth}
+        voiceQuality={props.voiceQuality}
+        onOpenSettings={() => setSettingsOpen(true)}
         controls={props.controls}
         currentNickname={props.currentNickname}
         currentRoom={props.currentRoom}
@@ -157,7 +177,9 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         onToggleControl={props.onToggleControl}
         connectedCount={voiceConnectedCount}
       />
+      {settingsOpen ? <SettingsDialog {...props} onClose={() => setSettingsOpen(false)} /> : null}
       <Toast message={props.voiceError} />
+      <Toast message={props.voiceNotice} tone="neutral" />
       {nicknameTarget ? <NicknameDialog
         user={nicknameTarget.user}
         returnFocus={nicknameTarget.returnFocus}
