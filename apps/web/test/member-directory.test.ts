@@ -44,10 +44,12 @@ describe("member directory presence", () => {
     });
   });
 
-  it("does not expose an empty action menu for another owner outside voice", () => {
+  it("offers a volume-only action menu for another owner outside voice", () => {
     const panel = readFileSync("src/components/shell/MemberPanel.tsx", "utf8");
 
-    assert.match(panel, /const hasRemoteActions = user\.userId !== currentUser\.id && Boolean\(voiceRoom \|\| canModerateRemote\)/);
+    assert.match(panel, /const hasRemoteActions = user\.userId !== currentUser\.id;/);
+    assert.match(panel, /hasVolume: user\.userId !== currentUser\.id,/);
+    assert.match(panel, /canDisconnect: Boolean\(voiceRoom && canModerateRemote\)/);
   });
 
   it("refreshes the directory when membership changes", () => {

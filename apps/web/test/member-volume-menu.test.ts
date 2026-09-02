@@ -29,6 +29,16 @@ describe("member volume menus", () => {
     assert.match(app, /pendingMemberAction/);
   });
 
+  it("offers persisted volume for remote directory members outside voice", () => {
+    const app = readAppSource();
+    const panel = app.match(/function MemberPanel[\s\S]*?\n}\n\nfunction VoiceDock/)?.[0] ?? "";
+
+    assert.match(panel, /const hasRemoteActions = user\.userId !== currentUser\.id;/);
+    assert.match(panel, /hasVolume: user\.userId !== currentUser\.id,/);
+    assert.match(panel, /volume=\{user\.userId !== currentUser\.id \? memberVolumes\[user\.userId\] \?\? DEFAULT_VOLUME_PERCENT : undefined\}/);
+    assert.match(panel, /onVolumeChange=\{user\.userId !== currentUser\.id \? \(volume\) => onMemberVolumeChange\(user\.userId, volume\) : undefined\}/);
+  });
+
   it("says a participant's state with marks and separates owner member actions", () => {
     const app = readAppSource();
     const styles = readFileSync("src/styles.css", "utf8");

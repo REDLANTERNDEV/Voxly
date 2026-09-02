@@ -70,10 +70,10 @@ export function MemberPanel({
     const canModerateRemote = canOwnerVoiceModerate(canModerate ? "owner" : null, currentUser.id, user);
     const canModeratePerson = canOwnerModeratePerson(canModerate ? "owner" : null, currentUser.id, user);
     const canAssignRoles = canModerate && user.role === "member" && !user.isBot;
-    const hasRemoteActions = user.userId !== currentUser.id && Boolean(voiceRoom || canModerateRemote);
+    const hasRemoteActions = user.userId !== currentUser.id;
     const hasActions = hasRemoteActions || canRename || canAssignRoles || Boolean(selfControls);
     const menuHeight = memberActionMenuHeight({
-      hasVolume: Boolean(voiceRoom && user.userId !== currentUser.id),
+      hasVolume: user.userId !== currentUser.id,
       canRename,
       canDisconnect: Boolean(voiceRoom && canModerateRemote),
       canModerate: canModeratePerson,
@@ -108,8 +108,8 @@ export function MemberPanel({
             actionMenu={actionMenu}
             menuKey={menuKey}
             member={user}
-            volume={voiceRoom && user.userId !== currentUser.id ? memberVolumes[user.userId] ?? DEFAULT_VOLUME_PERCENT : undefined}
-            onVolumeChange={voiceRoom && user.userId !== currentUser.id ? (volume) => onMemberVolumeChange(user.userId, volume) : undefined}
+            volume={user.userId !== currentUser.id ? memberVolumes[user.userId] ?? DEFAULT_VOLUME_PERCENT : undefined}
+            onVolumeChange={user.userId !== currentUser.id ? (volume) => onMemberVolumeChange(user.userId, volume) : undefined}
             canRename={canRename}
             canDisconnect={Boolean(voiceRoom && canModerateRemote)}
             canModerate={canModeratePerson}
