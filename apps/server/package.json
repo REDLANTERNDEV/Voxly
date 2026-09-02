@@ -18,7 +18,7 @@
     "@fastify/static": "^10.1.2",
     "@voxly/shared": "file:../../packages/shared",
     "drizzle-orm": "^0.45.2",
-    "fastify": "^5.5.0",
+    "fastify": "^5.12.1",
     "socket.io": "^4.8.1",
     "zod": "^4.1.11"
   },
