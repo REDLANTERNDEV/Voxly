@@ -188,11 +188,12 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   Preserve mute, deafen, and owner-mute on the replacement track.
 - Support means "can this browser build the graph", not "does it advertise the
   constraint". Probe for an audio context.
-- The preference is stored per account in local storage, defaults on to match
-  browser behavior, and applies to both voice publication and the microphone
-  test. A microphone test that owns its capture applies the preference to its
-  own graph; a shared monitor branch inherits the voice graph, including its
-  suppression stage, and must not open a second device.
+- The preference is stored per account in local storage and defaults off: the
+  browser's native suppression remains requested on, while Voxly's additional
+  filter is opt-in. The preference applies to both voice publication and the
+  microphone test. A microphone test that owns its capture applies the
+  preference to its own graph; a shared monitor branch inherits the voice
+  graph, including its suppression stage, and must not open a second device.
 
 ## Speaking Detection
 

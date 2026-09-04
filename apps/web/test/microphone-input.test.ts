@@ -187,6 +187,16 @@ describe("microphone input processing", () => {
 });
 
 describe("capture-graph noise suppression", () => {
+  it("keeps the extra filter off when no preference is supplied", () => {
+    const graph = audioGraph();
+    createMicrophoneInput(graph.raw as unknown as MediaStream, 100, graph.options);
+
+    for (let tick = 0; tick < 40; tick += 1) graph.ticks[0]();
+
+    assert.equal(graph.highPass.frequency.value, noiseGateBypassHz);
+    assert.equal(graph.gate.gain.value, noiseGateOpenGain);
+  });
+
   it("applies the preference to the graph rather than reopening the device", () => {
     const graph = audioGraph();
     const input = createMicrophoneInput(graph.raw as unknown as MediaStream, 100, {

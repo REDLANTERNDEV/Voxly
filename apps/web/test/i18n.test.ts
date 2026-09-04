@@ -24,6 +24,8 @@ describe("frontend localization", () => {
   it("translates the noise suppression control in both languages", () => {
     assert.equal(translate("en", "audio.noiseSuppression"), "Noise suppression");
     assert.equal(translate("tr", "audio.noiseSuppression"), "Gürültü engelleme");
+    assert.match(translate("en", "audio.noiseSuppressionHint"), /optional/i);
+    assert.match(translate("tr", "audio.noiseSuppressionHint"), /isteğe bağlı/i);
     assert.equal(translate("tr", "audio.noiseSuppressionUnsupported"), "Bu tarayıcı mikrofon sesini işleyemiyor.");
   });
 

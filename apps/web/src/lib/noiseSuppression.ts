@@ -1,13 +1,13 @@
 import { buildMicrophoneConstraints } from "./audioDevices.js";
 import type { StorageLike } from "./voiceVolume.js";
 
-// Browsers already enable noise suppression when `getUserMedia` leaves the
-// constraint unspecified, so the stored default matches what capture did before
-// the preference existed. Turning it off is the new capability.
-export const DEFAULT_NOISE_SUPPRESSION = true;
+// Browsers keep their native noise suppression enabled in the capture
+// constraints. Voxly's additional spectral filter is opt-in because applying
+// both layers by default can make some microphones sound metallic or crackly.
+export const DEFAULT_NOISE_SUPPRESSION = false;
 
 export function noiseSuppressionStorageKey(userId: string) {
-  return `voxly:noise-suppression:v1:${userId}`;
+  return `voxly:noise-suppression:v2:${userId}`;
 }
 
 function browserStorage(): StorageLike | undefined {

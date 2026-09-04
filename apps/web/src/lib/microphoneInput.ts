@@ -59,7 +59,7 @@ export function createMicrophoneInput(
   let gain: GainNode | null = null;
   let voiceDestination: MediaStreamAudioDestinationNode | null = null;
   let monitorDestination: MediaStreamAudioDestinationNode | null = null;
-  let noiseSuppression = options.noiseSuppression ?? true;
+  let noiseSuppression = options.noiseSuppression ?? false;
   try {
     context = createContext();
     source = context.createMediaStreamSource(rawStream);

@@ -26,8 +26,26 @@ function memoryStorage() {
 }
 
 describe("noise suppression preference", () => {
-  it("defaults on so capture matches the implicit browser behaviour", () => {
-    assert.equal(DEFAULT_NOISE_SUPPRESSION, true);
+  it("defaults the Voxly extra filter off", () => {
+    assert.equal(DEFAULT_NOISE_SUPPRESSION, false);
+  });
+
+  it("uses a v2 key and ignores the old default-on value", () => {
+    const storage = memoryStorage();
+    storage.setItem("voxly:noise-suppression:v1:user-a", JSON.stringify(true));
+
+    assert.equal(noiseSuppressionStorageKey("user-a"), "voxly:noise-suppression:v2:user-a");
+    assert.equal(readNoiseSuppression("user-a", storage), false);
+  });
+
+  it("persists an explicit v2 opt-in independently per user", () => {
+    const storage = memoryStorage();
+
+    writeNoiseSuppression("user-a", true, storage);
+    writeNoiseSuppression("user-b", false, storage);
+
+    assert.equal(readNoiseSuppression("user-a", storage), true);
+    assert.equal(readNoiseSuppression("user-b", storage), false);
   });
 
   it("persists the preference independently per user", () => {
@@ -36,7 +54,7 @@ describe("noise suppression preference", () => {
     writeNoiseSuppression("user-a", false, storage);
     writeNoiseSuppression("user-b", true, storage);
 
-    assert.equal(noiseSuppressionStorageKey("user-a"), "voxly:noise-suppression:v1:user-a");
+    assert.equal(noiseSuppressionStorageKey("user-a"), "voxly:noise-suppression:v2:user-a");
     assert.equal(readNoiseSuppression("user-a", storage), false);
     assert.equal(readNoiseSuppression("user-b", storage), true);
     assert.equal(readNoiseSuppression("user-c", storage), DEFAULT_NOISE_SUPPRESSION);
