@@ -181,9 +181,7 @@ describe("spectral noise suppressor", () => {
 
     const output = run(processor, input);
 
-    const half = Math.floor(input.length / 2);
-    const retained = rms(output, half) / rms(input, half);
-    assert.ok(retained > 0.85, `bypass must not attenuate, kept ${retained.toFixed(3)}`);
+    assert.deepEqual(output, input, "bypass must pass audio through without distortion or buffer delay");
   });
 
   it("keeps the same latency and a warm estimate across a toggle", () => {

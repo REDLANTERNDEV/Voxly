@@ -46,7 +46,11 @@ function getContext() {
     ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextClass) return null;
   try {
-    sharedContext = new AudioContextClass();
+    try {
+      sharedContext = new AudioContextClass({ sampleRate: 48000 });
+    } catch {
+      sharedContext = new AudioContextClass();
+    }
     sharedContext.addEventListener?.("statechange", refreshManagedBoosts);
     return sharedContext;
   } catch {

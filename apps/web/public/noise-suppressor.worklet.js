@@ -53,16 +53,29 @@ const PRIMING_FRAMES = FRAME_SIZE / HOP_SIZE;
 
 /** Minimum tracking is biased low by construction: it follows the troughs of a
  *  fluctuating estimate, not its mean. Without this correction the threshold
- *  lands under the noise it is meant to sit above, and nothing is attenuated. */
-const NOISE_BIAS = 2;
+ *  lands under the noise it is meant to sit above, and nothing is attenuated.
+ *  1.5 rather than 2: the old value over-corrected, which pushed quiet voice
+ *  formants below the threshold and caused metallic artefacts when Voxly's
+ *  filter ran on top of the browser's native suppression. */
+const NOISE_BIAS = 1.5;
 /** Attenuate up to this many times the corrected noise estimate. Above 1
- *  because an estimate that is right on average is too low half the time. */
-const OVER_SUBTRACTION = 2.5;
-/** Never attenuate a band to silence: -24 dB of residual masks the artefacts
- *  that full removal would expose. */
-const SPECTRAL_FLOOR = 0.06;
-/** Per-bin gain smoothing over time. */
-const GAIN_SMOOTHING = 0.7;
+ *  because an estimate that is right on average is too low half the time.
+ *  1.8 rather than 2.5: the aggressive value ate sibilants ('s', 'ş', 'f')
+ *  sitting just above the floor, producing a metallic or underwater quality.
+ *  The gentler value still removes steady noise but keeps more speech detail. */
+const OVER_SUBTRACTION = 1.8;
+/** Never attenuate a band to silence: residual masks the artefacts that full
+ *  removal would expose. 0.12 (-18 dB) rather than 0.06 (-24 dB): the deep
+ *  floor made the jump between passing and floored bins large enough to produce
+ *  musical noise — isolated tonal clicks. The higher floor keeps the transition
+ *  smooth and masks estimation error with gentle residual. */
+const SPECTRAL_FLOOR = 0.12;
+/** Per-bin gain smoothing over time. 0.82 rather than 0.7: the old rate let
+ *  gains jump noticeably between consecutive frames, which was the primary
+ *  source of pumping and musical noise. The heavier smoothing makes gain
+ *  changes gradual enough to be inaudible while still tracking the real noise
+ *  floor within a fraction of a second. */
+const GAIN_SMOOTHING = 0.82;
 
 /**
  * Broadband level, relative to the current floor, above which a frame is taken
@@ -72,8 +85,13 @@ const GAIN_SMOOTHING = 0.7;
  * stationary, so the window minimum settles onto the vowel and suppresses it.
  * Freezing the estimate while the frame is loud keeps the floor at the level
  * measured before the speaker started.
+ *
+ * 2 rather than 3: the old threshold did not recognise trailing consonants and
+ * quiet speech as speech-present, so the floor crept up into the word and ate
+ * the ends of sentences. The lower threshold freezes the floor earlier and
+ * preserves word endings.
  */
-const SPEECH_PRESENCE_RATIO = 3;
+const SPEECH_PRESENCE_RATIO = 2;
 
 const TINY = 1e-12;
 
@@ -172,6 +190,11 @@ class NoiseSuppressorProcessor extends AudioWorkletProcessor {
     this.windowFrames = 0;
     this.port.onmessage = (event) => {
       if (event.data && typeof event.data.enabled === "boolean") {
+        if (!this.enabled && event.data.enabled) {
+          this.inputFrame.fill(0);
+          this.outputFrame.fill(0);
+          this.framesSeen = 0;
+        }
         this.enabled = event.data.enabled;
       }
     };
@@ -248,6 +271,18 @@ class NoiseSuppressorProcessor extends AudioWorkletProcessor {
     const output = outputs[0];
     if (!output || output.length === 0) return true;
     const source = input && input.length > 0 ? input[0] : null;
+
+    if (!this.enabled) {
+      if (source) {
+        output[0].set(source);
+        for (let extra = 1; extra < output.length; extra += 1) {
+          output[extra].set(source);
+        }
+      } else {
+        output[0].fill(0);
+      }
+      return true;
+    }
 
     this.inputFrame.copyWithin(0, HOP_SIZE);
     if (source) {

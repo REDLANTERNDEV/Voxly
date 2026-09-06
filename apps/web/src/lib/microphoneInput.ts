@@ -16,6 +16,7 @@ export interface MicrophoneInput {
   rawStream: MediaStream;
   voiceStream: MediaStream;
   monitorStream: MediaStream;
+  analyser: AnalyserNode;
   setVolume(volume: number): void;
   /**
    * Takes effect on the next audio block. Suppression lives in this graph
@@ -40,7 +41,11 @@ function createBrowserAudioContext() {
   const AudioContextClass = window.AudioContext
     ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextClass) throw new Error("audio_context_unavailable");
-  return new AudioContextClass();
+  try {
+    return new AudioContextClass({ sampleRate: 48000 });
+  } catch {
+    return new AudioContextClass();
+  }
 }
 
 export function createMicrophoneInput(
@@ -157,6 +162,7 @@ export function createMicrophoneInput(
     rawStream,
     voiceStream: voiceDestination.stream,
     monitorStream: monitorDestination.stream,
+    analyser,
     setVolume(volume) {
       if (!disposed) gain.gain.value = volumeGain(volume);
     },

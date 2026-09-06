@@ -76,7 +76,7 @@ export function RemoteAudio({ stream, muted, volume }: { stream: MediaStream; mu
     outputRef.current?.setVolume(muted, volume);
   }, [muted, volume]);
 
-  return <audio className="remote-audio" ref={audioRef} autoPlay muted={muted} />;
+  return <audio className="remote-audio" ref={audioRef} autoPlay />;
 }
 
 export function AudioPlaybackRecovery({ t }: { t: Translate }) {

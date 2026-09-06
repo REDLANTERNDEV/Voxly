@@ -119,6 +119,7 @@ describe("microphone input processing", () => {
 
     assert.equal(input.voiceStream, graph.voice);
     assert.equal(input.monitorStream, graph.monitor);
+    assert.equal(input.analyser, graph.analyser);
     assert.deepEqual(graph.sourceConnections, [graph.highPass]);
     assert.deepEqual(graph.highPassConnections, [graph.analyser, graph.gate], "the expander measures the filtered signal before its own gain");
     assert.deepEqual(graph.gateConnections, [graph.gain]);

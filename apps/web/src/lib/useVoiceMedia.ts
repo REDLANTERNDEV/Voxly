@@ -215,8 +215,35 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     setLocalSpeaking(false);
   }, [setLocalSpeaking]);
 
-  const startSpeakingMonitor = useCallback((stream: MediaStream) => {
+  const startSpeakingMonitor = useCallback((input: MicrophoneInput) => {
     stopSpeakingMonitor();
+    if (input.analyser) {
+      const analyser = input.analyser;
+      const samples = new Float32Array(analyser.fftSize || 2048);
+      let activity = createVoiceActivityState();
+
+      const interval = window.setInterval(() => {
+        const micIsLive = localStreamsRef.current.mic?.getAudioTracks().some((track) => track.enabled && track.readyState === "live") ?? false;
+        if (!micIsLive) {
+          setLocalSpeaking(false);
+          return;
+        }
+
+        analyser.getFloatTimeDomainData(samples);
+        let sum = 0;
+        for (const value of samples) {
+          sum += value * value;
+        }
+        activity = updateVoiceActivity(activity, Math.sqrt(sum / samples.length), Date.now());
+        setLocalSpeaking(activity.speaking);
+      }, voiceActivitySampleMs);
+
+      speakingCleanupRef.current = () => {
+        window.clearInterval(interval);
+      };
+      return;
+    }
+
     const AudioContextClass = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextClass) {
       return;
@@ -224,11 +251,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
 
     try {
       const context = new AudioContextClass();
-      const source = context.createMediaStreamSource(stream);
+      const source = context.createMediaStreamSource(input.rawStream);
       const analyser = context.createAnalyser();
-      // The window has to be longer than the sampling interval, otherwise most
-      // of the signal is never examined and quiet speech is missed whenever the
-      // sampled slice happens to land between syllables.
       analyser.fftSize = 2048;
       const samples = new Float32Array(analyser.fftSize);
       let activity = createVoiceActivityState();
@@ -241,9 +265,6 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           return;
         }
 
-        // Float samples rather than the 8-bit view: one step of that view is
-        // ~0.008 RMS, which is coarser than the levels a quiet speaker produces,
-        // so quiet speech quantized to zero and never armed the gate.
         analyser.getFloatTimeDomainData(samples);
         let sum = 0;
         for (const value of samples) {
@@ -566,7 +587,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       if (microphoneInputRef.current !== input) return;
       handleMicrophoneLost("voiceError.microphoneDisconnected");
     });
-    startSpeakingMonitor(input.voiceStream);
+    startSpeakingMonitor(input);
   }, [handleMicrophoneLost, startSpeakingMonitor]);
 
   const setVisualSubscriptions = useCallback(async (targets: VisualTarget[]) => {
