@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   readVoiceCounters,
+  updateVoiceQualityRecovery,
   voiceQualityReading,
   worstVoiceQuality,
-  type VoiceCounters
+  type VoiceCounters,
+  type VoiceQualityRecoveryState
 } from "../src/lib/voiceQuality.js";
 
 const SAMPLE_RATE = 48_000;
@@ -55,6 +57,15 @@ describe("voice quality counters", () => {
 
     assert.equal(totals.packetsReceived, 0);
     assert.equal(totals.concealedSamples, 0);
+  });
+
+  it("accepts the legacy mediaType field for inbound audio", () => {
+    const totals = readVoiceCounters([
+      { type: "inbound-rtp", mediaType: "audio", packetsReceived: 40, packetsLost: 2 }
+    ]);
+
+    assert.equal(totals.packetsReceived, 40);
+    assert.equal(totals.packetsLost, 2);
   });
 });
 
@@ -197,5 +208,54 @@ describe("worst voice quality", () => {
 
   it("has nothing to report when no peer produced a reading", () => {
     assert.equal(worstVoiceQuality([]), null);
+  });
+});
+
+describe("voice quality recovery", () => {
+  const degraded = {
+    grade: "unstable" as const,
+    symptom: "jitter" as const,
+    lossPercent: 0,
+    concealedMs: 20,
+    spedUpMs: 0,
+    slowedDownMs: 0,
+    bufferMs: 40
+  };
+
+  const clear = {
+    ...degraded,
+    grade: "clear" as const,
+    symptom: "none" as const,
+    concealedMs: 0
+  };
+
+  it("requires two consecutive degraded samples before recovery", () => {
+    let state: VoiceQualityRecoveryState = { consecutiveDegradedSamples: 0, lastRecoveryAt: null };
+
+    const first = updateVoiceQualityRecovery(state, degraded, 1_000);
+    state = first.state;
+    assert.equal(first.recover, false);
+
+    const second = updateVoiceQualityRecovery(state, degraded, 5_000);
+    assert.equal(second.recover, true);
+  });
+
+  it("resets the consecutive count after a clear sample", () => {
+    let state: VoiceQualityRecoveryState = { consecutiveDegradedSamples: 0, lastRecoveryAt: null };
+    state = updateVoiceQualityRecovery(state, degraded, 1_000).state;
+    state = updateVoiceQualityRecovery(state, clear, 2_000).state;
+
+    const next = updateVoiceQualityRecovery(state, degraded, 3_000);
+    assert.equal(next.recover, false);
+  });
+
+  it("does not recover the same peer again during the cooldown", () => {
+    let state: VoiceQualityRecoveryState = { consecutiveDegradedSamples: 0, lastRecoveryAt: null };
+    state = updateVoiceQualityRecovery(state, degraded, 1_000).state;
+    state = updateVoiceQualityRecovery(state, degraded, 5_000).state;
+
+    state = updateVoiceQualityRecovery(state, degraded, 6_000).state;
+    const duringCooldown = updateVoiceQualityRecovery(state, degraded, 7_000);
+    assert.equal(duringCooldown.recover, false);
   });
 });

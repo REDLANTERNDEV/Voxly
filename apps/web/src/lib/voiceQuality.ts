@@ -71,6 +71,14 @@ export interface VoiceQualityReading {
   bufferMs: number;
 }
 
+export interface VoiceQualityRecoveryState {
+  consecutiveDegradedSamples: number;
+  lastRecoveryAt: number | null;
+}
+
+const recoverySampleThreshold = 2;
+const recoveryCooldownMs = 15_000;
+
 const emptyCounters: VoiceCounters = {
   packetsReceived: 0,
   packetsLost: 0,
@@ -96,7 +104,10 @@ function count(value: unknown) {
 export function readVoiceCounters(report: Iterable<Record<string, unknown>>): VoiceCounters {
   const totals = { ...emptyCounters };
   for (const entry of report) {
-    if (entry.type !== "inbound-rtp" || entry.kind !== "audio") continue;
+    if (
+      entry.type !== "inbound-rtp"
+      || (entry.kind !== "audio" && entry.mediaType !== "audio")
+    ) continue;
     totals.packetsReceived += count(entry.packetsReceived);
     totals.packetsLost += count(entry.packetsLost);
     totals.concealedSamples += count(entry.concealedSamples);
@@ -107,6 +118,43 @@ export function readVoiceCounters(report: Iterable<Record<string, unknown>>): Vo
     totals.jitterBufferEmittedCount += count(entry.jitterBufferEmittedCount);
   }
   return totals;
+}
+
+/**
+ * A single bad stats sample can be a counter transition or a brief route
+ * change. Rebuild only the affected peer after two consecutive degraded
+ * samples, and leave enough time between rebuilds for the new route to settle.
+ */
+export function updateVoiceQualityRecovery(
+  state: VoiceQualityRecoveryState,
+  reading: VoiceQualityReading,
+  now: number
+) {
+  if (reading.grade === "clear" || reading.grade === "measuring") {
+    return {
+      state: { ...state, consecutiveDegradedSamples: 0 },
+      recover: false
+    };
+  }
+
+  const consecutiveDegradedSamples = Math.min(
+    recoverySampleThreshold,
+    state.consecutiveDegradedSamples + 1
+  );
+  const cooldownElapsed = state.lastRecoveryAt === null
+    || now - state.lastRecoveryAt >= recoveryCooldownMs;
+
+  if (consecutiveDegradedSamples >= recoverySampleThreshold && cooldownElapsed) {
+    return {
+      state: { consecutiveDegradedSamples: 0, lastRecoveryAt: now },
+      recover: true
+    };
+  }
+
+  return {
+    state: { ...state, consecutiveDegradedSamples },
+    recover: false
+  };
 }
 
 /**

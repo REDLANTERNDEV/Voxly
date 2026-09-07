@@ -352,6 +352,19 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     return Boolean(peer);
   }, []);
 
+  const schedulePeerRecovery = useCallback((peerUserId: string, expectedPeer?: RTCPeerConnection) => {
+    const peer = peersRef.current.get(peerUserId);
+    if (!peer || (expectedPeer && peer !== expectedPeer)) return false;
+    if (!removePeer(peerUserId, { expectedPeer: peer, preserveVisualSubscriptions: true })) return false;
+    const timer = window.setTimeout(() => {
+      peerRecoveryTimersRef.current.delete(peerUserId);
+      if (!activeVoiceMemberUserIdsRef.current.has(peerUserId)) return;
+      recoverPeerRef.current(peerUserId);
+    }, 300);
+    peerRecoveryTimersRef.current.set(peerUserId, timer);
+    return true;
+  }, [removePeer]);
+
   const localStreamDescriptors = useCallback((peerUserId: string): SignalStreamDescriptor[] => {
     const descriptors: SignalStreamDescriptor[] = [];
     if (localStreamsRef.current.mic) {
@@ -486,17 +499,15 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           ? "failed"
           : "connecting";
       setPeerConnectionStates((current) => ({ ...current, [peerUserId]: state }));
-      if (peer.connectionState !== "failed" || !removePeer(peerUserId, { expectedPeer: peer, preserveVisualSubscriptions: true })) return;
-      const timer = window.setTimeout(() => {
-        peerRecoveryTimersRef.current.delete(peerUserId);
-        if (!activeVoiceMemberUserIdsRef.current.has(peerUserId)) return;
-        recoverPeerRef.current(peerUserId);
-      }, 300);
-      peerRecoveryTimersRef.current.set(peerUserId, timer);
+      if (peer.connectionState === "failed") schedulePeerRecovery(peerUserId, peer);
     };
 
     return peer;
-  }, [removePeer, socket, syncLocalTracks]);
+  }, [schedulePeerRecovery, socket, syncLocalTracks]);
+
+  const recoverPeer = useCallback((peerUserId: string) => {
+    schedulePeerRecovery(peerUserId);
+  }, [schedulePeerRecovery]);
 
   const flushPendingCandidates = useCallback(async (peerUserId: string, peer: RTCPeerConnection) => {
     const candidates = pendingCandidatesRef.current.get(peerUserId) ?? [];
@@ -540,7 +551,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
    * tree, and so the sampler always sees the current set rather than the set as
    * it stood when it last rendered.
    */
-  const peerConnections = useCallback(() => peersRef.current.values(), []);
+  const peerConnections = useCallback(() => {
+    return [...peersRef.current.entries()].map(([userId, peer]) => ({ userId, peer }));
+  }, []);
 
   const renegotiatePeers = useCallback(() => {
     for (const [peerUserId, peer] of peersRef.current) {
@@ -1367,6 +1380,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     localPreviews,
     microphoneMonitorStream,
     peerConnections,
+    recoverPeer,
     requestSnapshot,
     remoteStreams,
     setDeafened,

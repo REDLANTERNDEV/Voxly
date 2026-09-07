@@ -53,11 +53,12 @@ describe("dock connection signal", () => {
     assert.equal(signal.tone, "good");
   });
 
-  it("keeps reporting the round trip until the first media sample lands", () => {
-    // Joining must not blank the signal while the first counters accumulate.
+  it("shows neutral voice measurement until the first media sample lands", () => {
+    // A server round trip is not evidence that the peer media path is healthy.
     const signal = voiceSignalPresentation(health(), measuring, true, t);
 
-    assert.equal(signal.value, "34 ms");
+    assert.equal(signal.value, "Measuring voice");
+    assert.doesNotMatch(signal.value, /ms/);
   });
 
   it("stops showing a healthy round trip as the verdict once in a call", () => {

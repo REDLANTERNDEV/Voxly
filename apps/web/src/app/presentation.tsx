@@ -67,13 +67,21 @@ export function voiceSignalPresentation(
   inCall: boolean,
   t: Translate
 ) {
-  if (!inCall || quality.grade === "measuring") {
+  if (!inCall) {
     return {
       tone: health.quality === "good" ? "good" : health.quality === "poor" ? "poor" : "fair",
       value: health.rttMs === null ? "-- ms" : `${Math.round(health.rttMs)} ms`,
       label: health.rttMs === null
         ? t("connection.measuring")
         : t("connection.latency", { value: Math.round(health.rttMs) })
+    };
+  }
+
+  if (quality.grade === "measuring") {
+    return {
+      tone: "fair",
+      value: t("voiceQuality.measuring"),
+      label: t("voiceQuality.measuring")
     };
   }
 

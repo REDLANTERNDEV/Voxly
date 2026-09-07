@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
   readVoiceCounters,
+  updateVoiceQualityRecovery,
   voiceQualityReading,
   worstVoiceQuality,
   type VoiceCounters,
   type VoiceQualityGrade,
   type VoiceQualityReading,
+  type VoiceQualityRecoveryState,
   type VoiceQualitySymptom
 } from "./voiceQuality.js";
 
@@ -35,7 +37,14 @@ function collectStats(report: RTCStatsReport) {
   return entries;
 }
 
-export type VoiceStatsSource = () => Iterable<RTCPeerConnection>;
+export interface VoiceStatsPeer {
+  userId: string;
+  peer: RTCPeerConnection;
+}
+
+export type VoiceStatsSource = () => Iterable<VoiceStatsPeer>;
+
+export type VoicePeerRecoveryHandler = (userId: string) => void;
 
 /**
  * Samples the receiving decoders while the member is in a voice room.
@@ -46,14 +55,19 @@ export type VoiceStatsSource = () => Iterable<RTCPeerConnection>;
  * peer that leaves takes its counters with it, and a peer that reconnects is
  * measured from its own zero rather than against a predecessor's totals.
  */
-export function useVoiceQuality(peers: VoiceStatsSource | null): VoiceQuality {
+export function useVoiceQuality(
+  peers: VoiceStatsSource | null,
+  onPeerRecoveryNeeded?: VoicePeerRecoveryHandler
+): VoiceQuality {
   const [quality, setQuality] = useState<VoiceQuality>(measuring);
   const previousRef = useRef<Map<RTCPeerConnection, VoiceCounters>>(new Map());
+  const recoveryRef = useRef<Map<string, VoiceQualityRecoveryState>>(new Map());
   const generationRef = useRef(0);
 
   useEffect(() => {
     const generation = ++generationRef.current;
     previousRef.current = new Map();
+    recoveryRef.current = new Map();
     if (!peers) {
       setQuality(measuring);
       return;
@@ -61,8 +75,9 @@ export function useVoiceQuality(peers: VoiceStatsSource | null): VoiceQuality {
 
     const sample = async () => {
       const current = new Map<RTCPeerConnection, VoiceCounters>();
+      const currentRecovery = new Map<string, VoiceQualityRecoveryState>();
       const readings: VoiceQualityReading[] = [];
-      for (const peer of peers()) {
+      for (const { userId, peer } of peers()) {
         let counters: VoiceCounters;
         try {
           counters = readVoiceCounters(collectStats(await peer.getStats()));
@@ -75,9 +90,21 @@ export function useVoiceQuality(peers: VoiceStatsSource | null): VoiceQuality {
         current.set(peer, counters);
         const previous = previousRef.current.get(peer);
         const reading = previous ? voiceQualityReading(previous, counters) : null;
-        if (reading) readings.push(reading);
+        const recoveryState = recoveryRef.current.get(userId) ?? {
+          consecutiveDegradedSamples: 0,
+          lastRecoveryAt: null
+        };
+        if (reading) {
+          readings.push(reading);
+          const recovery = updateVoiceQualityRecovery(recoveryState, reading, Date.now());
+          currentRecovery.set(userId, recovery.state);
+          if (recovery.recover) onPeerRecoveryNeeded?.(userId);
+        } else {
+          currentRecovery.set(userId, { ...recoveryState, consecutiveDegradedSamples: 0 });
+        }
       }
       previousRef.current = current;
+      recoveryRef.current = currentRecovery;
       const worst = worstVoiceQuality(readings);
       setQuality(worst ? { grade: worst.grade, symptom: worst.symptom, reading: worst } : measuring);
     };
@@ -88,7 +115,7 @@ export function useVoiceQuality(peers: VoiceStatsSource | null): VoiceQuality {
       generationRef.current += 1;
       window.clearInterval(timer);
     };
-  }, [peers]);
+  }, [onPeerRecoveryNeeded, peers]);
 
   return quality;
 }
