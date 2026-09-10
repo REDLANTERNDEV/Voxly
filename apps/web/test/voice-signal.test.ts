@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
 import { voiceSignalPresentation } from "../src/app/presentation.js";
 import { translate, type LanguageCode, type TranslationKey } from "../src/lib/i18n.js";
 import type { ConnectionHealth } from "../src/lib/useConnectionHealth.js";
@@ -26,7 +27,7 @@ function health(overrides: Partial<ConnectionHealth> = {}): ConnectionHealth {
   };
 }
 
-const measuring: VoiceQuality = { grade: "measuring", symptom: "none", reading: null };
+const measuring: VoiceQuality = { grade: "measuring", symptom: "none", reading: null, transport: null };
 
 function quality(overrides: Partial<VoiceQuality> = {}): VoiceQuality {
   return {
@@ -41,6 +42,7 @@ function quality(overrides: Partial<VoiceQuality> = {}): VoiceQuality {
       slowedDownMs: 0,
       bufferMs: 62
     },
+    transport: null,
     ...overrides
   };
 }
@@ -96,10 +98,32 @@ describe("dock connection signal", () => {
     assert.match(signal.label, /55 ms/);
   });
 
+  it("reports the media route separately from the signalling round trip", () => {
+    const signal = voiceSignalPresentation(health(), quality({
+      transport: { rttMs: 210, candidateType: "relay", candidatePairState: "succeeded" }
+    }), true, t);
+
+    assert.match(signal.label, /TURN/);
+    assert.match(signal.label, /210 ms/);
+  });
+
   it("stays readable in Turkish, where the reports came from", () => {
-    const signal = voiceSignalPresentation(health(), quality(), true, translator("tr"));
+    const signal = voiceSignalPresentation(health(), quality({
+      transport: { rttMs: 210, candidateType: "relay", candidatePairState: "succeeded" }
+    }), true, translator("tr"));
 
     assert.equal(signal.value, "Dalgalı");
     assert.match(signal.label, /hızlanması/);
+    assert.match(signal.label, /TURN üzerinden/);
+  });
+});
+
+describe("voice signal generations", () => {
+  it("does not reuse candidates after a peer replacement", () => {
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+
+    assert.match(source, /pendingCandidatesRef = useRef<Map<string, \{ generation: number/);
+    assert.match(source, /pending\?\.generation === peerGeneration/);
+    assert.match(source, /isCurrentPeer\(peerUserId, peer, peerGeneration\)/);
   });
 });

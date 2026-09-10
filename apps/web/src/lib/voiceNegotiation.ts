@@ -14,10 +14,12 @@ export function staleVoicePeerUserIds(
   return [...peerUserIds].filter((peerUserId) => !activeMemberIds.has(peerUserId));
 }
 
-export type PeerConnectionState = "new" | "connecting" | "connected" | "failed";
-export type VisualConnectionStatus = "connecting" | "failed" | "ready";
+export type PeerConnectionState = "new" | "connecting" | "reconnecting" | "connected" | "failed";
+export type VisualConnectionStatus = "connecting" | "reconnecting" | "failed" | "ready";
 
 export function connectionStatusFor(state: PeerConnectionState, hasStream: boolean): VisualConnectionStatus {
   if (hasStream) return "ready";
-  return state === "failed" ? "failed" : "connecting";
+  if (state === "failed") return "failed";
+  if (state === "reconnecting") return "reconnecting";
+  return "connecting";
 }

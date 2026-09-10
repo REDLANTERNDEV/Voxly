@@ -31,6 +31,14 @@ import {
   staleVoicePeerUserIds,
   type PeerConnectionState
 } from "./voiceNegotiation.js";
+import {
+  advancePeerRecovery,
+  initialPeerRecoveryState,
+  voicePeerConnectionTimeoutMs,
+  voicePeerRecoveryGraceMs,
+  type PeerRecoveryEvent,
+  type PeerRecoveryState
+} from "./voicePeerRecovery.js";
 import { clearVoiceResume, readVoiceResume, voiceResumeWindowMs, writeVoiceResume } from "./voiceResume.js";
 import {
   mediaStreamForTrack,
@@ -88,6 +96,7 @@ interface SignalStreamDescriptor {
 interface PeerRemovalOptions {
   expectedPeer?: RTCPeerConnection;
   preserveVisualSubscriptions?: boolean;
+  preserveRecoveryState?: boolean;
 }
 
 export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, microphoneDeviceId = "", microphoneVolume = 100, noiseSuppression = DEFAULT_NOISE_SUPPRESSION, afkRoomIds = [] }: UseVoiceMediaInput) {
@@ -116,8 +125,11 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const offerGenerationsRef = useRef<Map<string, number>>(new Map());
   const pendingOfferPeersRef = useRef<Set<string>>(new Set());
   const peerRecoveryTimersRef = useRef<Map<string, number>>(new Map());
+  const peerConnectionTimeoutsRef = useRef<Map<string, number>>(new Map());
+  const peerGenerationsRef = useRef<Map<string, number>>(new Map());
+  const peerRecoveryStatesRef = useRef<Map<string, PeerRecoveryState>>(new Map());
   const activeVoiceMemberUserIdsRef = useRef<Set<string>>(new Set());
-  const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const pendingCandidatesRef = useRef<Map<string, { generation: number; candidates: RTCIceCandidateInit[] }>>(new Map());
   const microphoneSwitchRef = useRef(0);
   const microphoneSwitchQueueRef = useRef<Promise<void>>(Promise.resolve());
   const ignoredOfferPeersRef = useRef<Set<string>>(new Set());
@@ -144,6 +156,12 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const deafenTransitionRef = useRef(0);
   const roomRef = useRef<string | null>(null);
   const userIdRef = useRef<string | null>(null);
+
+  const isCurrentPeer = useCallback((peerUserId: string, peer: RTCPeerConnection, peerGeneration: number) => {
+    return peersRef.current.get(peerUserId) === peer
+      && peerGenerationsRef.current.get(peerUserId) === peerGeneration
+      && peer.connectionState !== "closed";
+  }, []);
 
   useEffect(() => {
     iceServersRef.current = iceServers;
@@ -315,10 +333,16 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     makingOfferPeersRef.current.clear();
     offerGenerationsRef.current.clear();
     pendingOfferPeersRef.current.clear();
+    peerGenerationsRef.current.clear();
+    peerRecoveryStatesRef.current.clear();
     for (const timer of peerRecoveryTimersRef.current.values()) {
       window.clearTimeout(timer);
     }
     peerRecoveryTimersRef.current.clear();
+    for (const timer of peerConnectionTimeoutsRef.current.values()) {
+      window.clearTimeout(timer);
+    }
+    peerConnectionTimeoutsRef.current.clear();
     activeVoiceMemberUserIdsRef.current.clear();
     pendingCandidatesRef.current.clear();
     ignoredOfferPeersRef.current.clear();
@@ -329,7 +353,12 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const removePeer = useCallback((peerUserId: string, options: PeerRemovalOptions = {}) => {
     const peer = peersRef.current.get(peerUserId);
     if (options.expectedPeer && peer !== options.expectedPeer) return false;
+    const peerGeneration = peerGenerationsRef.current.get(peerUserId) ?? 0;
+    peerGenerationsRef.current.set(peerUserId, peerGeneration + 1);
     peer?.close();
+    const connectionTimeout = peerConnectionTimeoutsRef.current.get(peerUserId);
+    if (connectionTimeout !== undefined) window.clearTimeout(connectionTimeout);
+    peerConnectionTimeoutsRef.current.delete(peerUserId);
     peersRef.current.delete(peerUserId);
     remoteStreamKindsRef.current.delete(peerUserId);
     if (!options.preserveVisualSubscriptions) {
@@ -339,6 +368,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     offerGenerationsRef.current.delete(peerUserId);
     pendingOfferPeersRef.current.delete(peerUserId);
     pendingCandidatesRef.current.delete(peerUserId);
+    if (!options.preserveRecoveryState) {
+      peerRecoveryStatesRef.current.delete(peerUserId);
+    }
     ignoredOfferPeersRef.current.delete(peerUserId);
     const recoveryTimer = peerRecoveryTimersRef.current.get(peerUserId);
     if (recoveryTimer) window.clearTimeout(recoveryTimer);
@@ -352,18 +384,33 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     return Boolean(peer);
   }, []);
 
-  const schedulePeerRecovery = useCallback((peerUserId: string, expectedPeer?: RTCPeerConnection) => {
+  const schedulePeerRecovery = useCallback((peerUserId: string, expectedPeer?: RTCPeerConnection, event: PeerRecoveryEvent = { type: "failed" }) => {
     const peer = peersRef.current.get(peerUserId);
     if (!peer || (expectedPeer && peer !== expectedPeer)) return false;
-    if (!removePeer(peerUserId, { expectedPeer: peer, preserveVisualSubscriptions: true })) return false;
+    const peerGeneration = peerGenerationsRef.current.get(peerUserId);
+    if (peerGeneration === undefined || !isCurrentPeer(peerUserId, peer, peerGeneration)) return false;
+    const transition = advancePeerRecovery(
+      peerRecoveryStatesRef.current.get(peerUserId) ?? initialPeerRecoveryState(),
+      event,
+      Date.now()
+    );
+    peerRecoveryStatesRef.current.set(peerUserId, transition.state);
+    if (!removePeer(peerUserId, {
+      expectedPeer: peer,
+      preserveVisualSubscriptions: true,
+      preserveRecoveryState: true
+    })) return false;
+    const replacementGeneration = peerGenerationsRef.current.get(peerUserId);
+    const delay = Math.max(0, (transition.state.nextRetryAt ?? Date.now()) - Date.now());
     const timer = window.setTimeout(() => {
       peerRecoveryTimersRef.current.delete(peerUserId);
       if (!activeVoiceMemberUserIdsRef.current.has(peerUserId)) return;
+      if (peerGenerationsRef.current.get(peerUserId) !== replacementGeneration) return;
       recoverPeerRef.current(peerUserId);
-    }, 300);
+    }, delay);
     peerRecoveryTimersRef.current.set(peerUserId, timer);
     return true;
-  }, [removePeer]);
+  }, [isCurrentPeer, removePeer]);
 
   const localStreamDescriptors = useCallback((peerUserId: string): SignalStreamDescriptor[] => {
     const descriptors: SignalStreamDescriptor[] = [];
@@ -420,6 +467,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
 
   const sendOffer = useCallback(async (peerUserId: string, peer: RTCPeerConnection) => {
     if (!socket || !roomRef.current) return;
+    const peerGeneration = peerGenerationsRef.current.get(peerUserId);
+    if (peerGeneration === undefined || !isCurrentPeer(peerUserId, peer, peerGeneration)) return;
     if (peer.signalingState !== "stable" || makingOfferPeersRef.current.has(peerUserId)) {
       pendingOfferPeersRef.current.add(peerUserId);
       return;
@@ -434,14 +483,14 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       const offer = await peer.createOffer();
       if (
         offerGenerationsRef.current.get(peerUserId) !== offerGeneration ||
-        peersRef.current.get(peerUserId) !== peer ||
+        !isCurrentPeer(peerUserId, peer, peerGeneration) ||
         peer.signalingState !== "stable" ||
         !roomRef.current
       ) return;
       await peer.setLocalDescription(offer);
       if (
         offerGenerationsRef.current.get(peerUserId) !== offerGeneration ||
-        peersRef.current.get(peerUserId) !== peer ||
+        !isCurrentPeer(peerUserId, peer, peerGeneration) ||
         (peer.signalingState as RTCSignalingState) !== "have-local-offer" ||
         peer.localDescription?.type !== "offer" ||
         !roomRef.current
@@ -454,7 +503,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     } finally {
       makingOfferPeersRef.current.delete(peerUserId);
     }
-  }, [localStreamDescriptors, socket]);
+  }, [isCurrentPeer, localStreamDescriptors, socket]);
 
   const ensurePeer = useCallback((peerUserId: string) => {
     if (!socket || !roomRef.current || !userIdRef.current || peerUserId === userIdRef.current) {
@@ -469,12 +518,18 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (recoveryTimer) window.clearTimeout(recoveryTimer);
     peerRecoveryTimersRef.current.delete(peerUserId);
 
+    const peerGeneration = (peerGenerationsRef.current.get(peerUserId) ?? 0) + 1;
+    peerGenerationsRef.current.set(peerUserId, peerGeneration);
+    if (!peerRecoveryStatesRef.current.has(peerUserId)) {
+      peerRecoveryStatesRef.current.set(peerUserId, initialPeerRecoveryState());
+    }
+    const recovering = peerRecoveryStatesRef.current.get(peerUserId)?.phase === "rebuilding";
     const peer = new RTCPeerConnection({ iceServers: iceServersRef.current });
     peersRef.current.set(peerUserId, peer);
-    setPeerConnectionStates((current) => ({ ...current, [peerUserId]: "connecting" }));
+    setPeerConnectionStates((current) => ({ ...current, [peerUserId]: recovering ? "reconnecting" : "connecting" }));
     syncLocalTracks(peer, peerUserId);
     peer.onicecandidate = (event) => {
-      if (!event.candidate || !roomRef.current) return;
+      if (!event.candidate || !roomRef.current || !isCurrentPeer(peerUserId, peer, peerGeneration)) return;
       socket.emit("rtc:signal", {
         roomId: roomRef.current,
         toUserId: peerUserId,
@@ -482,37 +537,132 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       });
     };
     peer.ontrack = (event) => {
+      if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
       const stream = mediaStreamForTrack(event.track, event.streams);
       const kind = remoteStreamKindsRef.current.get(peerUserId)?.get(stream.id) ?? (event.track.kind === "audio" ? "audio" : "camera");
       setRemoteStreams((current) => {
         return upsertRemoteStream(current, peerUserId, kind, stream);
       });
       event.track.addEventListener("ended", () => {
+        if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
         if (kind === "screen" && event.track.kind === "audio") return;
         setRemoteStreams((current) => removeRemoteStream(current, peerUserId, kind, stream));
       }, { once: true });
     };
     peer.onconnectionstatechange = () => {
+      if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
+      const recovering = peerRecoveryStatesRef.current.get(peerUserId)?.phase === "restarting"
+        || peerRecoveryStatesRef.current.get(peerUserId)?.phase === "rebuilding";
       const state: PeerConnectionState = peer.connectionState === "connected"
         ? "connected"
         : peer.connectionState === "failed"
           ? "failed"
-          : "connecting";
+          : recovering ? "reconnecting" : "connecting";
       setPeerConnectionStates((current) => ({ ...current, [peerUserId]: state }));
-      if (peer.connectionState === "failed") schedulePeerRecovery(peerUserId, peer);
+      if (peer.connectionState === "connected") {
+        const timeout = peerConnectionTimeoutsRef.current.get(peerUserId);
+        if (timeout !== undefined) {
+          window.clearTimeout(timeout);
+          peerConnectionTimeoutsRef.current.delete(peerUserId);
+        }
+      }
+      if (peer.connectionState === "failed") {
+        const isRestarting = peerRecoveryStatesRef.current.get(peerUserId)?.phase === "restarting";
+        schedulePeerRecovery(peerUserId, peer, { type: isRestarting ? "restart_failed" : "failed" });
+      }
+    };
+    peer.oniceconnectionstatechange = () => {
+      if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
+      const iceState = peer.iceConnectionState;
+      if (iceState === "connected" || iceState === "completed") {
+        const isRestarting = peerRecoveryStatesRef.current.get(peerUserId)?.phase === "restarting";
+        const transition = advancePeerRecovery(
+          peerRecoveryStatesRef.current.get(peerUserId) ?? initialPeerRecoveryState(),
+          { type: isRestarting ? "restart_succeeded" : "connected" },
+          Date.now()
+        );
+        peerRecoveryStatesRef.current.set(peerUserId, transition.state);
+        setPeerConnectionStates((current) => ({ ...current, [peerUserId]: "connected" }));
+        const connectionTimeout = peerConnectionTimeoutsRef.current.get(peerUserId);
+        if (connectionTimeout !== undefined) {
+          window.clearTimeout(connectionTimeout);
+          peerConnectionTimeoutsRef.current.delete(peerUserId);
+        }
+        const timer = peerRecoveryTimersRef.current.get(peerUserId);
+        if (timer !== undefined) {
+          window.clearTimeout(timer);
+          peerRecoveryTimersRef.current.delete(peerUserId);
+        }
+        return;
+      }
+      if (iceState === "failed") {
+        const isRestarting = peerRecoveryStatesRef.current.get(peerUserId)?.phase === "restarting";
+        schedulePeerRecovery(peerUserId, peer, { type: isRestarting ? "restart_failed" : "failed" });
+        return;
+      }
+      if (
+        peer.iceConnectionState !== "disconnected"
+        || peerRecoveryTimersRef.current.has(peerUserId)
+        || peerRecoveryStatesRef.current.get(peerUserId)?.phase === "restarting"
+      ) return;
+      const transition = advancePeerRecovery(
+        peerRecoveryStatesRef.current.get(peerUserId) ?? initialPeerRecoveryState(),
+        { type: "disconnected" },
+        Date.now()
+      );
+      peerRecoveryStatesRef.current.set(peerUserId, transition.state);
+      const timer = window.setTimeout(() => {
+        peerRecoveryTimersRef.current.delete(peerUserId);
+        if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
+        if (peer.iceConnectionState !== "disconnected") return;
+        const restart = advancePeerRecovery(
+          peerRecoveryStatesRef.current.get(peerUserId) ?? initialPeerRecoveryState(),
+          { type: "grace_elapsed" },
+          Date.now()
+        );
+        peerRecoveryStatesRef.current.set(peerUserId, restart.state);
+        if (restart.action !== "restart_ice") return;
+        setPeerConnectionStates((current) => ({ ...current, [peerUserId]: "reconnecting" }));
+        try {
+          peer.restartIce();
+          void sendOffer(peerUserId, peer).catch(() => schedulePeerRecovery(peerUserId, peer, { type: "restart_failed" }));
+        } catch {
+          schedulePeerRecovery(peerUserId, peer, { type: "restart_failed" });
+          return;
+        }
+        const restartTimeout = window.setTimeout(() => {
+          peerConnectionTimeoutsRef.current.delete(peerUserId);
+          if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
+          if (peer.connectionState === "connected" || peer.iceConnectionState === "connected" || peer.iceConnectionState === "completed") return;
+          schedulePeerRecovery(peerUserId, peer, { type: "restart_failed" });
+        }, voicePeerConnectionTimeoutMs);
+        peerConnectionTimeoutsRef.current.set(peerUserId, restartTimeout);
+      }, voicePeerRecoveryGraceMs);
+      peerRecoveryTimersRef.current.set(peerUserId, timer);
     };
 
+    const connectionTimeout = window.setTimeout(() => {
+      peerConnectionTimeoutsRef.current.delete(peerUserId);
+      if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
+      if (peer.connectionState === "connected" || peer.iceConnectionState === "connected" || peer.iceConnectionState === "completed") return;
+      schedulePeerRecovery(peerUserId, peer);
+    }, voicePeerConnectionTimeoutMs);
+    peerConnectionTimeoutsRef.current.set(peerUserId, connectionTimeout);
+
     return peer;
-  }, [schedulePeerRecovery, socket, syncLocalTracks]);
+  }, [isCurrentPeer, schedulePeerRecovery, sendOffer, socket, syncLocalTracks]);
 
   const recoverPeer = useCallback((peerUserId: string) => {
     schedulePeerRecovery(peerUserId);
   }, [schedulePeerRecovery]);
 
-  const flushPendingCandidates = useCallback(async (peerUserId: string, peer: RTCPeerConnection) => {
-    const candidates = pendingCandidatesRef.current.get(peerUserId) ?? [];
+  const flushPendingCandidates = useCallback(async (peerUserId: string, peer: RTCPeerConnection, peerGeneration: number) => {
+    if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
+    const pending = pendingCandidatesRef.current.get(peerUserId);
     pendingCandidatesRef.current.delete(peerUserId);
-    for (const candidate of candidates) {
+    if (!pending || pending.generation !== peerGeneration) return;
+    for (const candidate of pending.candidates) {
+      if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
       try {
         await peer.addIceCandidate(candidate);
       } catch {
@@ -520,7 +670,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         // Continue so one mismatched ufrag cannot block valid queued candidates.
       }
     }
-  }, []);
+  }, [isCurrentPeer]);
 
   useEffect(() => {
     recoverPeerRef.current = (peerUserId) => {
@@ -1121,6 +1271,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     const signal = payload.signal as PeerSignal;
     const peer = ensurePeer(payload.fromUserId);
     if (!peer) return;
+    const peerGeneration = peerGenerationsRef.current.get(payload.fromUserId);
+    if (peerGeneration === undefined || !isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
     if (signal.type === "offer") {
       rememberRemoteStreamKinds(payload.fromUserId, signal.streams);
       const hasOfferCollision = makingOfferPeersRef.current.has(payload.fromUserId) || peer.signalingState !== "stable";
@@ -1144,12 +1296,15 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           await peer.setLocalDescription({ type: "rollback" });
         }
       }
+      if (!isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
       ignoredOfferPeersRef.current.delete(payload.fromUserId);
       await peer.setRemoteDescription({ type: "offer", sdp: signal.sdp });
-      await flushPendingCandidates(payload.fromUserId, peer);
+      if (!isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
+      await flushPendingCandidates(payload.fromUserId, peer, peerGeneration);
+      if (!isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
       const answer = await peer.createAnswer();
       await peer.setLocalDescription(answer);
-      if (socket && roomRef.current) {
+      if (socket && roomRef.current && isCurrentPeer(payload.fromUserId, peer, peerGeneration)) {
         socket.emit("rtc:signal", {
           roomId: roomRef.current,
           toUserId: payload.fromUserId,
@@ -1165,7 +1320,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       ignoredOfferPeersRef.current.delete(payload.fromUserId);
       rememberRemoteStreamKinds(payload.fromUserId, signal.streams);
       await peer.setRemoteDescription({ type: "answer", sdp: signal.sdp });
-      await flushPendingCandidates(payload.fromUserId, peer);
+      if (!isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
+      await flushPendingCandidates(payload.fromUserId, peer, peerGeneration);
+      if (!isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
       if (pendingOfferPeersRef.current.delete(payload.fromUserId)) {
         void sendOffer(payload.fromUserId, peer).catch(() => setError("voiceError.updateMedia"));
       }
@@ -1174,14 +1331,16 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (signal.type === "candidate") {
       if (ignoredOfferPeersRef.current.has(payload.fromUserId)) return;
       if (!peer.remoteDescription) {
-        const candidates = pendingCandidatesRef.current.get(payload.fromUserId) ?? [];
+        const pending = pendingCandidatesRef.current.get(payload.fromUserId);
+        const candidates = pending?.generation === peerGeneration ? pending.candidates : [];
         if (candidates.length < 128) candidates.push(signal.candidate);
-        pendingCandidatesRef.current.set(payload.fromUserId, candidates);
+        pendingCandidatesRef.current.set(payload.fromUserId, { generation: peerGeneration, candidates });
         return;
       }
+      if (!isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
       await peer.addIceCandidate(signal.candidate);
     }
-  }, [ensurePeer, flushPendingCandidates, localStreamDescriptors, rememberRemoteStreamKinds, sendOffer, socket]);
+  }, [ensurePeer, flushPendingCandidates, isCurrentPeer, localStreamDescriptors, rememberRemoteStreamKinds, sendOffer, socket]);
 
   useEffect(() => {
     const saveResume = () => {

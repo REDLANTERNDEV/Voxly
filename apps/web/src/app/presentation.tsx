@@ -87,6 +87,16 @@ export function voiceSignalPresentation(
 
   const tone = quality.grade === "clear" ? "good" : quality.grade === "unstable" ? "fair" : "poor";
   const reading = quality.reading;
+  const transport = quality.transport?.rttMs === null || quality.transport?.rttMs === undefined
+    ? ""
+    : t(
+      quality.transport.candidateType === "relay"
+        ? "voiceQuality.transport.relay"
+        : quality.transport.candidateType
+          ? "voiceQuality.transport.direct"
+          : "voiceQuality.transport.unknown",
+      { value: Math.round(quality.transport.rttMs) }
+    );
   return {
     tone,
     value: t(`voiceQuality.${quality.grade}` as TranslationKey),
@@ -98,7 +108,8 @@ export function voiceSignalPresentation(
         loss: reading.lossPercent.toFixed(1),
         gaps: Math.round(reading.concealedMs),
         buffer: Math.round(reading.bufferMs)
-      }) : ""
+      }) : "",
+      transport
     ].filter(Boolean).join(" · ")
   };
 }

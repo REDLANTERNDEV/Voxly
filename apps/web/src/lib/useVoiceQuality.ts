@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import {
   readVoiceCounters,
+  readVoiceTransport,
   updateVoiceQualityRecovery,
   voiceQualityReading,
   worstVoiceQuality,
+  worstVoiceTransport,
   type VoiceCounters,
   type VoiceQualityGrade,
   type VoiceQualityReading,
   type VoiceQualityRecoveryState,
-  type VoiceQualitySymptom
+  type VoiceQualitySymptom,
+  type VoiceTransportReading
 } from "./voiceQuality.js";
 
 /**
@@ -21,9 +24,10 @@ export interface VoiceQuality {
   grade: VoiceQualityGrade;
   symptom: VoiceQualitySymptom;
   reading: VoiceQualityReading | null;
+  transport: VoiceTransportReading | null;
 }
 
-const measuring: VoiceQuality = { grade: "measuring", symptom: "none", reading: null };
+const measuring: VoiceQuality = { grade: "measuring", symptom: "none", reading: null, transport: null };
 
 /**
  * `RTCStatsReport` is map-like, but the DOM types this project builds against
@@ -77,10 +81,14 @@ export function useVoiceQuality(
       const current = new Map<RTCPeerConnection, VoiceCounters>();
       const currentRecovery = new Map<string, VoiceQualityRecoveryState>();
       const readings: VoiceQualityReading[] = [];
+      const transportReadings: VoiceTransportReading[] = [];
       for (const { userId, peer } of peers()) {
         let counters: VoiceCounters;
         try {
-          counters = readVoiceCounters(collectStats(await peer.getStats()));
+          const report = collectStats(await peer.getStats());
+          counters = readVoiceCounters(report);
+          const transport = readVoiceTransport(report);
+          if (transport.candidatePairState) transportReadings.push(transport);
         } catch {
           // A peer closing mid-sample rejects rather than resolving empty. It
           // simply does not contribute this tick.
@@ -106,7 +114,9 @@ export function useVoiceQuality(
       previousRef.current = current;
       recoveryRef.current = currentRecovery;
       const worst = worstVoiceQuality(readings);
-      setQuality(worst ? { grade: worst.grade, symptom: worst.symptom, reading: worst } : measuring);
+      setQuality(worst
+        ? { grade: worst.grade, symptom: worst.symptom, reading: worst, transport: worstVoiceTransport(transportReadings) }
+        : { ...measuring, transport: worstVoiceTransport(transportReadings) });
     };
 
     void sample();

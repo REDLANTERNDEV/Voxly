@@ -44,6 +44,10 @@ describe("voice connection status", () => {
     assert.equal(connectionStatusFor("connecting", false), "connecting");
   });
 
+  it("shows a distinct reconnecting state after recovery begins", () => {
+    assert.equal(connectionStatusFor("reconnecting", false), "reconnecting");
+  });
+
   it("offers a retryable state when ICE or peer connection fails", () => {
     assert.equal(connectionStatusFor("failed", false), "failed");
   });

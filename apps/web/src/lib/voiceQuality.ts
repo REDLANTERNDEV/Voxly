@@ -76,6 +76,12 @@ export interface VoiceQualityRecoveryState {
   lastRecoveryAt: number | null;
 }
 
+export interface VoiceTransportReading {
+  rttMs: number | null;
+  candidateType: string | null;
+  candidatePairState: string | null;
+}
+
 const recoverySampleThreshold = 2;
 const recoveryCooldownMs = 15_000;
 
@@ -92,6 +98,14 @@ const emptyCounters: VoiceCounters = {
 
 function count(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function finiteNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value ? value : null;
 }
 
 /**
@@ -118,6 +132,61 @@ export function readVoiceCounters(report: Iterable<Record<string, unknown>>): Vo
     totals.jitterBufferEmittedCount += count(entry.jitterBufferEmittedCount);
   }
   return totals;
+}
+
+/**
+ * Read the selected ICE route from the media connection itself. This is kept
+ * separate from the Socket.IO probe because a healthy signaling route says
+ * nothing about the path carrying decoded audio.
+ */
+export function readVoiceTransport(report: Iterable<Record<string, unknown>>): VoiceTransportReading {
+  const entries = [...report];
+  const byId = new Map(
+    entries
+      .filter((entry) => typeof entry.id === "string")
+      .map((entry) => [entry.id as string, entry])
+  );
+  const selectedPairId = entries.find((entry) => entry.type === "transport")?.selectedCandidatePairId;
+  const selectedPair = typeof selectedPairId === "string" ? byId.get(selectedPairId) : undefined;
+  const pair = selectedPair?.type === "candidate-pair" ? selectedPair : undefined;
+  const selectedOrNominatedPair = pair ?? entries.find((entry) =>
+    entry.type === "candidate-pair"
+    && entry.state === "succeeded"
+    && (entry.nominated === true || entry.selected === true)
+  ) ?? entries.find((entry) => entry.type === "candidate-pair" && entry.state === "succeeded");
+
+  if (!selectedOrNominatedPair) {
+    return { rttMs: null, candidateType: null, candidatePairState: null };
+  }
+
+  const local = typeof selectedOrNominatedPair.localCandidateId === "string" ? byId.get(selectedOrNominatedPair.localCandidateId) : undefined;
+  const remote = typeof selectedOrNominatedPair.remoteCandidateId === "string" ? byId.get(selectedOrNominatedPair.remoteCandidateId) : undefined;
+  const localType = stringValue(local?.candidateType) ?? stringValue(selectedOrNominatedPair.localCandidateType);
+  const remoteType = stringValue(remote?.candidateType) ?? stringValue(selectedOrNominatedPair.remoteCandidateType);
+  const candidateType = localType === "relay" || remoteType === "relay"
+    ? "relay"
+    : localType ?? remoteType ?? null;
+  const rttSeconds = finiteNumber(selectedOrNominatedPair.currentRoundTripTime);
+
+  return {
+    rttMs: rttSeconds === null ? null : Math.round(rttSeconds * 1000),
+    candidateType,
+    candidatePairState: stringValue(selectedOrNominatedPair.state)
+  };
+}
+
+export function worstVoiceTransport(readings: readonly VoiceTransportReading[]): VoiceTransportReading | null {
+  let worst: VoiceTransportReading | null = null;
+  for (const reading of readings) {
+    if (!worst) {
+      worst = reading;
+      continue;
+    }
+    const currentRtt = reading.rttMs ?? -1;
+    const worstRtt = worst.rttMs ?? -1;
+    if (currentRtt > worstRtt) worst = reading;
+  }
+  return worst;
 }
 
 /**

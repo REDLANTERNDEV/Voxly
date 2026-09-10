@@ -16,7 +16,7 @@ export interface StageSource {
   ownerIsLocal: boolean;
   stream: MediaStream | null;
   target: VisualTarget | null;
-  connectionStatus: "connecting" | "failed" | "ready";
+  connectionStatus: "connecting" | "reconnecting" | "failed" | "ready";
 }
 /**
  * What is true of a participant right now, at the end of their row.
@@ -169,7 +169,7 @@ export function VisualStage({
             aria-pressed={source.key === focusedSource?.key}
             aria-label={`${source.ownerName} ${source.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}`}
           >
-            {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span className="screen-stage-placeholder">{source.connectionStatus === "failed" ? t("voice.retry") : t("voice.connecting")}</span>}
+            {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span className="screen-stage-placeholder">{source.connectionStatus === "failed" ? t("voice.retry") : source.connectionStatus === "reconnecting" ? t("voice.reconnecting") : t("voice.connecting")}</span>}
             {source.key !== focusedSource?.key ? <span className="stage-media-label"><strong>{source.ownerName}</strong><span>{source.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}</span></span> : null}
           </button>
         ))}

@@ -144,7 +144,7 @@ describe("voice snapshot reconciliation", () => {
   it("preserves visual subscriptions during transient peer recovery", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
 
-    assert.match(source, /removePeer\(peerUserId, \{ expectedPeer: peer, preserveVisualSubscriptions: true \}\)/);
+    assert.match(source, /removePeer\(peerUserId, \{[\s\S]*?preserveVisualSubscriptions: true,[\s\S]*?preserveRecoveryState: true/);
   });
 
   it("rejoins with effective media before requesting reconnect snapshots", () => {
@@ -287,12 +287,39 @@ describe("voice snapshot reconciliation", () => {
     assert.match(source, /peer\.restartIce\(\)/);
   });
 
+  it("recovers disconnected ICE peers before rebuilding them", () => {
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+
+    assert.match(source, /oniceconnectionstatechange/);
+    assert.match(source, /advancePeerRecovery/);
+    assert.match(source, /iceConnectionState [!=]== "disconnected"/);
+    assert.match(source, /voicePeerRecoveryGraceMs/);
+    assert.match(source, /peer\.restartIce\(\)/);
+    assert.match(source, /\"reconnecting\"/);
+    assert.match(source, /peerGeneration/);
+    assert.match(source, /isCurrentPeer/);
+    assert.match(source, /preserveRecoveryState: true/);
+    assert.match(source, /phase === "restarting"/);
+    assert.match(source, /iceConnectionState !== "disconnected"/);
+    assert.match(source, /voicePeerConnectionTimeoutMs/);
+    assert.match(source, /restartTimeout = window\.setTimeout/);
+    assert.match(source, /restart_failed/);
+  });
+
   it("invalidates an in-flight local offer before accepting a colliding offer", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
 
     assert.match(source, /const offerGenerationsRef = useRef<Map<string, number>>/);
     assert.match(source, /offerGenerationsRef\.current\.get\(peerUserId\) !== offerGeneration/);
     assert.match(source, /shouldIgnoreIncomingOffer\([\s\S]{0,180}makingOfferPeersRef\.current\.has/);
+  });
+
+  it("keeps answer cleanup generation-safe after candidate flushing", () => {
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const answer = source.match(/if \(signal\.type === "answer"\) \{([\s\S]*?)\n    \}/)?.[1] ?? "";
+
+    assert.match(answer, /await flushPendingCandidates/);
+    assert.match(answer, /if \(!isCurrentPeer\(payload\.fromUserId, peer, peerGeneration\)\) return;/);
   });
 });
 

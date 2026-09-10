@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   readVoiceCounters,
+  readVoiceTransport,
   updateVoiceQualityRecovery,
   voiceQualityReading,
+  worstVoiceTransport,
   worstVoiceQuality,
   type VoiceCounters,
   type VoiceQualityRecoveryState
@@ -66,6 +68,36 @@ describe("voice quality counters", () => {
 
     assert.equal(totals.packetsReceived, 40);
     assert.equal(totals.packetsLost, 2);
+  });
+
+  it("reads the selected WebRTC candidate pair without using signaling RTT", () => {
+    const reading = readVoiceTransport([
+      { type: "candidate-pair", state: "succeeded", nominated: true, currentRoundTripTime: 0.18, localCandidateId: "local", remoteCandidateId: "remote" },
+      { type: "local-candidate", id: "local", candidateType: "relay" },
+      { type: "remote-candidate", id: "remote", candidateType: "relay" }
+    ]);
+
+    assert.deepEqual(reading, { rttMs: 180, candidateType: "relay", candidatePairState: "succeeded" });
+  });
+
+  it("prefers the browser-selected pair over another succeeded pair", () => {
+    const reading = readVoiceTransport([
+      { type: "transport", selectedCandidatePairId: "selected" },
+      { type: "candidate-pair", id: "other", state: "succeeded", nominated: true, currentRoundTripTime: 0.42, localCandidateId: "host", remoteCandidateId: "remote" },
+      { type: "candidate-pair", id: "selected", state: "succeeded", currentRoundTripTime: 0.09, localCandidateId: "relay", remoteCandidateId: "remote" },
+      { type: "local-candidate", id: "host", candidateType: "host" },
+      { type: "local-candidate", id: "relay", candidateType: "relay" },
+      { type: "remote-candidate", id: "remote", candidateType: "srflx" }
+    ]);
+
+    assert.deepEqual(reading, { rttMs: 90, candidateType: "relay", candidatePairState: "succeeded" });
+  });
+
+  it("chooses the worst live media route across peers", () => {
+    assert.deepEqual(worstVoiceTransport([
+      { rttMs: 90, candidateType: "host", candidatePairState: "succeeded" },
+      { rttMs: 210, candidateType: "relay", candidatePairState: "succeeded" }
+    ]), { rttMs: 210, candidateType: "relay", candidatePairState: "succeeded" });
   });
 });
 

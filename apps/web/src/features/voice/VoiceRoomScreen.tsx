@@ -203,7 +203,7 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
                       <li className={`visual-source ${selected ? "is-selected" : ""}`} key={source.key}>
                         <button className="visual-source-main" type="button" disabled={props.socketState !== "live"} onClick={() => watchSource(source)} aria-pressed={selected}>
                           <span className="source-thumb" aria-hidden="true">
-                            {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span>{source.connectionStatus === "failed" ? props.t("voice.retry") : props.t("voice.connecting")}</span>}
+                            {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span>{source.connectionStatus === "failed" ? props.t("voice.retry") : source.connectionStatus === "reconnecting" ? props.t("voice.reconnecting") : props.t("voice.connecting")}</span>}
                           </span>
                           <span className="source-copy"><strong>{source.ownerName}</strong><span>{source.kind === "screen" ? props.t("status.screenSharing") : props.t("status.cameraOn")}</span></span>
                         </button>
