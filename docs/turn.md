@@ -45,10 +45,10 @@ an HTTP proxy, disable it for the TURN hostname. For Cloudflare this means
 | UDP | 3478 | STUN and preferred TURN transport |
 | TCP | 3478 | TURN fallback when UDP is blocked |
 | TCP | 5349 | TURN over TLS |
-| UDP | 49160-49200 | Allocated relay media ports |
+| UDP | 49160-50160 | Allocated relay media ports |
 
 3478 and 5349 are the standard Coturn listener defaults. The UDP relay range
-is a deliberately small Voxly deployment default, not a protocol requirement.
+is a Voxly deployment default (1,000 relay ports for multi-user voice and screen sharing).
 If it is changed, update `.env` and every firewall together.
 
 Example UFW rules:
@@ -57,7 +57,7 @@ Example UFW rules:
 sudo ufw allow 3478/udp
 sudo ufw allow 3478/tcp
 sudo ufw allow 5349/tcp
-sudo ufw allow 49160:49200/udp
+sudo ufw allow 49160:50160/udp
 sudo ufw status numbered
 ```
 

@@ -189,6 +189,7 @@ export type VoiceForceLeaveReason =
   | "owner_disconnect"
   | "server_access_revoked"
   | "room_deleted"
+  | "socket_disconnect"
   | "server_deleted";
 
 export type VisualMediaKind = "camera" | "screen";

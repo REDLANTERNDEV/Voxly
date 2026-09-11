@@ -139,6 +139,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const joinAttemptRef = useRef(0);
   const resumeDeadlineRef = useRef<number | null>(null);
   const resumeDeadlineTimerRef = useRef<number | null>(null);
+  const peerGraceTimerRef = useRef<number | null>(null);
   const recoveryRetryTimerRef = useRef<number | null>(null);
   const recoveryAttemptInFlightRef = useRef(false);
   const controlsRef = useRef(controls);
@@ -1024,6 +1025,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       window.clearTimeout(resumeDeadlineTimerRef.current);
       resumeDeadlineTimerRef.current = null;
     }
+    if (peerGraceTimerRef.current) {
+      window.clearTimeout(peerGraceTimerRef.current);
+      peerGraceTimerRef.current = null;
+    }
     const storage = voiceResumeStorage();
     if (storage) clearVoiceResume(storage);
     setActiveRoomId(null);
@@ -1428,6 +1433,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           leave();
           return;
         }
+        if (peerGraceTimerRef.current) {
+          window.clearTimeout(peerGraceTimerRef.current);
+          peerGraceTimerRef.current = null;
+        }
         if (resumeDeadlineTimerRef.current) {
           window.clearTimeout(resumeDeadlineTimerRef.current);
           resumeDeadlineTimerRef.current = null;
@@ -1437,6 +1446,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         return;
       }
 
+      if (peerGraceTimerRef.current) {
+        window.clearTimeout(peerGraceTimerRef.current);
+        peerGraceTimerRef.current = null;
+      }
       requestKnownSnapshots();
       const storage = voiceResumeStorage();
       const record = storage ? readVoiceResume(storage) : null;
@@ -1465,7 +1478,11 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         resumeDeadlineTimerRef.current = null;
         if (!socket.connected && roomRef.current) leave();
       }, delay);
-      closePeers();
+      if (peerGraceTimerRef.current) window.clearTimeout(peerGraceTimerRef.current);
+      peerGraceTimerRef.current = window.setTimeout(() => {
+        peerGraceTimerRef.current = null;
+        if (!socket.connected) closePeers();
+      }, 5_000);
       stopStream("camera");
       stopStream("screen");
       setControls((current) => ({
@@ -1479,6 +1496,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (socket.connected) onConnect();
     return () => {
       disposed = true;
+      if (peerGraceTimerRef.current) {
+        window.clearTimeout(peerGraceTimerRef.current);
+        peerGraceTimerRef.current = null;
+      }
       clearRecoveryRetry();
       recoveryAttemptInFlightRef.current = false;
       socket.off("connect", onConnect);

@@ -47,7 +47,7 @@ import {
   type VoxlyIoServer,
   type VoxlySocket
 } from "./socket.js";
-
+export const RECONNECT_GRACE_MS = 15_000;
 /** Members of one voice room, keyed by user id. */
 export type VoiceRoomMembership = Map<string, VoiceMemberState>;
 /** Viewer user id to publisher user id to the kinds that viewer subscribes to. */
@@ -102,6 +102,10 @@ interface VoiceContext {
    * rather than by room. See ADR-0014.
    */
   holders: Map<string, { roomId: string; sessionId: string }>;
+  /**
+   * Timers for pending disconnects awaiting grace period.
+   */
+  pendingDisconnects: Map<string, NodeJS.Timeout>;
 }
 
 /**
@@ -145,7 +149,8 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
     database,
     membership: new Map<string, VoiceRoomMembership>(),
     subscriptions: new Map<string, VisualSubscriptions>(),
-    holders: new Map<string, { roomId: string; sessionId: string }>()
+    holders: new Map<string, { roomId: string; sessionId: string }>(),
+    pendingDisconnects: new Map<string, NodeJS.Timeout>()
   };
 
   return {
@@ -165,11 +170,24 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
         socket.leave(`voice:${holder.roomId}`);
         return;
       }
-      for (const [roomId, members] of context.membership) {
-        if (members.has(userId)) {
-          leaveVoice(context, socket, roomId, userId);
-        }
+      if (holder) {
+        socket.leave(`voice:${holder.roomId}`);
       }
+      // Schedule a grace timer for potential reconnect instead of instantly evicting.
+      const existingTimer = context.pendingDisconnects.get(userId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      const timer = setTimeout(() => {
+        context.pendingDisconnects.delete(userId);
+        // If the member hasn't rejoined with a new connection, clean up membership.
+        for (const [roomId, members] of context.membership) {
+          if (members.has(userId)) {
+            leaveVoiceMember(context, roomId, userId);
+          }
+        }
+      }, RECONNECT_GRACE_MS);
+      context.pendingDisconnects.set(userId, timer);
     },
     disconnectMember(serverId, roomId, userId) {
       const room = roomById(database.sqlite, roomId);
@@ -305,6 +323,8 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
     const memberState: VoiceMemberState = { user: roomUser, media, moderation };
     members.set(user.userId, memberState);
     context.holders.set(user.userId, { roomId, sessionId });
+    // Clear any pending disconnect timer for this user (reconnect succeeded)
+    clearPendingDisconnect(context, user.userId);
     ack({ ok: true, state: memberState });
     emitVoiceSnapshot(context, roomId, members);
     socket.to(`server:${room.serverId}`).emit("voice:joined", { roomId, user: roomUser });
@@ -444,12 +464,21 @@ function emitVoiceForceLeave(
   }
 }
 
+function clearPendingDisconnect(context: VoiceContext, userId: string) {
+  const pending = context.pendingDisconnects.get(userId);
+  if (pending) {
+    clearTimeout(pending);
+    context.pendingDisconnects.delete(userId);
+  }
+}
+
 function leaveVoice(context: VoiceContext, socket: VoxlySocket, roomId: string, userId: string) {
   socket.leave(`voice:${roomId}`);
   leaveVoiceMember(context, roomId, userId);
 }
 
 function leaveVoiceMember(context: VoiceContext, roomId: string, userId: string) {
+  clearPendingDisconnect(context, userId);
   const members = context.membership.get(roomId);
   if (!members?.has(userId)) return;
   if (context.holders.get(userId)?.roomId === roomId) context.holders.delete(userId);
