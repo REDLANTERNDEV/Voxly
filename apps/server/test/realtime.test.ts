@@ -1278,6 +1278,39 @@ describe("music bot presence", () => {
     assert.equal(online.user.isBot, false, "a person must never be presented as a bot");
   });
 
+  it("notifies connected bots when a server is created or deleted", async () => {
+    const owner = await bootstrapOwner(app);
+    const exchange = await app.server.inject({
+      method: "POST",
+      url: "/api/bot/sessions",
+      headers: { authorization: `Bearer ${botToken}` }
+    });
+    const [botSession] = exchange.json().sessions as Array<{ token: string }>;
+    const botSocket = await connectSocket(baseUrl, botSession.token);
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(botSocket, ownerSocket);
+
+    const createdResync = onceEvent(botSocket, "bot:resync");
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Other Server" }
+    });
+    assert.equal(created.statusCode, 201);
+    await createdResync;
+    await expectNoEvent(ownerSocket, "bot:resync");
+
+    const deletedResync = onceEvent(botSocket, "bot:resync");
+    const deleted = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/${created.json().server.id}`,
+      cookies: owner.cookies
+    });
+    assert.equal(deleted.statusCode, 204);
+    await deletedResync;
+  });
+
   it("takes the bot's microphone away when an owner mutes it, exactly as for a person", async () => {
     // This is the fact the bot reads in order to enforce its own silence.
     // Media is peer-to-peer, so a mute the server records and never puts in

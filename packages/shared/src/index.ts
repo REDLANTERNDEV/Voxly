@@ -719,6 +719,11 @@ export interface ServerToClientEvents {
     ack: (response: MusicCommandAck) => void
   ) => void;
   /**
+   * Signals connected bot sockets that server provisioning has changed (a server was created or deleted),
+   * allowing the bot to incrementally synchronize its accounts without dropping healthy connections.
+   */
+  "bot:resync": () => void;
+  /**
    * The Queue, as the room's Music bot says it now is. Delivered to everyone in
    * the voice room, so the member who pasted a link and the four people who did
    * not are looking at the same list.

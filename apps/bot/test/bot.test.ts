@@ -387,4 +387,103 @@ describe("bot presence", () => {
     assert.equal(doubles[0].state.disconnected, true);
     assert.ok(messages.some((message) => message.includes("the Set fell over")));
   });
+
+  it("connects to newly added servers on bot:resync event without dropping existing connections", async () => {
+    let currentSessions = [session("one")];
+    const doubles = new Map<string, ReturnType<typeof socketDouble>>();
+    const presence = createMusicBotPresence({
+      environment,
+      log: () => {},
+      requestCredentials: async () => ({ cookieName: "voxly_session", sessions: currentSessions }),
+      connect: (_serverUrl, _cookieName, s) => {
+        const double = socketDouble();
+        doubles.set(s.serverId, double);
+        return double.socket;
+      }
+    });
+
+    await presence.start();
+    assert.deepEqual(presence.connectedServerIds(), ["one"]);
+    assert.equal(doubles.get("one")?.state.disconnected, false);
+
+    // New server is added
+    currentSessions = [session("one"), session("two")];
+    // Emit bot:resync on server "one"'s socket
+    doubles.get("one")?.emit("bot:resync");
+
+    await presence.sync();
+
+    assert.deepEqual(presence.connectedServerIds().sort(), ["one", "two"]);
+    assert.equal(doubles.get("one")?.state.disconnected, false, "existing socket must not be dropped");
+    assert.equal(doubles.get("two")?.state.disconnected, false);
+
+    await presence.stop();
+  });
+
+  it("disconnects removed servers on bot:resync event", async () => {
+    let currentSessions = [session("one"), session("two")];
+    const doubles = new Map<string, ReturnType<typeof socketDouble>>();
+    const presence = createMusicBotPresence({
+      environment,
+      log: () => {},
+      requestCredentials: async () => ({ cookieName: "voxly_session", sessions: currentSessions }),
+      connect: (_serverUrl, _cookieName, s) => {
+        const double = socketDouble();
+        doubles.set(s.serverId, double);
+        return double.socket;
+      }
+    });
+
+    await presence.start();
+    assert.deepEqual(presence.connectedServerIds().sort(), ["one", "two"]);
+
+    // Server two is removed
+    currentSessions = [session("one")];
+    await presence.sync();
+
+    assert.deepEqual(presence.connectedServerIds(), ["one"]);
+    assert.equal(doubles.get("one")?.state.disconnected, false);
+    assert.equal(doubles.get("two")?.state.disconnected, true, "removed server socket must be disconnected");
+
+    await presence.stop();
+  });
+
+  it("polls for a missed server change while another server stays connected", async () => {
+    let currentSessions = [session("one")];
+    let poll: (() => void) | undefined;
+    let rejectNewServer = true;
+    const doubles = new Map<string, ReturnType<typeof socketDouble>>();
+    const presence = createMusicBotPresence({
+      environment,
+      log: () => {},
+      requestCredentials: async () => ({ cookieName: "voxly_session", sessions: currentSessions }),
+      connect: (_serverUrl: string, _cookieName: string, entry: BotSession) => {
+        if (entry.serverId === "two" && rejectNewServer) return socketDouble(false).socket;
+        const double = socketDouble();
+        doubles.set(entry.serverId, double);
+        return double.socket;
+      },
+      setInterval: (callback: () => void) => {
+        poll = callback;
+        return 0 as unknown as NodeJS.Timeout;
+      },
+      clearInterval: () => {}
+    });
+
+    await presence.start();
+    currentSessions = [session("one"), session("two")];
+    poll?.();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(presence.connectedServerIds(), ["one"]);
+
+    rejectNewServer = false;
+    poll?.();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(presence.connectedServerIds().sort(), ["one", "two"]);
+    assert.equal(doubles.get("one")?.state.disconnected, false, "existing socket must stay connected");
+    assert.equal(doubles.get("two")?.state.disconnected, false);
+
+    await presence.stop();
+  });
 });

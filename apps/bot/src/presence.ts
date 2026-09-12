@@ -47,6 +47,8 @@ export interface MusicBotPresenceOptions {
   attach?: AttachToServer;
   requestCredentials?: (environment: BotEnvironment) => Promise<BotCredentials>;
   connect?: (serverUrl: string, cookieName: string, session: BotSession) => BotSocket;
+  setInterval?: (callback: () => void, milliseconds: number) => NodeJS.Timeout;
+  clearInterval?: (timer: NodeJS.Timeout) => void;
   /** Injected so tests do not wait out a real backoff. */
   wait?: (milliseconds: number) => Promise<void>;
   log?: (message: string) => void;
@@ -65,11 +67,14 @@ export interface MusicBotPresence {
    */
   stop: () => Promise<void>;
   connectedServerIds: () => string[];
+  sync: () => Promise<void>;
 }
 
 export function createMusicBotPresence(options: MusicBotPresenceOptions): MusicBotPresence {
   const requestCredentials = options.requestCredentials ?? requestBotCredentials;
   const connect = options.connect ?? connectBotSession;
+  const schedule = options.setInterval ?? ((callback, milliseconds) => setInterval(callback, milliseconds));
+  const cancel = options.clearInterval ?? ((timer) => clearInterval(timer));
   // Deliberately not `unref`ed. Between losing the last socket and opening the
   // next one, this timer is the only thing referencing the event loop — an
   // unreferenced one lets Node decide the process has nothing left to do and
@@ -157,6 +162,66 @@ export function createMusicBotPresence(options: MusicBotPresenceOptions): MusicB
     });
   }
 
+  async function syncServers() {
+    if (!running) return;
+    try {
+      const credentials = await requestCredentials(options.environment);
+      const targetServerIds = new Set(credentials.sessions.map((s) => s.serverId));
+
+      // Remove sockets for servers that no longer exist
+      for (const [serverId, socket] of [...sockets.entries()]) {
+        if (!targetServerIds.has(serverId)) {
+          log(`Music bot disconnecting removed server ${serverId}.`);
+          sockets.delete(serverId);
+          const detach = detachers.get(serverId);
+          detachers.delete(serverId);
+          if (detach) {
+            try {
+              await detach();
+            } catch (cause) {
+              log(`Music bot could not close its work for server ${serverId} cleanly: ${String(cause)}`);
+            }
+          }
+          socket.removeAllListeners();
+          socket.disconnect();
+        }
+      }
+
+      // Add sockets for new servers
+      for (const session of credentials.sessions) {
+        if (!running) return;
+        if (sockets.has(session.serverId)) continue;
+
+        try {
+          const socket = await openSession(credentials.cookieName, session);
+          sockets.set(session.serverId, socket);
+          socket.on("disconnect", (reason: string) => onConnectionLost(session.serverId, reason));
+          socket.on("connect_error", (cause: Error) => onConnectionLost(session.serverId, cause.message));
+          socket.on("bot:resync", () => void triggerSync());
+          const detach = options.attach?.({ socket, session, cookieName: credentials.cookieName });
+          if (detach) detachers.set(session.serverId, detach);
+          log(`Music bot online in new server ${session.serverId}.`);
+        } catch (cause) {
+          log(`Music bot could not connect to new server ${session.serverId}: ${(cause as Error).message}`);
+        }
+      }
+    } catch (cause) {
+      log(`Music bot could not sync servers: ${(cause as Error).message}`);
+    }
+  }
+
+  let syncing: Promise<void> | null = null;
+  function triggerSync(): Promise<void> {
+    if (!running) return Promise.resolve();
+    if (syncing) return syncing;
+    syncing = syncServers().finally(() => {
+      syncing = null;
+    });
+    return syncing;
+  }
+
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+
   async function connectOnce() {
     const credentials = await requestCredentials(options.environment);
     for (const session of credentials.sessions) {
@@ -173,6 +238,7 @@ export function createMusicBotPresence(options: MusicBotPresenceOptions): MusicB
       // answers from whoever is reading the log.
       socket.on("disconnect", (reason: string) => onConnectionLost(session.serverId, reason));
       socket.on("connect_error", (cause: Error) => onConnectionLost(session.serverId, cause.message));
+      socket.on("bot:resync", () => void triggerSync());
       const detach = options.attach?.({ socket, session, cookieName: credentials.cookieName });
       if (detach) detachers.set(session.serverId, detach);
     }
@@ -183,6 +249,12 @@ export function createMusicBotPresence(options: MusicBotPresenceOptions): MusicB
     for (let attempt = 1; running; attempt += 1) {
       try {
         await connectOnce();
+        if (pollTimer) cancel(pollTimer);
+        pollTimer = schedule(() => {
+          if (!running) return;
+          void triggerSync();
+        }, 60_000);
+        pollTimer.unref?.();
         return;
       } catch (cause) {
         await dropSockets();
@@ -203,8 +275,13 @@ export function createMusicBotPresence(options: MusicBotPresenceOptions): MusicB
     },
     stop() {
       running = false;
+      if (pollTimer) {
+        cancel(pollTimer);
+        pollTimer = null;
+      }
       return dropSockets();
     },
-    connectedServerIds: () => [...sockets.keys()]
+    connectedServerIds: () => [...sockets.keys()],
+    sync: () => triggerSync()
   };
 }

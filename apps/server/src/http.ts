@@ -53,6 +53,7 @@ export interface RealtimeModeration {
   deleteServer: (serverId: string, roomIds: string[], affectedUserIds: string[]) => void;
   grantServerAccess: (serverId: string, userId: string) => Promise<void>;
   refreshMemberIdentity: (serverId: string, userId: string) => PresenceUser | null;
+  notifyBotOfServerChange: () => void;
   revokeServerAccess: (serverId: string, userId: string, reason: "banned" | "kicked") => void;
   updateVoiceModeration: (serverId: string, userId: string, moderation: VoiceModerationState) => void;
 }

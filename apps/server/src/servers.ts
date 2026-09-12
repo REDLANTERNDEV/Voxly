@@ -115,6 +115,7 @@ export function registerServerRoutes(context: RouteContext) {
     audit(database, owner.id, "bot.created", bot.userId, serverId);
     database.save();
     await realtime.grantServerAccess(serverId, owner.id);
+    realtime.notifyBotOfServerChange();
     return reply.code(201).send({ server: { id: serverId, name: body.name, role: "owner", canInvite: true } });
   });
 
@@ -248,6 +249,7 @@ export function registerServerRoutes(context: RouteContext) {
     }
     database.save();
     realtime.deleteServer(serverId, roomIds, affectedUserIds);
+    realtime.notifyBotOfServerChange();
     return reply.code(204).send();
   });
 

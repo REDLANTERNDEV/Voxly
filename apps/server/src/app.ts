@@ -30,6 +30,7 @@ import {
 import {
   bearerToken,
   isBotTokenValid,
+  isBotUser,
   issueBotSession,
   musicBotAccounts,
   rejectBotTarget,
@@ -825,6 +826,14 @@ function registerRealtime(
         socket.emit("server:accessRevoked", { serverId, reason });
       }
       io.to(`server:${serverId}`).emit("presence:serverOffline", { serverId, userId });
+    },
+    notifyBotOfServerChange() {
+      for (const socket of io.sockets.sockets.values()) {
+        const socketUser = socket.data.user as PresenceUser | undefined;
+        if (socketUser && isBotUser(database.sqlite, socketUser.userId)) {
+          socket.emit("bot:resync");
+        }
+      }
     }
   };
 }
