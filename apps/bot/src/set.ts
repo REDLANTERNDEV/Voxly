@@ -279,6 +279,7 @@ export function createMusicSet(options: MusicSetOptions): MusicSet {
       // Tracks while one is in force, so `syncPlayer` is not only about the
       // Track that was playing when the mute landed.
       playbackRequested = true;
+      mesh.recoverUnhealthyPeers();
       syncPlayer();
     },
     stop() {

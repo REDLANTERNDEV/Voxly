@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
 import {
   readVoiceCounters,
   readVoiceTransport,
@@ -289,5 +290,11 @@ describe("voice quality recovery", () => {
     state = updateVoiceQualityRecovery(state, degraded, 6_000).state;
     const duringCooldown = updateVoiceQualityRecovery(state, degraded, 7_000);
     assert.equal(duringCooldown.recover, false);
+  });
+
+  it("keeps the sampler observational so measuring cannot close a broadcast peer", () => {
+    const source = readFileSync("src/lib/useVoiceQuality.ts", "utf8");
+
+    assert.doesNotMatch(source, /onPeerRecoveryNeeded\?\./);
   });
 });

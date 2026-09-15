@@ -19,7 +19,7 @@ TURN traffic bypasses the HTTP reverse proxy:
 
 ```text
 Browser → turn.example.com:3478/5349 → Coturn
-Browser ↔ turn.example.com:49160-49200/udp ↔ remote peer
+Browser ↔ turn.example.com:49160-50160/udp ↔ remote peer
 ```
 
 Voxly issues temporary credentials from authenticated `GET /api/rtc/config`.
@@ -162,9 +162,9 @@ TURN_STATIC_AUTH_SECRET=replace-with-the-generated-secret
 TURN_CERT_DIR=/opt/voxly/secrets/turn
 TURN_CREDENTIAL_TTL_SECONDS=86400
 TURN_MIN_PORT=49160
-TURN_MAX_PORT=49200
-TURN_USER_QUOTA=12
-TURN_TOTAL_QUOTA=40
+TURN_MAX_PORT=50160
+TURN_USER_QUOTA=50
+TURN_TOTAL_QUOTA=1000
 VOXLY_TURN_MEMORY_LIMIT=128m
 VOXLY_TURN_MEMORY_RESERVATION=32m
 ```
@@ -239,7 +239,7 @@ Open the TURN ports on the VPS and in the hosting provider firewall:
 sudo ufw allow 3478/udp
 sudo ufw allow 3478/tcp
 sudo ufw allow 5349/tcp
-sudo ufw allow 49160:49200/udp
+sudo ufw allow 49160:50160/udp
 ```
 
 When Cloudflare manages DNS for the domain, the cleanest ACME flow is a
@@ -298,9 +298,9 @@ TURN_EXTERNAL_IP=203.0.113.10
 TURN_STATIC_AUTH_SECRET=replace-with-generated-secret
 TURN_CERT_DIR=/opt/voxly/secrets/turn
 TURN_MIN_PORT=49160
-TURN_MAX_PORT=49200
-TURN_USER_QUOTA=12
-TURN_TOTAL_QUOTA=40
+TURN_MAX_PORT=50160
+TURN_USER_QUOTA=50
+TURN_TOTAL_QUOTA=1000
 VOXLY_TURN_MEMORY_LIMIT=128m
 VOXLY_TURN_MEMORY_RESERVATION=32m
 ```

@@ -208,6 +208,18 @@ export type VoiceSetVisualSubscriptionsAck =
 
 export type RtcSignal = Record<string, unknown>;
 
+/** A request for the deterministic offerer to refresh this peer's ICE path. */
+export interface RtcRecoveryRequest {
+  type: "recovery-request";
+}
+
+export function isRtcRecoveryRequest(signal: unknown): signal is RtcRecoveryRequest {
+  return typeof signal === "object"
+    && signal !== null
+    && (signal as { type?: unknown }).type === "recovery-request"
+    && Object.keys(signal).length === 1;
+}
+
 export type RtcSignalAck =
   | { ok: true }
   | { ok: false; error: "room_not_found" | "not_in_voice_room" | "target_not_in_voice_room" };

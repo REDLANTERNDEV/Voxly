@@ -16,6 +16,7 @@
  */
 
 import {
+  isRtcRecoveryRequest,
   shouldIgnoreIncomingOffer,
   shouldInitiatePeerConnection,
   type RtcSignal,
@@ -54,7 +55,8 @@ const opusCodec = new RTCRtpCodecParameters({
 type PeerSignal =
   | { type: "offer"; sdp: string; streams?: StreamDescriptor[] }
   | { type: "answer"; sdp: string; streams?: StreamDescriptor[] }
-  | { type: "candidate"; candidate: RTCIceCandidateInit };
+  | { type: "candidate"; candidate: RTCIceCandidateInit }
+  | { type: "recovery-request" };
 
 interface StreamDescriptor {
   id: string;
@@ -95,10 +97,14 @@ interface Peer {
   makingOffer: boolean;
   pendingOffer: boolean;
   ignoringOffer: boolean;
+  recoveryTimer: ReturnType<typeof setTimeout> | null;
+  recoveryGeneration: number;
 }
 
 /** A candidate queue for a peer that never answers must not grow without end. */
 const maxPendingCandidates = 128;
+const recoveryGraceMs = 3_000;
+const recoveryTimeoutMs = 10_000;
 
 export class VoiceMesh {
   private readonly peers = new Map<string, Peer>();
@@ -111,6 +117,15 @@ export class VoiceMesh {
 
   get listenerUserIds() {
     return [...this.peers.keys()];
+  }
+
+  /** Re-check only unhealthy listeners before playback resumes. */
+  recoverUnhealthyPeers() {
+    for (const peer of this.peers.values()) {
+      if (peer.connection.connectionState === "disconnected" || peer.connection.connectionState === "failed") {
+        this.recoverPeer(peer);
+      }
+    }
   }
 
   start() {
@@ -175,7 +190,9 @@ export class VoiceMesh {
       offered: false,
       makingOffer: false,
       pendingOffer: false,
-      ignoringOffer: false
+      ignoringOffer: false,
+      recoveryTimer: null,
+      recoveryGeneration: 0
     };
     this.peers.set(userId, peer);
 
@@ -185,7 +202,26 @@ export class VoiceMesh {
     });
     connection.connectionStateChange.subscribe((state) => {
       this.log(`listener ${short(userId)} ${state}`);
-      if (state === "connected") this.options.onListenerConnected?.(userId);
+      if (state === "connected") {
+        if (peer.recoveryTimer !== null) {
+          clearTimeout(peer.recoveryTimer);
+          peer.recoveryTimer = null;
+        }
+        this.options.onListenerConnected?.(userId);
+        return;
+      }
+      if (state === "failed") {
+        this.recoverPeer(peer);
+        return;
+      }
+      if (state === "disconnected" && peer.recoveryTimer === null) {
+        const generation = ++peer.recoveryGeneration;
+        peer.recoveryTimer = setTimeout(() => {
+          peer.recoveryTimer = null;
+          if (this.peers.get(userId) !== peer || peer.recoveryGeneration !== generation) return;
+          if (peer.connection.connectionState === "disconnected") this.recoverPeer(peer);
+        }, recoveryGraceMs);
+      }
     });
 
     return peer;
@@ -195,8 +231,48 @@ export class VoiceMesh {
     const peer = this.peers.get(userId);
     if (!peer) return;
     this.peers.delete(userId);
+    if (peer.recoveryTimer !== null) clearTimeout(peer.recoveryTimer);
     this.options.onPeerRemoved?.(userId);
     await peer.connection.close().catch(() => undefined);
+  }
+
+  private recoverPeer(peer: Peer) {
+    if (this.peers.get(peer.userId) !== peer) return;
+    if (peer.recoveryTimer !== null) {
+      clearTimeout(peer.recoveryTimer);
+      peer.recoveryTimer = null;
+    }
+    peer.recoveryGeneration += 1;
+    if (!shouldInitiatePeerConnection(this.options.selfUserId, peer.userId)) {
+      this.emitSignal(peer.userId, { type: "recovery-request" });
+      return;
+    }
+    try {
+      peer.connection.restartIce();
+      void this.sendOffer(peer).catch((cause: unknown) => {
+        this.log(`recovery offer to ${short(peer.userId)} failed: ${String(cause)}`);
+        this.rebuildPeer(peer);
+      });
+    } catch (cause: unknown) {
+      this.log(`recovery for ${short(peer.userId)} failed: ${String(cause)}`);
+      this.rebuildPeer(peer);
+    }
+    const generation = peer.recoveryGeneration;
+    setTimeout(() => {
+      if (this.peers.get(peer.userId) !== peer || peer.recoveryGeneration !== generation) return;
+      if (peer.connection.connectionState !== "connected") this.rebuildPeer(peer);
+    }, recoveryTimeoutMs);
+  }
+
+  private rebuildPeer(peer: Peer) {
+    if (this.peers.get(peer.userId) !== peer) return;
+    void this.removePeer(peer.userId).then(() => {
+      const replacement = this.ensurePeer(peer.userId);
+      this.ensureOffered(replacement);
+      if (!shouldInitiatePeerConnection(this.options.selfUserId, peer.userId)) {
+        this.emitSignal(peer.userId, { type: "recovery-request" });
+      }
+    });
   }
 
   /**
@@ -246,6 +322,12 @@ export class VoiceMesh {
   private async handleSignal(fromUserId: string, signal: PeerSignal) {
     const peer = this.ensurePeer(fromUserId);
     const { connection } = peer;
+
+    if (isRtcRecoveryRequest(signal)) {
+      if (!shouldInitiatePeerConnection(this.options.selfUserId, fromUserId)) return;
+      this.recoverPeer(peer);
+      return;
+    }
 
     if (signal.type === "offer") {
       const signalingState = connection.signalingState as VoiceSignalingState;

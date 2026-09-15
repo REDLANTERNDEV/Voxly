@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { shouldIgnoreIncomingOffer, shouldInitiatePeerConnection } from "../src/index.js";
+import {
+  isRtcRecoveryRequest,
+  shouldIgnoreIncomingOffer,
+  shouldInitiatePeerConnection,
+  type RtcRecoveryRequest
+} from "../src/index.js";
 
 const userIds = ["0f2a", "6d11", "a3c9", "a3ca", "f000"];
 
@@ -57,5 +62,14 @@ describe("simultaneous offers", () => {
         );
       }
     }
+  });
+});
+
+describe("recovery signalling", () => {
+  it("recognises only a valid peer recovery request", () => {
+    const request: RtcRecoveryRequest = { type: "recovery-request" };
+    assert.equal(isRtcRecoveryRequest(request), true);
+    assert.equal(isRtcRecoveryRequest({ type: "offer", sdp: "" }), false);
+    assert.equal(isRtcRecoveryRequest({ type: "recovery-request", extra: true }), false);
   });
 });

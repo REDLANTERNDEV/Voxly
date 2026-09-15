@@ -213,6 +213,34 @@ describe("more than one Listener", () => {
       await bot.close();
     }
   });
+
+  it("restarts an offerer's connection when a Listener requests recovery", async () => {
+    const bot = startBot(botBelow);
+    const listener = new FakeListener({ relay: bot.relay, userId: listenerMiddle, peerUserId: botBelow });
+    bot.listeners.push(listener);
+
+    try {
+      bot.mesh.applySnapshot(snapshotOf(botBelow, listenerMiddle));
+      await listener.announce();
+      bot.player.start();
+      await until(() => listener.received.length > 20, "audio before recovery");
+
+      const beforeOffers = listener.offersReceived;
+      const beforeAnswers = listener.answersSent;
+      bot.relay.endpointFor(listenerMiddle).emit({
+        roomId,
+        toUserId: botBelow,
+        signal: { type: "recovery-request" }
+      });
+
+      await until(
+        () => listener.offersReceived > beforeOffers && listener.answersSent > beforeAnswers,
+        "the coordinated recovery negotiation"
+      );
+    } finally {
+      await bot.close();
+    }
+  });
 });
 
 describe("the mesh's own bookkeeping", () => {

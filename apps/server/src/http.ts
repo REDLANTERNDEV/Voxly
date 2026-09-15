@@ -35,6 +35,8 @@ import type { TurnstileConfig } from "./turnstile.js";
  * itself.
  */
 export interface RealtimeModeration {
+  /** Finish in-memory realtime cleanup before the database is closed. */
+  close: () => void;
   disconnectVoice: (serverId: string, roomId: string, userId: string) => boolean;
   moveVoice: (serverId: string, userId: string, targetRoomId: string) => boolean;
   /** Evict every live socket for a user, across all servers. Used by the global ban. */

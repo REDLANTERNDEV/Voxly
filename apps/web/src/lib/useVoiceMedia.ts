@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isRtcRecoveryRequest } from "@voxly/shared";
 import type {
   PublicUser,
   RtcSignal,
@@ -84,7 +85,8 @@ export interface VoiceJoinOptions {
 type PeerSignal =
   | { type: "offer"; sdp: string; streams?: SignalStreamDescriptor[] }
   | { type: "answer"; sdp: string; streams?: SignalStreamDescriptor[] }
-  | { type: "candidate"; candidate: RTCIceCandidateInit };
+  | { type: "candidate"; candidate: RTCIceCandidateInit }
+  | { type: "recovery-request" };
 
 type LocalStreamKind = "mic" | "camera" | "screen";
 
@@ -134,6 +136,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const microphoneSwitchQueueRef = useRef<Promise<void>>(Promise.resolve());
   const ignoredOfferPeersRef = useRef<Set<string>>(new Set());
   const recoverPeerRef = useRef<(peerUserId: string) => void>(() => undefined);
+  const schedulePeerRecoveryRef = useRef<(peerUserId: string, peer?: RTCPeerConnection, event?: PeerRecoveryEvent) => boolean>(() => false);
   const resumeAttemptRef = useRef(false);
   const recoveryInProgressRef = useRef(false);
   const joinAttemptRef = useRef(0);
@@ -413,6 +416,13 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     return true;
   }, [isCurrentPeer, removePeer]);
 
+  useEffect(() => {
+    schedulePeerRecoveryRef.current = schedulePeerRecovery;
+    return () => {
+      schedulePeerRecoveryRef.current = () => false;
+    };
+  }, [schedulePeerRecovery]);
+
   const localStreamDescriptors = useCallback((peerUserId: string): SignalStreamDescriptor[] => {
     const descriptors: SignalStreamDescriptor[] = [];
     if (localStreamsRef.current.mic) {
@@ -505,6 +515,26 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       makingOfferPeersRef.current.delete(peerUserId);
     }
   }, [isCurrentPeer, localStreamDescriptors, socket]);
+
+  const requestPeerRecovery = useCallback((peerUserId: string, peer: RTCPeerConnection) => {
+    if (!socket || !roomRef.current || !userIdRef.current) return false;
+    if (!isCurrentPeer(peerUserId, peer, peerGenerationsRef.current.get(peerUserId) ?? -1)) return false;
+    if (shouldInitiatePeerConnection(userIdRef.current, peerUserId)) {
+      try {
+        peer.restartIce();
+        void sendOffer(peerUserId, peer).catch(() => schedulePeerRecoveryRef.current(peerUserId, peer, { type: "restart_failed" }));
+      } catch {
+        schedulePeerRecoveryRef.current(peerUserId, peer, { type: "restart_failed" });
+      }
+      return true;
+    }
+    socket.emit("rtc:signal", {
+      roomId: roomRef.current,
+      toUserId: peerUserId,
+      signal: { type: "recovery-request" }
+    });
+    return true;
+  }, [isCurrentPeer, sendOffer, socket]);
 
   const ensurePeer = useCallback((peerUserId: string) => {
     if (!socket || !roomRef.current || !userIdRef.current || peerUserId === userIdRef.current) {
@@ -625,8 +655,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         if (restart.action !== "restart_ice") return;
         setPeerConnectionStates((current) => ({ ...current, [peerUserId]: "reconnecting" }));
         try {
-          peer.restartIce();
-          void sendOffer(peerUserId, peer).catch(() => schedulePeerRecovery(peerUserId, peer, { type: "restart_failed" }));
+          requestPeerRecovery(peerUserId, peer);
         } catch {
           schedulePeerRecovery(peerUserId, peer, { type: "restart_failed" });
           return;
@@ -651,11 +680,12 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     peerConnectionTimeoutsRef.current.set(peerUserId, connectionTimeout);
 
     return peer;
-  }, [isCurrentPeer, schedulePeerRecovery, sendOffer, socket, syncLocalTracks]);
+  }, [isCurrentPeer, requestPeerRecovery, schedulePeerRecovery, syncLocalTracks]);
 
   const recoverPeer = useCallback((peerUserId: string) => {
-    schedulePeerRecovery(peerUserId);
-  }, [schedulePeerRecovery]);
+    const peer = peersRef.current.get(peerUserId) ?? ensurePeer(peerUserId);
+    if (peer) requestPeerRecovery(peerUserId, peer);
+  }, [ensurePeer, requestPeerRecovery]);
 
   const flushPendingCandidates = useCallback(async (peerUserId: string, peer: RTCPeerConnection, peerGeneration: number) => {
     if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
@@ -676,25 +706,24 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   useEffect(() => {
     recoverPeerRef.current = (peerUserId) => {
       const peer = ensurePeer(peerUserId);
-      if (peer) void sendOffer(peerUserId, peer).catch(() => setError("voiceError.recoverPeer"));
+      if (peer) requestPeerRecovery(peerUserId, peer);
     };
     return () => {
       recoverPeerRef.current = () => undefined;
     };
-  }, [ensurePeer, sendOffer]);
+  }, [ensurePeer, requestPeerRecovery]);
 
   useEffect(() => {
     if (!roomRef.current) return;
     for (const [peerUserId, peer] of peersRef.current) {
       try {
         peer.setConfiguration({ iceServers });
-        peer.restartIce();
-        void sendOffer(peerUserId, peer).catch(() => setError("voiceError.refreshPeer"));
+        requestPeerRecovery(peerUserId, peer);
       } catch {
         setError("voiceError.rtcConfig");
       }
     }
-  }, [iceServers, sendOffer]);
+  }, [iceServers, requestPeerRecovery]);
 
   /**
    * The live peer connections, for the quality sampler. Exposed as an accessor
@@ -1278,6 +1307,16 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (!peer) return;
     const peerGeneration = peerGenerationsRef.current.get(payload.fromUserId);
     if (peerGeneration === undefined || !isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
+    if (isRtcRecoveryRequest(signal)) {
+      if (!userIdRef.current || !shouldInitiatePeerConnection(userIdRef.current, payload.fromUserId)) return;
+      try {
+        peer.restartIce();
+        void sendOffer(payload.fromUserId, peer).catch(() => schedulePeerRecoveryRef.current(payload.fromUserId, peer, { type: "restart_failed" }));
+      } catch {
+        schedulePeerRecoveryRef.current(payload.fromUserId, peer, { type: "restart_failed" });
+      }
+      return;
+    }
     if (signal.type === "offer") {
       rememberRemoteStreamKinds(payload.fromUserId, signal.streams);
       const hasOfferCollision = makingOfferPeersRef.current.has(payload.fromUserId) || peer.signalingState !== "stable";

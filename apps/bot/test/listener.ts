@@ -76,6 +76,8 @@ export interface FakeListenerOptions {
 export class FakeListener {
   readonly connection: RTCPeerConnection;
   readonly received: RtpPacket[] = [];
+  offersReceived = 0;
+  answersSent = 0;
   private readonly signalling: MeshSignalling;
   private remoteDescriptionSet = false;
   private readonly pendingCandidates: Array<Record<string, unknown>> = [];
@@ -128,6 +130,7 @@ export class FakeListener {
 
   private async handle(signal: { type: string; sdp?: string; candidate?: Record<string, unknown> }) {
     if (signal.type === "offer") {
+      this.offersReceived += 1;
       await this.connection.setRemoteDescription({ type: "offer", sdp: signal.sdp ?? "" });
       this.remoteDescriptionSet = true;
       await this.flushCandidates();
@@ -157,6 +160,7 @@ export class FakeListener {
   }
 
   private send(signal: { type: string; sdp: string }) {
+    if (signal.type === "answer") this.answersSent += 1;
     this.signalling.emit({
       roomId: this.options.relay.room,
       toUserId: this.options.peerUserId,

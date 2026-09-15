@@ -197,6 +197,7 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
     dumpTables: () => dumpTables(database.sqlite),
     async close() {
       await io.close();
+      realtime.close();
       await server.close();
       database.close();
     }
@@ -752,6 +753,9 @@ function registerRealtime(
   });
 
   return {
+    close() {
+      voice.dispose();
+    },
     // Routes speak the moderation vocabulary; voice.ts owns the implementation.
     disconnectVoice: (serverId, roomId, userId) => voice.disconnectMember(serverId, roomId, userId),
     moveVoice: (serverId, userId, targetRoomId) => voice.moveMember(serverId, userId, targetRoomId),
