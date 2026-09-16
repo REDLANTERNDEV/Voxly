@@ -68,6 +68,16 @@ describe("voice snapshot reconciliation", () => {
     assert.deepEqual(events, ["unlock", "join", "release"]);
   });
 
+  it("stops a pre-join microphone test before opening voice capture", () => {
+    const source = readAppSource();
+    const join = source.match(/const onJoinVoice[\s\S]*?onJoinVoice,/)?.[0] ?? "";
+
+    assert.match(join, /audio\.microphoneTest\.active/);
+    assert.match(join, /audio\.stopMicrophoneTest/);
+    assert.match(join, /!audio\.voice\.activeRoomId/);
+    assert.ok(join.indexOf("audio.stopMicrophoneTest") < join.indexOf("joinVoiceWithAudioUnlock"));
+  });
+
   it("releases unused audio playback in the canonical voice leave path", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
     const leave = source.match(/const leave = useCallback\(\(\) => \{[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
@@ -246,6 +256,12 @@ describe("voice snapshot reconciliation", () => {
     assert.doesNotMatch(source, /openMicrophoneCapture\([^)]*noiseSuppression/);
   });
 
+  it("initializes the optional worklet with the current preference", () => {
+    const source = readFileSync("src/lib/microphoneInput.ts", "utf8");
+
+    assert.match(source, /processorOptions: \{ enabled: noiseSuppression \}/);
+  });
+
   it("reopens the capture for a device change and for nothing else", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
     const effect = source.match(/useEffect\(\(\) => \{\n    const previousStream = localStreamsRef\.current\.mic;[\s\S]*?\n  }, \[([^\]]*)\]\);/) ?? [];
@@ -304,6 +320,15 @@ describe("voice snapshot reconciliation", () => {
     assert.match(source, /voicePeerConnectionTimeoutMs/);
     assert.match(source, /restartTimeout = window\.setTimeout/);
     assert.match(source, /restart_failed/);
+  });
+
+  it("routes quality recovery through the guarded peer recovery owner", () => {
+    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+
+    assert.match(source, /type: "quality_degraded"/);
+    assert.match(source, /transition\.action !== "restart_ice"/);
+    assert.match(source, /voicePeerConnectionTimeoutMs/);
+    assert.match(source, /recoverPeer\(payload\.fromUserId\)/);
   });
 
   it("invalidates an in-flight local offer before accepting a colliding offer", () => {

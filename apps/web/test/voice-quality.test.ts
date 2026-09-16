@@ -297,4 +297,13 @@ describe("voice quality recovery", () => {
 
     assert.doesNotMatch(source, /onPeerRecoveryNeeded\?\./);
   });
+
+  it("keeps recovery requests per peer and leaves execution to the media owner", () => {
+    const sampler = readFileSync("src/lib/useVoiceQuality.ts", "utf8");
+
+    assert.match(sampler, /updateVoiceQualityRecovery/);
+    assert.match(sampler, /userId/);
+    assert.match(sampler, /recoveryRequests/);
+    assert.doesNotMatch(sampler, /recoverPeer\s*\(/);
+  });
 });

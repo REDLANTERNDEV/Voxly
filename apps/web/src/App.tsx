@@ -182,6 +182,10 @@ export function App() {
       ?? workspace.onlineUsers.find((member) => member.userId === user.id)?.nickname
       ?? user.nickname
     : "";
+  const onJoinVoice = useCallback(async (roomId: string, options: VoiceJoinRequest = {}) => {
+    if (!audio.voice.activeRoomId && audio.microphoneTest.active) await audio.stopMicrophoneTest();
+    return joinVoiceWithAudioUnlock(roomId, unlockSharedAudioOutput, releaseUnusedSharedAudioOutput, (nextRoomId) => audio.voice.join(nextRoomId, options.visualTargets ?? [], options));
+  }, [audio.microphoneTest.active, audio.stopMicrophoneTest, audio.voice.activeRoomId, audio.voice.join]);
   const shellProps = user ? {
     user,
     currentNickname,
@@ -245,7 +249,7 @@ export function App() {
     onDrawerChange: setDrawer,
     onThemeChange: changeTheme,
     onLanguageChange: changeLanguage,
-    onJoinVoice: (roomId: string, options: VoiceJoinRequest = {}) => joinVoiceWithAudioUnlock(roomId, unlockSharedAudioOutput, releaseUnusedSharedAudioOutput, (nextRoomId) => audio.voice.join(nextRoomId, options.visualTargets ?? [], options)),
+    onJoinVoice,
     onWatchLive: (request: LiveWatchRequest) => { audio.setPendingLiveWatch(request); navigate(serverPath(request.serverId, "voice", request.roomId)); },
     onLiveWatchHandled: () => audio.setPendingLiveWatch(null),
     onRequestVoiceSnapshot: audio.voice.requestSnapshot,

@@ -141,7 +141,8 @@ export function createMicrophoneInput(
         const node = new AudioWorkletNode(context, noiseSuppressorProcessorName, {
           numberOfInputs: 1,
           numberOfOutputs: 1,
-          outputChannelCount: [1]
+          outputChannelCount: [1],
+          processorOptions: { enabled: noiseSuppression }
         });
         node.port.postMessage({ enabled: noiseSuppression });
         highPass.disconnect(gate);

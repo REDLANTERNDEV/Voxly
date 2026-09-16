@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import {
   readVoiceCounters,
   readVoiceTransport,
+  updateVoiceQualityRecovery,
   voiceQualityReading,
   worstVoiceQuality,
   worstVoiceTransport,
   type VoiceCounters,
   type VoiceQualityGrade,
   type VoiceQualityReading,
+  type VoiceQualityRecoveryState,
   type VoiceQualitySymptom,
   type VoiceTransportReading
 } from "./voiceQuality.js";
@@ -23,9 +25,21 @@ export interface VoiceQuality {
   symptom: VoiceQualitySymptom;
   reading: VoiceQualityReading | null;
   transport: VoiceTransportReading | null;
+  recoveryRequests: readonly VoiceQualityRecoveryRequest[];
 }
 
-const measuring: VoiceQuality = { grade: "measuring", symptom: "none", reading: null, transport: null };
+export interface VoiceQualityRecoveryRequest {
+  peerUserId: string;
+  requestId: number;
+}
+
+const measuring: VoiceQuality = {
+  grade: "measuring",
+  symptom: "none",
+  reading: null,
+  transport: null,
+  recoveryRequests: []
+};
 
 /**
  * `RTCStatsReport` is map-like, but the DOM types this project builds against
@@ -60,11 +74,14 @@ export function useVoiceQuality(
 ): VoiceQuality {
   const [quality, setQuality] = useState<VoiceQuality>(measuring);
   const previousRef = useRef<Map<RTCPeerConnection, VoiceCounters>>(new Map());
+  const recoveryRef = useRef<Map<string, VoiceQualityRecoveryState>>(new Map());
+  const recoveryRequestIdRef = useRef(0);
   const generationRef = useRef(0);
 
   useEffect(() => {
     const generation = ++generationRef.current;
     previousRef.current = new Map();
+    recoveryRef.current = new Map();
     if (!peers) {
       setQuality(measuring);
       return;
@@ -72,9 +89,15 @@ export function useVoiceQuality(
 
     const sample = async () => {
       const current = new Map<RTCPeerConnection, VoiceCounters>();
+      const currentRecovery = new Map<string, VoiceQualityRecoveryState>();
       const readings: VoiceQualityReading[] = [];
       const transportReadings: VoiceTransportReading[] = [];
-      for (const { peer } of peers()) {
+      const recoveryRequests: VoiceQualityRecoveryRequest[] = [];
+      for (const { userId, peer } of peers()) {
+        const previousRecovery = recoveryRef.current.get(userId) ?? {
+          consecutiveDegradedSamples: 0,
+          lastRecoveryAt: null
+        };
         let counters: VoiceCounters;
         try {
           const report = collectStats(await peer.getStats());
@@ -92,13 +115,34 @@ export function useVoiceQuality(
         const reading = previous ? voiceQualityReading(previous, counters) : null;
         if (reading) {
           readings.push(reading);
+          const recovery = updateVoiceQualityRecovery(previousRecovery, reading, Date.now());
+          currentRecovery.set(userId, recovery.state);
+          if (recovery.recover) {
+            recoveryRequests.push({
+              peerUserId: userId,
+              requestId: ++recoveryRequestIdRef.current
+            });
+          }
+        } else {
+          currentRecovery.set(userId, previousRecovery);
         }
       }
       previousRef.current = current;
+      recoveryRef.current = currentRecovery;
       const worst = worstVoiceQuality(readings);
       setQuality(worst
-        ? { grade: worst.grade, symptom: worst.symptom, reading: worst, transport: worstVoiceTransport(transportReadings) }
-        : { ...measuring, transport: worstVoiceTransport(transportReadings) });
+        ? {
+            grade: worst.grade,
+            symptom: worst.symptom,
+            reading: worst,
+            transport: worstVoiceTransport(transportReadings),
+            recoveryRequests
+          }
+        : {
+            ...measuring,
+            transport: worstVoiceTransport(transportReadings),
+            recoveryRequests
+          });
     };
 
     void sample();

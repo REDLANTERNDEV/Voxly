@@ -43,6 +43,11 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
   // round trip is the only connection a member has, and reporting on it is
   // exactly right; inside one it is the wrong path to be looking at.
   const voiceQuality = useVoiceQuality(voice.activeRoomId ? voice.peerConnections : null);
+  useEffect(() => {
+    for (const request of voiceQuality.recoveryRequests) {
+      voice.recoverPeer(request.peerUserId);
+    }
+  }, [voice.recoverPeer, voiceQuality.recoveryRequests]);
   const notifications = useNotificationSounds({
     user,
     activeVoiceRoomId: voice.activeRoomId,

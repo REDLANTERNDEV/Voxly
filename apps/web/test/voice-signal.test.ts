@@ -27,7 +27,7 @@ function health(overrides: Partial<ConnectionHealth> = {}): ConnectionHealth {
   };
 }
 
-const measuring: VoiceQuality = { grade: "measuring", symptom: "none", reading: null, transport: null };
+const measuring: VoiceQuality = { grade: "measuring", symptom: "none", reading: null, transport: null, recoveryRequests: [] };
 
 function quality(overrides: Partial<VoiceQuality> = {}): VoiceQuality {
   return {
@@ -43,7 +43,8 @@ function quality(overrides: Partial<VoiceQuality> = {}): VoiceQuality {
       bufferMs: 62
     },
     transport: null,
-    ...overrides
+    ...overrides,
+    recoveryRequests: overrides.recoveryRequests ?? []
   };
 }
 

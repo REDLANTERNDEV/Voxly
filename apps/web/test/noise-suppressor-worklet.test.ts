@@ -17,7 +17,7 @@ interface Processor {
   process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean;
 }
 
-let ProcessorClass: new () => Processor;
+let ProcessorClass: new (options?: { processorOptions?: { enabled?: boolean } }) => Processor;
 
 /**
  * The worklet runs in its own realm and is loaded by URL, so it cannot import
@@ -182,6 +182,15 @@ describe("spectral noise suppressor", () => {
     const output = run(processor, input);
 
     assert.deepEqual(output, input, "bypass must pass audio through without distortion or buffer delay");
+  });
+
+  it("starts disabled when constructed with a disabled preference", () => {
+    const processor = new ProcessorClass({ processorOptions: { enabled: false } });
+    const input = noise(HOP * 16, 0.05, 19);
+
+    const output = run(processor, input);
+
+    assert.deepEqual(output, input, "the initial disabled preference must bypass from the first block");
   });
 
   it("keeps the same latency and a warm estimate across a toggle", () => {

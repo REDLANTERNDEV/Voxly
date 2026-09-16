@@ -684,8 +684,31 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
 
   const recoverPeer = useCallback((peerUserId: string) => {
     const peer = peersRef.current.get(peerUserId) ?? ensurePeer(peerUserId);
-    if (peer) requestPeerRecovery(peerUserId, peer);
-  }, [ensurePeer, requestPeerRecovery]);
+    if (!peer) return;
+    const transition = advancePeerRecovery(
+      peerRecoveryStatesRef.current.get(peerUserId) ?? initialPeerRecoveryState(),
+      { type: "quality_degraded" },
+      Date.now()
+    );
+    peerRecoveryStatesRef.current.set(peerUserId, transition.state);
+    if (transition.action !== "restart_ice") return;
+    setPeerConnectionStates((current) => ({ ...current, [peerUserId]: "reconnecting" }));
+    try {
+      requestPeerRecovery(peerUserId, peer);
+    } catch {
+      schedulePeerRecovery(peerUserId, peer, { type: "restart_failed" });
+      return;
+    }
+    const peerGeneration = peerGenerationsRef.current.get(peerUserId);
+    if (peerGeneration === undefined) return;
+    const restartTimeout = window.setTimeout(() => {
+      peerConnectionTimeoutsRef.current.delete(peerUserId);
+      if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
+      if (peer.connectionState === "connected" || peer.iceConnectionState === "connected" || peer.iceConnectionState === "completed") return;
+      schedulePeerRecovery(peerUserId, peer, { type: "restart_failed" });
+    }, voicePeerConnectionTimeoutMs);
+    peerConnectionTimeoutsRef.current.set(peerUserId, restartTimeout);
+  }, [ensurePeer, isCurrentPeer, requestPeerRecovery, schedulePeerRecovery]);
 
   const flushPendingCandidates = useCallback(async (peerUserId: string, peer: RTCPeerConnection, peerGeneration: number) => {
     if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
@@ -1309,12 +1332,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (peerGeneration === undefined || !isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
     if (isRtcRecoveryRequest(signal)) {
       if (!userIdRef.current || !shouldInitiatePeerConnection(userIdRef.current, payload.fromUserId)) return;
-      try {
-        peer.restartIce();
-        void sendOffer(payload.fromUserId, peer).catch(() => schedulePeerRecoveryRef.current(payload.fromUserId, peer, { type: "restart_failed" }));
-      } catch {
-        schedulePeerRecoveryRef.current(payload.fromUserId, peer, { type: "restart_failed" });
-      }
+      recoverPeer(payload.fromUserId);
       return;
     }
     if (signal.type === "offer") {
@@ -1582,7 +1600,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       socket.off("voice:visualSubscriberState", onVisualSubscriberState);
       socket.off("rtc:signal", onSignal);
     };
-  }, [applyVoiceSnapshot, ensurePeer, handleSignal, sendOffer, socket, syncLocalTracks]);
+  }, [applyVoiceSnapshot, ensurePeer, handleSignal, recoverPeer, sendOffer, socket, syncLocalTracks]);
 
   useEffect(() => {
     if (!user) {

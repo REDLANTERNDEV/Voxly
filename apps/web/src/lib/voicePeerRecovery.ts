@@ -15,6 +15,7 @@ export interface PeerRecoveryState {
 export type PeerRecoveryEvent =
   | { type: "disconnected" }
   | { type: "grace_elapsed" }
+  | { type: "quality_degraded" }
   | { type: "failed" }
   | { type: "connected" }
   | { type: "member_left" }
@@ -46,6 +47,14 @@ export function advancePeerRecovery(
   }
 
   if (event.type === "grace_elapsed") {
+    return {
+      state: { phase: "restarting", attempt: state.attempt, nextRetryAt: null },
+      action: "restart_ice" as const
+    };
+  }
+
+  if (event.type === "quality_degraded") {
+    if (state.phase !== "stable") return { state, action: "wait" as const };
     return {
       state: { phase: "restarting", attempt: state.attempt, nextRetryAt: null },
       action: "restart_ice" as const

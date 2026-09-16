@@ -169,9 +169,9 @@ function transform(re, im, reversal, inverse) {
 }
 
 class NoiseSuppressorProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
-    this.enabled = true;
+    this.enabled = options?.processorOptions?.enabled !== false;
     this.window = hannWindow(FRAME_SIZE);
     this.normalisation = overlapAddNormalisation(this.window, HOP_SIZE);
     this.reversal = bitReversalTable(FRAME_SIZE);

@@ -20,6 +20,21 @@ describe("peer recovery state", () => {
     assert.equal(next.action, "restart_ice");
   });
 
+  it("starts an ICE restart after quality degradation on a stable peer", () => {
+    const next = advancePeerRecovery(initialPeerRecoveryState(), { type: "quality_degraded" }, 1_000);
+
+    assert.equal(next.state.phase, "restarting");
+    assert.equal(next.action, "restart_ice");
+  });
+
+  it("waits while a peer is already recovering from quality degradation", () => {
+    const restarting: PeerRecoveryState = { phase: "restarting", attempt: 0, nextRetryAt: null };
+    const next = advancePeerRecovery(restarting, { type: "quality_degraded" }, 1_000);
+
+    assert.equal(next.state.phase, "restarting");
+    assert.equal(next.action, "wait");
+  });
+
   it("rebuilds a failed peer and backs off repeated failures starting at 0ms", () => {
     const next = advancePeerRecovery(initialPeerRecoveryState(), { type: "failed" }, 1_000);
     assert.equal(next.state.phase, "rebuilding");
