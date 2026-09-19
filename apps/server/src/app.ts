@@ -16,7 +16,6 @@ import { join } from "node:path";
 import type { AnalyticsConfig } from "./analytics.js";
 import { audit } from "./audit.js";
 import {
-  authenticateHttp,
   authenticateSocket,
   authenticateWithoutRenewal,
   clearSessionCookie,
@@ -25,8 +24,6 @@ import {
   requireUser,
   revokeSession,
   sessionCookieName,
-  reportSessionReuse,
-  takeAuthFailure,
   setSessionCookie
 } from "./auth/sessions.js";
 import {
@@ -58,6 +55,7 @@ import {
 } from "./members.js";
 import { roomById } from "./rooms.js";
 import {
+  authenticatedWriteLimit,
   requireJoinedServer,
   requireOwnedServer,
   roomIdParam,
@@ -292,20 +290,20 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
   });
 
   server.get("/api/me", async (request, reply) => {
-    const user = authenticateHttp(database, request, reply, options.secureCookies);
-    if (!user) {
-      // The endpoint every client hits on startup, so it is where a member
-      // learns they were signed out because their session was seen in two
-      // places rather than simply refused (ADR-0015).
-      const failure = takeAuthFailure();
-      if (failure.reason === "reused") {
-        reportSessionReuse(database, failure.userId);
-        clearSessionCookie(reply);
-      }
-      return reply.code(401).send({ error: failure.reason === "reused" ? "session_reused" : "unauthorized" });
-    }
+    const user = requireUser(database, request, reply, options.secureCookies);
+    if (!user) return;
 
     return { user: publicUser(user) };
+  });
+
+  // A rotated cookie becomes reuse evidence only after the browser proves it
+  // received the replacement. The web client calls this immediately when a
+  // response advertises a rotation; any ordinary authenticated request would
+  // confirm it as well.
+  server.post("/api/session/confirm", { config: authenticatedWriteLimit }, async (request, reply) => {
+    const user = requireUser(database, request, reply, options.secureCookies);
+    if (!user) return;
+    return reply.code(204).send();
   });
 
   if (options.allowHttpOwnerBootstrap && options.ownerBootstrapToken) {
@@ -385,7 +383,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
   });
 
   server.post("/api/logout", async (request, reply) => {
-    const user = authenticateWithoutRenewal(database.sqlite, request);
+    const user = authenticateWithoutRenewal(database, request);
     if (user) {
       revokeSession(database.sqlite, user.sessionId);
       database.save();
@@ -676,7 +674,7 @@ function registerRealtime(
   const music = createMusicRealtime(io, database, voice);
 
   io.use((socket, next) => {
-    const user = authenticateSocket(database.sqlite, socket.handshake.headers.cookie);
+    const user = authenticateSocket(database, socket.handshake.headers.cookie);
     if (!user) {
       next(new Error("unauthorized"));
       return;

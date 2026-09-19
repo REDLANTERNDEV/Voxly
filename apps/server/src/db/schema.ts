@@ -90,7 +90,9 @@ export const recoveryCodes = sqliteTable("recovery_codes", {
 export const sessionTokens = sqliteTable("session_tokens", {
   tokenHash: text("token_hash").primaryKey(),
   sessionId: text("session_id").notNull(),
-  supersededAt: text("superseded_at").notNull()
+  supersededAt: text("superseded_at").notNull(),
+  /** When the replacement first returned, proving that its cookie was delivered. */
+  replacementSeenAt: text("replacement_seen_at")
 });
 
 export const ownerClaims = sqliteTable("owner_claims", {

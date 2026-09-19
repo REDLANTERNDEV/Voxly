@@ -122,7 +122,8 @@ function migrate(sqlite: DatabaseSync) {
     create table if not exists session_tokens (
       token_hash text primary key,
       session_id text not null,
-      superseded_at text not null
+      superseded_at text not null,
+      replacement_seen_at text
     );
 
     create table if not exists recovery_codes (
@@ -232,6 +233,13 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "sessions", "last_seen_at", "text");
   addColumnIfMissing(sqlite, "sessions", "token_issued_at", "text");
   addColumnIfMissing(sqlite, "sessions", "origin", "text");
+  const addedReplacementSeenAt = addColumnIfMissing(sqlite, "session_tokens", "replacement_seen_at", "text");
+  if (addedReplacementSeenAt) {
+    // Rows written by an older release already used the strict reuse rule. Keep
+    // that posture across an upgrade; only rotations created by the new
+    // protocol start unconfirmed.
+    run(sqlite, "update session_tokens set replacement_seen_at = superseded_at");
+  }
 
   run(
     sqlite,
@@ -339,5 +347,7 @@ function addColumnIfMissing(sqlite: DatabaseSync, table: string, column: string,
   const columns = all<{ name: string }>(sqlite, `pragma table_info(${table})`);
   if (!columns.some((item) => item.name === column)) {
     sqlite.exec(`alter table ${table} add column ${column} ${definition}`);
+    return true;
   }
+  return false;
 }

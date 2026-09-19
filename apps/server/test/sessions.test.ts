@@ -99,6 +99,29 @@ describe("sessions", () => {
     return token;
   }
 
+  /** Retires one value beyond the grace window and returns the current value. */
+  function retireTokenPastGrace(db: VoxlyDatabase, token: string, confirmed = true) {
+    const session = one<{ id: string }>(
+      db.sqlite,
+      "select id from sessions where token_hash = ?",
+      [hashToken(token)]
+    );
+    assert.ok(session);
+    const currentToken = `current-${session.id}`;
+    run(
+      db.sqlite,
+      "insert into session_tokens (token_hash, session_id, superseded_at, replacement_seen_at) values (?, ?, ?, ?)",
+      [
+        hashToken(token),
+        session.id,
+        new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+        confirmed ? new Date(Date.now() - 5 * 60 * 1000).toISOString() : null
+      ]
+    );
+    run(db.sqlite, "update sessions set token_hash = ? where id = ?", [hashToken(currentToken), session.id]);
+    return currentToken;
+  }
+
   describe("creating one", () => {
     it("stores only the hash of the token it hands back", async () => {
       const db = await seed({ member: {} });
@@ -131,13 +154,13 @@ describe("sessions", () => {
       const token = createSession(db, "member");
       const botToken = createSession(db, "bot");
 
-      const user = authenticateWithoutRenewal(db.sqlite, requestDouble({ [sessionCookieName]: token }));
+      const user = authenticateWithoutRenewal(db, requestDouble({ [sessionCookieName]: token }));
       assert.equal(user?.id, "member");
       assert.equal(user?.role, "member");
       assert.equal(user?.isBot, false);
 
       // The bot holds a session of exactly this shape; ADR-0003 keeps them one model.
-      const bot = authenticateWithoutRenewal(db.sqlite, requestDouble({ [sessionCookieName]: botToken }));
+      const bot = authenticateWithoutRenewal(db, requestDouble({ [sessionCookieName]: botToken }));
       assert.equal(bot?.id, "bot");
       assert.equal(bot?.isBot, true);
     });
@@ -154,7 +177,7 @@ describe("sessions", () => {
         { [sessionCookieName]: expired }
       ];
       for (const cookies of attempts) {
-        assert.equal(authenticateWithoutRenewal(db.sqlite, requestDouble(cookies)), null);
+        assert.equal(authenticateWithoutRenewal(db, requestDouble(cookies)), null);
       }
     });
 
@@ -163,7 +186,41 @@ describe("sessions", () => {
       const token = createSession(db, "member");
       run(db.sqlite, "update users set banned_at = ? where id = ?", [new Date().toISOString(), "member"]);
 
-      assert.equal(authenticateWithoutRenewal(db.sqlite, requestDouble({ [sessionCookieName]: token })), null);
+      assert.equal(authenticateWithoutRenewal(db, requestDouble({ [sessionCookieName]: token })), null);
+    });
+
+    it("returns reuse on that request without a module-global failure handoff", async () => {
+      const db = await seed({ member: {} });
+      const token = createSession(db, "member");
+      retireTokenPastGrace(db, token);
+      const reusedReply = replyDouble();
+      const unknownReply = replyDouble();
+
+      const reused = authenticateHttp(
+        db,
+        requestDouble({ [sessionCookieName]: token }),
+        reusedReply.reply,
+        false
+      );
+      const unknown = authenticateHttp(
+        db,
+        requestDouble({ [sessionCookieName]: "unknown" }),
+        unknownReply.reply,
+        false
+      );
+
+      assert.deepEqual(reused, { ok: false, error: "session_reused" });
+      assert.deepEqual(unknown, { ok: false, error: "unauthorized" });
+      assert.deepEqual(
+        reusedReply.cookies.map((cookie) => cookie.name),
+        [sessionCookieName, hostSessionCookieName]
+      );
+      const auditCount = one<{ count: number }>(
+        db.sqlite,
+        "select count(*) as count from audit_events where action = 'session.reused' and target_user_id = ?",
+        ["member"]
+      );
+      assert.equal(auditCount?.count, 1);
     });
   });
 
@@ -172,7 +229,7 @@ describe("sessions", () => {
       const db = await seed({ member: {} });
       const token = createSession(db, "member");
 
-      const user = authenticateSocket(db.sqlite, `theme=dark; ${sessionCookieName}=${token}; consent`);
+      const user = authenticateSocket(db, `theme=dark; ${sessionCookieName}=${token}; consent`);
 
       assert.equal(user?.id, "member");
     });
@@ -185,15 +242,71 @@ describe("sessions", () => {
       const db = await seed({ member: {} });
       const token = createSession(db, "member");
 
-      assert.equal(authenticateSocket(db.sqlite, "broken=%ZZ"), null);
-      assert.equal(authenticateSocket(db.sqlite, `broken=%ZZ; ${sessionCookieName}=${token}`)?.id, "member");
+      assert.equal(authenticateSocket(db, "broken=%ZZ"), null);
+      assert.equal(authenticateSocket(db, `broken=%ZZ; ${sessionCookieName}=${token}`)?.id, "member");
     });
 
     it("refuses a handshake carrying no cookies at all", async () => {
       const db = await seed({ member: {} });
 
-      assert.equal(authenticateSocket(db.sqlite, undefined), null);
-      assert.equal(authenticateSocket(db.sqlite, ""), null);
+      assert.equal(authenticateSocket(db, undefined), null);
+      assert.equal(authenticateSocket(db, ""), null);
+    });
+
+    it("records reuse detected during a Socket.IO handshake", async () => {
+      const db = await seed({ member: {} });
+      const token = createSession(db, "member");
+      retireTokenPastGrace(db, token);
+
+      const user = authenticateSocket(db, `${sessionCookieName}=${token}`);
+
+      assert.equal(user, null);
+      const session = one<{ revoked_at: string | null }>(db.sqlite, "select revoked_at from sessions");
+      assert.ok(session?.revoked_at);
+      const auditEvent = one<{ action: string; target_user_id: string | null }>(
+        db.sqlite,
+        "select action, target_user_id from audit_events where action = 'session.reused'"
+      );
+      assert.equal(auditEvent?.action, "session.reused");
+      assert.equal(auditEvent?.target_user_id, "member");
+    });
+
+    it("does not call an unconfirmed rotation theft during a Socket.IO handshake", async () => {
+      const db = await seed({ member: {} });
+      const token = createSession(db, "member");
+      retireTokenPastGrace(db, token, false);
+
+      const user = authenticateSocket(db, `${sessionCookieName}=${token}`);
+
+      assert.equal(user?.id, "member");
+      const session = one<{ revoked_at: string | null }>(db.sqlite, "select revoked_at from sessions");
+      assert.equal(session?.revoked_at, null);
+      const auditCount = one<{ count: number }>(
+        db.sqlite,
+        "select count(*) as count from audit_events where action = 'session.reused'"
+      );
+      assert.equal(auditCount?.count, 0);
+    });
+
+    it("lets a Socket.IO handshake confirm that a replacement was delivered", async () => {
+      const db = await seed({ member: {} });
+      const token = createSession(db, "member");
+      const currentToken = retireTokenPastGrace(db, token, false);
+
+      assert.equal(authenticateSocket(db, `${sessionCookieName}=${currentToken}`)?.id, "member");
+      const seen = one<{ replacement_seen_at: string | null }>(
+        db.sqlite,
+        "select replacement_seen_at from session_tokens where token_hash = ?",
+        [hashToken(token)]
+      );
+      assert.ok(seen?.replacement_seen_at);
+
+      run(
+        db.sqlite,
+        "update session_tokens set replacement_seen_at = ? where token_hash = ?",
+        [new Date(Date.now() - 5 * 60 * 1000).toISOString(), hashToken(token)]
+      );
+      assert.equal(authenticateSocket(db, `${sessionCookieName}=${token}`), null);
     });
   });
 
@@ -203,13 +316,13 @@ describe("sessions", () => {
       const token = placeSession(db, "ageing", "member", new Date(Date.now() + 10 * day));
       const { reply, cookies } = replyDouble();
 
-      const user = authenticateHttp(db, requestDouble({ [sessionCookieName]: token }), reply, true);
+      const authentication = authenticateHttp(db, requestDouble({ [sessionCookieName]: token }), reply, true);
 
       const stored = one<{ expires_at: string }>(db.sqlite, "select expires_at from sessions where id = ?", ["ageing"]);
       const lifetime = new Date(stored!.expires_at).getTime() - Date.now();
       assert.ok(Math.abs(lifetime - 180 * day) < 60_000, `expected ~180 days, got ${lifetime}ms`);
       // The answer the caller holds must not disagree with the row.
-      assert.equal(user?.sessionExpiresAt, stored?.expires_at);
+      assert.equal(authentication.ok && authentication.user.sessionExpiresAt, stored?.expires_at);
       // Secure transport, so the prefixed name — and the unprefixed one is
       // retired alongside it, which is how an upgrade moves members over.
       assert.deepEqual(
@@ -257,7 +370,7 @@ describe("sessions", () => {
       const expiresAt = new Date(Date.now() + 10 * day);
       const token = placeSession(db, "ageing", "member", expiresAt);
 
-      authenticateWithoutRenewal(db.sqlite, requestDouble({ [sessionCookieName]: token }));
+      authenticateWithoutRenewal(db, requestDouble({ [sessionCookieName]: token }));
 
       const stored = one<{ expires_at: string }>(db.sqlite, "select expires_at from sessions where id = ?", ["ageing"]);
       assert.equal(stored?.expires_at, expiresAt.toISOString());
@@ -310,8 +423,8 @@ describe("sessions", () => {
 
       revokeSession(db.sqlite, droppedId!.id);
 
-      assert.equal(authenticateWithoutRenewal(db.sqlite, requestDouble({ [sessionCookieName]: dropped })), null);
-      assert.equal(authenticateWithoutRenewal(db.sqlite, requestDouble({ [sessionCookieName]: kept }))?.id, "member");
+      assert.equal(authenticateWithoutRenewal(db, requestDouble({ [sessionCookieName]: dropped })), null);
+      assert.equal(authenticateWithoutRenewal(db, requestDouble({ [sessionCookieName]: kept }))?.id, "member");
     });
 
     it("closes every live session an account holds, and nobody else's", async () => {
@@ -323,9 +436,9 @@ describe("sessions", () => {
       revokeSessionsForUser(db.sqlite, "member");
 
       for (const token of [first, second]) {
-        assert.equal(authenticateWithoutRenewal(db.sqlite, requestDouble({ [sessionCookieName]: token })), null);
+        assert.equal(authenticateWithoutRenewal(db, requestDouble({ [sessionCookieName]: token })), null);
       }
-      assert.equal(authenticateWithoutRenewal(db.sqlite, requestDouble({ [sessionCookieName]: bystander }))?.id, "other");
+      assert.equal(authenticateWithoutRenewal(db, requestDouble({ [sessionCookieName]: bystander }))?.id, "other");
     });
 
     it("keeps the revoked row for the owner's console rather than deleting it", async () => {

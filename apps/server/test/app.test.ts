@@ -88,6 +88,43 @@ describe("Voxly HTTP MVP", () => {
     }
   });
 
+  it("migrates retired token delivery state once without confirming new rotations", async () => {
+    const databaseDir = await mkdtemp(join(tmpdir(), "voxly-session-token-migration-"));
+    const databasePath = join(databaseDir, "voxly.sqlite");
+    const legacy = new DatabaseSync(databasePath);
+    const retiredAt = "2026-01-01T00:00:00.000Z";
+    legacy.exec(`
+      create table session_tokens (
+        token_hash text primary key,
+        session_id text not null,
+        superseded_at text not null
+      );
+    `);
+    legacy.prepare("insert into session_tokens values (?, ?, ?)").run("legacy", "session", retiredAt);
+    legacy.close();
+
+    const migrated = await openDatabase(databasePath);
+    migrated.sqlite.prepare(
+      "insert into session_tokens (token_hash, session_id, superseded_at, replacement_seen_at) values (?, ?, ?, null)"
+    ).run("new", "session", retiredAt);
+    assert.equal(
+      migrated.sqlite.prepare("select replacement_seen_at from session_tokens where token_hash = 'legacy'").get()?.replacement_seen_at,
+      retiredAt
+    );
+    migrated.close();
+
+    const reopened = await openDatabase(databasePath);
+    try {
+      assert.equal(
+        reopened.sqlite.prepare("select replacement_seen_at from session_tokens where token_hash = 'new'").get()?.replacement_seen_at,
+        null
+      );
+    } finally {
+      reopened.close();
+      await rm(databaseDir, { force: true, recursive: true });
+    }
+  });
+
   it("does not recreate a deleted default server when another server remains", async () => {
     const databaseDir = await mkdtemp(join(tmpdir(), "voxly-deleted-default-"));
     const databasePath = join(databaseDir, "voxly.sqlite");

@@ -36,6 +36,8 @@ export class ApiError extends Error {
 
 const ownerClaimRequests = new Map<string, Promise<CurrentUserResponse>>();
 const accessClaimRequests = new Map<string, Promise<AccessClaimResponse>>();
+const sessionRotatedHeaderName = "X-Voxly-Session-Rotated";
+let sessionConfirmation: Promise<void> | null = null;
 
 export async function apiGet<T>(path: string): Promise<T> {
   return request<T>(path);
@@ -361,6 +363,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers
   });
 
+  if (response.headers.get(sessionRotatedHeaderName) === "1") {
+    void confirmSessionRotation();
+  }
+
   if (!response.ok) {
     let code: string | undefined;
     let data: Record<string, unknown> | undefined;
@@ -381,4 +387,24 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+/**
+ * Prove that the browser received a rotated httpOnly cookie without exposing
+ * its value to JavaScript. Failure is deliberately recoverable: the next
+ * ordinary request can confirm it, or the server can retry an unconfirmed
+ * rotation instead of signing the member out.
+ */
+async function confirmSessionRotation() {
+  if (!sessionConfirmation) {
+    const pending = fetch("/api/session/confirm", {
+      method: "POST",
+      credentials: "include"
+    }).then(() => undefined).catch(() => undefined);
+    const confirmation = pending.finally(() => {
+      if (sessionConfirmation === confirmation) sessionConfirmation = null;
+    });
+    sessionConfirmation = confirmation;
+  }
+  await sessionConfirmation;
 }

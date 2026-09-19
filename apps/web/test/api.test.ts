@@ -145,6 +145,45 @@ describe("frontend api", () => {
     assert.equal(requestedPath, "/api/rtc/config");
   });
 
+  it("confirms a rotated http-only session without reading its token", async () => {
+    const requests: Array<{ path: string; method?: string; credentials?: RequestCredentials }> = [];
+    globalThis.fetch = async (input, init) => {
+      requests.push({ path: String(input), method: init?.method, credentials: init?.credentials });
+      if (String(input) === "/api/session/confirm") return new Response(null, { status: 204 });
+      return new Response(JSON.stringify({ iceServers: [], expiresAt: null }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "X-Voxly-Session-Rotated": "1"
+        }
+      });
+    };
+
+    await fetchRtcConfig();
+
+    assert.deepEqual(requests, [
+      { path: "/api/rtc/config", method: undefined, credentials: "include" },
+      { path: "/api/session/confirm", method: "POST", credentials: "include" }
+    ]);
+  });
+
+  it("does not fail the member's request when rotation confirmation loses the network", async () => {
+    globalThis.fetch = async (input) => {
+      if (String(input) === "/api/session/confirm") throw new TypeError("network unavailable");
+      return new Response(JSON.stringify({ iceServers: [], expiresAt: null }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "X-Voxly-Session-Rotated": "1"
+        }
+      });
+    };
+
+    const config = await fetchRtcConfig();
+
+    assert.deepEqual(config, { iceServers: [], expiresAt: null });
+  });
+
   it("updates a nickname through the scoped member endpoint", async () => {
     let request: { path: string; method?: string; body?: string } | null = null;
     globalThis.fetch = async (input, init) => {

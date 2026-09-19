@@ -3,6 +3,7 @@
 - **Status:** proposed
 - **Date:** 2026-08-31
 - **Context:** follows [ADR-0014](0014-members-link-their-own-devices.md); a stolen cookie is currently worth 180 days
+- **Refined by:** [ADR-0016](0016-session-reuse-requires-confirmed-delivery.md), which replaces time-only reuse detection
 
 ## Context
 

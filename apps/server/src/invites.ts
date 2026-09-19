@@ -93,7 +93,11 @@ export function registerInviteRoutes(context: RouteContext) {
       turnstileToken: z.string().optional()
     }).parse(request.body);
 
-    const existingUser = authenticateHttp(database, request, reply, secureCookies);
+    const authentication = authenticateHttp(database, request, reply, secureCookies);
+    if (!authentication.ok && authentication.error === "session_reused") {
+      return reply.code(401).send({ error: authentication.error });
+    }
+    const existingUser = authentication.ok ? authentication.user : null;
 
     if (!existingUser && turnstile?.enabled) {
       const ok = await verifyTurnstile(turnstile.secretKey, body.turnstileToken, turnstile.expectedHostname);

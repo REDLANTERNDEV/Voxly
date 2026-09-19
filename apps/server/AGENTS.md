@@ -91,6 +91,14 @@ web serving, and owner recovery CLIs.
   short-lived session, but it revokes through here and its sessions are read
   back by the same authentication, so the two remain one model (ADR-0003). Add
   a rule about sessions here rather than beside the route that noticed it.
+  Authentication outcomes stay per call: never pass a failure through module-
+  global state or require a caller to read it in a second step. The HTTP and
+  Socket.IO adapters record reuse inside this module; the HTTP adapter also
+  clears the cookie before returning `session_reused` to its caller.
+  Time alone is not reuse evidence: a retired token may revoke a session only
+  after its replacement has returned on a later request. If that delivery was
+  never confirmed, HTTP retries rotation and Socket.IO admits the Device
+  without silently weakening the later confirmed-reuse check (ADR-0016).
   `app.ts` registers `@fastify/cookie` and composes the routes; it decides
   nothing about sessions.
 - `src/members.ts` owns membership lookups, the permission guards routes call,

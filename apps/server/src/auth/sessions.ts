@@ -70,9 +70,9 @@ const tokenRotationMs = 15 * 60 * 1000;
 /**
  * How long a retired value keeps working after it is replaced.
  *
- * Browsers fire requests in parallel and drop responses. Without this window,
- * ordinary concurrency and one lost `Set-Cookie` would both look exactly like
- * theft, and the cure would be worse than the disease.
+ * Browsers fire requests in parallel. The window absorbs those requests after
+ * a replacement is first observed; a replacement that was never observed uses
+ * the delivery-recovery path instead of turning elapsed time into evidence.
  */
 const tokenGraceMs = 2 * 60 * 1000;
 
@@ -81,9 +81,9 @@ const tokenGraceMs = 2 * 60 * 1000;
  * recognised. Past this it is simply unknown, and a stale cookie gets an
  * ordinary 401 rather than being treated as evidence.
  *
- * Matched to the idle timeout: a session that has not been used in thirty days
- * is dead anyway, so remembering its old tokens for longer answers a question
- * nobody can still ask.
+ * Counted only after replacement delivery is confirmed. An unconfirmed token
+ * is still the browser's possible recovery path and must remain until the
+ * Session itself ends.
  */
 const tokenMemoryMs = 30 * 24 * 60 * 60 * 1000;
 
@@ -114,6 +114,7 @@ export interface SessionSummary extends Record<string, unknown> {
 
 type SessionRow = {
   id: string;
+  token_hash: string;
   user_id: string;
   expires_at: string;
   revoked_at: string | null;
@@ -170,45 +171,29 @@ export function createSession(
   return token;
 }
 
-/**
- * Why an authentication attempt failed, when the answer is worth acting on.
- *
- * `reused` is the only one that is not simply "no". It means a retired token
- * turned up after its grace window — two parties are holding the same cookie —
- * and the session has been revoked in response. Callers surface it so the
- * member is told why they were signed out rather than left guessing.
- */
-export type AuthFailure = "" | "reused";
-
-interface AuthFailureDetail {
-  reason: AuthFailure;
-  /** Whose session it was, so the caller can write the audit line for it. */
-  userId: string;
-}
-
-let lastAuthFailure: AuthFailureDetail = { reason: "", userId: "" };
+type AuthenticationResult =
+  | { status: "authenticated"; user: AuthUser; confirmsReplacement: boolean }
+  | { status: "unconfirmed_rotation"; user: AuthUser; retiredTokenHash: string; currentTokenHash: string }
+  | { status: "unauthorized" }
+  | { status: "reused"; userId: string };
 
 /**
- * Why the most recent `authenticate` answered null, and for whom.
+ * The complete answer an HTTP caller needs from authentication.
  *
- * The audit row is written by the caller rather than here: `authenticate` is
- * handed a `DatabaseSync` and the audit log is a product guarantee that
- * `audit.ts` owns and that joins the caller's transaction (`AGENTS.md`). The
- * callers that need to report a reuse all hold a `VoxlyDatabase` already.
+ * The account id behind a reused token stays private to this module: the
+ * adapter records the audit line and clears the cookie before returning. A
+ * route only decides which of the two safe errors to send.
  */
-export function takeAuthFailure(): AuthFailureDetail {
-  const failure = lastAuthFailure;
-  lastAuthFailure = { reason: "", userId: "" };
-  return failure;
-}
+export type HttpAuthenticationResult =
+  | { ok: true; user: AuthUser }
+  | { ok: false; error: "unauthorized" | "session_reused" };
 
 const sessionColumns =
-  "id, user_id, expires_at, revoked_at, last_seen_at, token_issued_at";
+  "id, token_hash, user_id, expires_at, revoked_at, last_seen_at, token_issued_at";
 
-function authenticate(sqlite: DatabaseSync, sessionToken: string | undefined): AuthUser | null {
-  lastAuthFailure = { reason: "", userId: "" };
+function authenticate(sqlite: DatabaseSync, sessionToken: string | undefined): AuthenticationResult {
   if (!sessionToken) {
-    return null;
+    return { status: "unauthorized" };
   }
 
   const tokenHash = hashToken(sessionToken);
@@ -221,44 +206,50 @@ function authenticate(sqlite: DatabaseSync, sessionToken: string | undefined): A
   // which is a different situation from an unknown token and is answered
   // differently.
   let superseded = false;
+  let unconfirmedRotation = false;
   if (!session) {
-    const retired = one<{ session_id: string; superseded_at: string }>(
+    const retired = one<{ session_id: string; superseded_at: string; replacement_seen_at: string | null }>(
       sqlite,
-      "select session_id, superseded_at from session_tokens where token_hash = ?",
+      "select session_id, superseded_at, replacement_seen_at from session_tokens where token_hash = ?",
       [tokenHash]
     );
-    if (!retired) return null;
-    const retiredFor = Date.now() - new Date(retired.superseded_at).getTime();
+    if (!retired) return { status: "unauthorized" };
+    const reuseClock = retired.replacement_seen_at ?? retired.superseded_at;
+    const retiredFor = Date.now() - new Date(reuseClock).getTime();
     session = one<SessionRow>(
       sqlite,
       `select ${sessionColumns} from sessions where id = ?`,
       [retired.session_id]
     );
-    if (!session) return null;
+    if (!session) return { status: "unauthorized" };
     if (retiredFor > tokenGraceMs) {
-      // Past the grace window, the only explanation left is that two parties
-      // hold copies of this value. Revoking is the loud answer: it ends the
-      // session for the thief *and* for the member, which is what makes the
-      // theft visible instead of silent. See ADR-0015.
-      if (!session.revoked_at) revokeSession(sqlite, session.id);
-      lastAuthFailure = { reason: "reused", userId: session.user_id };
-      return null;
+      if (retired.replacement_seen_at) {
+        // The replacement has returned on a later request, so delivery is no
+        // longer an assumption. Seeing its predecessor after the grace window
+        // is evidence that two parties still hold the Device credential.
+        if (!session.revoked_at) revokeSession(sqlite, session.id);
+        return { status: "reused", userId: session.user_id };
+      }
+      // Time alone cannot distinguish theft from a response that never reached
+      // the browser. The HTTP adapter can retry delivery; transports that
+      // cannot write a cookie still admit the Device without calling it theft.
+      unconfirmedRotation = true;
     }
     superseded = true;
   }
 
   if (!session || session.revoked_at || new Date(session.expires_at).getTime() <= Date.now()) {
-    return null;
+    return { status: "unauthorized" };
   }
 
   const user = one<SessionUserRow>(sqlite, "select id, nickname, role, banned_at, is_bot from users where id = ?", [
     session.user_id
   ]);
   if (!user || user.banned_at) {
-    return null;
+    return { status: "unauthorized" };
   }
 
-  return {
+  const authUser: AuthUser = {
     id: user.id,
     nickname: user.nickname,
     role: user.role,
@@ -268,11 +259,20 @@ function authenticate(sqlite: DatabaseSync, sessionToken: string | undefined): A
     sessionExpiresAt: session.expires_at,
     sessionLastSeenAt: session.last_seen_at,
     tokenIssuedAt: session.token_issued_at,
-    // A retired value inside its grace window authenticates but must not
-    // rotate: rotating on it would retire the value the member is actually
-    // holding and turn one lost response into a chain of them.
+    // A retired value authenticates but must not perform an ordinary rotation:
+    // its replacement either remains inside the concurrency grace window or
+    // needs the delivery-recovery path below.
     tokenSuperseded: superseded
   };
+  if (unconfirmedRotation) {
+    return {
+      status: "unconfirmed_rotation",
+      user: authUser,
+      retiredTokenHash: tokenHash,
+      currentTokenHash: session.token_hash
+    };
+  }
+  return { status: "authenticated", user: authUser, confirmsReplacement: !superseded };
 }
 
 /**
@@ -284,10 +284,29 @@ export function authenticateHttp(
   request: FastifyRequest,
   reply: FastifyReply,
   secureCookies: boolean
-) {
+): HttpAuthenticationResult {
   const sessionToken = readSessionToken(request.cookies);
-  const user = authenticate(database.sqlite, sessionToken);
-  if (user && sessionToken) {
+  const result = authenticate(database.sqlite, sessionToken);
+  if (result.status === "reused") {
+    reportSessionReuse(database, result.userId);
+    clearSessionCookie(reply);
+    return { ok: false, error: "session_reused" };
+  }
+  if (result.status === "unauthorized") {
+    return { ok: false, error: "unauthorized" };
+  }
+
+  if (result.status === "unconfirmed_rotation") {
+    touchSession(database, result.user);
+    if (sessionToken) {
+      recoverUnconfirmedRotation(database, result, reply, secureCookies);
+    }
+    return { ok: true, user: result.user };
+  }
+
+  const { user } = result;
+  if (result.confirmsReplacement) confirmReplacementDelivery(database, user.sessionId);
+  if (sessionToken) {
     // Renewal rides on the touch throttle: seen means still in use, and still
     // in use means the window starts again. The second clause is a floor rather
     // than a second policy — a session that somehow ended up close to expiry is
@@ -298,7 +317,7 @@ export function authenticateHttp(
     }
     rotateTokenIfNeeded(database, user, sessionToken, reply, secureCookies);
   }
-  return user;
+  return { ok: true, user };
 }
 
 /**
@@ -307,7 +326,7 @@ export function authenticateHttp(
  * This is not re-authentication and the member notices nothing: same row, same
  * id, same expiry, everything bound to the session unchanged. Only the value in
  * the cookie is new, and the old one is remembered so that its later use can be
- * recognised rather than merely refused. See ADR-0015.
+ * recognised rather than merely refused. See ADR-0015 and ADR-0016.
  */
 export function rotateTokenIfNeeded(
   database: VoxlyDatabase,
@@ -352,7 +371,7 @@ export function rotateTokenIfNeeded(
     }
     run(
       database.sqlite,
-      "insert or replace into session_tokens (token_hash, session_id, superseded_at) values (?, ?, ?)",
+      "insert or replace into session_tokens (token_hash, session_id, superseded_at, replacement_seen_at) values (?, ?, ?, null)",
       [currentHash, user.sessionId, now.toISOString()]
     );
     run(database.sqlite, "update sessions set token_hash = ?, token_issued_at = ? where id = ?", [
@@ -362,9 +381,18 @@ export function rotateTokenIfNeeded(
     ]);
     // Retired values are only useful while the reuse question can still be
     // asked. Cleaning up here keeps the table bounded without a scheduled job.
-    run(database.sqlite, "delete from session_tokens where superseded_at < ?", [
-      new Date(now.getTime() - tokenMemoryMs).toISOString()
-    ]);
+    run(
+      database.sqlite,
+      `delete from session_tokens
+       where replacement_seen_at < ?
+          or not exists (
+            select 1 from sessions
+            where sessions.id = session_tokens.session_id
+              and sessions.revoked_at is null
+              and sessions.expires_at > ?
+          )`,
+      [new Date(now.getTime() - tokenMemoryMs).toISOString(), now.toISOString()]
+    );
     database.sqlite.exec("commit");
   } catch (cause) {
     database.sqlite.exec("rollback");
@@ -372,8 +400,79 @@ export function rotateTokenIfNeeded(
   }
   database.save();
   user.tokenIssuedAt = now.toISOString();
-  setSessionCookie(reply, nextToken, secure, new Date(user.sessionExpiresAt));
+  setRotatedSessionCookie(reply, nextToken, secure, new Date(user.sessionExpiresAt));
   return true;
+}
+
+/**
+ * Retry a rotation whose replacement never came back from the browser.
+ *
+ * The compare-and-swap on the current hash makes a parallel recovery burst
+ * issue one replacement. Every abandoned candidate remains hashed in
+ * `session_tokens`; once the new replacement is observed they all become
+ * ordinary reuse evidence together.
+ */
+function recoverUnconfirmedRotation(
+  database: VoxlyDatabase,
+  result: Extract<AuthenticationResult, { status: "unconfirmed_rotation" }>,
+  reply: FastifyReply,
+  secure: boolean,
+  now = new Date()
+) {
+  const nextToken = createOpaqueToken();
+  const nextHash = hashToken(nextToken);
+  database.sqlite.exec("begin immediate");
+  try {
+    const pending = one<{ token_hash: string }>(
+      database.sqlite,
+      `select token_hash from session_tokens
+       where token_hash = ? and session_id = ? and replacement_seen_at is null`,
+      [result.retiredTokenHash, result.user.sessionId]
+    );
+    const current = one<{ token_hash: string }>(
+      database.sqlite,
+      "select token_hash from sessions where id = ? and revoked_at is null and token_hash = ?",
+      [result.user.sessionId, result.currentTokenHash]
+    );
+    if (!pending || !current) {
+      database.sqlite.exec("rollback");
+      return false;
+    }
+    run(
+      database.sqlite,
+      "insert or ignore into session_tokens (token_hash, session_id, superseded_at, replacement_seen_at) values (?, ?, ?, null)",
+      [current.token_hash, result.user.sessionId, now.toISOString()]
+    );
+    // This is one delivery attempt for the whole pending family. Moving its
+    // grace clock together prevents a burst of requests carrying the same old
+    // cookie from issuing a burst of different replacements.
+    run(
+      database.sqlite,
+      "update session_tokens set superseded_at = ? where session_id = ? and replacement_seen_at is null",
+      [now.toISOString(), result.user.sessionId]
+    );
+    run(
+      database.sqlite,
+      "update sessions set token_hash = ?, token_issued_at = ? where id = ? and token_hash = ?",
+      [nextHash, now.toISOString(), result.user.sessionId, current.token_hash]
+    );
+    database.sqlite.exec("commit");
+  } catch (cause) {
+    database.sqlite.exec("rollback");
+    throw cause;
+  }
+  database.save();
+  result.user.tokenIssuedAt = now.toISOString();
+  setRotatedSessionCookie(reply, nextToken, secure, new Date(result.user.sessionExpiresAt));
+  return true;
+}
+
+/** A returned replacement is the evidence time alone could never provide. */
+function confirmReplacementDelivery(database: VoxlyDatabase, sessionId: string, now = new Date()) {
+  const changed = database.sqlite.prepare(
+    "update session_tokens set replacement_seen_at = ? where session_id = ? and replacement_seen_at is null"
+  ).run(now.toISOString(), sessionId).changes;
+  if (changed > 0) database.save();
 }
 
 /**
@@ -399,8 +498,8 @@ export function touchSession(database: VoxlyDatabase, user: AuthUser, now = new 
  * session rather than using it. Renewing a session on the way out would set a
  * fresh cookie the response is about to clear.
  */
-export function authenticateWithoutRenewal(sqlite: DatabaseSync, request: FastifyRequest) {
-  return authenticate(sqlite, readSessionToken(request.cookies));
+export function authenticateWithoutRenewal(database: VoxlyDatabase, request: FastifyRequest) {
+  return authenticatedUser(database, authenticate(database.sqlite, readSessionToken(request.cookies)));
 }
 
 /**
@@ -408,8 +507,11 @@ export function authenticateWithoutRenewal(sqlite: DatabaseSync, request: Fastif
  * authenticated before any connection exists, so there is no Fastify request to
  * carry parsed cookies.
  */
-export function authenticateSocket(sqlite: DatabaseSync, cookieHeader: string | undefined) {
-  return authenticate(sqlite, readSessionToken(parseCookieHeader(cookieHeader ?? "")));
+export function authenticateSocket(database: VoxlyDatabase, cookieHeader: string | undefined) {
+  return authenticatedUser(
+    database,
+    authenticate(database.sqlite, readSessionToken(parseCookieHeader(cookieHeader ?? "")))
+  );
 }
 
 export function requireUser(
@@ -418,20 +520,12 @@ export function requireUser(
   reply: FastifyReply,
   secureCookies: boolean
 ) {
-  const user = authenticateHttp(database, request, reply, secureCookies);
-  if (!user) {
-    // A reused token is not merely "no". The member is being signed out
-    // because their session was seen in two places, and they are owed that
-    // sentence rather than a generic refusal (ADR-0015).
-    const failure = takeAuthFailure();
-    if (failure.reason === "reused") {
-      reportSessionReuse(database, failure.userId);
-      clearSessionCookie(reply);
-    }
-    reply.code(401).send({ error: failure.reason === "reused" ? "session_reused" : "unauthorized" });
+  const result = authenticateHttp(database, request, reply, secureCookies);
+  if (!result.ok) {
+    reply.code(401).send({ error: result.error });
     return null;
   }
-  return user;
+  return result.user;
 }
 
 export function requireOwner(
@@ -579,13 +673,35 @@ export function allSessions(sqlite: DatabaseSync) {
 
 /**
  * The line an owner will want when a member says their account did something
- * they did not do. Written by whoever detected the reuse, with the database
- * handle `audit()` requires.
+ * they did not do. Written at this module's transport adapters so no caller
+ * can revoke the Session while dropping the evidence.
  */
-export function reportSessionReuse(database: VoxlyDatabase, userId: string) {
+function reportSessionReuse(database: VoxlyDatabase, userId: string) {
   if (!userId) return;
   audit(database, null, "session.reused", userId);
   database.save();
+}
+
+/**
+ * The adapters that do not need to distinguish reuse from an ordinary refusal
+ * still owe the reuse its audit line. Keeping that effect here means a caller
+ * cannot revoke the Session while silently dropping the evidence.
+ */
+function authenticatedUser(database: VoxlyDatabase, result: AuthenticationResult) {
+  if (result.status === "authenticated") {
+    if (result.confirmsReplacement) confirmReplacementDelivery(database, result.user.sessionId);
+    return result.user;
+  }
+  if (result.status === "unconfirmed_rotation") return result.user;
+  if (result.status === "reused") reportSessionReuse(database, result.userId);
+  return null;
+}
+
+export const sessionRotatedHeaderName = "X-Voxly-Session-Rotated";
+
+function setRotatedSessionCookie(reply: FastifyReply, token: string, secure: boolean, expires: Date) {
+  setSessionCookie(reply, token, secure, expires);
+  reply.header(sessionRotatedHeaderName, "1");
 }
 
 export function setSessionCookie(reply: FastifyReply, token: string, secure: boolean, expires = sessionExpiry()) {
