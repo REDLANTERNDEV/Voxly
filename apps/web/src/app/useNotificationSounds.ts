@@ -5,6 +5,7 @@ import {
   type NotificationSoundPlayer
 } from "../lib/notificationSoundPlayer.js";
 import {
+  activeVoiceRosterUserIds,
   advanceVoiceRoster,
   clampNotificationVolume,
   DEFAULT_NOTIFICATION_SOUNDS,
@@ -96,9 +97,7 @@ export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, 
 
   useEffect(() => {
     const currentUserId = user?.id;
-    const userIds = activeVoiceRoomId && voiceSnapshot?.roomId === activeVoiceRoomId
-      ? voiceSnapshot.members.map((member) => member.user.userId).filter((userId) => userId !== currentUserId)
-      : null;
+    const userIds = activeVoiceRosterUserIds(activeVoiceRoomId, voiceSnapshot, currentUserId);
     const { state, joined, left } = advanceVoiceRoster(rosterRef.current, { roomId: activeVoiceRoomId, userIds });
     rosterRef.current = state;
     if (joined.length > 0) play("voicePeerJoin");

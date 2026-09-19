@@ -106,10 +106,12 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   listener chose another sink. A missing file, a revoked device, or a blocked
   autoplay policy degrades to silence and never surfaces an error.
 - Derive arrivals and departures by diffing the active room's voice snapshot,
-  not from a separate event. A room change or the first snapshot in a room only
-  establishes the baseline, so joining a populated room announces nobody.
-  Exclude the listener from that roster; their own transition is the join or
-  leave cue.
+  not from a separate event. Treat it as an audible roster only when that
+  snapshot contains the listener; the server also sends room snapshots to
+  observers, and a stale local room id is not proof of membership. A room
+  change or the first confirmed snapshot in a room only establishes the
+  baseline, so joining a populated room announces nobody. Exclude the listener
+  from that roster; their own transition is the join or leave cue.
 - Self join and leave follow the active room id. Reconnect and recovery keep
   that id, so restoring a session stays silent.
 - Deafen implies a microphone change; play only the deafen cue for that

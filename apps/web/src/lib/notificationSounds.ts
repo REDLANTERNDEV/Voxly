@@ -1,3 +1,4 @@
+import type { VoiceSnapshot } from "@voxly/shared";
 import { clampVolumePercent, type StorageLike } from "./voiceVolume.js";
 
 export type NotificationSoundKey =
@@ -159,6 +160,23 @@ export function voiceRosterTransitions(previous: readonly string[], next: readon
     joined: next.filter((userId) => !before.has(userId)),
     left: previous.filter((userId) => !after.has(userId))
   };
+}
+
+// The server publishes voice snapshots to every member who can see the room,
+// including members who are not in voice. A local active-room value can also
+// briefly outlive the server membership during a disconnect or forced leave.
+// Treat the snapshot as an audible roster only when it authoritatively contains
+// the listener; otherwise an observer could hear somebody else's room cues.
+export function activeVoiceRosterUserIds(
+  activeRoomId: string | null,
+  snapshot: VoiceSnapshot | undefined,
+  currentUserId: string | undefined
+) {
+  if (!activeRoomId || !currentUserId || snapshot?.roomId !== activeRoomId) return null;
+  if (!snapshot.members.some((member) => member.user.userId === currentUserId)) return null;
+  return snapshot.members
+    .map((member) => member.user.userId)
+    .filter((userId) => userId !== currentUserId);
 }
 
 // A room change or a first snapshot only establishes the baseline. Without that

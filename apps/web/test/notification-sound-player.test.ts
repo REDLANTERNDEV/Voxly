@@ -127,8 +127,7 @@ describe("notification sound wiring", () => {
     const hook = readFileSync("src/app/useNotificationSounds.ts", "utf8");
 
     assert.match(hook, /advanceVoiceRoster\(rosterRef\.current/);
-    assert.match(hook, /voiceSnapshot\?\.roomId === activeVoiceRoomId/);
-    assert.match(hook, /filter\(\(userId\) => userId !== currentUserId\)/);
+    assert.match(hook, /activeVoiceRosterUserIds\(activeVoiceRoomId, voiceSnapshot, currentUserId\)/);
   });
 
   it("prefers the deafen cue over the microphone change it implies", () => {

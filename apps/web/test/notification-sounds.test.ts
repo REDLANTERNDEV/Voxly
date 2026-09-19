@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
+  activeVoiceRosterUserIds,
   advanceVoiceRoster,
   clampNotificationVolume,
   DEFAULT_NOTIFICATION_SOUNDS,
@@ -17,6 +18,7 @@ import {
   type NotificationSoundKey,
   type NotificationSoundPreferences
 } from "../src/lib/notificationSounds.js";
+import type { VoiceSnapshot } from "@voxly/shared";
 
 function memoryStorage() {
   const values = new Map<string, string>();
@@ -103,6 +105,29 @@ describe("notification sound gating", () => {
     assert.equal(notificationSoundAllowed("connectionLost", preferences(), { deafened: true }), false);
     assert.equal(notificationSoundAllowed("deafen", preferences(), { deafened: true }), true);
     assert.equal(notificationSoundAllowed("undeafen", preferences(), { deafened: true }), true);
+  });
+});
+
+describe("audible voice roster", () => {
+  const snapshot = {
+    roomId: "voice-1",
+    members: [
+      { user: { userId: "ada" } },
+      { user: { userId: "lin" } }
+    ]
+  } as VoiceSnapshot;
+
+  it("uses a snapshot only when it confirms the listener is in that voice room", () => {
+    assert.deepEqual(activeVoiceRosterUserIds("voice-1", snapshot, "ada"), ["lin"]);
+  });
+
+  it("keeps observers silent even though the server sends them voice snapshots", () => {
+    assert.equal(activeVoiceRosterUserIds(null, snapshot, "observer"), null);
+    assert.equal(activeVoiceRosterUserIds("voice-1", snapshot, "observer"), null);
+  });
+
+  it("rejects a snapshot for another room", () => {
+    assert.equal(activeVoiceRosterUserIds("voice-2", snapshot, "ada"), null);
   });
 });
 
