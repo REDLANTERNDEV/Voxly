@@ -3295,7 +3295,7 @@ button.reply-quote:focus-visible .reply-quote-body {
 }
 
 .landing-page::before {
-  background: url("/brand/logo-monochrome-black.svg") no-repeat right -86px top 104px / 430px auto;
+  background: url("/brand/svg/voxly-mark-monochrome-dark.svg") no-repeat right -86px top 104px / 430px auto;
   content: "";
   inset: 0;
   opacity: 0.035;
@@ -3304,13 +3304,13 @@ button.reply-quote:focus-visible .reply-quote-body {
 }
 
 :root[data-theme="dark"] .landing-page::before {
-  background-image: url("/brand/logo-monochrome-white.svg");
+  background-image: url("/brand/svg/voxly-mark-monochrome-light.svg");
   opacity: 0.045;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .landing-page::before {
-    background-image: url("/brand/logo-monochrome-white.svg");
+    background-image: url("/brand/svg/voxly-mark-monochrome-light.svg");
     opacity: 0.045;
   }
 }

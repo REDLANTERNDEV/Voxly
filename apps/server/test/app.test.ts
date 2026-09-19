@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
@@ -2303,9 +2303,11 @@ describe("Voxly HTTP MVP", () => {
 });
 
 describe("Voxly static web serving", () => {
-  it("serves the React build index for app routes when a web dist path is configured", async () => {
+  it("serves a versioned React build with update-safe cache headers", async () => {
     const webDistPath = await mkdtemp(join(tmpdir(), "voxly-web-"));
-    await writeFile(join(webDistPath, "index.html"), "<!doctype html><title>Voxly web</title>");
+    await mkdir(join(webDistPath, "assets"));
+    await writeFile(join(webDistPath, "index.html"), '<!doctype html><title>Voxly web</title><script type="module" src="/assets/index-build123.js"></script>');
+    await writeFile(join(webDistPath, "assets", "index-build123.js"), "console.log('Voxly')");
     const staticApp = await createVoxlyApp({
       databasePath: ":memory:",
       ownerBootstrapToken: "bootstrap-secret",
@@ -2320,6 +2322,16 @@ describe("Voxly static web serving", () => {
       });
       assert.equal(response.statusCode, 200);
       assert.equal(response.body.includes("Voxly web"), true);
+      assert.match(response.headers["cache-control"] as string, /no-cache/);
+
+      const config = await staticApp.server.inject({ method: "GET", url: "/api/config" });
+      assert.equal(config.json().clientVersion, "/assets/index-build123.js");
+      assert.equal(config.headers["cache-control"], "no-store");
+
+      const asset = await staticApp.server.inject({ method: "GET", url: "/assets/index-build123.js" });
+      assert.equal(asset.statusCode, 200);
+      assert.match(asset.headers["cache-control"] as string, /max-age=31536000/);
+      assert.match(asset.headers["cache-control"] as string, /immutable/);
     } finally {
       await staticApp.close();
       await rm(webDistPath, { force: true, recursive: true });

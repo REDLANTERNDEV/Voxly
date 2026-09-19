@@ -107,7 +107,7 @@ export function ReconnectOverlay({ health, t }: { health: ConnectionHealth; t: T
       : t("connection.serverUnreachable");
   return (
     <div className="reconnect-overlay" role="status" aria-live="assertive">
-      <img className="reconnect-logo" src="/brand/logo-mark.svg" alt="" width="72" height="72" />
+      <img className="reconnect-logo" src="/brand/svg/voxly-mark-primary.svg" alt="" width="72" height="72" />
       <strong>{t("connection.reconnecting")}</strong>
       <span>{copy}</span>
     </div>

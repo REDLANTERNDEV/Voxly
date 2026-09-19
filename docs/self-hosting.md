@@ -504,6 +504,24 @@ also how a music problem is repaired without interrupting anyone:
 docker compose up -d --build bot
 ```
 
+### Automatic browser-app updates
+
+Voxly checks the deployed client version every five minutes and whenever a
+backgrounded browser tab or installed app becomes visible again. When a new
+version is available, it reloads itself automatically. If the member is in a
+voice room, the existing reload-resume path briefly reconnects that room.
+
+The first deployment containing this update cannot reach browser windows that
+are already running an older client without the checker. Those windows need one
+final manual reload; later deployments update automatically.
+
+The microphone worklet is emitted with a content hash in its asset filename,
+so a freshly loaded client requests the matching processor version. Keep HTML
+entry pages revalidated rather than applying a long browser cache lifetime to
+them; long-lived caching belongs on hashed assets. Voxly emits these cache
+headers itself. With Cloudflare, keep Browser Cache TTL set to respect origin
+headers and ensure Cache Rules do not override this distinction.
+
 ## Backups and restore
 
 The `voxly_data` Docker volume contains the SQLite database. Create a consistent

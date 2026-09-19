@@ -4,6 +4,7 @@ import { ApiError,fetchConfig,fetchMe,fetchRtcConfig } from "../api.js";
 import { createAuthRequestGate } from "../lib/authRequestGate.js";
 import type { VoiceErrorKey } from "../lib/i18n.js";
 import { getInviteTokenFromPath,resolveInitialRoute } from "../lib/navigation.js";
+import { useClientUpdate } from "../lib/useClientUpdate.js";
 import type { AppConfigResponse,RtcConfigResponse } from "../types.js";
 import { rtcConfigAfterFetchFailure,rtcConfigRetryMs } from "./rtcConfig.js";
 import type { LoadState,Route } from "./types.js";
@@ -13,12 +14,13 @@ export function useSessionController(route: Route, navigate: (path: string) => v
   const [authState, setAuthState] = useState<LoadState>("loading");
   /** Empty unless the member was signed out for a reason they should be told. */
   const [signedOutReason, setSignedOutReason] = useState<"" | "reused" | "revoked">("");
-  const [appConfig, setAppConfig] = useState<AppConfigResponse>({ publicUrl: null, turnstile: null, analytics: null });
+  const [appConfig, setAppConfig] = useState<AppConfigResponse>({ clientVersion: null, publicUrl: null, turnstile: null, analytics: null });
   const [rtcConfig, setRtcConfig] = useState<RtcConfigResponse>({ iceServers: [], expiresAt: null });
   const [rtcConfigReady, setRtcConfigReady] = useState(false);
   const [rtcConfigError, setRtcConfigError] = useState<VoiceErrorKey | "">("");
   const authRequestGateRef = useRef(createAuthRequestGate());
   const authenticatedUserIdRef = useRef<string | null>(null);
+  useClientUpdate(appConfig.clientVersion);
 
   const completeAuthentication = useCallback((nextUser: PublicUser) => {
     authRequestGateRef.current.invalidate();
@@ -62,7 +64,7 @@ export function useSessionController(route: Route, navigate: (path: string) => v
   useEffect(() => {
     let mounted = true;
     fetchConfig().then((config) => { if (mounted) setAppConfig(config); })
-      .catch(() => { if (mounted) setAppConfig({ publicUrl: null, turnstile: null, analytics: null }); });
+      .catch(() => { if (mounted) setAppConfig({ clientVersion: null, publicUrl: null, turnstile: null, analytics: null }); });
     return () => { mounted = false; };
   }, []);
 

@@ -7,8 +7,8 @@ describe("landing presentation", () => {
   it("uses restrained social metadata without generated banner copy", () => {
     const html = readFileSync("index.html", "utf8");
 
-    assert.match(html, /twitter:card" content="summary"/);
-    assert.match(html, /brand\/logo-512x512\.png/);
+    assert.match(html, /twitter:card" content="summary_large_image"/);
+    assert.match(html, /brand\/web\/voxly-og-light-1200x630\.png/);
     assert.doesNotMatch(html, /og-image\.png|twitter-card\.png/);
     assert.doesNotMatch(html, /Quiet by default|Centered V mark|Turquoise live signal/);
     assert.equal(existsSync("public/brand/og-image.png"), false);
@@ -25,6 +25,6 @@ describe("landing presentation", () => {
   it("shows the Voxly wordmark in the repository readme", () => {
     const readme = readFileSync("../../README.md", "utf8");
 
-    assert.match(readme, /apps\/web\/public\/brand\/logo-wordmark\.svg/);
+    assert.match(readme, /apps\/web\/public\/brand\/svg\/voxly-logo-horizontal-light\.svg/);
   });
 });

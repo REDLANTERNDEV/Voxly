@@ -57,7 +57,7 @@ export function LandingPage({ language, analytics, signedOutReason = "", t, onLa
           <span className="landing-signal-ring landing-signal-ring-one" />
           <span className="landing-signal-ring landing-signal-ring-two" />
           <span className="landing-signal-ring landing-signal-ring-three" />
-          <span className="landing-signal-core"><img src="/brand/logo-mark.svg" alt="" width="54" height="54" /></span>
+          <span className="landing-signal-core"><img src="/brand/svg/voxly-mark-primary.svg" alt="" width="54" height="54" /></span>
         </div>
       </section>
 

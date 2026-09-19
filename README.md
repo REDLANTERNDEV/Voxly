@@ -1,6 +1,6 @@
 # Voxly
 
-![Voxly](apps/web/public/brand/logo-wordmark.svg)
+![Voxly](apps/web/public/brand/svg/voxly-logo-horizontal-light.svg)
 
 Voxly is a small, self-hosted text and WebRTC voice chat application for
 private groups. It provides invite-only accounts, server-scoped rooms,

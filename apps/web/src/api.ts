@@ -120,8 +120,8 @@ export async function fetchMe() {
   return apiGet<CurrentUserResponse>("/api/me");
 }
 
-export async function fetchConfig() {
-  return apiGet<AppConfigResponse>("/api/config");
+export async function fetchConfig(init: RequestInit = {}) {
+  return request<AppConfigResponse>("/api/config", init);
 }
 
 export async function fetchRtcConfig() {

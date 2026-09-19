@@ -11,6 +11,8 @@ import type {
   ServerToClientEvents
 } from "@voxly/shared";
 import type { DatabaseSync } from "node:sqlite";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { AnalyticsConfig } from "./analytics.js";
 import { audit } from "./audit.js";
 import {
@@ -176,7 +178,8 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
     secureCookies: options.secureCookies,
     turnstile: options.turnstile
   };
-  registerRoutes(options, context);
+  const clientVersion = options.webDistPath ? await readClientVersion(options.webDistPath) : null;
+  registerRoutes(options, context, clientVersion);
   // Route groups that own their own rules register themselves against the same
   // Fastify instance; see `http.ts` for what they are handed and why.
   registerDeviceRoutes(context);
@@ -207,7 +210,16 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
 async function registerWebStatic(server: FastifyInstance, webDistPath: string) {
   await server.register(staticPlugin, {
     root: webDistPath,
-    prefix: "/"
+    prefix: "/",
+    setHeaders(reply, path) {
+      if (path.endsWith("index.html")) {
+        reply.header("Cache-Control", "private, no-cache");
+      } else if (/[/\\]assets[/\\]/.test(path)) {
+        reply.header("Cache-Control", "public, max-age=31536000, immutable");
+      } else {
+        reply.header("Cache-Control", "no-cache");
+      }
+    }
   });
 
   server.setNotFoundHandler((request, reply) => {
@@ -216,8 +228,18 @@ async function registerWebStatic(server: FastifyInstance, webDistPath: string) {
       return;
     }
 
-    reply.sendFile("index.html");
+    reply.header("Cache-Control", "private, no-cache");
+    reply.sendFile("index.html", { maxAge: 0, immutable: false });
   });
+}
+
+async function readClientVersion(webDistPath: string) {
+  try {
+    const index = await readFile(join(webDistPath, "index.html"), "utf8");
+    return index.match(/<script\b(?=[^>]*\btype=["']module["'])[^>]*\bsrc=["']([^"']+)["']/i)?.[1] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -235,7 +257,7 @@ async function registerWebStatic(server: FastifyInstance, webDistPath: string) {
  * the pieces of it, so there is no way for the handshake these routes use and
  * the one `servers.ts` and `invites.ts` use to drift apart.
  */
-function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext) {
+function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, clientVersion: string | null) {
   const { fastify: server, database, io, realtime } = context;
   server.get("/api/health", async () => {
     // Deliberately unauthenticated and dependency-checking: container and load
@@ -245,8 +267,10 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext) {
     return { status: "ok" };
   });
 
-  server.get("/api/config", async () => {
+  server.get("/api/config", async (_request, reply) => {
+    reply.header("Cache-Control", "no-store");
     return {
+      clientVersion,
       publicUrl: normalizePublicUrl(options.publicUrl),
       turnstile: options.turnstile ? { siteKey: options.turnstile.siteKey } : null,
       // Public by definition: the browser has to load this script itself.

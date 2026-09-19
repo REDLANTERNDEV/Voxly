@@ -51,6 +51,8 @@ export interface MessageResponse {
 }
 
 export interface AppConfigResponse {
+  /** Hashed entry script served by this deployment; null in API-only development. */
+  clientVersion: string | null;
   publicUrl: string | null;
   turnstile: {
     siteKey: string;
