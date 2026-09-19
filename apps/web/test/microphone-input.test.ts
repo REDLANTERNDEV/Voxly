@@ -268,3 +268,57 @@ describe("capture-graph noise suppression", () => {
     assert.equal(graph.analyser.reads, readsBeforeDispose);
   });
 });
+
+describe("optional worklet handoff", () => {
+  for (const failure of ["input", "output", "module", "constructor", "message", "none"] as const) {
+    it(`preserves a working graph and cleans up when worklet outcome is ${failure}`, async () => {
+      const graph = audioGraph();
+      const edges = new Set<unknown>([]);
+      graph.highPass.connect = (node) => {
+        if (failure === "input" && node instanceof FakeWorklet) throw new Error("input connection failed");
+        edges.add(node);
+      };
+      graph.highPass.disconnect = ((node?: unknown) => {
+        if (node) edges.delete(node);
+        else edges.clear();
+      }) as typeof graph.highPass.disconnect;
+      const nodes: FakeWorklet[] = [];
+      class FakeWorklet {
+        connected = false;
+        port = { postMessage() { if (failure === "message") throw new Error("message failed"); }, close() {} };
+        constructor() { if (failure === "constructor") throw new Error("construction failed"); nodes.push(this); }
+        connect() {
+          if (failure === "output") throw new Error("output connection failed");
+          this.connected = true;
+        }
+        disconnect() { this.connected = false; }
+      }
+      const previous = globalThis.AudioWorkletNode;
+      globalThis.AudioWorkletNode = FakeWorklet as unknown as typeof AudioWorkletNode;
+      const context = Object.assign(graph.context, { audioWorklet: {
+        async addModule() { if (failure === "module") throw new Error("module failed"); }
+      } });
+      let input: ReturnType<typeof createMicrophoneInput> | undefined;
+      try {
+        input = createMicrophoneInput(graph.raw as unknown as MediaStream, 100, {
+          ...graph.options, createContext: () => context as unknown as AudioContext
+        });
+        assert.ok(edges.has(graph.gate));
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        if (failure === "none") {
+          assert.ok(!edges.has(graph.gate), "successful handoff removes parallel fallback");
+          assert.ok(edges.has(nodes[0]) && nodes[0].connected);
+        } else {
+          assert.ok(edges.has(graph.gate), "failed optional setup preserves live microphone audio");
+          assert.ok(nodes.every((node) => !edges.has(node) && !node.connected), "no partial worklet route survives");
+        }
+        assert.equal(graph.raw.audioTrack.stops, 0);
+      } finally {
+        input?.dispose();
+        globalThis.AudioWorkletNode = previous;
+      }
+      assert.equal(graph.raw.audioTrack.stops, 1);
+      assert.equal(edges.size, 0);
+    });
+  }
+});

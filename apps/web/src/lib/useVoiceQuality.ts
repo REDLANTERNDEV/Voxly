@@ -26,11 +26,13 @@ export interface VoiceQuality {
   reading: VoiceQualityReading | null;
   transport: VoiceTransportReading | null;
   recoveryRequests: readonly VoiceQualityRecoveryRequest[];
+  clearPeers: readonly VoiceStatsPeer[];
 }
 
 export interface VoiceQualityRecoveryRequest {
   peerUserId: string;
   requestId: number;
+  peer: RTCPeerConnection;
 }
 
 const measuring: VoiceQuality = {
@@ -38,7 +40,8 @@ const measuring: VoiceQuality = {
   symptom: "none",
   reading: null,
   transport: null,
-  recoveryRequests: []
+  recoveryRequests: [],
+  clearPeers: []
 };
 
 /**
@@ -93,6 +96,7 @@ export function useVoiceQuality(
       const readings: VoiceQualityReading[] = [];
       const transportReadings: VoiceTransportReading[] = [];
       const recoveryRequests: VoiceQualityRecoveryRequest[] = [];
+      const clearPeers: VoiceStatsPeer[] = [];
       for (const { userId, peer } of peers()) {
         const previousRecovery = recoveryRef.current.get(userId) ?? {
           consecutiveDegradedSamples: 0,
@@ -115,11 +119,13 @@ export function useVoiceQuality(
         const reading = previous ? voiceQualityReading(previous, counters) : null;
         if (reading) {
           readings.push(reading);
+          if (reading.grade === "clear") clearPeers.push({ userId, peer });
           const recovery = updateVoiceQualityRecovery(previousRecovery, reading, Date.now());
           currentRecovery.set(userId, recovery.state);
           if (recovery.recover) {
             recoveryRequests.push({
               peerUserId: userId,
+              peer,
               requestId: ++recoveryRequestIdRef.current
             });
           }
@@ -136,12 +142,14 @@ export function useVoiceQuality(
             symptom: worst.symptom,
             reading: worst,
             transport: worstVoiceTransport(transportReadings),
-            recoveryRequests
+            recoveryRequests,
+            clearPeers
           }
         : {
             ...measuring,
             transport: worstVoiceTransport(transportReadings),
-            recoveryRequests
+            recoveryRequests,
+            clearPeers
           });
     };
 

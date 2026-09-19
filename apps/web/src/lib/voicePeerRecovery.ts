@@ -10,12 +10,15 @@ export interface PeerRecoveryState {
   phase: PeerRecoveryPhase;
   attempt: number;
   nextRetryAt: number | null;
+  reason: "quality" | "transport" | null;
 }
 
 export type PeerRecoveryEvent =
   | { type: "disconnected" }
   | { type: "grace_elapsed" }
   | { type: "quality_degraded" }
+  | { type: "quality_restored" }
+  | { type: "recovery_requested" }
   | { type: "failed" }
   | { type: "connected" }
   | { type: "member_left" }
@@ -23,7 +26,7 @@ export type PeerRecoveryEvent =
   | { type: "restart_failed" };
 
 export function initialPeerRecoveryState(): PeerRecoveryState {
-  return { phase: "stable", attempt: 0, nextRetryAt: null };
+  return { phase: "stable", attempt: 0, nextRetryAt: null, reason: null };
 }
 
 export function advancePeerRecovery(
@@ -32,31 +35,44 @@ export function advancePeerRecovery(
   now: number
 ): { state: PeerRecoveryState; action: PeerRecoveryAction } {
   if (event.type === "member_left") {
-    return { state: { phase: "idle", attempt: state.attempt, nextRetryAt: null }, action: "cancel" as const };
+    return { state: { phase: "idle", attempt: state.attempt, nextRetryAt: null, reason: null }, action: "cancel" as const };
+  }
+
+  if (event.type === "quality_restored") {
+    if (state.phase !== "restarting" || state.reason !== "quality") return { state, action: "wait" };
+    return { state: initialPeerRecoveryState(), action: "cancel" };
   }
 
   if (event.type === "connected" || event.type === "restart_succeeded") {
-    return { state: { phase: "stable", attempt: 0, nextRetryAt: null }, action: "cancel" as const };
+    // ICE can remain connected throughout an audio fault and its restart.
+    // Only a fresh clear decoder sample can confirm a quality recovery.
+    if (state.phase === "restarting" && state.reason === "quality") return { state, action: "wait" };
+    return { state: initialPeerRecoveryState(), action: "cancel" as const };
   }
 
   if (event.type === "disconnected") {
     return {
-      state: { phase: "grace", attempt: state.attempt, nextRetryAt: now + voicePeerRecoveryGraceMs },
+      state: { phase: "grace", attempt: state.attempt, nextRetryAt: now + voicePeerRecoveryGraceMs, reason: "transport" },
       action: "wait" as const
     };
   }
 
   if (event.type === "grace_elapsed") {
     return {
-      state: { phase: "restarting", attempt: state.attempt, nextRetryAt: null },
+      state: { phase: "restarting", attempt: state.attempt, nextRetryAt: null, reason: "transport" },
       action: "restart_ice" as const
     };
   }
 
-  if (event.type === "quality_degraded") {
+  if (event.type === "quality_degraded" || event.type === "recovery_requested") {
     if (state.phase !== "stable") return { state, action: "wait" as const };
     return {
-      state: { phase: "restarting", attempt: state.attempt, nextRetryAt: null },
+      state: {
+        phase: "restarting",
+        attempt: state.attempt,
+        nextRetryAt: null,
+        reason: event.type === "quality_degraded" ? "quality" : "transport"
+      },
       action: "restart_ice" as const
     };
   }
@@ -68,7 +84,8 @@ export function advancePeerRecovery(
       state: {
         phase: "rebuilding",
         attempt: Math.min(state.attempt + 1, rebuildBackoffMs.length - 1),
-        nextRetryAt: now + delay
+        nextRetryAt: now + delay,
+        reason: state.reason
       },
       action: "rebuild_peer" as const
     };

@@ -4,8 +4,8 @@ import {
   type VoiceActivityState
 } from "./voiceActivity.js";
 
-/** Served as a static asset and loaded by URL into the AudioWorklet realm. */
-export const noiseSuppressorModuleUrl = "/noise-suppressor.worklet.js";
+/** Vite fingerprints this asset so a new processor cannot reuse an old cache entry. */
+export const noiseSuppressorModuleUrl = new URL("../worklets/noise-suppressor.worklet.js", import.meta.url).href;
 export const noiseSuppressorProcessorName = "voxly-noise-suppressor";
 
 /**

@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { before, describe, it } from "node:test";
@@ -32,7 +34,7 @@ before(async () => {
   };
   let captured: unknown = null;
   scope.registerProcessor = (_name: string, processor: unknown) => { captured = processor; };
-  await import("../../public/noise-suppressor.worklet.js" as string);
+  await import(pathToFileURL(resolve("src/worklets/noise-suppressor.worklet.js")).href);
   ProcessorClass = captured as new () => Processor;
 });
 
@@ -221,7 +223,7 @@ describe("spectral noise suppressor", () => {
 
 describe("noise suppressor asset", () => {
   it("is self-contained, since the worklet realm cannot import from the bundle", () => {
-    const source = readFileSync("public/noise-suppressor.worklet.js", "utf8");
+    const source = readFileSync("src/worklets/noise-suppressor.worklet.js", "utf8");
 
     assert.doesNotMatch(source, /^\s*import\s/m);
     assert.doesNotMatch(source, /\brequire\(/);

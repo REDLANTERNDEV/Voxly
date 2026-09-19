@@ -45,9 +45,12 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
   const voiceQuality = useVoiceQuality(voice.activeRoomId ? voice.peerConnections : null);
   useEffect(() => {
     for (const request of voiceQuality.recoveryRequests) {
-      voice.recoverPeer(request.peerUserId);
+      voice.recoverPeer(request.peerUserId, request.peer);
     }
-  }, [voice.recoverPeer, voiceQuality.recoveryRequests]);
+    for (const { userId, peer } of voiceQuality.clearPeers) {
+      voice.confirmPeerAudioRecovered(userId, peer);
+    }
+  }, [voice.recoverPeer, voice.confirmPeerAudioRecovered, voiceQuality.recoveryRequests, voiceQuality.clearPeers]);
   const notifications = useNotificationSounds({
     user,
     activeVoiceRoomId: voice.activeRoomId,

@@ -325,7 +325,7 @@ describe("voice snapshot reconciliation", () => {
   it("routes quality recovery through the guarded peer recovery owner", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
 
-    assert.match(source, /type: "quality_degraded"/);
+    assert.match(source, /type: expectedPeer \? "quality_degraded" : "recovery_requested"/);
     assert.match(source, /transition\.action !== "restart_ice"/);
     assert.match(source, /voicePeerConnectionTimeoutMs/);
     assert.match(source, /recoverPeer\(payload\.fromUserId\)/);

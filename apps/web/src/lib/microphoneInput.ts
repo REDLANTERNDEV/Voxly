@@ -144,12 +144,21 @@ export function createMicrophoneInput(
           outputChannelCount: [1],
           processorOptions: { enabled: noiseSuppression }
         });
-        node.port.postMessage({ enabled: noiseSuppression });
-        highPass.disconnect(gate);
-        highPass.connect(node);
-        node.connect(gate);
-        suppressor = node;
-        applyGateGain(noiseGateOpenGain, true);
+        try {
+          node.port.postMessage({ enabled: noiseSuppression });
+          // Keep the live fallback until every edge of the new path exists.
+          highPass.connect(node);
+          node.connect(gate);
+          highPass.disconnect(gate);
+          suppressor = node;
+          applyGateGain(noiseGateOpenGain, true);
+        } catch {
+          // A partially connected optional stage must not silence capture or
+          // leave a parallel path behind. The fallback is still connected.
+          try { highPass.disconnect(node); } catch { /* No input edge was made. */ }
+          node.disconnect();
+          node.port.close();
+        }
       })
       .catch(() => {
         // No worklet, a blocked module, or a browser that refuses it: the
@@ -190,6 +199,7 @@ export function createMicrophoneInput(
       source.disconnect();
       highPass.disconnect();
       suppressor?.disconnect();
+      suppressor?.port.close();
       analyser.disconnect();
       gate.disconnect();
       gain.disconnect();

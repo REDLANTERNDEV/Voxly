@@ -28,7 +28,7 @@ describe("peer recovery state", () => {
   });
 
   it("waits while a peer is already recovering from quality degradation", () => {
-    const restarting: PeerRecoveryState = { phase: "restarting", attempt: 0, nextRetryAt: null };
+    const restarting: PeerRecoveryState = { phase: "restarting", attempt: 0, nextRetryAt: null, reason: "transport" };
     const next = advancePeerRecovery(restarting, { type: "quality_degraded" }, 1_000);
 
     assert.equal(next.state.phase, "restarting");
@@ -56,7 +56,7 @@ describe("peer recovery state", () => {
   });
 
   it("transitions restart_failed to rebuilding with the next delay", () => {
-    const restarting: PeerRecoveryState = { phase: "restarting", attempt: 0, nextRetryAt: null };
+    const restarting: PeerRecoveryState = { phase: "restarting", attempt: 0, nextRetryAt: null, reason: "transport" };
     const next = advancePeerRecovery(restarting, { type: "restart_failed" }, 1_000);
     assert.equal(next.state.phase, "rebuilding");
     assert.equal(next.action, "rebuild_peer");
@@ -69,7 +69,7 @@ describe("peer recovery state", () => {
   });
 
   it("transitions restart_succeeded to stable", () => {
-    const restarting: PeerRecoveryState = { phase: "restarting", attempt: 2, nextRetryAt: null };
+    const restarting: PeerRecoveryState = { phase: "restarting", attempt: 2, nextRetryAt: null, reason: "transport" };
     const next = advancePeerRecovery(restarting, { type: "restart_succeeded" }, 1_000);
     assert.equal(next.state.phase, "stable");
     assert.equal(next.action, "cancel");
@@ -85,5 +85,16 @@ describe("peer recovery state", () => {
     const leaving = advancePeerRecovery(disconnected, { type: "member_left" }, 1_200);
     assert.equal(leaving.state.phase, "idle");
     assert.equal(leaving.action, "cancel");
+  });
+});
+
+describe("audio recovery confirmation", () => {
+  it("does not treat connected ICE as proof that degraded audio recovered", () => {
+    const restarting = advancePeerRecovery(initialPeerRecoveryState(), { type: "quality_degraded" }, 0).state;
+    for (const type of ["connected", "restart_succeeded"] as const) {
+      const next = advancePeerRecovery(restarting, { type }, 1_000);
+      assert.equal(next.state.phase, "restarting");
+      assert.equal(next.action, "wait");
+    }
   });
 });
