@@ -179,7 +179,7 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   device and reopening it — seconds of delay, published silence in between, and
   no fallback if the reopen failed.
 - The preference therefore drives a stage in the capture graph: a high-pass
-  followed by a downward expander gated by the shared adaptive-floor estimator.
+  followed by a downward expander gated by an adaptive-floor estimator.
   It applies on the next audio block and never disturbs the capture. Turning it
   off changes values on that graph rather than its shape — the filter is
   bypassed and the expander held open, never unwired.
@@ -209,15 +209,15 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
 - The analysis window must be longer than the sampling interval, so consecutive
   reads overlap. A short window sampled infrequently leaves most of the signal
   unexamined and drops out between syllables.
-- The trigger is relative to a measured noise floor, not a fixed level: a level
-  that suits a loud headset mic never arms for a quiet or distant one. The floor
-  tracks minima — falling towards anything quieter within a couple of samples,
-  creeping up by a bounded fraction otherwise — so a noisy room raises the
-  trigger within a second while sustained speech cannot drag its own threshold
-  up behind it. An absolute floor still guards against arming on silence.
+- The member ring identifies whose microphone is carrying sound, not only who
+  is speaking. Keep a low absolute audibility guard so steady background hiss
+  remains attributable instead of being learned away as room noise. Apply the
+  member's input gain to the measured level so a silent 0% publication cannot
+  light the ring and boosted sound is represented.
 - Keep hysteresis and a release window so a syllable gap does not flicker the
-  indicator, and keep the estimator shared with the suppression stage so what
-  the gate treats as speech and what the ring shows can never disagree.
+  indicator. Noise suppression has a separate adaptive-floor decision because
+  its job is to attenuate steady noise while the ring's job is to reveal its
+  source whenever it remains in the published microphone signal.
 
 ## Remote Streams and Audio Output
 

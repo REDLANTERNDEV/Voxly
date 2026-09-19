@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  createAudibleActivityState,
   createVoiceActivityState,
+  updateAudibleActivity,
   updateVoiceActivity,
   voiceActivityFloorRms,
   voiceActivityReleaseMs,
@@ -22,6 +24,33 @@ function hold(state: VoiceActivityState, rms: number, ms: number, startAt = 0) {
 }
 
 describe("voice activity detection", () => {
+  it("keeps low steady audible noise visible so its source can be identified", () => {
+    let activity = createAudibleActivityState();
+
+    for (let now = 0; now < 120_000; now += voiceActivitySampleMs) {
+      activity = updateAudibleActivity(activity, 0.001, now);
+    }
+
+    assert.equal(activity.speaking, true);
+  });
+
+  it("does not report a silent capture as audible activity", () => {
+    let activity = createAudibleActivityState();
+
+    for (let now = 0; now < 1000; now += voiceActivitySampleMs) {
+      activity = updateAudibleActivity(activity, 0, now);
+    }
+
+    assert.equal(activity.speaking, false);
+  });
+
+  it("releases the audible-source ring after the sound stops", () => {
+    const active = updateAudibleActivity(createAudibleActivityState(), 0.001, 100);
+
+    assert.equal(updateAudibleActivity(active, 0, 100 + voiceActivityReleaseMs - 1).speaking, true);
+    assert.equal(updateAudibleActivity(active, 0, 100 + voiceActivityReleaseMs).speaking, false);
+  });
+
   it("starts for quiet audible input and ignores lower idle noise", () => {
     const idle = createVoiceActivityState();
 

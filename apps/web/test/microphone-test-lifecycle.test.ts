@@ -20,4 +20,14 @@ describe("microphone test lifecycle integration", () => {
 
     assert.match(app, /enabled=\{props\.controls\.deafen\.enabled && !props\.microphoneTestActive && props\.socketState === "live"\}/);
   });
+
+  it("stops microphone monitoring whenever the settings window closes", () => {
+    const chrome = readFileSync("src/components/shell/AppChrome.tsx", "utf8");
+
+    assert.match(
+      chrome,
+      /const closeSettings = useCallback\(\(\) => \{[\s\S]*?props\.onCloseAudioSettings\(\);[\s\S]*?setSettingsOpen\(false\);[\s\S]*?\}, \[props\.onCloseAudioSettings\]\)/
+    );
+    assert.match(chrome, /<SettingsDialog \{\.\.\.props\} onClose=\{closeSettings\} \/>/);
+  });
 });

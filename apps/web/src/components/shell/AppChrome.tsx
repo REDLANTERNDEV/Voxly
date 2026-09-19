@@ -23,6 +23,10 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
   const [pendingMemberAction, setPendingMemberAction] = useState<{ user: PresenceUser; roomId?: string; action: MemberAction } | null>(null);
   const [activeActionMenu, dispatchActionMenu] = useReducer(contextMenuReducer, null);
   const closeActionMenu = useCallback(() => dispatchActionMenu({ type: "close" }), []);
+  const closeSettings = useCallback(() => {
+    props.onCloseAudioSettings();
+    setSettingsOpen(false);
+  }, [props.onCloseAudioSettings]);
   const openActionMenu = useCallback((input: Parameters<SidebarActionMenuController["open"]>[0]) => {
     dispatchActionMenu({
       type: "open",
@@ -177,7 +181,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         onToggleControl={props.onToggleControl}
         connectedCount={voiceConnectedCount}
       />
-      {settingsOpen ? <SettingsDialog {...props} onClose={() => setSettingsOpen(false)} /> : null}
+      {settingsOpen ? <SettingsDialog {...props} onClose={closeSettings} /> : null}
       <Toast message={props.voiceError} />
       <Toast message={props.voiceNotice} tone="neutral" />
       {nicknameTarget ? <NicknameDialog

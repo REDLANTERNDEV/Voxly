@@ -1,5 +1,5 @@
 /**
- * Speaking detection for the local microphone.
+ * Microphone activity detection.
  *
  * Two properties matter more than the exact numbers. Coverage: the sampler must
  * see enough of the signal that a pause between syllables is not mistaken for
@@ -24,6 +24,15 @@ export const voiceActivityExitRatio = 1.6;
 export const voiceActivityReleaseMs = 320;
 
 /**
+ * The member ring answers "whose microphone is carrying sound?", including a
+ * low steady hiss. It deliberately does not adapt that sound away as a noise
+ * floor: doing so made an audible background-noise source disappear after it
+ * had been present for a while.
+ */
+export const audibleActivityEnterRms = 0.0008;
+export const audibleActivityExitRms = 0.0005;
+
+/**
  * Minimum tracking: the floor drops towards anything quieter within a couple of
  * samples and otherwise creeps up by a fixed fraction per sample. Steady room
  * noise is therefore measured within a second, while speech — which is only
@@ -39,8 +48,17 @@ export interface VoiceActivityState {
   noiseFloor: number;
 }
 
+export interface AudibleActivityState {
+  speaking: boolean;
+  lastAudibleAt: number;
+}
+
 export function createVoiceActivityState(): VoiceActivityState {
   return { speaking: false, lastAudibleAt: 0, noiseFloor: voiceActivityFloorRms };
+}
+
+export function createAudibleActivityState(): AudibleActivityState {
+  return { speaking: false, lastAudibleAt: 0 };
 }
 
 export function voiceActivityThresholds(noiseFloor: number) {
@@ -74,4 +92,12 @@ export function updateVoiceActivity(state: VoiceActivityState, rms: number, now:
   return now - state.lastAudibleAt >= voiceActivityReleaseMs
     ? { ...state, speaking: false, noiseFloor }
     : { ...state, noiseFloor };
+}
+
+export function updateAudibleActivity(state: AudibleActivityState, rms: number, now: number): AudibleActivityState {
+  const threshold = state.speaking ? audibleActivityExitRms : audibleActivityEnterRms;
+  if (rms >= threshold) return { speaking: true, lastAudibleAt: now };
+  return state.speaking && now - state.lastAudibleAt >= voiceActivityReleaseMs
+    ? { ...state, speaking: false }
+    : state;
 }

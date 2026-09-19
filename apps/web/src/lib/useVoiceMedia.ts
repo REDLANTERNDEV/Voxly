@@ -50,11 +50,12 @@ import {
   type RemoteStreamState
 } from "./voiceStreams.js";
 import {
-  createVoiceActivityState,
-  updateVoiceActivity,
+  createAudibleActivityState,
+  updateAudibleActivity,
   voiceActivitySampleMs
 } from "./voiceActivity.js";
 import { createMicrophoneInput, type MicrophoneInput } from "./microphoneInput.js";
+import { volumeGain } from "./voiceVolume.js";
 
 interface LocalPreviewState {
   kind: "camera" | "screen";
@@ -242,7 +243,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (input.analyser) {
       const analyser = input.analyser;
       const samples = new Float32Array(analyser.fftSize || 2048);
-      let activity = createVoiceActivityState();
+      let activity = createAudibleActivityState();
 
       const interval = window.setInterval(() => {
         const micIsLive = localStreamsRef.current.mic?.getAudioTracks().some((track) => track.enabled && track.readyState === "live") ?? false;
@@ -256,7 +257,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         for (const value of samples) {
           sum += value * value;
         }
-        activity = updateVoiceActivity(activity, Math.sqrt(sum / samples.length), Date.now());
+        const outputRms = Math.sqrt(sum / samples.length) * volumeGain(microphoneVolumeRef.current);
+        activity = updateAudibleActivity(activity, outputRms, Date.now());
         setLocalSpeaking(activity.speaking);
       }, voiceActivitySampleMs);
 
@@ -277,7 +279,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       const analyser = context.createAnalyser();
       analyser.fftSize = 2048;
       const samples = new Float32Array(analyser.fftSize);
-      let activity = createVoiceActivityState();
+      let activity = createAudibleActivityState();
       source.connect(analyser);
 
       const interval = window.setInterval(() => {
@@ -292,7 +294,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         for (const value of samples) {
           sum += value * value;
         }
-        activity = updateVoiceActivity(activity, Math.sqrt(sum / samples.length), Date.now());
+        const outputRms = Math.sqrt(sum / samples.length) * volumeGain(microphoneVolumeRef.current);
+        activity = updateAudibleActivity(activity, outputRms, Date.now());
         setLocalSpeaking(activity.speaking);
       }, voiceActivitySampleMs);
 
