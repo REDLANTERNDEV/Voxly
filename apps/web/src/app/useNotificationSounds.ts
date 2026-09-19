@@ -5,18 +5,22 @@ import {
   type NotificationSoundPlayer
 } from "../lib/notificationSoundPlayer.js";
 import {
+  activeVoiceScreenMembers,
   activeVoiceRosterUserIds,
+  advanceVoiceScreenRoster,
   advanceVoiceRoster,
   clampNotificationVolume,
   DEFAULT_NOTIFICATION_SOUNDS,
   EMPTY_VOICE_ROSTER,
+  EMPTY_VOICE_SCREEN_ROSTER,
   notificationSoundAllowed,
   readNotificationSounds,
   shouldPlayMessageSound,
   writeNotificationSounds,
   type NotificationSoundKey,
   type NotificationSoundPreferences,
-  type VoiceRosterState
+  type VoiceRosterState,
+  type VoiceScreenRosterState
 } from "../lib/notificationSounds.js";
 import type { VoiceControls } from "../lib/voiceControls.js";
 
@@ -46,6 +50,7 @@ export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, 
   const preferencesRef = useRef(preferences);
   const deafenedRef = useRef(deafened);
   const rosterRef = useRef<VoiceRosterState>(EMPTY_VOICE_ROSTER);
+  const screenRosterRef = useRef<VoiceScreenRosterState>(EMPTY_VOICE_SCREEN_ROSTER);
   const voiceRoomRef = useRef<string | null>(null);
   const controlSampleRef = useRef<VoiceControlSample | null>(null);
   const interruptedRef = useRef(connectionInterrupted);
@@ -102,6 +107,18 @@ export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, 
     rosterRef.current = state;
     if (joined.length > 0) play("voicePeerJoin");
     if (left.length > 0) play("voicePeerLeave");
+  }, [activeVoiceRoomId, play, user?.id, voiceSnapshot]);
+
+  useEffect(() => {
+    const currentUserId = user?.id;
+    const members = activeVoiceScreenMembers(activeVoiceRoomId, voiceSnapshot, currentUserId);
+    const { state, started, stopped } = advanceVoiceScreenRoster(screenRosterRef.current, {
+      roomId: activeVoiceRoomId,
+      members
+    });
+    screenRosterRef.current = state;
+    if (started.length > 0) play("screenShareStart");
+    if (stopped.length > 0) play("screenShareStop");
   }, [activeVoiceRoomId, play, user?.id, voiceSnapshot]);
 
   // Deafen also turns the microphone off, so its cue wins and the implied mute

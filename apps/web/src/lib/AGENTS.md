@@ -114,6 +114,10 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   from that roster; their own transition is the join or leave cue.
 - Self join and leave follow the active room id. Reconnect and recovery keep
   that id, so restoring a session stays silent.
+- Derive screen-share start and stop cues from the same confirmed active-room
+  snapshot. Include the publisher so everybody in the voice room hears the
+  transition, while the first snapshot only establishes a baseline. A member
+  leaving while sharing gets the peer-leave cue rather than a stacked stop cue.
 - Deafen implies a microphone change; play only the deafen cue for that
   transition. While deafened, every cue stays silent except the two that report
   the deafen state itself. Owner-enforced deafen silences cues the same way.

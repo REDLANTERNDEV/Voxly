@@ -13,7 +13,7 @@ export interface NotificationSoundElement {
 // cue that fast only produces a click, so a repeat inside this window is
 // dropped instead of cutting the sound already playing. Keep it at or above the
 // longest cue in `public/sounds` so no repeat truncates the one still ringing.
-export const NOTIFICATION_SOUND_REPLAY_MS = 500;
+export const NOTIFICATION_SOUND_REPLAY_MS = 600;
 
 export interface NotificationSoundPlayerOptions {
   createElement?: (source: string) => NotificationSoundElement | null;

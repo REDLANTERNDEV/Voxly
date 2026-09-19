@@ -130,6 +130,15 @@ describe("notification sound wiring", () => {
     assert.match(hook, /activeVoiceRosterUserIds\(activeVoiceRoomId, voiceSnapshot, currentUserId\)/);
   });
 
+  it("plays screen-share transitions for the confirmed active voice room", () => {
+    const hook = readFileSync("src/app/useNotificationSounds.ts", "utf8");
+
+    assert.match(hook, /activeVoiceScreenMembers\(activeVoiceRoomId, voiceSnapshot, currentUserId\)/);
+    assert.match(hook, /advanceVoiceScreenRoster\(screenRosterRef\.current/);
+    assert.match(hook, /started\.length > 0\) play\("screenShareStart"\)/);
+    assert.match(hook, /stopped\.length > 0\) play\("screenShareStop"\)/);
+  });
+
   it("prefers the deafen cue over the microphone change it implies", () => {
     const hook = readFileSync("src/app/useNotificationSounds.ts", "utf8");
 

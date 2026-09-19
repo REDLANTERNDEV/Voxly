@@ -10,6 +10,8 @@ export type NotificationSoundKey =
   | "unmute"
   | "deafen"
   | "undeafen"
+  | "screenShareStart"
+  | "screenShareStop"
   | "message"
   | "connectionLost"
   | "connectionRestored";
@@ -25,6 +27,8 @@ export const notificationSoundCategories: Record<NotificationSoundKey, Notificat
   unmute: "voice",
   deafen: "voice",
   undeafen: "voice",
+  screenShareStart: "voice",
+  screenShareStop: "voice",
   message: "message",
   connectionLost: "connection",
   connectionRestored: "connection"
@@ -42,6 +46,8 @@ export const notificationSoundSources: Record<NotificationSoundKey, string> = {
   unmute: "/sounds/unmute.wav",
   deafen: "/sounds/deafen.wav",
   undeafen: "/sounds/undeafen.wav",
+  screenShareStart: "/sounds/screen-share-start.wav",
+  screenShareStop: "/sounds/screen-share-stop.wav",
   message: "/sounds/message.wav",
   connectionLost: "/sounds/connection-lost.wav",
   connectionRestored: "/sounds/connection-restored.wav"
@@ -151,6 +157,23 @@ export interface VoiceRosterState {
   userIds: string[];
 }
 
+export interface VoiceScreenMemberState {
+  userId: string;
+  sharing: boolean;
+}
+
+export interface VoiceScreenRosterState {
+  roomId: string | null;
+  seeded: boolean;
+  members: VoiceScreenMemberState[];
+}
+
+export const EMPTY_VOICE_SCREEN_ROSTER: VoiceScreenRosterState = {
+  roomId: null,
+  seeded: false,
+  members: []
+};
+
 export const EMPTY_VOICE_ROSTER: VoiceRosterState = { roomId: null, seeded: false, userIds: [] };
 
 export function voiceRosterTransitions(previous: readonly string[], next: readonly string[]) {
@@ -177,6 +200,55 @@ export function activeVoiceRosterUserIds(
   return snapshot.members
     .map((member) => member.user.userId)
     .filter((userId) => userId !== currentUserId);
+}
+
+// Screen-share cues are heard by everybody in the active voice room, including
+// the publisher. Keep the listener in this roster, unlike peer join/leave cues,
+// but require the same authoritative membership proof before treating a
+// snapshot as audible.
+export function activeVoiceScreenMembers(
+  activeRoomId: string | null,
+  snapshot: VoiceSnapshot | undefined,
+  currentUserId: string | undefined
+): VoiceScreenMemberState[] | null {
+  if (!activeRoomId || !currentUserId || snapshot?.roomId !== activeRoomId) return null;
+  if (!snapshot.members.some((member) => member.user.userId === currentUserId)) return null;
+  return snapshot.members.map((member) => ({
+    userId: member.user.userId,
+    sharing: member.media.screen
+  }));
+}
+
+export function screenShareTransitions(
+  previous: readonly VoiceScreenMemberState[],
+  next: readonly VoiceScreenMemberState[]
+) {
+  const before = new Map(previous.map((member) => [member.userId, member.sharing]));
+  const continuing = next.filter((member) => before.has(member.userId));
+  return {
+    started: continuing.filter((member) => !before.get(member.userId) && member.sharing).map((member) => member.userId),
+    stopped: continuing.filter((member) => before.get(member.userId) && !member.sharing).map((member) => member.userId)
+  };
+}
+
+// The first confirmed snapshot establishes a baseline, so entering a room with
+// an existing stream does not pretend that it started just then. A member who
+// leaves while sharing is announced by the peer-leave cue instead of stacking
+// a second stop cue on top of it.
+export function advanceVoiceScreenRoster(
+  previous: VoiceScreenRosterState,
+  next: { roomId: string | null; members: readonly VoiceScreenMemberState[] | null }
+): { state: VoiceScreenRosterState; started: string[]; stopped: string[] } {
+  const seeded = next.roomId !== null && next.members !== null;
+  const state: VoiceScreenRosterState = {
+    roomId: next.roomId,
+    seeded,
+    members: [...(next.members ?? [])]
+  };
+  if (!seeded || !previous.seeded || previous.roomId !== next.roomId) {
+    return { state, started: [], stopped: [] };
+  }
+  return { state, ...screenShareTransitions(previous.members, state.members) };
 }
 
 // A room change or a first snapshot only establishes the baseline. Without that

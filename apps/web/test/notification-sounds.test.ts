@@ -2,16 +2,20 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
+  activeVoiceScreenMembers,
   activeVoiceRosterUserIds,
+  advanceVoiceScreenRoster,
   advanceVoiceRoster,
   clampNotificationVolume,
   DEFAULT_NOTIFICATION_SOUNDS,
+  EMPTY_VOICE_SCREEN_ROSTER,
   EMPTY_VOICE_ROSTER,
   notificationSoundAllowed,
   notificationSoundCategories,
   notificationSoundSources,
   notificationSoundStorageKey,
   readNotificationSounds,
+  screenShareTransitions,
   shouldPlayMessageSound,
   voiceRosterTransitions,
   writeNotificationSounds,
@@ -95,12 +99,14 @@ describe("notification sound gating", () => {
     assert.equal(notificationSoundAllowed("message", preferences({ enabled: false }), { deafened: false }), false);
     assert.equal(notificationSoundAllowed("message", preferences({ message: false }), { deafened: false }), false);
     assert.equal(notificationSoundAllowed("voicePeerJoin", preferences({ voice: false }), { deafened: false }), false);
+    assert.equal(notificationSoundAllowed("screenShareStart", preferences({ voice: false }), { deafened: false }), false);
     assert.equal(notificationSoundAllowed("connectionLost", preferences({ connection: false }), { deafened: false }), false);
     assert.equal(notificationSoundAllowed("message", preferences(), { deafened: false }), true);
   });
 
   it("stays silent while deafened except for the deafen cues themselves", () => {
     assert.equal(notificationSoundAllowed("voicePeerJoin", preferences(), { deafened: true }), false);
+    assert.equal(notificationSoundAllowed("screenShareStop", preferences(), { deafened: true }), false);
     assert.equal(notificationSoundAllowed("message", preferences(), { deafened: true }), false);
     assert.equal(notificationSoundAllowed("connectionLost", preferences(), { deafened: true }), false);
     assert.equal(notificationSoundAllowed("deafen", preferences(), { deafened: true }), true);
@@ -128,6 +134,51 @@ describe("audible voice roster", () => {
 
   it("rejects a snapshot for another room", () => {
     assert.equal(activeVoiceRosterUserIds("voice-2", snapshot, "ada"), null);
+  });
+});
+
+describe("screen-share cue transitions", () => {
+  const snapshot = {
+    roomId: "voice-1",
+    members: [
+      { user: { userId: "ada" }, media: { screen: true } },
+      { user: { userId: "lin" }, media: { screen: false } }
+    ]
+  } as VoiceSnapshot;
+
+  it("includes the publisher and every other member when the listener is in the room", () => {
+    assert.deepEqual(activeVoiceScreenMembers("voice-1", snapshot, "ada"), [
+      { userId: "ada", sharing: true },
+      { userId: "lin", sharing: false }
+    ]);
+    assert.equal(activeVoiceScreenMembers("voice-1", snapshot, "observer"), null);
+  });
+
+  it("reports only start and stop changes for members who remain in the room", () => {
+    assert.deepEqual(screenShareTransitions(
+      [{ userId: "ada", sharing: false }, { userId: "lin", sharing: true }, { userId: "kai", sharing: true }],
+      [{ userId: "ada", sharing: true }, { userId: "lin", sharing: false }]
+    ), { started: ["ada"], stopped: ["lin"] });
+  });
+
+  it("uses the first snapshot and room changes only as a baseline", () => {
+    const seeded = advanceVoiceScreenRoster(EMPTY_VOICE_SCREEN_ROSTER, {
+      roomId: "voice-1",
+      members: [{ userId: "ada", sharing: true }]
+    });
+    assert.deepEqual(seeded.started, []);
+
+    const stopped = advanceVoiceScreenRoster(seeded.state, {
+      roomId: "voice-1",
+      members: [{ userId: "ada", sharing: false }]
+    });
+    assert.deepEqual(stopped.stopped, ["ada"]);
+
+    const moved = advanceVoiceScreenRoster(stopped.state, {
+      roomId: "voice-2",
+      members: [{ userId: "lin", sharing: true }]
+    });
+    assert.deepEqual(moved.started, []);
   });
 });
 
