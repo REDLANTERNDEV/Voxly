@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="40 40 440 440" role="img" aria-labelledby="title desc">
+  <title id="title">Voxly favicon for dark surfaces</title>
+  <desc id="desc">White Voxly mark with no baked background.</desc>
+  <path d="M 110 125 L 235 360 L 335 245" fill="none" stroke="#FFFFFF" stroke-width="94" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#FFFFFF" shape-rendering="geometricPrecision">
+    <rect x="282" y="116" width="26" height="56" rx="13"/>
+    <rect x="322" y="98" width="26" height="92" rx="13"/>
+    <rect x="362" y="80" width="26" height="128" rx="13"/>
+    <rect x="402" y="98" width="26" height="92" rx="13"/>
+    <rect x="442" y="116" width="26" height="56" rx="13"/>
+  </g>
+</svg>

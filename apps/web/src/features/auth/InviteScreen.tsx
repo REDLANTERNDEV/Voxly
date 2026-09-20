@@ -143,11 +143,15 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
 
 export function TurnstileWidget({ siteKey, resetKey, onToken, onUnavailable }: { siteKey: string; resetKey: number; onToken: (token: string) => void; onUnavailable: () => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const onTokenRef = useRef(onToken);
+  const onUnavailableRef = useRef(onUnavailable);
+  onTokenRef.current = onToken;
+  onUnavailableRef.current = onUnavailable;
 
   useEffect(() => {
     let isActive = true;
     let widgetId: string | null = null;
-    onToken("");
+    onTokenRef.current("");
 
     loadTurnstile()
       .then((turnstile) => {
@@ -156,18 +160,18 @@ export function TurnstileWidget({ siteKey, resetKey, onToken, onUnavailable }: {
           sitekey: siteKey,
           theme: "auto",
           callback: (token) => {
-            if (isActive) onToken(token);
+            if (isActive) onTokenRef.current(token);
           },
           "expired-callback": () => {
-            if (isActive) onToken("");
+            if (isActive) onTokenRef.current("");
           },
           "error-callback": () => {
-            if (isActive) onUnavailable();
+            if (isActive) onUnavailableRef.current();
           }
         });
       })
       .catch(() => {
-        if (isActive) onUnavailable();
+        if (isActive) onUnavailableRef.current();
       });
 
     return () => {
@@ -176,7 +180,7 @@ export function TurnstileWidget({ siteKey, resetKey, onToken, onUnavailable }: {
         window.turnstile.remove(widgetId);
       }
     };
-  }, [onToken, onUnavailable, resetKey, siteKey]);
+  }, [resetKey, siteKey]);
 
   return <div className="turnstile-widget" ref={containerRef} />;
 }

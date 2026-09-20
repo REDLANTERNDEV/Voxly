@@ -13,6 +13,8 @@ const webAssets = [
   "public/brand/svg/voxly-wordmark-dark.svg",
   "public/brand/svg/voxly-wordmark-light.svg",
   "public/brand/web/apple-touch-icon.png",
+  "public/brand/web/favicon-dark.svg",
+  "public/brand/web/favicon-light.svg",
   "public/brand/web/favicon.svg",
   "public/brand/web/favicon.ico",
   "public/brand/web/og-image-1200x630.png",
@@ -32,7 +34,8 @@ describe("brand asset hierarchy", () => {
     }
 
     const html = readFileSync("index.html", "utf8");
-    assert.match(html, /brand\/web\/favicon\.svg/);
+    assert.match(html, /brand\/web\/favicon-dark\.svg/);
+    assert.match(html, /brand\/web\/favicon-light\.svg/);
     assert.match(html, /brand\/web\/favicon\.ico/);
     assert.match(html, /brand\/web\/favicon-32x32\.png/);
     assert.match(html, /brand\/web\/og-image-1200x630\.png/);
