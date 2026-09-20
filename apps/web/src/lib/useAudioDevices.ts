@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AudioErrorKey } from "./i18n.js";
+import { recordErrorOccurrence, type ErrorOccurrence } from "./errorOccurrences.js";
 import {
   enumerateAudioDevices,
   readAudioDevicePreference,
@@ -26,6 +27,8 @@ export interface UseAudioDevicesResult extends AudioDeviceCollection {
   selectedOutputId: string;
   loading: boolean;
   error: AudioErrorKey | "";
+  errorOccurrences: number;
+  errorRevision: number;
   unavailableSelections: AudioDevicePreferenceKind[];
   outputSelectionSupported: boolean;
   refresh(requestPermission?: boolean): Promise<AudioDeviceCollection>;
@@ -58,10 +61,16 @@ export function useAudioDevices({
   const [selectedOutputId, setSelectedOutputId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<AudioErrorKey | "">("");
+  const [errorOccurrence, setErrorOccurrence] = useState<ErrorOccurrence<AudioErrorKey> | null>(null);
   const [unavailableSelections, setUnavailableSelections] = useState<AudioDevicePreferenceKind[]>([]);
   const selectedInputRef = useRef("");
   const selectedOutputRef = useRef("");
   const outputSelectionRequestRef = useRef(0);
+  const clearError = useCallback(() => setError(""), []);
+  const reportError = useCallback((next: AudioErrorKey) => {
+    setError(next);
+    setErrorOccurrence((current) => recordErrorOccurrence(current, next));
+  }, []);
 
   useEffect(() => {
     const nextInput = userId && storage ? readAudioDevicePreference(storage, userId, "input") : "";
@@ -71,24 +80,24 @@ export function useAudioDevices({
     setSelectedInputId(nextInput);
     setSelectedOutputId(nextOutput);
     setUnavailableSelections([]);
-    setError("");
+    clearError();
     const requestId = ++outputSelectionRequestRef.current;
     void selectSharedAudioOutputDevice(nextOutput).catch(() => {
       if (requestId === outputSelectionRequestRef.current) {
-        setError("audioError.outputRestore");
+        reportError("audioError.outputRestore");
       }
     });
-  }, [storage, userId]);
+  }, [clearError, reportError, storage, userId]);
 
   const refresh = useCallback(async (requestPermission = false) => {
     if (!mediaDevices) {
       setDevices(emptyDevices);
-      setError("audioError.unavailable");
+      reportError("audioError.unavailable");
       return emptyDevices;
     }
 
     setLoading(true);
-    setError("");
+    clearError();
     try {
       const nextDevices = await enumerateAudioDevices(mediaDevices, { requestPermission });
       const nextInput = reconcileAudioDevicePreference(selectedInputRef.current, nextDevices.inputs);
@@ -113,12 +122,12 @@ export function useAudioDevices({
       }
       return nextDevices;
     } catch (cause) {
-      setError("audioError.load");
+      reportError("audioError.load");
       throw cause;
     } finally {
       setLoading(false);
     }
-  }, [mediaDevices, storage, userId]);
+  }, [clearError, mediaDevices, reportError, storage, userId]);
 
   useEffect(() => {
     if (!mediaDevices) return;
@@ -137,7 +146,7 @@ export function useAudioDevices({
 
   const selectOutput = useCallback(async (deviceId: string, mediaElements: readonly HTMLMediaElement[] = []) => {
     const requestId = ++outputSelectionRequestRef.current;
-    setError("");
+    clearError();
     try {
       await selectSharedAudioOutputDevice(deviceId, mediaElements);
       if (requestId !== outputSelectionRequestRef.current) return;
@@ -147,10 +156,10 @@ export function useAudioDevices({
       if (userId && storage) writeAudioDevicePreference(storage, userId, "output", deviceId);
     } catch (cause) {
       if (requestId !== outputSelectionRequestRef.current) return;
-      setError("audioError.outputChange");
+      reportError("audioError.outputChange");
       throw cause;
     }
-  }, [storage, userId]);
+  }, [clearError, reportError, storage, userId]);
 
   return {
     ...devices,
@@ -158,6 +167,8 @@ export function useAudioDevices({
     selectedOutputId,
     loading,
     error,
+    errorOccurrences: errorOccurrence?.count ?? 0,
+    errorRevision: errorOccurrence?.revision ?? 0,
     unavailableSelections,
     outputSelectionSupported: sharedAudioOutputSelectionSupported(),
     refresh,

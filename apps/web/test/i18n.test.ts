@@ -44,6 +44,8 @@ describe("frontend localization", () => {
     assert.equal(translate("tr", "notification.voiceErrorTitle"), "Ses sorunu");
     assert.equal(translate("en", "notification.dismiss"), "Dismiss notification");
     assert.equal(translate("tr", "notification.occurrences", { count: 3 }), "3 kez tekrarlandı");
+    assert.equal(translate("en", "audio.microphoneTestErrorTitle"), "Microphone monitoring failed");
+    assert.equal(translate("tr", "audio.microphoneTestErrorTitle"), "Mikrofon dinleme başlatılamadı");
   });
 
   it("localizes edited message timestamps", () => {

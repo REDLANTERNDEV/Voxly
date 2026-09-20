@@ -3299,6 +3299,13 @@ button.reply-quote:focus-visible .reply-quote-body {
   min-width: 0;
 }
 
+.inline-alert-title-row {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+}
+
 .inline-alert-copy strong { font-size: 12px; }
 .inline-alert-copy span { color: var(--muted); font-size: 11px; line-height: 1.4; }
 .inline-alert-actions { align-items: center; display: flex; gap: 4px; }

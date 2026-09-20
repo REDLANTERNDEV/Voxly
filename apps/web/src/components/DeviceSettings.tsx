@@ -1,8 +1,9 @@
 import type { DeviceSummary } from "@voxly/shared";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Translate } from "../app/types.js";
 import { fetchDevices, signOutDevice } from "../api.js";
 import { LinkDeviceDialog } from "../features/auth/LinkDeviceDialog.js";
+import { recordErrorOccurrence, type ErrorOccurrence } from "../lib/errorOccurrences.js";
 import { ConfirmDialog } from "./ui/Dialogs.js";
 import { LeaveIcon } from "./ui/Icons.js";
 import { InlineAlert } from "./ui/Notifications.js";
@@ -22,10 +23,18 @@ export function DeviceSettings({ t }: { t: Translate }) {
   const [devices, setDevices] = useState<DeviceSummary[] | null>(null);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
+  const [errorOccurrence, setErrorOccurrence] = useState<ErrorOccurrence<"load" | "sign-out"> | null>(null);
+  const errorHistoryRef = useRef<ErrorOccurrence<"load" | "sign-out"> | null>(null);
   const [linking, setLinking] = useState(false);
   // Signing a Device out cannot be undone from here — that Device has to link
   // again — so a mis-click deserves a question rather than a consequence.
   const [confirming, setConfirming] = useState<DeviceSummary | null>(null);
+  const reportError = useCallback((key: "load" | "sign-out", message: string) => {
+    const next = recordErrorOccurrence(errorHistoryRef.current, key);
+    errorHistoryRef.current = next;
+    setErrorOccurrence(next);
+    setError(message);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -33,9 +42,9 @@ export function DeviceSettings({ t }: { t: Translate }) {
       setDevices(response.devices);
       setError("");
     } catch {
-      setError(t("devices.loadFailed"));
+      reportError("load", t("devices.loadFailed"));
     }
-  }, [t]);
+  }, [reportError, t]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -48,17 +57,25 @@ export function DeviceSettings({ t }: { t: Translate }) {
       // revocation would leave a Device the member believes is gone.
       await load();
     } catch {
-      setError(t("devices.signOutFailed"));
+      reportError("sign-out", t("devices.signOutFailed"));
     } finally {
       setBusyId("");
     }
-  }, [load, t]);
+  }, [load, reportError, t]);
 
   return (
     <section className="theme-card device-card">
       <div className="theme-card-head"><span className="label">{t("devices.title")}</span></div>
       <p className="muted small">{t("devices.hint")}</p>
-      {error ? <InlineAlert title={t("notification.settingsErrorTitle")} message={error} dismissLabel={t("notification.dismiss")} onDismiss={() => setError("")} /> : null}
+      {error ? <InlineAlert
+        title={t("notification.settingsErrorTitle")}
+        message={error}
+        dismissLabel={t("notification.dismiss")}
+        occurrences={errorOccurrence?.count}
+        occurrenceLabel={t("notification.occurrences", { count: errorOccurrence?.count ?? 1 })}
+        revision={errorOccurrence?.revision}
+        onDismiss={() => setError("")}
+      /> : null}
       {devices === null && !error ? <p className="muted small">{t("devices.loading")}</p> : null}
       <button className="btn btn-ghost device-link-action" type="button" onClick={() => setLinking(true)}>
         {t("devices.linkDevice")}

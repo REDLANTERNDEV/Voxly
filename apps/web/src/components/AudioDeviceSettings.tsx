@@ -18,8 +18,12 @@ interface AudioDeviceSettingsProps {
   notificationSounds: NotificationSoundPreferences;
   microphoneTestActive: boolean;
   microphoneTestError: MicrophoneTestError;
+  microphoneTestErrorOccurrences: number;
+  microphoneTestErrorRevision: number;
   loading: boolean;
   error: string;
+  errorOccurrences: number;
+  errorRevision: number;
   contextError: string;
   unavailableSelections: AudioDevicePreferenceKind[];
   outputSelectionSupported: boolean;
@@ -47,8 +51,10 @@ interface AudioDeviceSettingsProps {
     testHint: string;
     testPermission: string;
     testUnavailable: string;
+    microphoneTestErrorTitle: string;
     errorTitle: string;
     dismissError: string;
+    occurrences(count: number): string;
     closeSettings: string;
   };
   onOpen(): Promise<unknown>;
@@ -94,6 +100,7 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
   const [isOpen, setIsOpen] = useState(false);
   const [testPending, setTestPending] = useState(false);
   const [dismissedStatus, setDismissedStatus] = useState("");
+  const [lastAction, setLastAction] = useState<"device" | "microphone-test" | null>(null);
   const [position, setPosition] = useState({ left: 8, top: 8, width: 320 });
   const noiseSuppressionLabelId = useId();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -156,20 +163,33 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
     };
   }, [close, isOpen]);
 
-  const deviceStatus = props.contextError || props.error || (props.unavailableSelections.length > 0 ? props.labels.unavailable : "");
+  const contextStatus = props.contextError;
+  const deviceStatus = props.error || (props.unavailableSelections.length > 0 ? props.labels.unavailable : "");
   const testStatus = props.microphoneTestError === "permission"
     ? props.labels.testPermission
     : props.microphoneTestError === "unavailable"
       ? props.labels.testUnavailable
       : "";
-  const status = deviceStatus || testStatus;
-  const previousStatusRef = useRef(status);
+  const source: "context" | "device" | "microphone-test" = lastAction === "microphone-test" && testStatus
+    ? "microphone-test"
+    : lastAction === "device" && deviceStatus
+      ? "device"
+      : contextStatus
+        ? "context"
+        : testStatus
+          ? "microphone-test"
+          : "device";
+  const status = source === "microphone-test" ? testStatus : source === "context" ? contextStatus : deviceStatus;
+  const statusRevision = source === "microphone-test" ? props.microphoneTestErrorRevision : source === "device" ? props.errorRevision : 0;
+  const statusOccurrences = source === "microphone-test" ? props.microphoneTestErrorOccurrences : source === "device" ? props.errorOccurrences : 1;
+  const statusIdentity = status ? `${source}:${status}:${statusRevision}` : "";
+  const previousStatusRef = useRef(statusIdentity);
   useEffect(() => {
-    if (previousStatusRef.current === status) return;
-    previousStatusRef.current = status;
+    if (previousStatusRef.current === statusIdentity) return;
+    previousStatusRef.current = statusIdentity;
     setDismissedStatus("");
-  }, [status]);
-  const visibleStatus = status === dismissedStatus ? "" : status;
+  }, [statusIdentity]);
+  const visibleStatus = statusIdentity === dismissedStatus ? "" : status;
 
   const fields = (
           <div className="audio-device-fields">
@@ -196,14 +216,29 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
             </div>
             <div className="microphone-test-control">
               <button className={`btn ${props.microphoneTestActive ? "btn-danger" : "btn-ghost"}`} type="button" disabled={testPending} aria-pressed={props.microphoneTestActive} onClick={() => {
+                setLastAction("microphone-test");
                 setTestPending(true);
                 void props.onToggleMicrophoneTest().finally(() => setTestPending(false));
               }}>{props.microphoneTestActive ? props.labels.stopTest : props.labels.startTest}</button>
               <span className="muted small">{props.labels.testHint}</span>
             </div>
+            {visibleStatus ? (
+              <InlineAlert
+                title={source === "microphone-test" ? props.labels.microphoneTestErrorTitle : props.labels.errorTitle}
+                message={visibleStatus}
+                dismissLabel={props.labels.dismissError}
+                occurrences={statusOccurrences}
+                occurrenceLabel={props.labels.occurrences(statusOccurrences)}
+                revision={statusRevision}
+                onDismiss={() => setDismissedStatus(statusIdentity)}
+              />
+            ) : null}
             <label className="form-field">
               <span>{props.labels.output}</span>
-              <select className="input" name="audioOutput" value={props.selectedOutputId} disabled={!props.outputSelectionSupported} onChange={(event) => void props.onSelectOutput(event.currentTarget.value).catch(() => undefined)}>
+              <select className="input" name="audioOutput" value={props.selectedOutputId} disabled={!props.outputSelectionSupported} onChange={(event) => {
+                setLastAction("device");
+                void props.onSelectOutput(event.currentTarget.value).catch(() => undefined);
+              }}>
                 <option value="">{props.outputSelectionSupported ? props.labels.systemDefault : props.labels.browserControlled}</option>
                 {props.outputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{audioDeviceDisplayName(device, props.labels.output, index)}</option>)}
               </select>
@@ -230,15 +265,10 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
                 </>
               ) : null}
             </div>
-            <button className="btn btn-ghost" type="button" disabled={props.loading} onClick={() => void props.onRefresh()}>{props.loading ? `${props.labels.refresh}…` : props.labels.refresh}</button>
-            {visibleStatus ? (
-              <InlineAlert
-                title={props.labels.errorTitle}
-                message={visibleStatus}
-                dismissLabel={props.labels.dismissError}
-                onDismiss={() => setDismissedStatus(visibleStatus)}
-              />
-            ) : null}
+            <button className="btn btn-ghost" type="button" disabled={props.loading} onClick={() => {
+              setLastAction("device");
+              void props.onRefresh();
+            }}>{props.loading ? `${props.labels.refresh}…` : props.labels.refresh}</button>
           </div>
   );
 

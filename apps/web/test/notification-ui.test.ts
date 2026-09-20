@@ -31,7 +31,8 @@ describe("notification presentation", () => {
     assert.match(settings, /initialSection\?: SettingsSection/);
     assert.match(settings, /contextError=\{props\.contextError \? props\.t\(props\.contextError\) : ""\}/);
     assert.match(audio, /<InlineAlert/);
-    assert.match(devices, /<InlineAlert/);
-    assert.match(recovery, /<InlineAlert/);
+    assert.match(devices, /<InlineAlert[\s\S]*occurrences=\{errorOccurrence\?\.count\}/);
+    assert.match(recovery, /<InlineAlert[\s\S]*occurrences=\{errorOccurrence\?\.count\}/);
+    assert.match(notifications(), /occurrences > 1[\s\S]*className="notification-count"/);
   });
 });

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createRecoveryCode, fetchRecoveryStatus } from "../api.js";
 import type { Translate } from "../app/types.js";
 import { RecoveryCodeReveal } from "../features/auth/RecoveryCode.js";
+import { recordErrorOccurrence, type ErrorOccurrence } from "../lib/errorOccurrences.js";
 import { InlineAlert } from "./ui/Notifications.js";
 
 /**
@@ -27,6 +28,15 @@ export function RecoverySettings({ t }: { t: Translate }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [errorOccurrence, setErrorOccurrence] = useState<ErrorOccurrence<"create"> | null>(null);
+  const errorHistoryRef = useRef<ErrorOccurrence<"create"> | null>(null);
+
+  const reportCreateError = useCallback((message: string) => {
+    const next = recordErrorOccurrence(errorHistoryRef.current, "create");
+    errorHistoryRef.current = next;
+    setErrorOccurrence(next);
+    setError(message);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -48,11 +58,11 @@ export function RecoverySettings({ t }: { t: Translate }) {
       setPresent(true);
       setConfirming(false);
     } catch {
-      setError(t("recovery.createFailed"));
+      reportCreateError(t("recovery.createFailed"));
     } finally {
       setBusy(false);
     }
-  }, [t]);
+  }, [reportCreateError, t]);
 
   if (revealed) {
     return (
@@ -69,7 +79,15 @@ export function RecoverySettings({ t }: { t: Translate }) {
     <section className="theme-card recovery-card">
       <div className="theme-card-head"><span className="label">{t("recovery.settingsTitle")}</span></div>
       <p className="muted small">{t("recovery.settingsHint")}</p>
-      {error ? <InlineAlert title={t("notification.settingsErrorTitle")} message={error} dismissLabel={t("notification.dismiss")} onDismiss={() => setError("")} /> : null}
+      {error ? <InlineAlert
+        title={t("notification.settingsErrorTitle")}
+        message={error}
+        dismissLabel={t("notification.dismiss")}
+        occurrences={errorOccurrence?.count}
+        occurrenceLabel={t("notification.occurrences", { count: errorOccurrence?.count ?? 1 })}
+        revision={errorOccurrence?.revision}
+        onDismiss={() => setError("")}
+      /> : null}
       {present === false ? <p className="small recovery-warning">{t("recovery.missing")}</p> : null}
       {present === true ? <p className="muted small">{t("recovery.present")}</p> : null}
       {/* Replacing signs every other Device out, so it asks first. Creating a

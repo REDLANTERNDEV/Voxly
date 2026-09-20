@@ -131,9 +131,7 @@ export function App() {
     leaveVoiceRef,
     activeTextRoomIdRef: chat.activeTextRoomIdRef
   });
-
   const musicQueues = useMusicQueue(realtime.socket);
-
   const localVoiceSpeaking = Boolean(
     audio.voice.activeRoomId
       && audio.voice.voiceSnapshots[audio.voice.activeRoomId]?.members
@@ -223,6 +221,8 @@ export function App() {
     notificationSounds: audio.notificationSounds,
     microphoneTestActive: audio.microphoneTest.active,
     microphoneTestError: audio.microphoneTest.error,
+    microphoneTestErrorOccurrences: audio.microphoneTest.errorOccurrences,
+    microphoneTestErrorRevision: audio.microphoneTest.errorRevision,
     drawer,
     theme,
     language,

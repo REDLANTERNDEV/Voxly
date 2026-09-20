@@ -135,10 +135,13 @@ export function NotificationViewport({ items, suspended = false, t, onDismiss, o
   );
 }
 
-export function InlineAlert({ title, message, dismissLabel, actionLabel, onAction, onDismiss }: {
+export function InlineAlert({ title, message, dismissLabel, occurrences = 1, occurrenceLabel, revision = 0, actionLabel, onAction, onDismiss }: {
   title: string;
   message: string;
   dismissLabel: string;
+  occurrences?: number;
+  occurrenceLabel?: string;
+  revision?: number;
   actionLabel?: string;
   onAction?: () => void;
   onDismiss: () => void;
@@ -146,7 +149,13 @@ export function InlineAlert({ title, message, dismissLabel, actionLabel, onActio
   return (
     <div className="inline-alert" role="alert">
       <span className="inline-alert-mark"><NotificationMark tone="danger" /></span>
-      <span className="inline-alert-copy"><strong>{title}</strong><span>{message}</span></span>
+      <span className="inline-alert-copy">
+        <span className="inline-alert-title-row">
+          <strong>{title}</strong>
+          {occurrences > 1 ? <span key={revision} className="notification-count" aria-label={occurrenceLabel}>×{occurrences}</span> : null}
+        </span>
+        <span>{message}</span>
+      </span>
       <span className="inline-alert-actions">
         {actionLabel && onAction ? <button className="inline-alert-action" type="button" onClick={onAction}>{actionLabel}</button> : null}
         <button className="inline-alert-close" type="button" aria-label={dismissLabel} onClick={onDismiss}><CloseIcon /></button>

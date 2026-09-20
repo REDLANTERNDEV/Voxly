@@ -52,4 +52,22 @@ describe("audio device settings permission flow", () => {
     assert.match(source, /max=\{MAX_NOTIFICATION_VOLUME_PERCENT\}/);
     assert.match(styles, /\.notification-sound-section\s*\{/);
   });
+
+  it("shows microphone test errors beside the test control before output settings", () => {
+    const source = readFileSync("src/components/AudioDeviceSettings.tsx", "utf8");
+    const microphoneTest = source.indexOf('className="microphone-test-control"');
+    const inlineError = source.indexOf("{visibleStatus ? (");
+    const outputSettings = source.indexOf('name="audioOutput"');
+
+    assert.ok(microphoneTest < inlineError && inlineError < outputSettings, "the microphone error must be visible before the member scrolls to output settings");
+  });
+
+  it("names and counts repeated microphone monitoring failures", () => {
+    const settings = readFileSync("src/components/AudioDeviceSettings.tsx", "utf8");
+    const microphoneTest = readFileSync("src/lib/useMicrophoneTest.ts", "utf8");
+
+    assert.match(microphoneTest, /recordErrorOccurrence/);
+    assert.match(settings, /source === "microphone-test" \? props\.labels\.microphoneTestErrorTitle/);
+    assert.match(settings, /source === "microphone-test" \? props\.microphoneTestErrorOccurrences/);
+  });
 });

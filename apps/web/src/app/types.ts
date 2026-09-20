@@ -77,6 +77,8 @@ export interface ShellModel {
   notificationSounds: NotificationSoundPreferences;
   microphoneTestActive: boolean;
   microphoneTestError: MicrophoneTestError;
+  microphoneTestErrorOccurrences: number;
+  microphoneTestErrorRevision: number;
   drawer: Drawer;
   theme: ThemeChoice;
   language: LanguageCode;
@@ -125,5 +127,6 @@ export interface VoiceChromeModel extends Pick<ShellModel,
   "activeVoiceRoomId" | "controls" | "voiceModeration" | "voiceError" | "voiceErrorRevision" | "voiceNotice" | "voiceNoticeRevision" |
   "visualTargets" | "voiceSnapshots" | "musicQueues" | "remoteStreams" | "peerConnectionStates" |
   "localPreviews" | "memberVolumes" | "screenVolumes" | "pendingLiveWatch" |
-  "audioDevices" | "audioLevels" | "microphoneTestActive" | "microphoneTestError"
+  "audioDevices" | "audioLevels" | "microphoneTestActive" | "microphoneTestError" |
+  "microphoneTestErrorOccurrences" | "microphoneTestErrorRevision"
 > {}

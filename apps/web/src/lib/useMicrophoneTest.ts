@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { recordErrorOccurrence, type ErrorOccurrence } from "./errorOccurrences.js";
 import { createMicrophoneInput, type MicrophoneInput } from "./microphoneInput.js";
 import { DEFAULT_NOISE_SUPPRESSION, microphoneCaptureChange, openMicrophoneCapture } from "./noiseSuppression.js";
 
@@ -13,6 +14,7 @@ export function useMicrophoneTest(
   const [active, setActive] = useState(false);
   const [monitorStream, setMonitorStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<MicrophoneTestError>(null);
+  const [errorOccurrence, setErrorOccurrence] = useState<ErrorOccurrence<Exclude<MicrophoneTestError, null>> | null>(null);
   const inputRef = useRef<MicrophoneInput | null>(null);
   const sharedStreamRef = useRef(sharedMonitorStream);
   const deviceIdRef = useRef(deviceId);
@@ -65,7 +67,9 @@ export function useMicrophoneTest(
     } catch (cause) {
       rawStream?.getTracks().forEach((track) => track.stop());
       if (generation === generationRef.current) {
-        setError(cause instanceof DOMException && cause.name === "NotAllowedError" ? "permission" : "unavailable");
+        const nextError = cause instanceof DOMException && cause.name === "NotAllowedError" ? "permission" : "unavailable";
+        setError(nextError);
+        setErrorOccurrence((current) => recordErrorOccurrence(current, nextError));
       }
       return false;
     }
@@ -113,5 +117,13 @@ export function useMicrophoneTest(
     };
   }, []);
 
-  return { active, error, monitorStream, start, stop };
+  return {
+    active,
+    error,
+    errorOccurrences: errorOccurrence?.count ?? 0,
+    errorRevision: errorOccurrence?.revision ?? 0,
+    monitorStream,
+    start,
+    stop
+  };
 }

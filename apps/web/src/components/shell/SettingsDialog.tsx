@@ -85,8 +85,12 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
                 notificationSounds={props.notificationSounds}
                 microphoneTestActive={props.microphoneTestActive}
                 microphoneTestError={props.microphoneTestError}
+                microphoneTestErrorOccurrences={props.microphoneTestErrorOccurrences}
+                microphoneTestErrorRevision={props.microphoneTestErrorRevision}
                 loading={props.audioDevices.loading}
                 error={props.audioDevices.error ? props.t(props.audioDevices.error) : ""}
+                errorOccurrences={props.audioDevices.errorOccurrences}
+                errorRevision={props.audioDevices.errorRevision}
                 contextError={props.contextError ? props.t(props.contextError) : ""}
                 unavailableSelections={props.audioDevices.unavailableSelections}
                 outputSelectionSupported={props.audioDevices.outputSelectionSupported}
@@ -114,8 +118,10 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
                   testHint: props.t("audio.testHint"),
                   testPermission: props.t("audio.testPermission"),
                   testUnavailable: props.t("audio.testUnavailable"),
+                  microphoneTestErrorTitle: props.t("audio.microphoneTestErrorTitle"),
                   errorTitle: props.t("notification.settingsErrorTitle"),
                   dismissError: props.t("notification.dismiss"),
+                  occurrences: (count) => props.t("notification.occurrences", { count }),
                   closeSettings: props.t("audio.closeSettings")
                 }}
                 onOpen={() => props.audioDevices.refresh(true)}
