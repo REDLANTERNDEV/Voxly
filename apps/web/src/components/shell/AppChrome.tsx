@@ -1,6 +1,6 @@
 import type { PresenceUser } from "@voxly/shared";
 import type { ReactNode } from "react";
-import { useCallback,useEffect,useMemo,useReducer,useState } from "react";
+import { useCallback,useEffect,useMemo,useReducer,useRef,useState } from "react";
 import { serverPath } from "../../app/navigation.js";
 import { activeServerRole } from "../../app/presentation.js";
 import type { MemberAction,ShellActions,ShellModel } from "../../app/types.js";
@@ -12,6 +12,7 @@ import type { AppNotification } from "../../lib/notifications.js";
 import { contextMenuReducer,createContextMenuDescriptor } from "../../lib/contextMenu.js";
 import { type TranslationKey } from "../../lib/i18n.js";
 import { countPeople } from "../../lib/memberDirectory.js";
+import { settingsRequestEvent,type RequestedSettingsSection } from "../../lib/settingsNavigation.js";
 import { ChannelRail } from "./ChannelRail.js";
 import { MemberPanel } from "./MemberPanel.js";
 import { SettingsDialog,type SettingsSection } from "./SettingsDialog.js";
@@ -26,6 +27,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
   const [pendingMemberAction, setPendingMemberAction] = useState<{ user: PresenceUser; roomId?: string; action: MemberAction } | null>(null);
   const [activeActionMenu, dispatchActionMenu] = useReducer(contextMenuReducer, null);
   const notifications = useNotificationCenter();
+  const deletionRequestRevisionRef = useRef(props.deletionRequestRevision);
   const closeActionMenu = useCallback(() => dispatchActionMenu({ type: "close" }), []);
   const openSettings = useCallback((section: SettingsSection = "account", contextError: TranslationKey | "" = "") => {
     setSettingsSection(section);
@@ -64,6 +66,12 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
   }, [closeActionMenu, props.activeServerId, props.currentRoom?.id, props.drawer, props.route.name]);
 
   useEffect(() => {
+    const handleSettingsRequest = (event: Event) => openSettings((event as CustomEvent<RequestedSettingsSection>).detail);
+    window.addEventListener(settingsRequestEvent, handleSettingsRequest);
+    return () => window.removeEventListener(settingsRequestEvent, handleSettingsRequest);
+  }, [openSettings]);
+
+  useEffect(() => {
     if (!props.voiceError) return;
     notifications.push({
       id: `voice-error:${props.voiceError}`,
@@ -85,6 +93,18 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
       timeoutMs: 5_200
     });
   }, [notifications.push, props.voiceNotice, props.voiceNoticeRevision]);
+
+  useEffect(() => {
+    if (props.deletionRequestRevision === deletionRequestRevisionRef.current) return;
+    deletionRequestRevisionRef.current = props.deletionRequestRevision;
+    notifications.push({
+      id: `account-deletion-request:${props.deletionRequestRevision}`,
+      tone: "danger",
+      titleKey: "notification.accountDeletionRequestTitle",
+      messageKey: "notification.accountDeletionRequestCopy",
+      timeoutMs: null
+    });
+  }, [notifications.push, props.deletionRequestRevision]);
 
   const handleNotificationAction = useCallback((item: AppNotification) => {
     if (item.action === "open-audio-settings") openSettings("audio", item.messageKey);

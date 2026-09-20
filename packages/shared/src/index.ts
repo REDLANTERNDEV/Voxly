@@ -85,6 +85,7 @@ export interface ChatMessageReply {
   messageId: string;
   userId: string;
   nickname: string;
+  authorDeleted: boolean;
   body: string;
 }
 
@@ -96,6 +97,7 @@ export interface ChatMessage {
   roomId: string;
   userId: string;
   nickname: string;
+  authorDeleted: boolean;
   body: string;
   createdAt: string;
   editedAt: string | null;
@@ -678,6 +680,8 @@ export type MusicCommandAck =
   };
 
 export interface ServerToClientEvents {
+  "account:deleted": (payload: { reason: "request_approved" | "owner_initiated" }) => void;
+  "account:deletionRequestCreated": (payload: { requestId: string }) => void;
   "presence:snapshot": (users: PresenceUser[]) => void;
   "presence:online": (user: PresenceUser) => void;
   "presence:offline": (userId: string) => void;
@@ -706,6 +710,7 @@ export interface ServerToClientEvents {
   "server:accessRevoked": (payload: { serverId: string; reason: "banned" | "kicked" }) => void;
   "server:directoryChanged": (payload: { serverId: string }) => void;
   "server:memberUpdated": (payload: { serverId: string; user: PresenceUser }) => void;
+  "server:memberDeleted": (payload: { serverId: string; userId: string }) => void;
   "server:updated": (payload: { serverId: string; name: string }) => void;
   "server:afkUpdated": (payload: { serverId: string; afkTimeoutMinutes: AfkTimeoutMinutes }) => void;
   /**

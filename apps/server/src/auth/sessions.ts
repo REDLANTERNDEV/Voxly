@@ -242,10 +242,10 @@ function authenticate(sqlite: DatabaseSync, sessionToken: string | undefined): A
     return { status: "unauthorized" };
   }
 
-  const user = one<SessionUserRow>(sqlite, "select id, nickname, role, banned_at, is_bot from users where id = ?", [
+  const user = one<SessionUserRow & { deleted_at: string | null }>(sqlite, "select id, nickname, role, banned_at, is_bot, deleted_at from users where id = ?", [
     session.user_id
   ]);
-  if (!user || user.banned_at) {
+  if (!user || user.banned_at || user.deleted_at) {
     return { status: "unauthorized" };
   }
 

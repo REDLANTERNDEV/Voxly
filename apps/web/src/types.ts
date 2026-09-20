@@ -100,3 +100,37 @@ export interface OwnerSession {
   expiresAt: string;
   revokedAt: string | null;
 }
+
+export interface AccountDeletionRequest {
+  id: string;
+  status: "pending" | "cancelled" | "rejected" | "approved";
+  requestedAt: string;
+  resolvedAt: string | null;
+}
+
+export interface OwnerAccountMembership {
+  serverId: string;
+  serverName: string;
+  nickname: string;
+  role: "owner" | "member";
+  state: "active" | "banned" | "removed";
+}
+
+export interface OwnerDeletionRequest {
+  id: string;
+  userId: string;
+  nickname: string;
+  status: "active" | "banned";
+  requestedAt: string;
+  memberships: OwnerAccountMembership[];
+}
+
+export interface OwnerAccount {
+  id: string;
+  nickname: string;
+  role: "owner" | "member";
+  bannedAt: string | null;
+  isBot: boolean;
+  deletedAt: string | null;
+  serverCount: number;
+}

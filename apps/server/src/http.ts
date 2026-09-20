@@ -41,6 +41,8 @@ export interface RealtimeModeration {
   moveVoice: (serverId: string, userId: string, targetRoomId: string) => boolean;
   /** Evict every live socket for a user, across all servers. Used by the global ban. */
   disconnectUser: (userId: string) => void;
+  /** Tell every live Device why the account ended, then close its sockets. */
+  terminateAccount: (userId: string, reason: "request_approved" | "owner_initiated") => void;
   /**
    * Evict only the sockets belonging to one session. A member signing out one
    * of their own Devices must not drop the others.

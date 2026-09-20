@@ -5,7 +5,18 @@ export const users = sqliteTable("users", {
   nickname: text("nickname").notNull(),
   role: text("role", { enum: ["owner", "member"] }).notNull(),
   bannedAt: text("banned_at"),
-  isBot: integer("is_bot", { mode: "boolean" }).notNull().default(false)
+  isBot: integer("is_bot", { mode: "boolean" }).notNull().default(false),
+  deletedAt: text("deleted_at"),
+  deletionSource: text("deletion_source", { enum: ["request_approved", "owner_initiated"] })
+});
+
+export const accountDeletionRequests = sqliteTable("account_deletion_requests", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  status: text("status", { enum: ["pending", "cancelled", "rejected", "approved"] }).notNull(),
+  requestedAt: text("requested_at").notNull(),
+  resolvedAt: text("resolved_at"),
+  resolvedByUserId: text("resolved_by_user_id")
 });
 
 export const invites = sqliteTable("invites", {

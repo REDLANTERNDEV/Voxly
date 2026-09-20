@@ -10,6 +10,7 @@ interface RealtimeHandlers {
   presenceStatus(serverId: string, userId: string, status: PresenceStatus): void;
   directoryChanged(serverId: string): void;
   memberUpdated(serverId: string, user: PresenceUser): void;
+  memberDeleted(serverId: string, userId: string): void;
   serverUpdated(serverId: string, name: string): void;
   afkUpdated(serverId: string, afkTimeoutMinutes: AfkTimeoutMinutes): void;
   roomsChanged(serverId: string, deletedRoomId: string | undefined): void;
@@ -18,6 +19,8 @@ interface RealtimeHandlers {
   messageUpdated(message: ChatMessage): void;
   messageDeleted(roomId: string, messageId: string): void;
   accessRevoked(serverId: string): void;
+  accountDeleted(reason: "request_approved" | "owner_initiated"): void;
+  deletionRequestCreated(requestId: string): void;
 }
 
 export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, leaveVoiceRef, moveVoiceRef, forceLeaveNoticeRef, checkStillSignedInRef }: {
@@ -60,6 +63,7 @@ export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, lea
     next.on("presence:serverStatus", ({ serverId, userId, status }) => handlersRef.current.presenceStatus(serverId, userId, status));
     next.on("server:directoryChanged", ({ serverId }) => handlersRef.current.directoryChanged(serverId));
     next.on("server:memberUpdated", ({ serverId, user: nextUser }) => handlersRef.current.memberUpdated(serverId, nextUser));
+    next.on("server:memberDeleted", ({ serverId, userId }) => handlersRef.current.memberDeleted(serverId, userId));
     next.on("server:updated", ({ serverId, name }) => handlersRef.current.serverUpdated(serverId, name));
     next.on("server:afkUpdated", ({ serverId, afkTimeoutMinutes }) => handlersRef.current.afkUpdated(serverId, afkTimeoutMinutes));
     next.on("server:roomsChanged", ({ serverId, deletedRoomId }) => handlersRef.current.roomsChanged(serverId, deletedRoomId));
@@ -77,6 +81,8 @@ export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, lea
     });
     next.on("voice:moveTo", ({ roomId }) => moveVoiceRef.current(roomId));
     next.on("server:accessRevoked", ({ serverId }) => handlersRef.current.accessRevoked(serverId));
+    next.on("account:deleted", ({ reason }) => handlersRef.current.accountDeleted(reason));
+    next.on("account:deletionRequestCreated", ({ requestId }) => handlersRef.current.deletionRequestCreated(requestId));
     return () => { next.disconnect(); setSocket(null); };
   }, [user]);
 

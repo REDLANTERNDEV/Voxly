@@ -3,13 +3,14 @@ import { useCallback,useEffect,useRef,useState,type ReactNode } from "react";
 import { logout } from "./api.js";
 import { AppRoutes } from "./app/AppRoutes.js";
 import { AuthenticatedAppSurface } from "./app/AuthenticatedAppSurface.js";
-import { applyThemeChoice,parseRoute,readThemeChoice,saveThemeChoice,serverPath } from "./app/navigation.js";
-import type { Drawer,LiveWatchRequest,Route,ShellActions,ShellModel,ThemeChoice,Translate,VoiceJoinRequest } from "./app/types.js";
+import { parseRoute,serverPath } from "./app/navigation.js";
+import type { Drawer,LiveWatchRequest,Route,ShellActions,ShellModel,VoiceJoinRequest } from "./app/types.js";
 import { useListenerAudio } from "./app/useListenerAudio.js";
 import { forceLeaveNoticeKey } from "./app/presentation.js";
 import { useRealtimeSync } from "./app/useRealtimeSync.js";
 import { useSessionController } from "./app/useSessionController.js";
 import { useWorkspaceController } from "./app/useWorkspaceController.js";
+import { usePresentationPreferences } from "./app/usePresentationPreferences.js";
 import { useChatController } from "./features/chat/useChatController.js";
 import { useIdlePresence } from "./app/useIdlePresence.js";
 import { AudioPlaybackRecovery,GlobalVoiceAudio,RemoteAudio } from "./features/voice/VoicePresentation.js";
@@ -17,7 +18,6 @@ import { joinVoiceWithAudioUnlock } from "./features/voice/voiceActions.js";
 import { combineOutputVolume } from "./lib/audioLevels.js";
 import { releaseUnusedSharedAudioOutput,unlockSharedAudioOutput } from "./lib/audioOutput.js";
 import { readRoomHistory,type RoomHistory } from "./lib/channelState.js";
-import { readLanguageChoice,saveLanguageChoice,translate,type LanguageCode } from "./lib/i18n.js";
 import { requestMusicCommand } from "./lib/musicBot.js";
 import { useMusicQueue } from "./lib/useMusicQueue.js";
 import { defaultServerId } from "./lib/navigation.js";
@@ -25,8 +25,6 @@ import { DEFAULT_VOLUME_PERCENT } from "./lib/voiceVolume.js";
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
   const [drawer, setDrawer] = useState<Drawer>(null);
-  const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
-  const [language, setLanguage] = useState<LanguageCode>(() => readLanguageChoice());
   const [roomHistory, setRoomHistory] = useState<RoomHistory>(() => readRoomHistory(window.localStorage));
   const routeRef = useRef(route);
   const roomServerIdsRef = useRef<Record<string, string>>({});
@@ -34,6 +32,7 @@ export function App() {
   const leaveVoiceRef = useRef<() => void>(() => undefined);
   const moveVoiceRef = useRef<(roomId: string) => void>(() => undefined);
   const [forceLeaveNotice, setForceLeaveNotice] = useState<{ reason: VoiceForceLeaveReason; revision: number } | null>(null);
+  const [deletionRequestRevision, setDeletionRequestRevision] = useState(0);
   const forceLeaveNoticeRef = useRef<(reason: VoiceForceLeaveReason) => void>(() => undefined);
   forceLeaveNoticeRef.current = (reason) => setForceLeaveNotice((current) => ({ reason, revision: (current?.revision ?? 0) + 1 }));
   const checkStillSignedInRef = useRef<() => Promise<void>>(async () => undefined);
@@ -46,15 +45,6 @@ export function App() {
     setRoute(nextRoute);
     setDrawer(null);
   }, []);
-  const t = useCallback<Translate>((key, values) => translate(language, key, values), [language]);
-  const changeLanguage = useCallback((next: LanguageCode) => {
-    saveLanguageChoice(next);
-    setLanguage(next);
-  }, []);
-  const changeTheme = useCallback((next: ThemeChoice) => {
-    saveThemeChoice(next);
-    setTheme(next);
-  }, []);
 
   useEffect(() => {
     const handlePop = () => {
@@ -65,9 +55,9 @@ export function App() {
     window.addEventListener("popstate", handlePop);
     return () => window.removeEventListener("popstate", handlePop);
   }, []);
-  useEffect(() => applyThemeChoice(theme), [theme]);
-  useEffect(() => { document.documentElement.lang = language; }, [language]);
   const session = useSessionController(route, navigate);
+  const preferences = usePresentationPreferences(session.user?.id ?? null);
+  const { theme,language,timeFormat,t,changeLanguage,changeTheme,changeTimeFormat } = preferences;
   checkStillSignedInRef.current = session.checkStillSignedIn;
   const workspace = useWorkspaceController({
     user: session.user,
@@ -111,6 +101,7 @@ export function App() {
         workspace.applyMemberUpdate(serverId, user);
         chat.applyMemberRename(serverId, user);
       },
+      memberDeleted: (serverId, userId) => chat.applyMemberDeletion(serverId, userId),
       serverUpdated: workspace.applyServerName,
       afkUpdated: workspace.applyAfkTimeout,
       roomsChanged: (serverId, roomId) => { void workspace.refreshRooms(serverId, roomId).catch(() => undefined); },
@@ -118,7 +109,9 @@ export function App() {
       messageNew: (message) => { chat.applyNewMessage(message); notifyMessageRef.current(message); },
       messageUpdated: chat.applyUpdatedMessage,
       messageDeleted: chat.applyDeletedMessage,
-      accessRevoked: workspace.revokeAccess
+      accessRevoked: workspace.revokeAccess,
+      accountDeleted: session.finishDeletedAccount,
+      deletionRequestCreated: () => setDeletionRequestRevision((current) => current + 1)
     }
   });
   const audio = useListenerAudio({
@@ -219,12 +212,15 @@ export function App() {
     noiseSuppression: audio.noiseSuppression,
     noiseSuppressionSupported: audio.noiseSuppressionSupported,
     notificationSounds: audio.notificationSounds,
+    deletionRequestRevision,
+    externalPreviews: preferences.externalPreviews,
     microphoneTestActive: audio.microphoneTest.active,
     microphoneTestError: audio.microphoneTest.error,
     microphoneTestErrorOccurrences: audio.microphoneTest.errorOccurrences,
     microphoneTestErrorRevision: audio.microphoneTest.errorRevision,
     drawer,
     theme,
+    timeFormat,
     language,
     t,
     currentRoom: workspace.currentRoom,
@@ -248,6 +244,7 @@ export function App() {
     onMoveMember: workspace.actions.moveMember,
     onDrawerChange: setDrawer,
     onThemeChange: changeTheme,
+    onTimeFormatChange: changeTimeFormat,
     onLanguageChange: changeLanguage,
     onJoinVoice,
     onWatchLive: (request: LiveWatchRequest) => { audio.setPendingLiveWatch(request); navigate(serverPath(request.serverId, "voice", request.roomId)); },
@@ -261,6 +258,7 @@ export function App() {
     onOutputVolumeChange: (volume: number) => audio.changeAudioLevel("output", volume),
     onNoiseSuppressionChange: audio.changeNoiseSuppression,
     onNotificationSoundsChange: audio.changeNotificationSounds,
+    onExternalPreviewChange: preferences.changeExternalPreview,
     onToggleMicrophoneTest: audio.toggleMicrophoneTest,
     onCloseAudioSettings: () => { void audio.stopMicrophoneTest(); },
     onToggleControl: audio.voice.toggleControl,
@@ -282,6 +280,7 @@ export function App() {
     shellProps={shellProps}
     messages={route.name === "text" ? chat.messagesByRoom[route.roomId] ?? [] : []}
     language={language}
+    timeFormat={timeFormat}
     t={t}
     renderSurface={renderSurface}
     turnstileSiteKey={session.appConfig.turnstile?.siteKey ?? null}

@@ -1,6 +1,6 @@
 import type { PresenceUser } from "@voxly/shared";
 import { useCallback,useEffect,useMemo,useReducer,useRef,useState } from "react";
-import { ApiError,createAccessLink,fetchServerOwnerData,revokeServerInvite } from "../../api.js";
+import { ApiError,createAccessLink,fetchOwnerDeletionRequests,fetchServerOwnerData,revokeServerInvite } from "../../api.js";
 import { serverPath } from "../../app/navigation.js";
 import { formatShortDate,inviteLifecycleKey,isInviteRevocable,memberRoleLabel } from "../../app/presentation.js";
 import type { ShellActions,ShellModel } from "../../app/types.js";
@@ -16,23 +16,26 @@ import { inviteReference,resolveInviteOrigin } from "../../lib/invites.js";
 import type { OwnerInvite,ServerMember } from "../../types.js";
 import { InviteComposer } from "../invites/InviteComposer.js";
 import { OwnerServerContext,SecretLinkDisplay } from "./OwnerServerContext.js";
+import { OwnerAccountsSection,OwnerDeletionRequestsSection } from "./OwnerAccountSections.js";
 
 type OwnerPanelProps = Pick<ShellModel,
   "user" | "currentNickname" | "servers" | "activeServerId" | "rooms" | "appConfig" |
-  "roomHistory" | "language" | "t"
+  "roomHistory" | "language" | "timeFormat" | "deletionRequestRevision" | "t"
 > & Pick<ShellActions,
   "onNavigate" | "onCreateServer" |
   "onUpdateServerName" | "onSetAfkTimeout" | "onDeleteServer" | "onModerateMember" |
   "onVoiceModeration" | "onUpdateMemberNickname" | "onUpdateMemberPermissions"
 >;
 
-type OwnerSection = "overview" | "invites" | "members" | "server";
+type OwnerSection = "overview" | "invites" | "members" | "server" | "deletionRequests" | "accounts";
 
-const ownerSections: Array<{ id: OwnerSection; titleKey: "owner.sectionOverview" | "owner.invites" | "common.members" | "owner.serverContextTitle" }> = [
+const ownerSections: Array<{ id: OwnerSection; titleKey: "owner.sectionOverview" | "owner.invites" | "common.members" | "owner.serverContextTitle" | "ownerAccounts.deletionRequests" | "ownerAccounts.accounts"; installationOwnerOnly?: boolean }> = [
   { id: "overview", titleKey: "owner.sectionOverview" },
   { id: "invites", titleKey: "owner.invites" },
   { id: "members", titleKey: "common.members" },
-  { id: "server", titleKey: "owner.serverContextTitle" }
+  { id: "server", titleKey: "owner.serverContextTitle" },
+  { id: "deletionRequests", titleKey: "ownerAccounts.deletionRequests", installationOwnerOnly: true },
+  { id: "accounts", titleKey: "ownerAccounts.accounts", installationOwnerOnly: true }
 ];
 
 const memberMenuWidth = 232;
@@ -44,6 +47,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
   const [accessLink, setAccessLink] = useState<{ nickname: string; token: string; expiresAt: string } | null>(null);
   const [status, setStatus] = useState("");
   const [deletingServer, setDeletingServer] = useState(false);
+  const [deletionRequestCount, setDeletionRequestCount] = useState(0);
   const [pendingAction, setPendingAction] = useState<{ title: string; copy: string; confirmLabel: string; perform: () => Promise<void> } | null>(null);
   const [nicknameTarget, setNicknameTarget] = useState<PresenceUser | null>(null);
   const [activeMenu, dispatchMenu] = useReducer(contextMenuReducer, null);
@@ -71,6 +75,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
   const ownerChatPath = ownerTextRoom
     ? serverPath(props.activeServerId, "text", ownerTextRoom.id)
     : `/app/server/${encodeURIComponent(props.activeServerId)}/owner`;
+  const visibleOwnerSections = ownerSections.filter((item) => !item.installationOwnerOnly || props.user.role === "owner");
 
   const reload = useCallback(async () => {
     const requestId = ++reloadRequestRef.current;
@@ -94,6 +99,13 @@ export function OwnerPanel(props: OwnerPanelProps) {
   }, [reload]);
 
   useEffect(() => closeMenu(), [closeMenu, section, props.activeServerId]);
+
+  useEffect(() => {
+    if (props.user.role !== "owner") return;
+    void fetchOwnerDeletionRequests()
+      .then((response) => setDeletionRequestCount(response.requests.length))
+      .catch(() => undefined);
+  }, [props.deletionRequestRevision, props.user.role]);
 
   // Counted over people: the Music bot is a member of the server but not one of
   // the members these figures are read as. It stays in the table below.
@@ -133,7 +145,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
       <aside className="dash-sidebar">
         <BrandLockup subtitle={props.t("owner.panel")} href={ownerChatPath} onNavigate={props.onNavigate} />
         <nav className="dash-nav" aria-label={props.t("owner.panel")}>
-          {ownerSections.map((item) => (
+          {visibleOwnerSections.map((item) => (
             <button
               className={`dash-nav-item ${section === item.id ? "is-active" : ""}`}
               type="button"
@@ -142,6 +154,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
               onClick={() => setSection(item.id)}
             >
               {props.t(item.titleKey)}
+              {item.id === "deletionRequests" && deletionRequestCount > 0 ? <span className="owner-alert-badge">{deletionRequestCount}</span> : null}
             </button>
           ))}
         </nav>
@@ -155,7 +168,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
         <header className="dash-topbar">
           <div className="dash-topbar-copy">
             <p className="label">{serverName}</p>
-            <h1>{props.t(ownerSections.find((item) => item.id === section)?.titleKey ?? "owner.title")}</h1>
+            <h1>{props.t(visibleOwnerSections.find((item) => item.id === section)?.titleKey ?? "owner.title")}</h1>
           </div>
           <div className="dash-topbar-actions">
             <label className="dash-server-switch" htmlFor="dashServerSelect">
@@ -260,7 +273,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
                           : props.t("invite.usedOfLimit", { used: invite.usedCount, limit: invite.maxUses })}</span>
                         <StatusPill tone={isInviteRevocable(invite) ? "online" : "warn"}>{props.t(inviteLifecycleKey(invite))}</StatusPill>
                       </span>
-                      <span className="dash-cell" role="cell">{formatShortDate(invite.expiresAt, props.language, props.t)}</span>
+                      <span className="dash-cell" role="cell">{formatShortDate(invite.expiresAt, props.language, props.t, props.timeFormat)}</span>
                       <span className="dash-cell is-actions" role="cell">
                         <button className="btn btn-ghost" type="button" disabled={!isInviteRevocable(invite)} onClick={() => setPendingAction({
                           title: props.t("owner.revokeInviteTitle"),
@@ -413,7 +426,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
               <div className="dash-callout" aria-live="polite">
                 <strong>{props.t("owner.accessLinkFor", { nickname: accessLink.nickname })}</strong>
                 <SecretLinkDisplay key={accessLinkUrl} value={accessLinkUrl} t={props.t} />
-                <p className="muted small">{props.t("owner.accessLinkCopy", { expiry: formatShortDate(accessLink.expiresAt, props.language, props.t) })}</p>
+                <p className="muted small">{props.t("owner.accessLinkCopy", { expiry: formatShortDate(accessLink.expiresAt, props.language, props.t, props.timeFormat) })}</p>
                 <button className="btn btn-ghost" type="button" onClick={() => void navigator.clipboard?.writeText(accessLinkUrl)}>
                   <CopyIcon />
                   <span>{props.t("common.copy")}</span>
@@ -435,6 +448,18 @@ export function OwnerPanel(props: OwnerPanelProps) {
             onRequestDelete={() => setDeletingServer(true)}
           />
         ) : null}
+
+        {section === "deletionRequests" && props.user.role === "owner" ? (
+          <OwnerDeletionRequestsSection
+            language={props.language}
+            timeFormat={props.timeFormat}
+            revision={props.deletionRequestRevision}
+            t={props.t}
+            onCountChange={setDeletionRequestCount}
+          />
+        ) : null}
+
+        {section === "accounts" && props.user.role === "owner" ? <OwnerAccountsSection t={props.t} /> : null}
 
         {pendingAction ? <ConfirmDialog cancelLabel={props.t("common.cancel")}
           title={pendingAction.title}

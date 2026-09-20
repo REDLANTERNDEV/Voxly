@@ -8,7 +8,7 @@ import { type LanguageCode,type TranslationKey } from "../../lib/i18n.js";
 const landingPrincipleKeys = ["privateAccess", "selfHosted", "lowFootprint"] as const;
 export function LandingPage({ language, analytics, signedOutReason = "", t, onLanguageChange, onNavigate }: {
   /** Why the member is here rather than in the app, when it is worth saying. */
-  signedOutReason?: "" | "reused" | "revoked"; language: LanguageCode; analytics: AnalyticsSettings | null; t: Translate; onLanguageChange: (language: LanguageCode) => void; onNavigate: (path: string) => void }) {
+  signedOutReason?: "" | "reused" | "revoked" | "request_approved" | "owner_initiated"; language: LanguageCode; analytics: AnalyticsSettings | null; t: Translate; onLanguageChange: (language: LanguageCode) => void; onNavigate: (path: string) => void }) {
   // Analytics arrive with /api/config, so this runs once the operator's
   // configuration is known and stays a no-op when none is configured.
   useEffect(() => trackLandingView(analytics), [analytics]);
@@ -19,7 +19,13 @@ export function LandingPage({ language, analytics, signedOutReason = "", t, onLa
           a moment ago is owed the difference (ADR-0015). */}
       {signedOutReason ? (
         <p className="landing-signed-out" role="alert">
-          {t(signedOutReason === "reused" ? "session.reused" : "session.revoked")}
+          {t(signedOutReason === "reused"
+            ? "session.reused"
+            : signedOutReason === "request_approved"
+              ? "session.accountDeletionApproved"
+              : signedOutReason === "owner_initiated"
+                ? "session.accountDeletedByOwner"
+                : "session.revoked")}
         </p>
       ) : null}
       <header className="landing-nav" style={{ viewTransitionName: "persistent-nav" }}>

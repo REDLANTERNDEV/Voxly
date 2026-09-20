@@ -53,7 +53,8 @@ export function dumpTables(sqlite: DatabaseSync) {
     messages: all(sqlite, "select * from messages"),
     ownerClaims: all(sqlite, "select * from owner_claims"),
     accessClaims: all(sqlite, "select * from access_claims"),
-    auditEvents: all(sqlite, "select * from audit_events")
+    auditEvents: all(sqlite, "select * from audit_events"),
+    accountDeletionRequests: all(sqlite, "select * from account_deletion_requests")
   };
 }
 
@@ -208,9 +209,20 @@ function migrate(sqlite: DatabaseSync) {
       consumed_at text
     );
 
+    create table if not exists account_deletion_requests (
+      id text primary key,
+      user_id text not null,
+      status text not null check (status in ('pending', 'cancelled', 'rejected', 'approved')),
+      requested_at text not null,
+      resolved_at text,
+      resolved_by_user_id text
+    );
+
   `);
 
   addColumnIfMissing(sqlite, "users", "is_bot", "integer not null default 0");
+  addColumnIfMissing(sqlite, "users", "deleted_at", "text");
+  addColumnIfMissing(sqlite, "users", "deletion_source", "text");
   addColumnIfMissing(sqlite, "invites", "revoked_at", "text");
   addColumnIfMissing(sqlite, "invites", "label", "text");
   addColumnIfMissing(sqlite, "messages", "edited_at", "text");
@@ -260,6 +272,8 @@ function migrate(sqlite: DatabaseSync) {
       on invite_uses (invite_id, used_at);
     create index if not exists idx_messages_room_created
       on messages (room_id, created_at desc);
+    create unique index if not exists idx_account_deletion_requests_pending
+      on account_deletion_requests (user_id) where status = 'pending';
   `);
 
   const now = new Date().toISOString();

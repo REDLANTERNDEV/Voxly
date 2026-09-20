@@ -13,7 +13,7 @@ export function useSessionController(route: Route, navigate: (path: string) => v
   const [user, setUser] = useState<PublicUser | null>(null);
   const [authState, setAuthState] = useState<LoadState>("loading");
   /** Empty unless the member was signed out for a reason they should be told. */
-  const [signedOutReason, setSignedOutReason] = useState<"" | "reused" | "revoked">("");
+  const [signedOutReason, setSignedOutReason] = useState<"" | "reused" | "revoked" | "request_approved" | "owner_initiated">("");
   const [appConfig, setAppConfig] = useState<AppConfigResponse>({ clientVersion: null, publicUrl: null, turnstile: null, analytics: null });
   const [rtcConfig, setRtcConfig] = useState<RtcConfigResponse>({ iceServers: [], expiresAt: null });
   const [rtcConfigReady, setRtcConfigReady] = useState(false);
@@ -37,6 +37,12 @@ export function useSessionController(route: Route, navigate: (path: string) => v
     setUser(null);
     setAuthState("ready");
   }, []);
+
+  const finishDeletedAccount = useCallback((reason: "request_approved" | "owner_initiated") => {
+    setSignedOutReason(reason);
+    clearAuthentication();
+    navigate("/");
+  }, [clearAuthentication, navigate]);
 
   /**
    * Ask again whether this Device is still signed in.
@@ -139,5 +145,5 @@ export function useSessionController(route: Route, navigate: (path: string) => v
     return () => { mounted = false; };
   }, []);
 
-  return { user, authState, appConfig, rtcConfig, rtcConfigReady, rtcConfigError, rtcConfigErrorRevision, signedOutReason, checkStillSignedIn, completeAuthentication, clearAuthentication };
+  return { user, authState, appConfig, rtcConfig, rtcConfigReady, rtcConfigError, rtcConfigErrorRevision, signedOutReason, checkStillSignedIn, completeAuthentication, clearAuthentication, finishDeletedAccount };
 }

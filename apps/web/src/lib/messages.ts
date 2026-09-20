@@ -1,17 +1,24 @@
 import type { UserRole } from "@voxly/shared";
+import { timeFormatOptions,type TimeFormatPreference } from "./timeFormat.js";
 
-export function formatMessageDateTime(value: string, language: string) {
-  return new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "medium" }).format(new Date(value));
+export function formatMessageDateTime(value: string, language: string, timeFormat: TimeFormatPreference = "auto") {
+  return new Intl.DateTimeFormat(language, {
+    dateStyle: "medium",
+    timeStyle: "medium",
+    ...timeFormatOptions(timeFormat)
+  }).format(new Date(value));
 }
 
-export function formatMessageTimestamp(value: string, language: string, now = new Date()) {
+export function formatMessageTimestamp(value: string, language: string, now = new Date(), timeFormat: TimeFormatPreference = "auto") {
   const date = new Date(value);
   const isToday = date.getFullYear() === now.getFullYear()
     && date.getMonth() === now.getMonth()
     && date.getDate() === now.getDate();
   return new Intl.DateTimeFormat(
     language,
-    isToday ? { hour: "2-digit", minute: "2-digit" } : { dateStyle: "medium", timeStyle: "short" }
+    isToday
+      ? { hour: "2-digit", minute: "2-digit", ...timeFormatOptions(timeFormat) }
+      : { dateStyle: "medium", timeStyle: "short", ...timeFormatOptions(timeFormat) }
   ).format(date);
 }
 

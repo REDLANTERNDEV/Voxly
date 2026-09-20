@@ -72,6 +72,14 @@ web serving, and owner recovery CLIs.
   list is global, so an owner can see a session belonging to somebody they
   cannot ban from this panel. Fixing either changes what a caller and the audit
   log are told — a behaviour change with its own ticket, not a tidy-up.
+- `src/accountDeletion.ts` owns both installation-wide Account deletion paths:
+  a member's request and the Installation owner's direct action. It owns the
+  pending request queue, complete Membership projections, the searchable
+  Account directory, eligibility checks, revocation transaction, audit line,
+  and post-commit realtime eviction. Keep it separate from `ownerPanel.ts`,
+  whose older lists and global-ban behavior have a different scope and
+  contract. ADR-0017 records why deletion preserves history instead of
+  deleting the user row.
 - `src/users.ts` owns the account itself: creating one, the name bounds, and
   `publicUser`, the whole outward shape of an account. A leaf rather than a
   route group, for the reason `rooms.ts` is one — four route groups read these
@@ -170,6 +178,10 @@ queries across endpoints.
   synchronized.
 - Migrate `users.is_bot` additively with a `0` default, so every account in an
   existing installation stays a person.
+- Migrate `users.deleted_at`, `users.deletion_source`, and
+  `account_deletion_requests` additively. A Deleted account retains its user,
+  Membership, message, reply, and audit rows; never backfill a translated
+  tombstone nickname into storage.
 - Migrate `invites.max_uses`, composite-keyed `invite_uses`, and membership
   `moderator_muted` / `moderator_deafened` / `can_invite` additively. Backfill legacy invite
   consumption once, retain the legacy first-use metadata, and preserve owner
@@ -216,6 +228,26 @@ queries across endpoints.
   recovery through the CLI must not create duplicate owners unintentionally.
 - TURN shared secrets remain server-only. Issue short-lived credentials only to
   authenticated users and reject partial or unsafe TURN configuration.
+
+## Account Lifecycle
+
+- Only the Installation owner may approve, reject, or directly initiate
+  Account deletion. Server ownership is a deletion blocker, not authority to
+  perform the operation; Bots, Deleted accounts, the Installation owner, and
+  every Account owning any Server are ineligible.
+- Re-check deletion eligibility inside the same `BEGIN IMMEDIATE` transaction
+  that marks the Account deleted and revokes access. Request review screens and
+  nickname confirmation are staleable presentation, never the final guard.
+- Account deletion clears global and Membership nicknames, ends Memberships,
+  revokes sessions and retired token lineage, Device links, Recovery codes,
+  Invites, access claims, and owner claims, while preserving history. Publish
+  tombstone and terminal realtime events only after commit.
+- A direct owner action with a pending member request is recorded as
+  `request_approved`; without one it is `owner_initiated`. Cancellation and
+  rejection keep the Account usable and enforce the same 24-hour retry wait.
+- Deleted authentication stays indistinguishable from an ordinary invalid
+  session for an offline caller. Live Devices receive the typed deletion reason
+  before their sockets close; do not expose the former nickname in that event.
 
 ## Membership and Moderation
 

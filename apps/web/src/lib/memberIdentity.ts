@@ -32,9 +32,29 @@ export function renameMessagesForServer(
   return Object.fromEntries(Object.entries(messagesByRoom).map(([roomId, messages]) => [
     roomId,
     roomServerIds[roomId] === serverId
-      ? messages.map((message) => message.userId === user.userId
+      ? messages.map((message) => message.userId === user.userId && !message.authorDeleted
         ? { ...message, nickname: user.nickname }
         : message)
+      : messages
+  ]));
+}
+
+export function anonymizeMessagesForServer(
+  messagesByRoom: Record<string, ChatMessage[]>,
+  roomServerIds: Record<string, string>,
+  serverId: string,
+  userId: string
+) {
+  return Object.fromEntries(Object.entries(messagesByRoom).map(([roomId, messages]) => [
+    roomId,
+    roomServerIds[roomId] === serverId
+      ? messages.map((message) => ({
+        ...message,
+        ...(message.userId === userId ? { nickname: "", authorDeleted: true } : {}),
+        replyTo: message.replyTo?.userId === userId
+          ? { ...message.replyTo, nickname: "", authorDeleted: true }
+          : message.replyTo
+      }))
       : messages
   ]));
 }

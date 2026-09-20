@@ -14,6 +14,7 @@ function messageRow(overrides: Partial<MessageRow> = {}): MessageRow {
     roomId: "general",
     userId: "user-1",
     nickname: "Deniz",
+    authorDeleted: 0,
     body: "oyuna giriyorum",
     createdAt: "2026-01-01T00:00:00.000Z",
     editedAt: null,
@@ -21,6 +22,7 @@ function messageRow(overrides: Partial<MessageRow> = {}): MessageRow {
     replyToMessageId: null,
     replyToUserId: null,
     replyToNickname: null,
+    replyToAuthorDeleted: null,
     replyToBody: null,
     ...overrides
   };
@@ -65,12 +67,14 @@ describe("messages", () => {
         replyToMessageId: "message-0",
         replyToUserId: "user-0",
         replyToNickname: "Ada",
+        replyToAuthorDeleted: 0,
         replyToBody: "the original"
       }));
       assert.deepEqual(quoted.replyTo, {
         messageId: "message-0",
         userId: "user-0",
         nickname: "Ada",
+        authorDeleted: false,
         body: "the original"
       });
 
@@ -79,6 +83,13 @@ describe("messages", () => {
       const orphaned = publicMessage(messageRow({ replyToMessageId: "message-0" }));
       assert.equal(orphaned.replyToMessageId, "message-0");
       assert.equal(orphaned.replyTo, null);
+    });
+
+    it("carries tombstone state without retaining a deleted member's nickname", () => {
+      const deleted = publicMessage(messageRow({ nickname: "", authorDeleted: 1 }));
+
+      assert.equal(deleted.authorDeleted, true);
+      assert.equal(deleted.nickname, "");
     });
   });
 

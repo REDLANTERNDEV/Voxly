@@ -15,7 +15,11 @@ import type {
   RtcConfigResponse,
   ServerMember,
   ServerSummary,
-  ServersResponse
+  ServersResponse,
+  AccountDeletionRequest,
+  OwnerAccount,
+  OwnerAccountMembership,
+  OwnerDeletionRequest
 } from "./types.js";
 import type { DeviceSummary, VoiceModerationState } from "@voxly/shared";
 
@@ -48,6 +52,45 @@ export async function apiPost<T>(path: string, body?: JsonBody): Promise<T> {
     method: "POST",
     body: body ? JSON.stringify(body) : undefined
   });
+}
+
+export async function apiDelete<T>(path: string, body?: JsonBody): Promise<T> {
+  return request<T>(path, {
+    method: "DELETE",
+    body: body ? JSON.stringify(body) : undefined
+  });
+}
+
+export async function fetchAccountDeletionRequest() {
+  return apiGet<{ request: AccountDeletionRequest | null }>("/api/account/deletion-request");
+}
+
+export async function requestAccountDeletion(nickname: string) {
+  return apiPost<{ request: AccountDeletionRequest }>("/api/account/deletion-request", { nickname });
+}
+
+export async function cancelAccountDeletionRequest() {
+  await apiDelete<void>("/api/account/deletion-request");
+}
+
+export async function fetchOwnerDeletionRequests() {
+  return apiGet<{ requests: OwnerDeletionRequest[] }>("/api/owner/deletion-requests");
+}
+
+export async function decideAccountDeletionRequest(requestId: string, decision: "approve" | "reject") {
+  await apiPost<void>(`/api/owner/deletion-requests/${encodeURIComponent(requestId)}/${decision}`);
+}
+
+export async function fetchOwnerAccounts(query = "") {
+  return apiGet<{ accounts: OwnerAccount[] }>(`/api/owner/accounts?query=${encodeURIComponent(query)}`);
+}
+
+export async function fetchOwnerAccount(userId: string) {
+  return apiGet<{ account: OwnerAccount & { memberships: OwnerAccountMembership[] } }>(`/api/owner/accounts/${encodeURIComponent(userId)}`);
+}
+
+export async function deleteOwnerAccount(userId: string, nickname: string) {
+  await apiDelete<void>(`/api/owner/accounts/${encodeURIComponent(userId)}`, { nickname, permanent: true });
 }
 
 /**

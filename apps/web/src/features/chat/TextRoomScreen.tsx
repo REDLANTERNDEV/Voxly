@@ -8,11 +8,12 @@ import { EmptyState,RoomHeader } from "../../components/ui/Primitives.js";
 import { resolveRememberedRoom } from "../../lib/channelState.js";
 import { isMessageListNearBottom,messageListUpdateAction,shouldSubmitComposer } from "../../lib/messages.js";
 import { messageListIds,type OutboxEntry } from "../../lib/messageOutbox.js";
+import { requestSettingsSection } from "../../lib/settingsNavigation.js";
 import { MessageItem } from "./MessageItem.js";
 import { PendingMessageItem } from "./PendingMessageItem.js";
 import { ReplyQuote } from "./ReplyQuote.js";
 type TextRoomProps = Pick<ShellModel,
-  "user" | "language" | "t" | "currentRoom" | "rooms" | "roomHistory" |
+  "user" | "language" | "timeFormat" | "externalPreviews" | "t" | "currentRoom" | "rooms" | "roomHistory" |
   "activeServerId"
 > & Pick<ShellActions,
   "onNavigate"
@@ -32,6 +33,7 @@ export function TextRoomScreen(props: TextRoomProps) {
   const [replyTarget, setReplyTarget] = useState<ChatMessageReply | null>(null);
   const [error, setError] = useState("");
   const [hasNewMessages, setHasNewMessages] = useState(false);
+  const [revealedEmbeds, setRevealedEmbeds] = useState<Set<string>>(() => new Set());
   const listRef = useRef<HTMLElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const wasNearBottomRef = useRef(true);
@@ -55,6 +57,7 @@ export function TextRoomScreen(props: TextRoomProps) {
     wasNearBottomRef.current = true;
     setHasNewMessages(false);
     scrollToLatest("auto");
+    setRevealedEmbeds(new Set());
   }, [roomId, scrollToLatest]);
 
   useLayoutEffect(() => {
@@ -99,6 +102,7 @@ export function TextRoomScreen(props: TextRoomProps) {
       messageId: message.id,
       userId: message.userId,
       nickname: message.nickname,
+      authorDeleted: message.authorDeleted,
       body: message.body
     });
     composerRef.current?.focus();
@@ -136,12 +140,17 @@ export function TextRoomScreen(props: TextRoomProps) {
                   message={message}
                   user={props.user}
                   language={props.language}
+                  timeFormat={props.timeFormat}
+                  externalPreviews={props.externalPreviews}
                   t={props.t}
                   onUpdate={props.onUpdateMessage}
                   onDelete={props.onDeleteMessage}
                   onSuppressEmbed={props.onSuppressEmbed}
                   onReply={startReply}
                   onJumpToMessage={jumpToMessage}
+                  onShowEmbedOnce={(embedKey) => setRevealedEmbeds((current) => new Set(current).add(embedKey))}
+                  onOpenPrivacySettings={() => requestSettingsSection("privacy")}
+                  revealedEmbedKeys={revealedEmbeds}
                 />
               ))
             )}
@@ -151,6 +160,7 @@ export function TextRoomScreen(props: TextRoomProps) {
                 entry={entry}
                 nickname={props.user.nickname}
                 language={props.language}
+                timeFormat={props.timeFormat}
                 t={props.t}
                 onRetry={props.onRetrySend}
                 onDiscard={props.onDiscardSend}
@@ -168,7 +178,7 @@ export function TextRoomScreen(props: TextRoomProps) {
           {replyTarget ? (
             <div className="composer-reply">
               <span className="composer-reply-label" aria-hidden="true"><ReplyIcon /></span>
-              <span className="composer-reply-target">{props.t("room.replyingTo", { nickname: replyTarget.nickname })}</span>
+              <span className="composer-reply-target">{props.t("room.replyingTo", { nickname: replyTarget.authorDeleted ? props.t("common.deletedMember") : replyTarget.nickname })}</span>
               <ReplyQuote reply={replyTarget} t={props.t} hideAuthor />
               <button
                 className="icon-btn"

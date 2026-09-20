@@ -71,6 +71,7 @@ import { registerRecoveryRoutes } from "./recovery.js";
 import { registerInviteRoutes, revokeInvitesCreatedBy } from "./invites.js";
 import { registerMessageRoutes } from "./messages.js";
 import { registerOwnerPanelRoutes } from "./ownerPanel.js";
+import { registerAccountDeletionRoutes } from "./accountDeletion.js";
 import { registerServerRoutes } from "./servers.js";
 import { createUser, nicknameSchema, publicUser } from "./users.js";
 import { roomIdPayloadSchema, safeSocketHandler, socketsForSession, socketsForUser } from "./socket.js";
@@ -187,6 +188,7 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
   registerInviteRoutes(context);
   registerMessageRoutes(context);
   registerOwnerPanelRoutes(context);
+  registerAccountDeletionRoutes(context);
   if (options.webDistPath) {
     await registerWebStatic(server, options.webDistPath);
   }
@@ -785,6 +787,13 @@ function registerRealtime(
     disconnectUser(userId) {
       voice.forceLeave(userId, "server_access_revoked");
       for (const socket of socketsForUser(io, userId)) socket.disconnect(true);
+    },
+    terminateAccount(userId, reason) {
+      voice.forceLeave(userId, "server_access_revoked");
+      for (const socket of socketsForUser(io, userId)) {
+        socket.emit("account:deleted", { reason });
+        socket.disconnect(true);
+      }
     },
     disconnectDevice(userId, sessionId) {
       for (const socket of socketsForSession(io, userId, sessionId)) socket.disconnect(true);

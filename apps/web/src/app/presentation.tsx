@@ -7,6 +7,7 @@ import type { VoiceQuality } from "../lib/useVoiceQuality.js";
 import { sidebarVoiceStatusKeys,type VoiceControls } from "../lib/voiceControls.js";
 import type { OwnerInvite } from "../types.js";
 import type { ShellModel,ThemeChoice,Translate } from "./types.js";
+import { timeFormatOptions,type TimeFormatPreference } from "../lib/timeFormat.js";
 
 export function activeServerRole(props: Pick<ShellModel, "activeServerId" | "servers">) {
   return props.servers.find((server) => server.id === props.activeServerId)?.role ?? null;
@@ -134,12 +135,12 @@ export function inviteStatusTitle(status: "ready" | "loading" | "valid" | "dange
   return t("invite.ready");
 }
 
-export function inviteAvailabilityCopy(preview: { expiresAt: string | null; remainingUses: number | null } | null, language: LanguageCode, t: Translate) {
+export function inviteAvailabilityCopy(preview: { expiresAt: string | null; remainingUses: number | null } | null, language: LanguageCode, t: Translate, timeFormat: TimeFormatPreference = "auto") {
   if (!preview) return t("invite.checking");
   const uses = preview.remainingUses === null
     ? t("invite.unlimitedUses")
     : t("invite.remainingUses", { count: preview.remainingUses });
-  return `${uses} · ${formatShortDate(preview.expiresAt, language, t)}`;
+  return `${uses} · ${formatShortDate(preview.expiresAt, language, t, timeFormat)}`;
 }
 
 export function isInviteRevocable(invite: OwnerInvite) {
@@ -160,9 +161,15 @@ export function extractInviteToken(value: string) {
   return slashIndex >= 0 ? trimmed.slice(slashIndex + 1) : trimmed;
 }
 
-export function formatShortDate(value: string | null, language: LanguageCode, t: Translate) {
+export function formatShortDate(value: string | null, language: LanguageCode, t: Translate, timeFormat: TimeFormatPreference = "auto") {
   if (!value) return t("common.noExpiry");
-  return new Intl.DateTimeFormat(language, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  return new Intl.DateTimeFormat(language, {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    ...timeFormatOptions(timeFormat)
+  }).format(new Date(value));
 }
 
 export function themeLabel(theme: ThemeChoice, t: Translate) {

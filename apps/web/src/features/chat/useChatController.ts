@@ -4,7 +4,7 @@ import { deleteMessage,fetchMessages,sendMessage,suppressMessageEmbed,updateMess
 import { upsertMessage } from "../../app/presentation.js";
 import type { Route } from "../../app/types.js";
 import { clearUnread,readRoomHistory,rememberRoom,unreadAfterMessage,writeRoomHistory } from "../../lib/channelState.js";
-import { renameMessagesForServer } from "../../lib/memberIdentity.js";
+import { anonymizeMessagesForServer,renameMessagesForServer } from "../../lib/memberIdentity.js";
 import { appendOutboxEntry,removeOutboxEntry,setOutboxEntryStatus,type OutboxEntry } from "../../lib/messageOutbox.js";
 
 export function useChatController({ user, route, currentRoom, roomServerIds, roomHistory, setRoomHistory }: {
@@ -58,6 +58,7 @@ export function useChatController({ user, route, currentRoom, roomServerIds, roo
     applyUpdatedMessage: (message: ChatMessage) => applyMessage(message),
     applyDeletedMessage: (roomId: string, messageId: string) => setMessagesByRoom((current) => ({ ...current, [roomId]: (current[roomId] ?? []).filter((message) => message.id !== messageId) })),
     applyMemberRename: (serverId: string, next: PresenceUser) => setMessagesByRoom((current) => renameMessagesForServer(current, roomServerIds.current, serverId, next)),
+    applyMemberDeletion: (serverId: string, userId: string) => setMessagesByRoom((current) => anonymizeMessagesForServer(current, roomServerIds.current, serverId, userId)),
     outboxByRoom,
     actionsForRoom: (roomId: string) => {
       // Never rejects: a failed send is reported on its own outbox row so the

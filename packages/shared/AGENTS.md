@@ -44,6 +44,14 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   history, creation, and `message:updated` deliveries. Consumers derive rich
   previews from the plain message body and omit only matching keys; do not add
   provider HTML or fetched metadata to the shared message contract.
+- `ChatMessage.authorDeleted` and its reply counterpart are required identity
+  state, not a nickname convention. Producers clear the former nickname and
+  set the flag; consumers render their own localized neutral tombstone.
+- `account:deleted` is terminal and distinguishes `request_approved` from
+  `owner_initiated`. `account:deletionRequestCreated` is delivered only to the
+  Installation owner's live sockets. `server:memberDeleted` remains scoped to
+  the affected Server and lets clients anonymize already-loaded message and
+  directory state without broadcasting Account history elsewhere.
 
 ## Invite Contract Invariants
 

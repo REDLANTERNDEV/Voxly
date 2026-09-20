@@ -8,7 +8,7 @@ describe("requested UI fixes", () => {
     const app = readAppSource();
     const message = app.match(/function MessageItem[\s\S]*?\n}\n\nfunction FatalState/)?.[0] ?? "";
 
-    assert.match(message, /formatMessageTimestamp\(message\.createdAt, language\)/);
+    assert.match(message, /formatMessageTimestamp\(message\.createdAt, language, new Date\(\), timeFormat\)/);
   });
 
   it("keeps room-derived rendering and owner chat links scoped to the active server", () => {

@@ -9,7 +9,8 @@ import { BrandLockup } from "../../components/ui/Navigation.js";
 import { LanguageSwitch } from "../../components/ui/Primitives.js";
 import { type LanguageCode } from "../../lib/i18n.js";
 import { loadTurnstile } from "../../lib/turnstile.js";
-export function InviteScreen({ initialToken, existingUser, currentUser, turnstileSiteKey, onAccepted, language, t, onLanguageChange }: { initialToken: string; existingUser: boolean; currentUser: PublicUser | null; turnstileSiteKey: string | null; onAccepted: (user: PublicUser, serverId: string) => void; language: LanguageCode; t: Translate; onLanguageChange: (language: LanguageCode) => void }) {
+import type { TimeFormatPreference } from "../../lib/timeFormat.js";
+export function InviteScreen({ initialToken, existingUser, currentUser, turnstileSiteKey, onAccepted, language, timeFormat, t, onLanguageChange }: { initialToken: string; existingUser: boolean; currentUser: PublicUser | null; turnstileSiteKey: string | null; onAccepted: (user: PublicUser, serverId: string) => void; language: LanguageCode; timeFormat: TimeFormatPreference; t: Translate; onLanguageChange: (language: LanguageCode) => void }) {
   const [inviteToken, setInviteToken] = useState(initialToken);
   const [serverName, setServerName] = useState("");
   const [invitePreview, setInvitePreview] = useState<{ expiresAt: string | null; remainingUses: number | null } | null>(null);
@@ -110,7 +111,7 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
           </div>
           <div className={`invite-status ${statusClass(status)}`} aria-live="polite">
             <strong>{inviteStatusTitle(status, t)}</strong>
-            <span className="muted small">{status === "danger" ? t("invite.askOwner") : inviteAvailabilityCopy(invitePreview, language, t)}</span>
+            <span className="muted small">{status === "danger" ? t("invite.askOwner") : inviteAvailabilityCopy(invitePreview, language, t, timeFormat)}</span>
           </div>
           <form onSubmit={submit}>
             <label className="form-field" htmlFor="inviteLink">

@@ -35,6 +35,24 @@ Use React 19 and existing platform APIs. Do not add a component, menu, styling,
 icon, animation, state-management, or media dependency without an explicit
 requirement.
 
+## Settings and External Preview Privacy
+
+- The clock preference is Device-local and has exactly `Auto`, `12-hour`, and
+  `24-hour`. `Auto` follows the browser's Device locale independently of the
+  Voxly interface language. Every wall-clock surface uses the shared formatter;
+  relative-time copy is unchanged.
+- External preview choices are Device-local and keyed by Account. YouTube,
+  X/Twitter, Vimeo, and Spotify start enabled and remain separately
+  controllable; `Enable all` and `Disable all` only update those four values.
+- A disabled Provider creates no iframe or other Provider resource until the
+  viewer chooses `Show once`. That grant is preview-specific and lasts only for
+  the current room/page lifecycle. The author/owner suppression flag wins and
+  must never expose a reveal action.
+- The disabled-preview row uses ordinary privacy language and links directly
+  to the Privacy settings section. Instagram, Facebook, Threads, and every
+  other Meta URL remain ordinary links with no Meta SDK, frame, image, metadata
+  request, or CSP origin (ADR-0018).
+
 ## Authentication and Navigation
 
 - Route initial session lookup and successful invite/access/owner claims
@@ -200,6 +218,19 @@ requirement.
 - Focus and select the nickname input once when the dialog mounts. Keep Escape
   handling in a separate lifecycle so parent or realtime rerenders never reset
   the user's selection, cursor position, or controlled input value.
+- A member requests deletion from `Account & devices` by typing the global
+  Account nickname and acknowledging permanence. Show pending, rejected, or
+  cancelled state and the server-enforced retry wait; the Account stays usable
+  until approval.
+- The Installation owner alone sees global `Deletion requests` and `Accounts`
+  sections. A new request produces one persistent danger notification and a
+  pending-count badge; reloads may refresh the badge but must not replay the
+  notification. Direct deletion requires the exact global nickname plus a
+  second permanent-action confirmation.
+- A Deleted message or reply author renders from the explicit shared deletion
+  flag as localized `Deleted member` / `Silinmiş üye`, with a neutral avatar.
+  Never retain or infer the former nickname in browser state after the scoped
+  deletion event.
 
 ## Chat Interaction Contract
 

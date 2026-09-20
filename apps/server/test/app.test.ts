@@ -76,11 +76,17 @@ describe("Voxly HTTP MVP", () => {
       const accessClaimColumns = tables.prepare("pragma table_info(access_claims)").all()
         .map((column) => (column as { name: string }).name);
       assert.ok(accessClaimColumns.includes("revoked_at"));
+      const userColumns = tables.prepare("pragma table_info(users)").all()
+        .map((column) => (column as { name: string }).name);
+      assert.ok(userColumns.includes("deleted_at"));
+      assert.ok(userColumns.includes("deletion_source"));
       const messageColumns = tables.prepare("pragma table_info(messages)").all()
         .map((column) => (column as { name: string }).name);
       assert.ok(messageColumns.includes("suppressed_embed_keys"));
       assert.equal(tables.prepare("select max_uses from invites where id = 'invite'").get()?.max_uses, 1);
       assert.ok(tables.prepare("select name from sqlite_master where type = 'table' and name = 'invite_uses'").get());
+      assert.ok(tables.prepare("select name from sqlite_master where type = 'table' and name = 'account_deletion_requests'").get());
+      assert.ok(indexNames.includes("idx_account_deletion_requests_pending"));
       assert.equal(tables.prepare("select user_id from invite_uses where invite_id = 'invite'").get()?.user_id, "owner");
     } finally {
       migrated.close();

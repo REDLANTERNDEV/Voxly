@@ -27,7 +27,8 @@ export function ReplyQuote({
     return <p className="reply-quote is-missing">{t("room.replyDeleted")}</p>;
   }
 
-  const author = hideAuthor ? null : <span className="reply-quote-author">{reply.nickname}</span>;
+  const nickname = reply.authorDeleted ? t("common.deletedMember") : reply.nickname;
+  const author = hideAuthor ? null : <span className="reply-quote-author">{nickname}</span>;
   if (!onJump) {
     return (
       <p className="reply-quote">
@@ -37,7 +38,7 @@ export function ReplyQuote({
     );
   }
 
-  const label = t("room.replyJumpTo", { nickname: reply.nickname });
+  const label = t("room.replyJumpTo", { nickname });
   return (
     <button className="reply-quote" type="button" aria-label={label} title={label} onClick={() => onJump(reply.messageId)}>
       {author}

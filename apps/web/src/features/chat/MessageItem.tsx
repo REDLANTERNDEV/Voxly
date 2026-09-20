@@ -10,27 +10,39 @@ import { clampContextMenuPosition } from "../../lib/contextMenu.js";
 import { type LanguageCode } from "../../lib/i18n.js";
 import { messageContentSegments,messageEmbeds,type MessageEmbed } from "../../lib/messageEmbeds.js";
 import { formatMessageDateTime,formatMessageTimestamp,messageDeleteFailureCopy,messagePermissions } from "../../lib/messages.js";
+import type { TimeFormatPreference } from "../../lib/timeFormat.js";
+import type { ExternalPreviewPreferences } from "../../lib/externalPreviewPreferences.js";
 import { ReplyQuote } from "./ReplyQuote.js";
 export function MessageItem({
   message,
   user,
   language,
+  timeFormat,
+  externalPreviews,
   t,
   onUpdate,
   onDelete,
   onSuppressEmbed,
   onReply,
-  onJumpToMessage
+  onJumpToMessage,
+  onShowEmbedOnce,
+  onOpenPrivacySettings,
+  revealedEmbedKeys
 }: {
   message: ChatMessage;
   user: PublicUser;
   language: LanguageCode;
+  timeFormat: TimeFormatPreference;
+  externalPreviews: ExternalPreviewPreferences;
   t: Translate;
   onUpdate: (messageId: string, body: string) => Promise<void>;
   onDelete: (messageId: string) => Promise<void>;
   onSuppressEmbed: (messageId: string, embedKey: string) => Promise<void>;
   onReply: (message: ChatMessage) => void;
   onJumpToMessage: (messageId: string) => void;
+  onShowEmbedOnce: (embedKey: string) => void;
+  onOpenPrivacySettings: () => void;
+  revealedEmbedKeys: ReadonlySet<string>;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -47,6 +59,7 @@ export function MessageItem({
     messageUserId: message.userId
   });
   const isOwn = message.userId === user.id;
+  const displayNickname = message.authorDeleted ? t("common.deletedMember") : message.nickname;
   // Anyone who can read a message can answer it, so every row has a menu.
   const hasActions = true;
   const contentSegments = messageContentSegments(message.body);
@@ -131,16 +144,16 @@ export function MessageItem({
         openMenu(event.clientX, event.clientY);
       } : undefined}
     >
-      <span className={`avatar ${isOwn ? "owner" : ""}`}>{initial(message.nickname)}</span>
+      <span className={`avatar ${isOwn ? "owner" : ""}`}>{message.authorDeleted ? "—" : initial(message.nickname)}</span>
       <div className="message-content">
         <div className="message-meta">
-          <span className="message-author">{message.nickname}</span>
+          <span className="message-author">{displayNickname}</span>
           <span className="message-time mono">
-            <time dateTime={message.createdAt}>{formatMessageTimestamp(message.createdAt, language)}</time>
+            <time dateTime={message.createdAt}>{formatMessageTimestamp(message.createdAt, language, new Date(), timeFormat)}</time>
             {message.editedAt ? (
               <span
                 className="message-edited"
-                title={t("room.editedAt", { time: formatMessageDateTime(message.editedAt, language) })}
+                title={t("room.editedAt", { time: formatMessageDateTime(message.editedAt, language, timeFormat) })}
               >({t("status.edited")})</span>
             ) : null}
           </span>
@@ -164,6 +177,7 @@ export function MessageItem({
             {embeds.length > 0 ? <div className="message-rich-embeds">
               {embeds.map((embed) => {
                 const provider = embedProviderLabel(embed.provider);
+                const previewEnabled = externalPreviews[embed.provider] || revealedEmbedKeys.has(embed.key);
                 return <section className={`message-embed is-${embed.provider}`} key={embed.key}>
                   <header className="message-embed-head">
                     <a href={embed.sourceUrl} target="_blank" rel="noopener noreferrer">{provider}</a>
@@ -176,7 +190,7 @@ export function MessageItem({
                       onClick={() => setPendingEmbed(embed)}
                     ><CloseIcon /></button> : null}
                   </header>
-                  <iframe
+                  {previewEnabled ? <iframe
                     src={embed.embedUrl}
                     title={t("room.embedTitle", { provider })}
                     loading="lazy"
@@ -184,7 +198,13 @@ export function MessageItem({
                     sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"
                     allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
                     allowFullScreen
-                  />
+                  /> : <div className="message-embed-disabled">
+                    <span>{t("room.previewOff")}</span>
+                    <span aria-hidden="true">·</span>
+                    <button type="button" onClick={() => onShowEmbedOnce(embed.key)}>{t("room.previewShowOnce")}</button>
+                    <span aria-hidden="true">·</span>
+                    <button type="button" onClick={onOpenPrivacySettings}>{t("room.previewSettings")}</button>
+                  </div>}
                 </section>;
               })}
             </div> : null}
@@ -196,7 +216,7 @@ export function MessageItem({
         <button
           className="message-reply-trigger"
           type="button"
-          aria-label={t("room.replyTo", { nickname: message.nickname })}
+          aria-label={t("room.replyTo", { nickname: displayNickname })}
           title={t("room.reply")}
           disabled={isBusy}
           onClick={() => onReply(message)}

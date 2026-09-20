@@ -4,6 +4,50 @@ A self-hosted voice and text chat server for small private groups. Voice, camera
 
 ## Language
 
+### Accounts and membership
+
+**Account**:
+One person's installation-wide identity in Voxly. An Account may hold a
+Membership in several Servers and may be signed in on several Devices.
+_Avoid_: User, profile
+
+**Membership**:
+An Account's place in one Server, including its server-specific nickname, role,
+and access state.
+_Avoid_: Account, login
+
+**Installation owner**:
+The Account with installation-wide authority over Accounts and Devices. This is
+neither the operator who runs the host nor a Server owner acting within one
+Server.
+_Avoid_: Operator, admin, Server owner
+
+**Server owner**:
+An Account whose Membership gives it authority over one Server. That authority
+does not extend to the Account itself outside that Server.
+_Avoid_: Installation owner, operator
+
+**Deleted account**:
+An irreversible Account tombstone whose credentials and personal names are
+gone while authored history remains attributable to a neutral deleted member.
+_Avoid_: Banned Account, removed Membership, deactivated Account
+
+**Account deletion request**:
+A member's pending request for the Installation owner to approve or reject
+turning their Account into a Deleted account.
+_Avoid_: Support ticket, Membership removal request
+
+### Messages and external content
+
+**External preview**:
+Third-party content displayed from a supported link in a message. Loading one
+contacts its Provider; the ordinary link remains usable without it.
+_Avoid_: Cookie, OpenGraph card, attachment
+
+**Provider**:
+The third-party site from which an External preview is loaded.
+_Avoid_: Integration, plugin
+
 ### Music bot
 
 **Bot**:

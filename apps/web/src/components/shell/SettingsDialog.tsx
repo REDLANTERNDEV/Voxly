@@ -5,6 +5,8 @@ import { DeviceSettings } from "../DeviceSettings.js";
 import { RecoverySettings } from "../RecoverySettings.js";
 import { PreferencesCard } from "../ui/Primitives.js";
 import type { TranslationKey } from "../../lib/i18n.js";
+import { ExternalPreviewSettings } from "../ExternalPreviewSettings.js";
+import { AccountDeletionSettings } from "../AccountDeletionSettings.js";
 
 /**
  * Settings, in a window over the room rather than stacked down the channel rail.
@@ -20,9 +22,9 @@ import type { TranslationKey } from "../../lib/i18n.js";
  * 260-pixel column ever wanted to be.
  */
 
-export type SettingsSection = "account" | "audio" | "appearance";
+export type SettingsSection = "account" | "audio" | "appearance" | "privacy";
 
-const sections: readonly SettingsSection[] = ["account", "audio", "appearance"];
+const sections: readonly SettingsSection[] = ["account", "audio", "appearance", "privacy"];
 
 export function SettingsDialog(props: ShellModel & ShellActions & { initialSection?: SettingsSection; contextError?: TranslationKey | ""; onClose: () => void }) {
   const [section, setSection] = useState<SettingsSection>(props.initialSection ?? "account");
@@ -69,6 +71,7 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
               <>
                 <DeviceSettings t={props.t} />
                 <RecoverySettings t={props.t} />
+                {props.user.role !== "owner" ? <AccountDeletionSettings nickname={props.user.nickname} t={props.t} /> : null}
               </>
             ) : null}
             {section === "audio" ? (
@@ -140,9 +143,18 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
               <PreferencesCard
                 language={props.language}
                 theme={props.theme}
+                timeFormat={props.timeFormat}
                 t={props.t}
                 onLanguageChange={props.onLanguageChange}
                 onThemeChange={props.onThemeChange}
+                onTimeFormatChange={props.onTimeFormatChange}
+              />
+            ) : null}
+            {section === "privacy" ? (
+              <ExternalPreviewSettings
+                preferences={props.externalPreviews}
+                t={props.t}
+                onChange={props.onExternalPreviewChange}
               />
             ) : null}
           </div>

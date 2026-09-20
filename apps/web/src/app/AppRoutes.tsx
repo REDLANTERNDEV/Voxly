@@ -14,11 +14,12 @@ import { VoiceRoomScreen } from "../features/voice/VoiceRoomScreen.js";
 import type { AnalyticsSettings } from "../lib/analytics.js";
 import type { LanguageCode } from "../lib/i18n.js";
 import type { OutboxEntry } from "../lib/messageOutbox.js";
+import type { TimeFormatPreference } from "../lib/timeFormat.js";
 import { resolveInitialRoute } from "../lib/navigation.js";
 import { startupSurface } from "../lib/startupSurface.js";
 import type { LoadState,Route,ShellActions,ShellModel,Translate } from "./types.js";
 
-export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, messages, language, t, renderSurface, turnstileSiteKey, analytics, signedOutReason, completeAuthentication, loadAcceptedServer, onOwnerClaimed, onAccessClaimed, navigate, changeLanguage, textRoomOutbox, textRoomActions }: {
+export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, messages, language, timeFormat, t, renderSurface, turnstileSiteKey, analytics, signedOutReason, completeAuthentication, loadAcceptedServer, onOwnerClaimed, onAccessClaimed, navigate, changeLanguage, textRoomOutbox, textRoomActions }: {
   route: Route;
   user: PublicUser | null;
   authState: LoadState;
@@ -26,12 +27,13 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
   shellProps: (ShellModel & ShellActions) | null;
   messages: ChatMessage[];
   language: LanguageCode;
+  timeFormat: TimeFormatPreference;
   t: Translate;
   renderSurface(surface: ReactNode): ReactNode;
   turnstileSiteKey: string | null;
   analytics: AnalyticsSettings | null;
   /** Why the member is here rather than in the app, when it is worth saying. */
-  signedOutReason: "" | "reused" | "revoked";
+  signedOutReason: "" | "reused" | "revoked" | "request_approved" | "owner_initiated";
   completeAuthentication(user: PublicUser): void;
   loadAcceptedServer(serverId: string): Promise<void>;
   onOwnerClaimed(user: PublicUser): void;
@@ -81,6 +83,7 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
       currentUser={user}
       turnstileSiteKey={turnstileSiteKey}
       language={language}
+      timeFormat={timeFormat}
       t={t}
       onLanguageChange={changeLanguage}
       onAccepted={(accepted, serverId) => {
@@ -100,6 +103,8 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
     appConfig={shellProps.appConfig}
     roomHistory={shellProps.roomHistory}
     language={shellProps.language}
+    timeFormat={shellProps.timeFormat}
+    deletionRequestRevision={shellProps.deletionRequestRevision}
     t={shellProps.t}
     onNavigate={shellProps.onNavigate}
     onCreateServer={shellProps.onCreateServer}
@@ -148,6 +153,8 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
     <TextRoomScreen
       user={shellProps.user}
       language={shellProps.language}
+      timeFormat={shellProps.timeFormat}
+      externalPreviews={shellProps.externalPreviews}
       t={shellProps.t}
       currentRoom={shellProps.currentRoom}
       rooms={shellProps.rooms}

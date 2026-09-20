@@ -37,6 +37,7 @@ export type MessageRow = {
   roomId: string;
   userId: string;
   nickname: string;
+  authorDeleted: number;
   body: string;
   createdAt: string;
   editedAt: string | null;
@@ -44,6 +45,7 @@ export type MessageRow = {
   replyToMessageId: string | null;
   replyToUserId: string | null;
   replyToNickname: string | null;
+  replyToAuthorDeleted: number | null;
   replyToBody: string | null;
 };
 
@@ -137,6 +139,7 @@ export function registerMessageRoutes(context: RouteContext) {
       roomId,
       userId: user.id,
       nickname: sender.nickname,
+      authorDeleted: false,
       body: body.body,
       createdAt: new Date().toISOString(),
       editedAt: null,
@@ -147,6 +150,7 @@ export function registerMessageRoutes(context: RouteContext) {
           messageId: replyTarget.id,
           userId: replyTarget.userId,
           nickname: replyTarget.nickname,
+          authorDeleted: replyTarget.authorDeleted,
           body: replyExcerpt(replyTarget.body)
         }
         : null
@@ -320,6 +324,7 @@ export function publicMessage(row: MessageRow): ChatMessage {
     roomId: row.roomId,
     userId: row.userId,
     nickname: row.nickname,
+    authorDeleted: Boolean(row.authorDeleted),
     body: row.body,
     createdAt: row.createdAt,
     editedAt: row.editedAt,
@@ -332,6 +337,7 @@ export function publicMessage(row: MessageRow): ChatMessage {
         messageId: row.replyToMessageId,
         userId: row.replyToUserId,
         nickname: row.replyToNickname ?? "",
+        authorDeleted: Boolean(row.replyToAuthorDeleted),
         body: replyExcerpt(row.replyToBody ?? "")
       }
       : null
@@ -358,7 +364,8 @@ export function replyExcerpt(body: string) {
  * would disclose another room's content to someone who cannot read it.
  */
 const replyJoinColumns = `quoted.user_id as replyToUserId,
-      coalesce(quoted_members.nickname, quoted_users.nickname) as replyToNickname,
+      case when quoted_users.deleted_at is null then coalesce(quoted_members.nickname, quoted_users.nickname) else '' end as replyToNickname,
+      quoted_users.deleted_at is not null as replyToAuthorDeleted,
       quoted.body as replyToBody`;
 
 const replyJoinClause = `left join messages quoted
@@ -376,7 +383,8 @@ const replyJoinClause = `left join messages quoted
  * the where clause and the ordering differ between the two.
  */
 const messageColumns = `messages.id, messages.room_id as roomId, messages.user_id as userId,
-      coalesce(server_members.nickname, users.nickname) as nickname,
+      case when users.deleted_at is null then coalesce(server_members.nickname, users.nickname) else '' end as nickname,
+      users.deleted_at is not null as authorDeleted,
       messages.body, messages.created_at as createdAt,
       messages.edited_at as editedAt,
       messages.suppressed_embed_keys as suppressedEmbedKeysJson,

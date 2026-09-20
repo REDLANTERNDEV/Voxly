@@ -3,6 +3,7 @@ import { initial,themeLabel } from "../../app/presentation.js";
 import type { ThemeChoice,Translate } from "../../app/types.js";
 import { ChatIcon,VolumeIcon } from "../../components/ui/Icons.js";
 import { languageLabel,type LanguageCode } from "../../lib/i18n.js";
+import type { TimeFormatPreference } from "../../lib/timeFormat.js";
 import { BrandLockup } from "./Navigation.js";
 export function RoomHeader({ title, subtitle, actionLabel, onAction }: { title: string; subtitle: string; actionLabel?: string; onAction?: () => void }) {
   return (
@@ -19,15 +20,19 @@ export function RoomHeader({ title, subtitle, actionLabel, onAction }: { title: 
 export function PreferencesCard({
   language,
   theme,
+  timeFormat,
   t,
   onLanguageChange,
-  onThemeChange
+  onThemeChange,
+  onTimeFormatChange
 }: {
   language: LanguageCode;
   theme: ThemeChoice;
+  timeFormat: TimeFormatPreference;
   t: Translate;
   onLanguageChange: (language: LanguageCode) => void;
   onThemeChange: (theme: ThemeChoice) => void;
+  onTimeFormatChange: (timeFormat: TimeFormatPreference) => void;
 }) {
   return (
     <section className="theme-card">
@@ -41,6 +46,16 @@ export function PreferencesCard({
         {(["auto", "light", "dark"] as const).map((option) => (
           <button className="theme-option" type="button" key={option} aria-pressed={theme === option} onClick={() => onThemeChange(option)}>{themeLabel(option, t)}</button>
         ))}
+      </div>
+      <div className="language-switch">
+        <div className="theme-card-head"><span className="label">{t("settings.timeFormat")}</span></div>
+        <div className="theme-options" role="group" aria-label={t("settings.timeFormat")}>
+          {(["auto", "12", "24"] as const).map((option) => (
+            <button className="theme-option" type="button" key={option} aria-pressed={timeFormat === option} onClick={() => onTimeFormatChange(option)}>
+              {option === "auto" ? t("common.auto") : t(option === "12" ? "settings.timeFormat12" : "settings.timeFormat24")}
+            </button>
+          ))}
+        </div>
       </div>
       <LanguageSwitch language={language} t={t} onLanguageChange={onLanguageChange} />
     </section>

@@ -1458,6 +1458,120 @@ h3 {
   width: 100%;
 }
 
+.message-embed-disabled {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 7px;
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+.message-embed-disabled button {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.danger-card {
+  border-color: color-mix(in oklab, var(--danger), transparent 62%);
+}
+
+.check-row {
+  align-items: flex-start;
+  display: flex;
+  gap: 9px;
+  margin: 14px 0;
+}
+
+.check-row input {
+  margin-top: 3px;
+}
+
+.owner-alert-badge {
+  align-items: center;
+  background: var(--danger);
+  border-radius: 999px;
+  color: white;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  justify-content: center;
+  margin-left: auto;
+  min-height: 20px;
+  min-width: 20px;
+  padding: 0 6px;
+}
+
+.owner-account-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 16px;
+}
+
+.owner-account-card > div:first-child,
+.account-memberships li {
+  display: grid;
+  gap: 3px;
+}
+
+.owner-account-layout {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(220px, .8fr) minmax(280px, 1.2fr);
+  margin-top: 16px;
+}
+
+.owner-account-list {
+  display: grid;
+  gap: 6px;
+}
+
+.owner-account-row {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  padding: 11px 12px;
+  text-align: left;
+}
+
+.owner-account-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.inline-form {
+  align-items: end;
+  display: flex;
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .owner-account-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .inline-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .message-embed.is-youtube iframe,
 .message-embed.is-vimeo iframe {
   aspect-ratio: 16 / 9;

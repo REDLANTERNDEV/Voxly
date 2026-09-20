@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { clampContextMenuPosition } from "../src/lib/contextMenu.js";
+import { timeFormatOptions } from "../src/lib/timeFormat.js";
 import {
   formatMessageDateTime,
   formatMessageTimestamp,
@@ -88,19 +89,27 @@ describe("edited message timestamp", () => {
     const value = "2026-07-14T12:34:56.000Z";
     assert.equal(
       formatMessageDateTime(value, "en"),
-      new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "medium" }).format(new Date(value))
+      new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "medium", ...timeFormatOptions("auto") }).format(new Date(value))
     );
   });
 });
 
 describe("message timestamp", () => {
+  it("applies the chosen hour cycle independently of the interface language", () => {
+    const now = new Date(2026, 6, 22, 18, 30);
+    const value = new Date(2026, 6, 22, 21, 5).toISOString();
+
+    assert.match(formatMessageTimestamp(value, "en", now, "24"), /21:05/);
+    assert.match(formatMessageTimestamp(value, "tr", now, "12"), /09:05/);
+  });
+
   it("shows only the time for messages from the current local day", () => {
     const now = new Date(2026, 6, 22, 18, 30);
     const value = new Date(2026, 6, 22, 9, 5).toISOString();
 
     assert.equal(
       formatMessageTimestamp(value, "en", now),
-      new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit" }).format(new Date(value))
+      new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", ...timeFormatOptions("auto") }).format(new Date(value))
     );
   });
 
@@ -110,7 +119,7 @@ describe("message timestamp", () => {
 
     assert.equal(
       formatMessageTimestamp(value, "tr", now),
-      new Intl.DateTimeFormat("tr", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+      new Intl.DateTimeFormat("tr", { dateStyle: "medium", timeStyle: "short", ...timeFormatOptions("auto") }).format(new Date(value))
     );
   });
 });

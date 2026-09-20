@@ -4,6 +4,7 @@ import { type LanguageCode } from "../../lib/i18n.js";
 import { type OutboxEntry } from "../../lib/messageOutbox.js";
 import { ReplyQuote } from "./ReplyQuote.js";
 import { formatMessageTimestamp } from "../../lib/messages.js";
+import type { TimeFormatPreference } from "../../lib/timeFormat.js";
 
 /**
  * A message the composer has accepted but the server has not acknowledged yet.
@@ -16,6 +17,7 @@ export function PendingMessageItem({
   entry,
   nickname,
   language,
+  timeFormat,
   t,
   onRetry,
   onDiscard
@@ -23,6 +25,7 @@ export function PendingMessageItem({
   entry: OutboxEntry;
   nickname: string;
   language: LanguageCode;
+  timeFormat: TimeFormatPreference;
   t: Translate;
   onRetry: (localId: string) => void;
   onDiscard: (localId: string) => void;
@@ -35,7 +38,7 @@ export function PendingMessageItem({
         <div className="message-meta">
           <span className="message-author">{nickname}</span>
           <span className="message-time mono">
-            <time dateTime={entry.createdAt}>{formatMessageTimestamp(entry.createdAt, language)}</time>
+            <time dateTime={entry.createdAt}>{formatMessageTimestamp(entry.createdAt, language, new Date(), timeFormat)}</time>
             <span className="message-pending-state">{hasFailed ? t("room.messageNotSent") : t("common.sending")}</span>
           </span>
         </div>

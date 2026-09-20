@@ -72,6 +72,8 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | Multi-use invite limits and consumption | Server Authentication; web Member and Owner Surfaces; shared Invite Contracts |
 | Chat composition, scrolling, actions, and edits | Web Chat Interaction and server Messages sections |
 | Message dates, safe links, rich previews, and preview suppression | Web Chat Interaction; server Messages; shared Contract Rules |
+| Clock preference and provider-level preview privacy | `apps/web/AGENTS.md` — Settings and External Preview Privacy |
+| Account deletion requests, owner decisions, tombstones, and revocation | ADR-0017; server Account Lifecycle; web Settings and Member and Owner Surfaces; shared Contract Rules |
 | Owner server context and lifecycle controls | Web Member and Owner Surfaces; server Membership section |
 | Owner one-time link masking and reveal behavior | `apps/web/AGENTS.md` — Member and Owner Surfaces |
 | Sidebar context menus and popover layering | `apps/web/AGENTS.md` — Context Menus and Layering |
