@@ -44,4 +44,26 @@ describe("theme contrast", () => {
     assert.match(styles, /\.audio-device-popover\s*\{[^}]*background:\s*var\(--surface\)[^}]*color:\s*var\(--fg\)/s);
     assert.match(styles, /\.audio-device-popover \.input\s*\{[^}]*background:\s*var\(--bg\)[^}]*color:\s*var\(--fg\)/s);
   });
+
+  it("keeps the settings dialog on the active surface palette", () => {
+    const styles = readFileSync("src/styles.css", "utf8");
+    const dialog = styles.match(/^\.settings-dialog\s*\{[\s\S]*?^\}/m)?.[0] ?? "";
+    const navItem = styles.match(/^\.settings-nav-item\s*\{[\s\S]*?^\}/m)?.[0] ?? "";
+    const activeNavItem = styles.match(/^\.settings-nav-item\[aria-current="true"\]\s*\{[\s\S]*?^\}/m)?.[0] ?? "";
+
+    assert.match(dialog, /background:\s*var\(--surface\)/);
+    assert.match(navItem, /color:\s*var\(--muted\)/);
+    assert.match(activeNavItem, /background:\s*var\(--surface-2\)/);
+    assert.match(activeNavItem, /color:\s*var\(--fg\)/);
+    assert.doesNotMatch(styles, /var\(--text\)/);
+  });
+
+  it("keeps explicit dark and automatic dark tokens identical", () => {
+    const styles = readFileSync("src/styles.css", "utf8");
+    const explicitDark = styles.match(/^:root\[data-theme="dark"\]\s*\{([\s\S]*?)^\}/m)?.[1] ?? "";
+    const automaticDark = styles.match(/@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\)\s*\{([\s\S]*?)^  \}/m)?.[1] ?? "";
+    const declarations = (block: string) => [...block.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((match) => `${match[1]}:${match[2].trim()}`);
+
+    assert.deepEqual(declarations(automaticDark), declarations(explicitDark));
+  });
 });

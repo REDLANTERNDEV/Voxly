@@ -11,12 +11,17 @@ The web client owns the browser-facing assets under
 The current browser entry points use the Titanium / Cool Silver primary mark
 for compact surfaces, the monochrome dark/light marks for pinned-tab and
 decorative backgrounds, and the dark horizontal lockup for documentation on
-light backgrounds. The web manifest and social metadata point at the
+light backgrounds. The PWA manifest uses Titanium / Cool Silver primary icons
+on the dark brand surface, with separate maskable exports for platform-safe
+cropping. The web manifest and social metadata point at the
 platform-specific exports rather than duplicating them under generic
 filenames. The bundle's canonical V-plus-five-voice-bars geometry is the
 source of truth for every variant.
 
 The future Tauri client has its own boundary at
-`apps/desktop/branding/tauri/`. Its `icons/` directory is a Tauri v2 bundle
-drop-in, while `source/` contains the source inputs and manifest for icon
-regeneration. See that directory's README for integration steps.
+`apps/desktop/branding/tauri/`. Its regular app icons use the transparent
+Titanium / Cool Silver mark so the operating system can apply its own current
+corner mask. Adaptive and maskable layers keep their background and foreground
+separate for platform-safe composition. Its `icons/` directory is a Tauri v2
+bundle drop-in, while `source/` contains the source inputs and manifest for
+icon regeneration. See that directory's README for integration steps.

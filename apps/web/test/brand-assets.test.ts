@@ -13,10 +13,13 @@ const webAssets = [
   "public/brand/svg/voxly-wordmark-dark.svg",
   "public/brand/svg/voxly-wordmark-light.svg",
   "public/brand/web/apple-touch-icon.png",
+  "public/brand/web/favicon.svg",
   "public/brand/web/favicon.ico",
   "public/brand/web/og-image-1200x630.png",
   "public/brand/web/voxly-mark-192x192.png",
   "public/brand/web/voxly-mark-512x512.png",
+  "public/brand/pwa/icon-primary-192x192.png",
+  "public/brand/pwa/icon-primary-512x512.png",
   "public/brand/pwa/icon-512x512.png",
   "public/brand/pwa/icon-maskable-192x192.png",
   "public/brand/pwa/icon-maskable-512x512.png",
@@ -29,16 +32,21 @@ describe("brand asset hierarchy", () => {
     }
 
     const html = readFileSync("index.html", "utf8");
+    assert.match(html, /brand\/web\/favicon\.svg/);
     assert.match(html, /brand\/web\/favicon\.ico/);
     assert.match(html, /brand\/web\/favicon-32x32\.png/);
-    assert.match(html, /brand\/svg\/voxly-mark-primary\.svg/);
     assert.match(html, /brand\/web\/og-image-1200x630\.png/);
 
     const manifest = readFileSync("public/manifest.webmanifest", "utf8");
+    assert.match(manifest, /brand\/pwa\/icon-primary-512x512\.png/);
     assert.match(manifest, /brand\/pwa\/icon-maskable-512x512\.png/);
+    assert.match(manifest, /"background_color": "#0B0F14"/);
 
     const canonical = readFileSync("public/brand/svg/voxly-mark-canonical.svg", "utf8");
     assert.equal((canonical.match(/id="voice-bar-/g) ?? []).length, 5);
+
+    const favicon = readFileSync("public/brand/web/favicon.svg", "utf8");
+    assert.match(favicon, /viewBox="40 40 440 440"/);
 
     const navigation = readFileSync("src/components/ui/Navigation.tsx", "utf8");
     assert.match(navigation, /brand-mark-image-on-light/);

@@ -110,6 +110,11 @@
     --rail-fg: var(--ivory);
     --rail-muted: #b8b8b2;
     --rail-border: #343430;
+    --accent-soft: color-mix(in oklab, var(--accent), var(--bg) 86%);
+    --success-soft: color-mix(in oklab, var(--success), var(--bg) 87%);
+    --speaking-soft: color-mix(in oklab, var(--accent), var(--bg) 78%);
+    --warn-soft: color-mix(in oklab, var(--warn), var(--bg) 82%);
+    --danger-soft: color-mix(in oklab, var(--danger), var(--bg) 86%);
     --shadow: 0 18px 52px rgba(0, 0, 0, 0.38);
   }
 }
@@ -1529,7 +1534,7 @@ h3 {
 }
 
 .reply-quote-author {
-  color: color-mix(in oklab, var(--accent), var(--text) 30%);
+  color: color-mix(in oklab, var(--accent), var(--fg) 30%);
   flex: 0 0 auto;
   font-weight: 600;
 }
@@ -1543,7 +1548,7 @@ h3 {
 
 button.reply-quote:hover .reply-quote-body,
 button.reply-quote:focus-visible .reply-quote-body {
-  color: var(--text);
+  color: var(--fg);
 }
 
 /* One line, read left to right: what is happening, to whom, and what they said.
@@ -1572,7 +1577,7 @@ button.reply-quote:focus-visible .reply-quote-body {
 }
 
 .composer-reply-target {
-  color: var(--text);
+  color: var(--fg);
   font-size: 0.8rem;
   font-weight: 600;
   white-space: nowrap;
@@ -4974,7 +4979,7 @@ button.reply-quote:focus-visible .reply-quote-body {
 .toast-neutral {
   background: var(--bg);
   border: 1px solid var(--border);
-  color: var(--text);
+  color: var(--fg);
 }
 
 /* Shown to a member who was signed out because their session was seen in two
@@ -5025,7 +5030,7 @@ button.reply-quote:focus-visible .reply-quote-body {
 }
 
 .settings-dialog {
-  background: var(--scene);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   display: grid;
@@ -5072,13 +5077,13 @@ button.reply-quote:focus-visible .reply-quote-body {
 }
 
 .settings-nav-item:hover {
-  background: var(--scene);
-  color: var(--text);
+  background: var(--surface-2);
+  color: var(--fg);
 }
 
 .settings-nav-item[aria-current="true"] {
-  background: var(--scene);
-  color: var(--text);
+  background: var(--surface-2);
+  color: var(--fg);
   font-weight: 600;
 }
 
