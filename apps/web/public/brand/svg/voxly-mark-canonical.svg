@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Voxly canonical monochrome master</title>
+  <desc id="desc">Voxly V mark with exactly five independent vertical voice bars. The bars have identical width, identical radius, equal spacing, and a shared vertical centerline.</desc>
+  <path id="voxly-v" d="M 110 125 L 235 360 L 335 245" fill="none" stroke="#0B121A" stroke-width="94" stroke-linecap="round" stroke-linejoin="round"/>
+  <g id="voice-bars" fill="#0B121A" shape-rendering="geometricPrecision">
+    <rect id="voice-bar-1" x="282" y="116" width="26" height="56" rx="13"/>
+    <rect id="voice-bar-2" x="322" y="98" width="26" height="92" rx="13"/>
+    <rect id="voice-bar-3" x="362" y="80" width="26" height="128" rx="13"/>
+    <rect id="voice-bar-4" x="402" y="98" width="26" height="92" rx="13"/>
+    <rect id="voice-bar-5" x="442" y="116" width="26" height="56" rx="13"/>
+  </g>
+</svg>

@@ -13,7 +13,10 @@ export function BrandLockup({ title = "Voxly", subtitle = "The Basement", href =
 
   return (
     <a className="brand-lockup brand-button" href={href} onClick={handleClick}>
-      <span className="brand-mark"><img src="/brand/svg/voxly-mark-primary.svg" alt="" width="28" height="28" /></span>
+      <span className="brand-mark">
+        <img className="brand-mark-image-on-light" src="/brand/svg/voxly-mark-monochrome-dark.svg" alt="" width="28" height="28" />
+        <img className="brand-mark-image-on-dark" src="/brand/svg/voxly-mark-monochrome-light.svg" alt="" width="28" height="28" />
+      </span>
       <span className="brand-copy"><strong>{title}</strong>{subtitle ? <span>{subtitle}</span> : null}</span>
     </a>
   );

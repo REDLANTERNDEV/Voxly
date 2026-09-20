@@ -7,6 +7,6 @@ desktop bundle binaries are not copied into the browser build.
 ## Tauri setup
 
 When the desktop app is scaffolded, copy `icons/` to
-`apps/desktop/src-tauri/icons/` and merge `tauri.conf.icons.json` into the
+`apps/desktop/src-tauri/icons/` and merge `tauri.conf.json` into the
 desktop Tauri configuration. The `source/` files are the reusable inputs for
 regenerating desktop and mobile icons with the Tauri CLI.

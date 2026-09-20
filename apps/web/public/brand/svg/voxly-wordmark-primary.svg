@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title">
+  <title id="title">Voxly primary wordmark</title>
+    <defs>
+    <linearGradient id="voxly-titanium" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7E8996"/>
+      <stop offset="52%" stop-color="#BFC7D1"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+  </defs>
+  <text x="56" y="270" fill="url(#voxly-titanium)" font-family="Inter, SF Pro Display, Helvetica Neue, Arial, sans-serif" font-size="242" font-weight="700" letter-spacing="-8">Voxly</text>
+</svg>

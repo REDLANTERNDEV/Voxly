@@ -2,8 +2,8 @@
 <browserconfig>
   <msapplication>
     <tile>
-      <square150x150logo src="/brand/web/voxly-favicon-256x256.png"/>
-      <TileColor>#0B0F14</TileColor>
+      <square150x150logo src="/brand/web/voxly-mark-256x256.png"/>
+      <TileColor>#FFFFFF</TileColor>
     </tile>
   </msapplication>
 </browserconfig>

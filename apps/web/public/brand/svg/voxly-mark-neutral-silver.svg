@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Voxly neutral silver alternate mark</title>
+  <desc id="desc">Voxly V mark with exactly five independent vertical voice bars, using the canonical geometry and an alternate monochrome palette.</desc>
+  <defs><linearGradient id="voxly-neutral-silver" x1="0" y1="1" x2="1" y2="0">        <stop offset="0%" stop-color="#F4F6F8"/>
+        <stop offset="50%" stop-color="#C8CDD3"/>
+        <stop offset="100%" stop-color="#8E969F"/>
+      </linearGradient></defs>
+      <path id="voxly-v" d="M 110 125 L 235 360 L 335 245" fill="none" stroke="url(#voxly-neutral-silver)" stroke-width="94" stroke-linecap="round" stroke-linejoin="round"/>
+      <g id="voice-bars" fill="url(#voxly-neutral-silver)" shape-rendering="geometricPrecision">
+        <rect x="282" y="116" width="26" height="56" rx="13"/>
+        <rect x="322" y="98" width="26" height="92" rx="13"/>
+        <rect x="362" y="80" width="26" height="128" rx="13"/>
+        <rect x="402" y="98" width="26" height="92" rx="13"/>
+        <rect x="442" y="116" width="26" height="56" rx="13"/>
+      </g>
+    </svg>

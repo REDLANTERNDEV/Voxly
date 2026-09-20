@@ -451,7 +451,8 @@ h3 {
 
 .brand-mark {
   align-items: center;
-  background: var(--fg);
+  background: var(--rail-bg);
+  border: 1px solid var(--rail-border);
   border-radius: var(--radius-sm);
   display: inline-grid;
   height: 28px;
@@ -465,6 +466,28 @@ h3 {
   height: 100%;
   object-fit: cover;
   width: 100%;
+}
+
+.brand-mark-image-on-dark {
+  display: none !important;
+}
+
+:root[data-theme="dark"] .brand-mark-image-on-light {
+  display: none !important;
+}
+
+:root[data-theme="dark"] .brand-mark-image-on-dark {
+  display: block !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .brand-mark-image-on-light {
+    display: none !important;
+  }
+
+  :root:not([data-theme="light"]) .brand-mark-image-on-dark {
+    display: block !important;
+  }
 }
 
 .brand-copy {

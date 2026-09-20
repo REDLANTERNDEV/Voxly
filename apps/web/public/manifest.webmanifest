@@ -4,29 +4,29 @@
   "description": "Private voice rooms for small groups.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0B0F14",
-  "theme_color": "#0B0F14",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFFFF",
   "icons": [
     {
-      "src": "/brand/pwa/voxly-pwa-icon-192x192.png",
+      "src": "/brand/web/voxly-mark-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/brand/pwa/voxly-pwa-icon-512x512.png",
+      "src": "/brand/pwa/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/brand/pwa/voxly-pwa-icon-maskable-192x192.png",
+      "src": "/brand/pwa/icon-maskable-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/brand/pwa/voxly-pwa-icon-maskable-512x512.png",
+      "src": "/brand/pwa/icon-maskable-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

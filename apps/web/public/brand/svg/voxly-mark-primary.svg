@@ -1,21 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000">
-      
-        <defs>
-          <linearGradient id="g1" x1="0%" y1="0%" x2="80%" y2="100%">
-            <stop offset="0%" stop-color="#00E5C2"/>
-            <stop offset="52%" stop-color="#0DBBD3"/>
-            <stop offset="100%" stop-color="#3B82F6"/>
-          </linearGradient>
-          <linearGradient id="g2" x1="0%" y1="100%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#138DE3"/>
-            <stop offset="100%" stop-color="#67E8F9"/>
-          </linearGradient>
-        </defs>
-      
-      <path d="M 220.0 170.0 L 500.0 840.0 L 780.0 170.0"
-            fill="none" stroke="url(#g1)" stroke-width="160.0"
-            stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M 500.0 840.0 L 780.0 170.0"
-            fill="none" stroke="url(#g2)" stroke-width="160.0"
-            stroke-linecap="round" stroke-linejoin="round" opacity="0.98"/>
-    </svg>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Voxly restrained titanium cool silver primary mark</title>
+  <desc id="desc">Voxly V mark with exactly five independent vertical voice bars. The bars have identical width, identical radius, equal spacing, and a shared vertical centerline.</desc>
+  <defs>
+    <linearGradient id="voxly-titanium" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7E8996"/>
+      <stop offset="52%" stop-color="#BFC7D1"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+  </defs>  <path id="voxly-v" d="M 110 125 L 235 360 L 335 245" fill="none" stroke="url(#voxly-titanium)" stroke-width="94" stroke-linecap="round" stroke-linejoin="round"/>
+  <g id="voice-bars" fill="url(#voxly-titanium)" shape-rendering="geometricPrecision">
+    <rect id="voice-bar-1" x="282" y="116" width="26" height="56" rx="13"/>
+    <rect id="voice-bar-2" x="322" y="98" width="26" height="92" rx="13"/>
+    <rect id="voice-bar-3" x="362" y="80" width="26" height="128" rx="13"/>
+    <rect id="voice-bar-4" x="402" y="98" width="26" height="92" rx="13"/>
+    <rect id="voice-bar-5" x="442" y="116" width="26" height="56" rx="13"/>
+  </g>
+</svg>

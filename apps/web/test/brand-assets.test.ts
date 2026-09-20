@@ -14,11 +14,12 @@ const webAssets = [
   "public/brand/svg/voxly-wordmark-light.svg",
   "public/brand/web/apple-touch-icon.png",
   "public/brand/web/favicon.ico",
-  "public/brand/web/voxly-og-light-1200x630.png",
-  "public/brand/pwa/voxly-pwa-icon-192x192.png",
-  "public/brand/pwa/voxly-pwa-icon-512x512.png",
-  "public/brand/pwa/voxly-pwa-icon-maskable-192x192.png",
-  "public/brand/pwa/voxly-pwa-icon-maskable-512x512.png",
+  "public/brand/web/og-image-1200x630.png",
+  "public/brand/web/voxly-mark-192x192.png",
+  "public/brand/web/voxly-mark-512x512.png",
+  "public/brand/pwa/icon-512x512.png",
+  "public/brand/pwa/icon-maskable-192x192.png",
+  "public/brand/pwa/icon-maskable-512x512.png",
 ];
 
 describe("brand asset hierarchy", () => {
@@ -29,17 +30,29 @@ describe("brand asset hierarchy", () => {
 
     const html = readFileSync("index.html", "utf8");
     assert.match(html, /brand\/web\/favicon\.ico/);
-    assert.match(html, /brand\/web\/voxly-favicon-32x32\.png/);
+    assert.match(html, /brand\/web\/favicon-32x32\.png/);
     assert.match(html, /brand\/svg\/voxly-mark-primary\.svg/);
-    assert.match(html, /brand\/web\/voxly-og-light-1200x630\.png/);
+    assert.match(html, /brand\/web\/og-image-1200x630\.png/);
 
     const manifest = readFileSync("public/manifest.webmanifest", "utf8");
-    assert.match(manifest, /brand\/pwa\/voxly-pwa-icon-maskable-512x512\.png/);
+    assert.match(manifest, /brand\/pwa\/icon-maskable-512x512\.png/);
+
+    const canonical = readFileSync("public/brand/svg/voxly-mark-canonical.svg", "utf8");
+    assert.equal((canonical.match(/id="voice-bar-/g) ?? []).length, 5);
+
+    const navigation = readFileSync("src/components/ui/Navigation.tsx", "utf8");
+    assert.match(navigation, /brand-mark-image-on-light/);
+    assert.match(navigation, /brand-mark-image-on-dark/);
+
+    const styles = readFileSync("src/styles.css", "utf8");
+    assert.match(styles, /\.brand-mark \{[\s\S]*background: var\(--rail-bg\);/);
+    assert.match(styles, /brand-mark-image-on-dark/);
   });
 
   it("keeps the future Tauri bundle inputs available outside the web public tree", () => {
     assert.equal(existsSync("../desktop/branding/tauri/icons/icon.ico"), true);
     assert.equal(existsSync("../desktop/branding/tauri/icons/icon.icns"), true);
-    assert.equal(existsSync("../desktop/branding/tauri/source/icon-manifest.json"), true);
+    assert.equal(existsSync("../desktop/branding/tauri/source/app-icon-monochrome.png"), true);
+    assert.equal(existsSync("../desktop/branding/tauri/tauri.conf.json"), true);
   });
 });

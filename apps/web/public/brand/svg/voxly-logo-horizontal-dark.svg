@@ -1,23 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="520" viewBox="0 0 1800 520">
-      
-      <defs>
-        <linearGradient id="g1" x1="0%" y1="0%" x2="80%" y2="100%">
-          <stop offset="0%" stop-color="#00E5C2"/>
-          <stop offset="52%" stop-color="#0DBBD3"/>
-          <stop offset="100%" stop-color="#3B82F6"/>
-        </linearGradient>
-        <linearGradient id="g2" x1="0%" y1="100%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="#138DE3"/>
-          <stop offset="100%" stop-color="#67E8F9"/>
-        </linearGradient>
-      </defs>
-      <g transform="translate(41,62) scale(0.395)">
-        <path d="M 220 170 L 500 820 L 780 170"
-              fill="none" stroke="url(#g1)" stroke-width="160"
-              stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M 500 820 L 780 170"
-              fill="none" stroke="url(#g2)" stroke-width="160"
-              stroke-linecap="round" stroke-linejoin="round" opacity="0.98"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="640" viewBox="0 0 1600 640" role="img" aria-labelledby="title desc">
+  <title id="title">Voxly horizontal dark logo</title>
+  <desc id="desc">Voxly V and Voice Bars logo lockup with a clean modern sans-serif wordmark.</desc>
+
+  <g transform="translate(56.0 62.0) scale(0.95)">
+    <path d="M 110 125 L 235 360 L 335 245" fill="none" stroke="#0B121A" stroke-width="94" stroke-linecap="round" stroke-linejoin="round"/>
+    <g fill="#0B121A" shape-rendering="geometricPrecision">          <rect x="282" y="116" width="26" height="56" rx="13"/>
+          <rect x="322" y="98" width="26" height="92" rx="13"/>
+          <rect x="362" y="80" width="26" height="128" rx="13"/>
+          <rect x="402" y="98" width="26" height="92" rx="13"/>
+          <rect x="442" y="116" width="26" height="56" rx="13"/>
+        </g>
       </g>
-      <path d="M0.004844,0.729063 L0.193906,0.729063 L0.387188,0.190938 L0.580156,0.729063 L0.769062,0.729063 L0.499063,0.000000 L0.274844,0.000000 L0.004844,0.729063 Z M1.063145,0.435000 Q1.005020,0.435000 0.974551,0.393281 Q0.944082,0.351562 0.944082,0.272969 Q0.944082,0.194375 0.974551,0.152500 Q1.005020,0.110781 1.063145,0.110781 Q1.120332,0.110781 1.150488,0.152500 Q1.180801,0.194375 1.180801,0.272969 Q1.180801,0.351562 1.150488,0.393281 Q1.120332,0.435000 1.063145,0.435000 Z M1.063145,0.560000 Q1.204238,0.560000 1.283613,0.483750 Q1.362988,0.407656 1.362988,0.272969 Q1.362988,0.138125 1.283613,0.061875 Q1.204238,-0.014219 1.063145,-0.014219 Q0.921582,-0.014219 0.841738,0.061875 Q0.761895,0.138125 0.761895,0.272969 Q0.761895,0.407656 0.841738,0.483750 Q0.921582,0.560000 1.063145,0.560000 Z M1.628125,0.279844 L1.430781,0.546875 L1.615938,0.546875 L1.727656,0.384844 L1.840938,0.546875 L2.026094,0.546875 L1.828750,0.280781 L2.035781,0.000000 L1.850781,0.000000 L1.727656,0.172813 L1.606094,0.000000 L1.421094,0.000000 L1.628125,0.279844 Z M2.135020,0.759844 L2.309707,0.759844 L2.309707,0.000000 L2.135020,0.000000 L2.135020,0.759844 Z M2.405918,0.546875 L2.580762,0.546875 L2.727793,0.175781 L2.852793,0.546875 L3.027480,0.546875 L2.797480,-0.051719 Q2.762949,-0.143125 2.716699,-0.179375 Q2.670605,-0.215781 2.594980,-0.215781 L2.493887,-0.215781 L2.493887,-0.101094 L2.548574,-0.101094 Q2.592949,-0.101094 2.613105,-0.086875 Q2.633418,-0.072813 2.644668,-0.036094 L2.649668,-0.020938 L2.405918,0.546875 Z" fill="#FFFFFF" transform="translate(498.000,400.000) scale(307.495195,-307.495195) translate(-0.004844,0.215781)"/>
-    </svg>
+      <text x="620.0" y="390.0" fill="#0B121A" font-family="Inter, SF Pro Display, Helvetica Neue, Arial, sans-serif" font-size="176" font-weight="700" letter-spacing="-4">Voxly</text>
+</svg>
