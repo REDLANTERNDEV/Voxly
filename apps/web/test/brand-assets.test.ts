@@ -46,6 +46,7 @@ describe("brand asset hierarchy", () => {
     assert.match(manifest, /brand\/pwa\/icon-maskable-512x512\.png/);
     assert.match(manifest, /"background_color": "#FBFBFA"/);
     assert.match(manifest, /"theme_color": "#FFFFFF"/);
+    assert.match(manifest, /"display": "browser"/);
 
     const canonical = readFileSync("public/brand/svg/voxly-mark-canonical.svg", "utf8");
     assert.equal((canonical.match(/id="voice-bar-/g) ?? []).length, 5);

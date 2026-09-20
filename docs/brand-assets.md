@@ -18,6 +18,11 @@ platform-specific exports rather than duplicating them under generic
 filenames. The bundle's canonical V-plus-five-voice-bars geometry is the
 source of truth for every variant.
 
+The web manifest intentionally uses the browser display mode rather than a
+standalone PWA window. This keeps the native browser frame owned by the
+browser, which is the most consistent cross-browser behavior when members
+switch Voxly between light and dark themes.
+
 The future Tauri client has its own boundary at
 `apps/desktop/branding/tauri/`. Its regular app icons use the transparent
 Titanium / Cool Silver mark so the operating system can apply its own current
