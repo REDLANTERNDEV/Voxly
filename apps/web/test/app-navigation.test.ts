@@ -81,14 +81,19 @@ describe("application theme persistence", () => {
           removeAttribute: () => undefined,
           setAttribute: () => undefined
         },
-        querySelector: () => ({ setAttribute: (name: string, value: string) => calls.push(`${name}:${value}`) })
+        querySelector: (selector: string) => ({ setAttribute: (name: string, value: string) => calls.push(`${selector}:${name}:${value}`) })
       }
     });
 
     try {
       applyThemeChoice("dark");
       applyThemeChoice("light");
-      assert.deepEqual(calls, ["content:#0B0F14", "content:#FFFFFF"]);
+      assert.deepEqual(calls, [
+        'meta[name="theme-color"]:content:#0B0F14',
+        'meta[name="color-scheme"]:content:dark',
+        'meta[name="theme-color"]:content:#FFFFFF',
+        'meta[name="color-scheme"]:content:light'
+      ]);
     } finally {
       if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
       else Reflect.deleteProperty(globalThis, "document");
@@ -118,7 +123,7 @@ describe("application theme persistence", () => {
           removeAttribute: () => undefined,
           setAttribute: () => undefined
         },
-        querySelector: () => ({ setAttribute: (name: string, value: string) => calls.push(`${name}:${value}`) })
+        querySelector: (selector: string) => ({ setAttribute: (name: string, value: string) => calls.push(`${selector}:${name}:${value}`) })
       }
     });
 
@@ -128,7 +133,12 @@ describe("application theme persistence", () => {
       matches = true;
       listener?.();
       cleanup?.();
-      assert.deepEqual(calls, ["content:#FFFFFF", "content:#0B0F14"]);
+      assert.deepEqual(calls, [
+        'meta[name="theme-color"]:content:#FFFFFF',
+        'meta[name="color-scheme"]:content:light',
+        'meta[name="theme-color"]:content:#0B0F14',
+        'meta[name="color-scheme"]:content:dark'
+      ]);
     } finally {
       if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
       else Reflect.deleteProperty(globalThis, "window");

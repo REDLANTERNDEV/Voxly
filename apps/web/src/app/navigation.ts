@@ -43,6 +43,7 @@ export function applyThemeChoice(theme: ThemeChoice) {
   const updateThemeColor = () => {
     const effectiveTheme = theme === "auto" && mediaQuery?.matches ? "dark" : theme === "dark" ? "dark" : "light";
     document.querySelector?.('meta[name="theme-color"]')?.setAttribute("content", effectiveTheme === "dark" ? "#0B0F14" : "#FFFFFF");
+    document.querySelector?.('meta[name="color-scheme"]')?.setAttribute("content", effectiveTheme);
   };
   updateThemeColor();
   if (theme !== "auto" || !mediaQuery) return;
