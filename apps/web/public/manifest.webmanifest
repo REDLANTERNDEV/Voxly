@@ -3,9 +3,9 @@
   "short_name": "Voxly",
   "description": "Private voice rooms for small groups.",
   "start_url": "/",
-  "display": "browser",
+  "display": "standalone",
   "background_color": "#FBFBFA",
-  "theme_color": "#FFFFFF",
+  "theme_color": "#0B0F14",
   "icons": [
     {
       "src": "/brand/pwa/icon-primary-192x192.png",

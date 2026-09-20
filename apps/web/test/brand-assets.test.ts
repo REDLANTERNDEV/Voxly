@@ -40,13 +40,15 @@ describe("brand asset hierarchy", () => {
     assert.match(html, /brand\/web\/favicon-32x32\.png/);
     assert.match(html, /manifest\.webmanifest/);
     assert.match(html, /brand\/web\/og-image-1200x630\.png/);
+    assert.match(html, /<meta name="color-scheme" content="light dark" \/>/);
+    assert.match(html, /<meta name="theme-color" content="#0B0F14" \/>/);
 
     const manifest = readFileSync("public/manifest.webmanifest", "utf8");
     assert.match(manifest, /brand\/pwa\/icon-primary-512x512\.png/);
     assert.match(manifest, /brand\/pwa\/icon-maskable-512x512\.png/);
     assert.match(manifest, /"background_color": "#FBFBFA"/);
-    assert.match(manifest, /"theme_color": "#FFFFFF"/);
-    assert.match(manifest, /"display": "browser"/);
+    assert.match(manifest, /"theme_color": "#0B0F14"/);
+    assert.match(manifest, /"display": "standalone"/);
 
     const canonical = readFileSync("public/brand/svg/voxly-mark-canonical.svg", "utf8");
     assert.equal((canonical.match(/id="voice-bar-/g) ?? []).length, 5);

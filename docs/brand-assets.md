@@ -18,10 +18,12 @@ platform-specific exports rather than duplicating them under generic
 filenames. The bundle's canonical V-plus-five-voice-bars geometry is the
 source of truth for every variant.
 
-The web manifest intentionally uses the browser display mode rather than a
-standalone PWA window. This keeps the native browser frame owned by the
-browser, which is the most consistent cross-browser behavior when members
-switch Voxly between light and dark themes.
+The web manifest uses standalone display mode so supporting browsers can offer
+Voxly as an installable PWA. Its browser-owned title bar receives the fixed
+brand dark color so browsers can render contrasting native controls. That
+chrome intentionally stays independent from Voxly's light, dark, and automatic
+content themes, avoiding unreadable controls when a browser and the app use
+opposing themes.
 
 The future Tauri client has its own boundary at
 `apps/desktop/branding/tauri/`. Its regular app icons use the transparent
