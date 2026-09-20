@@ -44,6 +44,7 @@ export function applyThemeChoice(theme: ThemeChoice) {
     const effectiveTheme = theme === "auto" && mediaQuery?.matches ? "dark" : theme === "dark" ? "dark" : "light";
     document.querySelector?.('meta[name="theme-color"]')?.setAttribute("content", effectiveTheme === "dark" ? "#0B0F14" : "#FFFFFF");
     document.querySelector?.('meta[name="color-scheme"]')?.setAttribute("content", effectiveTheme);
+    document.querySelector?.('link[rel="manifest"]')?.setAttribute("href", effectiveTheme === "dark" ? "/manifest-dark.webmanifest" : "/manifest-light.webmanifest");
   };
   updateThemeColor();
   if (theme !== "auto" || !mediaQuery) return;

@@ -91,8 +91,10 @@ describe("application theme persistence", () => {
       assert.deepEqual(calls, [
         'meta[name="theme-color"]:content:#0B0F14',
         'meta[name="color-scheme"]:content:dark',
+        'link[rel="manifest"]:href:/manifest-dark.webmanifest',
         'meta[name="theme-color"]:content:#FFFFFF',
-        'meta[name="color-scheme"]:content:light'
+        'meta[name="color-scheme"]:content:light',
+        'link[rel="manifest"]:href:/manifest-light.webmanifest'
       ]);
     } finally {
       if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
@@ -136,8 +138,10 @@ describe("application theme persistence", () => {
       assert.deepEqual(calls, [
         'meta[name="theme-color"]:content:#FFFFFF',
         'meta[name="color-scheme"]:content:light',
+        'link[rel="manifest"]:href:/manifest-light.webmanifest',
         'meta[name="theme-color"]:content:#0B0F14',
-        'meta[name="color-scheme"]:content:dark'
+        'meta[name="color-scheme"]:content:dark',
+        'link[rel="manifest"]:href:/manifest-dark.webmanifest'
       ]);
     } finally {
       if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);

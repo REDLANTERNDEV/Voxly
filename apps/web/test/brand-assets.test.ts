@@ -25,6 +25,8 @@ const webAssets = [
   "public/brand/pwa/icon-512x512.png",
   "public/brand/pwa/icon-maskable-192x192.png",
   "public/brand/pwa/icon-maskable-512x512.png",
+  "public/manifest-light.webmanifest",
+  "public/manifest-dark.webmanifest",
 ];
 
 describe("brand asset hierarchy", () => {
@@ -38,6 +40,7 @@ describe("brand asset hierarchy", () => {
     assert.match(html, /brand\/web\/favicon-light\.svg/);
     assert.match(html, /brand\/web\/favicon\.ico/);
     assert.match(html, /brand\/web\/favicon-32x32\.png/);
+    assert.match(html, /manifest-light\.webmanifest/);
     assert.match(html, /brand\/web\/og-image-1200x630\.png/);
 
     const manifest = readFileSync("public/manifest.webmanifest", "utf8");
