@@ -70,4 +70,70 @@ describe("application theme persistence", () => {
       else Reflect.deleteProperty(globalThis, "document");
     }
   });
+
+  it("keeps the PWA title bar color aligned with the active theme", () => {
+    const calls: string[] = [];
+    const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: {
+        documentElement: {
+          removeAttribute: () => undefined,
+          setAttribute: () => undefined
+        },
+        querySelector: () => ({ setAttribute: (name: string, value: string) => calls.push(`${name}:${value}`) })
+      }
+    });
+
+    try {
+      applyThemeChoice("dark");
+      applyThemeChoice("light");
+      assert.deepEqual(calls, ["content:#0B0F14", "content:#FFFFFF"]);
+    } finally {
+      if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+      else Reflect.deleteProperty(globalThis, "document");
+    }
+  });
+
+  it("follows live system theme changes in auto mode", () => {
+    const calls: string[] = [];
+    let listener: (() => void) | undefined;
+    let matches = false;
+    const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+    const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        matchMedia: () => ({
+          get matches() { return matches; },
+          addEventListener: (_: string, next: () => void) => { listener = next; },
+          removeEventListener: () => undefined
+        })
+      }
+    });
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: {
+        documentElement: {
+          removeAttribute: () => undefined,
+          setAttribute: () => undefined
+        },
+        querySelector: () => ({ setAttribute: (name: string, value: string) => calls.push(`${name}:${value}`) })
+      }
+    });
+
+    try {
+      const cleanup = applyThemeChoice("auto");
+      assert.equal(typeof listener, "function");
+      matches = true;
+      listener?.();
+      cleanup?.();
+      assert.deepEqual(calls, ["content:#FFFFFF", "content:#0B0F14"]);
+    } finally {
+      if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+      else Reflect.deleteProperty(globalThis, "window");
+      if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+      else Reflect.deleteProperty(globalThis, "document");
+    }
+  });
 });
