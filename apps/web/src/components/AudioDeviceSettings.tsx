@@ -4,6 +4,7 @@ import { audioDeviceDisplayName, type AudioDevicePreferenceKind } from "../lib/a
 import { clampContextMenuPosition } from "../lib/contextMenu.js";
 import { MAX_NOTIFICATION_VOLUME_PERCENT, type NotificationSoundPreferences } from "../lib/notificationSounds.js";
 import type { MicrophoneTestError } from "../lib/useMicrophoneTest.js";
+import { InlineAlert } from "./ui/Notifications.js";
 
 interface AudioDeviceSettingsProps {
   inputs: MediaDeviceInfo[];
@@ -19,6 +20,7 @@ interface AudioDeviceSettingsProps {
   microphoneTestError: MicrophoneTestError;
   loading: boolean;
   error: string;
+  contextError: string;
   unavailableSelections: AudioDevicePreferenceKind[];
   outputSelectionSupported: boolean;
   labels: {
@@ -45,6 +47,8 @@ interface AudioDeviceSettingsProps {
     testHint: string;
     testPermission: string;
     testUnavailable: string;
+    errorTitle: string;
+    dismissError: string;
     closeSettings: string;
   };
   onOpen(): Promise<unknown>;
@@ -89,6 +93,7 @@ function AudioSwitchControl({ label, hint, checked, onChange }: { label: string;
 export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [testPending, setTestPending] = useState(false);
+  const [dismissedStatus, setDismissedStatus] = useState("");
   const [position, setPosition] = useState({ left: 8, top: 8, width: 320 });
   const noiseSuppressionLabelId = useId();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -151,12 +156,20 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
     };
   }, [close, isOpen]);
 
-  const deviceStatus = props.error || (props.unavailableSelections.length > 0 ? props.labels.unavailable : "");
+  const deviceStatus = props.contextError || props.error || (props.unavailableSelections.length > 0 ? props.labels.unavailable : "");
   const testStatus = props.microphoneTestError === "permission"
     ? props.labels.testPermission
     : props.microphoneTestError === "unavailable"
       ? props.labels.testUnavailable
       : "";
+  const status = deviceStatus || testStatus;
+  const previousStatusRef = useRef(status);
+  useEffect(() => {
+    if (previousStatusRef.current === status) return;
+    previousStatusRef.current = status;
+    setDismissedStatus("");
+  }, [status]);
+  const visibleStatus = status === dismissedStatus ? "" : status;
 
   const fields = (
           <div className="audio-device-fields">
@@ -218,7 +231,14 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
               ) : null}
             </div>
             <button className="btn btn-ghost" type="button" disabled={props.loading} onClick={() => void props.onRefresh()}>{props.loading ? `${props.labels.refresh}…` : props.labels.refresh}</button>
-            <p className="error-text" aria-live="polite">{deviceStatus || testStatus}</p>
+            {visibleStatus ? (
+              <InlineAlert
+                title={props.labels.errorTitle}
+                message={visibleStatus}
+                dismissLabel={props.labels.dismissError}
+                onDismiss={() => setDismissedStatus(visibleStatus)}
+              />
+            ) : null}
           </div>
   );
 

@@ -37,13 +37,14 @@ describe("why voice ended", () => {
   });
 
   it("does not report a working handoff as a fault", () => {
-    // It is rendered as a neutral toast with role="status", not the danger
-    // toast with role="alert" that failures use.
+    // It is rendered as a neutral notification with role="status", not the
+    // danger notification with role="alert" that failures use.
     const chrome = readFileSync("src/components/shell/AppChrome.tsx", "utf8");
-    const primitives = readFileSync("src/components/ui/Primitives.tsx", "utf8");
+    const notifications = readFileSync("src/components/ui/Notifications.tsx", "utf8");
 
-    assert.match(chrome, /voiceNotice\} tone="neutral"/);
-    assert.match(primitives, /tone === "danger" \? "alert" : "status"/);
+    assert.match(chrome, /tone: "neutral"/);
+    assert.match(chrome, /messageKey: props\.voiceNotice/);
+    assert.match(notifications, /item\.tone === "danger" \? "alert" : "status"/);
   });
 
   it("tells the member before it forgets, not instead of tearing down", () => {

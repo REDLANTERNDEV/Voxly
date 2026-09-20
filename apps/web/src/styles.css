@@ -3104,24 +3104,229 @@ button.reply-quote:focus-visible .reply-quote-body {
   width: 24px;
 }
 
-.toast {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  bottom: calc(var(--dock) + 20px);
-  box-shadow: var(--shadow);
-  left: 50%;
-  max-width: min(440px, calc(100vw - 32px));
-  padding: 10px 13px;
+.notification-region {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  max-height: calc(100dvh - var(--dock) - 40px);
   pointer-events: none;
   position: fixed;
-  transform: translateX(-50%);
-  z-index: var(--layer-drawer);
+  right: calc(var(--memberbar) + 20px);
+  top: 20px;
+  transition: opacity 160ms ease, transform 160ms ease;
+  width: min(380px, calc(100vw - 40px));
+  z-index: var(--layer-menu);
 }
 
-.toast-danger {
-  background: color-mix(in oklab, var(--danger), var(--bg) 90%);
-  border-color: color-mix(in oklab, var(--danger), var(--border) 38%);
-  color: var(--danger);
+.notification-region.is-suspended {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px);
+}
+
+.notification-card {
+  --notification-tone: var(--fg-2);
+  animation: notification-enter 340ms cubic-bezier(0.18, 0.88, 0.28, 1.12) both;
+  backdrop-filter: blur(18px) saturate(1.2);
+  background: color-mix(in oklab, var(--bg), transparent 7%);
+  border: 1px solid color-mix(in oklab, var(--border), var(--fg) 7%);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 30px minmax(0, 1fr) 30px;
+  overflow: hidden;
+  padding: 12px 11px 12px 12px;
+  pointer-events: auto;
+  position: relative;
+}
+
+.notification-card::before {
+  background: var(--notification-tone);
+  border-radius: 99px;
+  bottom: 10px;
+  content: "";
+  left: 0;
+  position: absolute;
+  top: 10px;
+  width: 3px;
+}
+
+.notification-card.is-leaving {
+  animation: notification-leave 180ms ease forwards;
+  pointer-events: none;
+}
+
+.notification-danger { --notification-tone: var(--danger); }
+.notification-warning { --notification-tone: var(--warn); }
+.notification-success { --notification-tone: var(--success); }
+.notification-neutral { --notification-tone: var(--fg-2); }
+
+.notification-mark,
+.inline-alert-mark {
+  align-items: center;
+  background: color-mix(in oklab, var(--notification-tone, var(--danger)), transparent 86%);
+  border: 1px solid color-mix(in oklab, var(--notification-tone, var(--danger)), transparent 72%);
+  border-radius: 10px;
+  color: var(--notification-tone, var(--danger));
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.notification-mark .ui-icon,
+.inline-alert-mark .ui-icon {
+  height: 16px;
+  width: 16px;
+}
+
+.notification-copy,
+.notification-title-row {
+  min-width: 0;
+}
+
+.notification-copy {
+  display: grid;
+  gap: 3px;
+  padding-top: 1px;
+}
+
+.notification-title-row {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.notification-title-row strong {
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.notification-count {
+  animation: notification-count-bump 300ms cubic-bezier(0.2, 0.9, 0.25, 1.35);
+  align-items: center;
+  background: var(--notification-tone);
+  border-radius: 999px;
+  color: var(--black);
+  display: inline-flex;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  justify-content: center;
+  min-width: 25px;
+  padding: 2px 7px;
+}
+
+.notification-message {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.notification-action {
+  background: none;
+  border: 0;
+  color: var(--notification-tone);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  justify-self: start;
+  margin-top: 5px;
+  padding: 0;
+}
+
+.notification-close,
+.inline-alert-close {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted-2);
+  cursor: pointer;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  transition: background 160ms ease, color 160ms ease;
+  width: 30px;
+}
+
+.notification-close:hover,
+.inline-alert-close:hover {
+  background: color-mix(in oklab, var(--fg), transparent 92%);
+  color: var(--fg);
+}
+
+.notification-close .ui-icon,
+.inline-alert-close .ui-icon {
+  height: 16px;
+  width: 16px;
+}
+
+.notification-timer {
+  animation: notification-countdown var(--notification-duration) linear forwards;
+  background: var(--notification-tone);
+  bottom: 0;
+  height: 2px;
+  left: 0;
+  position: absolute;
+  right: 0;
+  transform-origin: left;
+}
+
+.notification-card:hover .notification-timer,
+.notification-card:focus-within .notification-timer,
+.notification-region.is-suspended .notification-timer {
+  animation-play-state: paused;
+}
+
+.inline-alert {
+  --notification-tone: var(--danger);
+  animation: inline-alert-enter 220ms ease both;
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in oklab, var(--danger), var(--border) 38%);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 9px;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  padding: 10px;
+}
+
+.inline-alert-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.inline-alert-copy strong { font-size: 12px; }
+.inline-alert-copy span { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.inline-alert-actions { align-items: center; display: flex; gap: 4px; }
+.inline-alert-action { background: transparent; border: 0; color: var(--danger); cursor: pointer; font-size: 11px; font-weight: 700; padding: 6px; }
+
+@keyframes notification-enter {
+  from { opacity: 0; transform: translate3d(16px, -8px, 0) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes notification-leave {
+  to { opacity: 0; transform: translate3d(20px, 0, 0) scale(0.97); }
+}
+
+@keyframes notification-countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@keyframes notification-count-bump {
+  0% { transform: scale(0.82); }
+  55% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+@keyframes inline-alert-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
 }
 
 .room-title .small,
@@ -4293,6 +4498,18 @@ button.reply-quote:focus-visible .reply-quote-body {
     --topbar: 57px;
   }
 
+  .notification-region {
+    bottom: calc(var(--dock) + 14px);
+    max-height: 58dvh;
+    right: 12px;
+    top: auto;
+    width: calc(100vw - 24px);
+  }
+
+  body:has(.dock-controls:empty) .notification-region {
+    bottom: calc(var(--dock-quiet) + 14px);
+  }
+
   .app-shell-skeleton {
     grid-template-columns: minmax(0, 1fr);
     padding: 8px 8px calc(var(--dock) + 16px);
@@ -4974,14 +5191,6 @@ button.reply-quote:focus-visible .reply-quote-body {
   text-align: center;
 }
 
-/* A call that moved to the member's other device is not a failure, so it does
-   not wear the failure colour. */
-.toast-neutral {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--fg);
-}
-
 /* Shown to a member who was signed out because their session was seen in two
    places. It has to read before the page, not inside it. */
 .landing-signed-out {
@@ -5168,6 +5377,15 @@ button.reply-quote:focus-visible .reply-quote-body {
 
   .settings-content {
     padding: 8px 16px 24px;
+  }
+
+  .inline-alert {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .inline-alert-actions {
+    grid-column: 2;
+    justify-content: flex-start;
   }
 }
 

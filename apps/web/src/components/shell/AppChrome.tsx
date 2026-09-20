@@ -7,25 +7,35 @@ import type { MemberAction,ShellActions,ShellModel } from "../../app/types.js";
 import { ConfirmDialog,NicknameDialog } from "../../components/ui/Dialogs.js";
 import { MenuIcon,UsersIcon } from "../../components/ui/Icons.js";
 import { BrandLockup } from "../../components/ui/Navigation.js";
-import { Toast } from "../../components/ui/Primitives.js";
+import { NotificationViewport,useNotificationCenter } from "../../components/ui/Notifications.js";
+import type { AppNotification } from "../../lib/notifications.js";
 import { contextMenuReducer,createContextMenuDescriptor } from "../../lib/contextMenu.js";
 import { type TranslationKey } from "../../lib/i18n.js";
 import { countPeople } from "../../lib/memberDirectory.js";
 import { ChannelRail } from "./ChannelRail.js";
 import { MemberPanel } from "./MemberPanel.js";
-import { SettingsDialog } from "./SettingsDialog.js";
+import { SettingsDialog,type SettingsSection } from "./SettingsDialog.js";
 import type { SidebarActionMenuController } from "./SidebarMenus.js";
 import { VoiceDock } from "./VoiceDock.js";
 export function AppChrome(props: ShellModel & ShellActions & { children: ReactNode; mobileTitle: string }) {
   const canModerate = activeServerRole(props) === "owner";
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("account");
+  const [settingsContextError, setSettingsContextError] = useState<TranslationKey | "">("");
   const [nicknameTarget, setNicknameTarget] = useState<{ user: PresenceUser; returnFocus: HTMLButtonElement | null } | null>(null);
   const [pendingMemberAction, setPendingMemberAction] = useState<{ user: PresenceUser; roomId?: string; action: MemberAction } | null>(null);
   const [activeActionMenu, dispatchActionMenu] = useReducer(contextMenuReducer, null);
+  const notifications = useNotificationCenter();
   const closeActionMenu = useCallback(() => dispatchActionMenu({ type: "close" }), []);
+  const openSettings = useCallback((section: SettingsSection = "account", contextError: TranslationKey | "" = "") => {
+    setSettingsSection(section);
+    setSettingsContextError(contextError);
+    setSettingsOpen(true);
+  }, []);
   const closeSettings = useCallback(() => {
     props.onCloseAudioSettings();
     setSettingsOpen(false);
+    setSettingsContextError("");
   }, [props.onCloseAudioSettings]);
   const openActionMenu = useCallback((input: Parameters<SidebarActionMenuController["open"]>[0]) => {
     dispatchActionMenu({
@@ -53,6 +63,33 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
     closeActionMenu();
   }, [closeActionMenu, props.activeServerId, props.currentRoom?.id, props.drawer, props.route.name]);
 
+  useEffect(() => {
+    if (!props.voiceError) return;
+    notifications.push({
+      id: `voice-error:${props.voiceError}`,
+      tone: "danger",
+      titleKey: "notification.voiceErrorTitle",
+      messageKey: props.voiceError,
+      timeoutMs: null,
+      action: "open-audio-settings"
+    });
+  }, [notifications.push, props.voiceError, props.voiceErrorRevision]);
+
+  useEffect(() => {
+    if (!props.voiceNotice) return;
+    notifications.push({
+      id: `voice-notice:${props.voiceNotice}`,
+      tone: "neutral",
+      titleKey: "notification.voiceNoticeTitle",
+      messageKey: props.voiceNotice,
+      timeoutMs: 5_200
+    });
+  }, [notifications.push, props.voiceNotice, props.voiceNoticeRevision]);
+
+  const handleNotificationAction = useCallback((item: AppNotification) => {
+    if (item.action === "open-audio-settings") openSettings("audio", item.messageKey);
+  }, [openSettings]);
+
   return (
     <>
       <a className="skip-link" href="#main-content">{props.t("shell.skip")}</a>
@@ -70,7 +107,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
       </div>
       <div className={`app-shell drawer-${props.drawer ?? "none"}`}>
         <ChannelRail
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => openSettings()}
           onToggleControl={props.onToggleControl}
           micLockedByRoom={props.micLockedByRoom}
           activeServerId={props.activeServerId}
@@ -162,7 +199,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         activeVoiceRoomId={props.activeVoiceRoomId}
         connectionHealth={props.connectionHealth}
         voiceQuality={props.voiceQuality}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => openSettings()}
         controls={props.controls}
         currentNickname={props.currentNickname}
         currentRoom={props.currentRoom}
@@ -181,9 +218,15 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         onToggleControl={props.onToggleControl}
         connectedCount={voiceConnectedCount}
       />
-      {settingsOpen ? <SettingsDialog {...props} onClose={closeSettings} /> : null}
-      <Toast message={props.voiceError} />
-      <Toast message={props.voiceNotice} tone="neutral" />
+      <NotificationViewport
+        items={notifications.notifications}
+        suspended={settingsOpen}
+        t={props.t}
+        onDismiss={notifications.dismiss}
+        onExpire={notifications.expire}
+        onAction={handleNotificationAction}
+      />
+      {settingsOpen ? <SettingsDialog {...props} initialSection={settingsSection} contextError={settingsContextError} onClose={closeSettings} /> : null}
       {nicknameTarget ? <NicknameDialog
         user={nicknameTarget.user}
         returnFocus={nicknameTarget.returnFocus}

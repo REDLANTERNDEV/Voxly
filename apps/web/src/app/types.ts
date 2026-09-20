@@ -1,7 +1,7 @@
 import type { AfkTimeoutMinutes, MusicCommand,MusicControlAck,MusicQueueState,PresenceUser,PublicUser,RoomSummary,VisualTarget,VoiceModerationState,VoiceSnapshot } from "@voxly/shared";
 import { type AudioLevels } from "../lib/audioLevels.js";
 import type { RoomHistory } from "../lib/channelState.js";
-import { type LanguageCode,type TranslationKey } from "../lib/i18n.js";
+import { type LanguageCode,type TranslationKey,type VoiceErrorKey } from "../lib/i18n.js";
 import type { UseAudioDevicesResult } from "../lib/useAudioDevices.js";
 import type { ConnectionHealth } from "../lib/useConnectionHealth.js";
 import type { VoiceQuality } from "../lib/useVoiceQuality.js";
@@ -49,9 +49,11 @@ export interface ShellModel {
   /** The active voice room closes the microphone for everyone in it. */
   micLockedByRoom: boolean;
   appConfig: AppConfigResponse;
-  voiceError: string;
+  voiceError: VoiceErrorKey | "";
+  voiceErrorRevision: number;
   /** Why voice ended when the member did not end it themselves. Not a failure. */
-  voiceNotice: string;
+  voiceNotice: TranslationKey | "";
+  voiceNoticeRevision: number;
   visualTargets: VisualTarget[];
   voiceSnapshots: Record<string, VoiceSnapshot>;
   /**
@@ -120,7 +122,7 @@ export interface ShellActions {
 }
 
 export interface VoiceChromeModel extends Pick<ShellModel,
-  "activeVoiceRoomId" | "controls" | "voiceModeration" | "voiceError" | "voiceNotice" |
+  "activeVoiceRoomId" | "controls" | "voiceModeration" | "voiceError" | "voiceErrorRevision" | "voiceNotice" | "voiceNoticeRevision" |
   "visualTargets" | "voiceSnapshots" | "musicQueues" | "remoteStreams" | "peerConnectionStates" |
   "localPreviews" | "memberVolumes" | "screenVolumes" | "pendingLiveWatch" |
   "audioDevices" | "audioLevels" | "microphoneTestActive" | "microphoneTestError"

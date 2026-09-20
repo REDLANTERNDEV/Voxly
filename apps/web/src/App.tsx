@@ -6,7 +6,7 @@ import { AuthenticatedAppSurface } from "./app/AuthenticatedAppSurface.js";
 import { applyThemeChoice,parseRoute,readThemeChoice,saveThemeChoice,serverPath } from "./app/navigation.js";
 import type { Drawer,LiveWatchRequest,Route,ShellActions,ShellModel,ThemeChoice,Translate,VoiceJoinRequest } from "./app/types.js";
 import { useListenerAudio } from "./app/useListenerAudio.js";
-import { forceLeaveNoticeKey, voiceErrorMessage } from "./app/presentation.js";
+import { forceLeaveNoticeKey } from "./app/presentation.js";
 import { useRealtimeSync } from "./app/useRealtimeSync.js";
 import { useSessionController } from "./app/useSessionController.js";
 import { useWorkspaceController } from "./app/useWorkspaceController.js";
@@ -22,7 +22,6 @@ import { requestMusicCommand } from "./lib/musicBot.js";
 import { useMusicQueue } from "./lib/useMusicQueue.js";
 import { defaultServerId } from "./lib/navigation.js";
 import { DEFAULT_VOLUME_PERCENT } from "./lib/voiceVolume.js";
-
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
   const [drawer, setDrawer] = useState<Drawer>(null);
@@ -34,9 +33,9 @@ export function App() {
   const activeVoiceRoomRef = useRef<string | null>(null);
   const leaveVoiceRef = useRef<() => void>(() => undefined);
   const moveVoiceRef = useRef<(roomId: string) => void>(() => undefined);
-  const [forceLeaveReason, setForceLeaveReason] = useState<VoiceForceLeaveReason | null>(null);
+  const [forceLeaveNotice, setForceLeaveNotice] = useState<{ reason: VoiceForceLeaveReason; revision: number } | null>(null);
   const forceLeaveNoticeRef = useRef<(reason: VoiceForceLeaveReason) => void>(() => undefined);
-  forceLeaveNoticeRef.current = setForceLeaveReason;
+  forceLeaveNoticeRef.current = (reason) => setForceLeaveNotice((current) => ({ reason, revision: (current?.revision ?? 0) + 1 }));
   const checkStillSignedInRef = useRef<() => Promise<void>>(async () => undefined);
   const notifyMessageRef = useRef<(message: ChatMessage) => void>(() => undefined);
 
@@ -68,7 +67,6 @@ export function App() {
   }, []);
   useEffect(() => applyThemeChoice(theme), [theme]);
   useEffect(() => { document.documentElement.lang = language; }, [language]);
-
   const session = useSessionController(route, navigate);
   checkStillSignedInRef.current = session.checkStillSignedIn;
   const workspace = useWorkspaceController({
@@ -203,8 +201,10 @@ export function App() {
     voiceModeration: audio.voice.voiceModeration,
     micLockedByRoom: Boolean(audio.voice.activeRoomId && workspace.afkRoomIds.includes(audio.voice.activeRoomId)),
     appConfig: session.appConfig,
-    voiceError: voiceErrorMessage(audio.voice.error || session.rtcConfigError, t),
-    voiceNotice: forceLeaveReason ? t(forceLeaveNoticeKey(forceLeaveReason)) : "",
+    voiceError: audio.voice.error || session.rtcConfigError,
+    voiceErrorRevision: audio.voice.error ? audio.voice.errorRevision : session.rtcConfigErrorRevision,
+    voiceNotice: forceLeaveNotice ? forceLeaveNoticeKey(forceLeaveNotice.reason) : "",
+    voiceNoticeRevision: forceLeaveNotice?.revision ?? 0,
     visualTargets: audio.voice.visualTargets,
     voiceSnapshots: audio.voice.voiceSnapshots,
     musicQueues,

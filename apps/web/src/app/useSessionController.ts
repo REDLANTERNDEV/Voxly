@@ -18,6 +18,7 @@ export function useSessionController(route: Route, navigate: (path: string) => v
   const [rtcConfig, setRtcConfig] = useState<RtcConfigResponse>({ iceServers: [], expiresAt: null });
   const [rtcConfigReady, setRtcConfigReady] = useState(false);
   const [rtcConfigError, setRtcConfigError] = useState<VoiceErrorKey | "">("");
+  const [rtcConfigErrorRevision, setRtcConfigErrorRevision] = useState(0);
   const authRequestGateRef = useRef(createAuthRequestGate());
   const authenticatedUserIdRef = useRef<string | null>(null);
   useClientUpdate(appConfig.clientVersion);
@@ -96,6 +97,7 @@ export function useSessionController(route: Route, navigate: (path: string) => v
         if (!cancelled) {
           setRtcConfig((current) => rtcConfigAfterFetchFailure(current, hasSuccessfulConfig));
           setRtcConfigError("voiceError.rtcConfigUnavailable");
+          setRtcConfigErrorRevision((current) => current + 1);
           refreshTimer = window.setTimeout(() => void load(), rtcConfigRetryMs);
         }
       } finally {
@@ -137,5 +139,5 @@ export function useSessionController(route: Route, navigate: (path: string) => v
     return () => { mounted = false; };
   }, []);
 
-  return { user, authState, appConfig, rtcConfig, rtcConfigReady, rtcConfigError, signedOutReason, checkStillSignedIn, completeAuthentication, clearAuthentication };
+  return { user, authState, appConfig, rtcConfig, rtcConfigReady, rtcConfigError, rtcConfigErrorRevision, signedOutReason, checkStillSignedIn, completeAuthentication, clearAuthentication };
 }

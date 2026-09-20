@@ -39,6 +39,13 @@ describe("frontend localization", () => {
     assert.equal(translate("tr", "audio.notificationVolume"), "Bildirim seviyesi");
   });
 
+  it("translates the application notification controls in both languages", () => {
+    assert.equal(translate("en", "notification.voiceErrorTitle"), "Voice problem");
+    assert.equal(translate("tr", "notification.voiceErrorTitle"), "Ses sorunu");
+    assert.equal(translate("en", "notification.dismiss"), "Dismiss notification");
+    assert.equal(translate("tr", "notification.occurrences", { count: 3 }), "3 kez tekrarlandı");
+  });
+
   it("localizes edited message timestamps", () => {
     assert.equal(translate("en", "room.editedAt", { time: "Jul 14, 2026, 3:34 PM" }), "Edited Jul 14, 2026, 3:34 PM");
     assert.equal(translate("tr", "room.editedAt", { time: "14 Tem 2026 15:34" }), "Düzenlendi: 14 Tem 2026 15:34");

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createRecoveryCode, fetchRecoveryStatus } from "../api.js";
 import type { Translate } from "../app/types.js";
 import { RecoveryCodeReveal } from "../features/auth/RecoveryCode.js";
+import { InlineAlert } from "./ui/Notifications.js";
 
 /**
  * The Recovery code as a setting: whether you have one, and how to replace it.
@@ -68,7 +69,7 @@ export function RecoverySettings({ t }: { t: Translate }) {
     <section className="theme-card recovery-card">
       <div className="theme-card-head"><span className="label">{t("recovery.settingsTitle")}</span></div>
       <p className="muted small">{t("recovery.settingsHint")}</p>
-      {error ? <p className="small device-error" role="alert">{error}</p> : null}
+      {error ? <InlineAlert title={t("notification.settingsErrorTitle")} message={error} dismissLabel={t("notification.dismiss")} onDismiss={() => setError("")} /> : null}
       {present === false ? <p className="small recovery-warning">{t("recovery.missing")}</p> : null}
       {present === true ? <p className="muted small">{t("recovery.present")}</p> : null}
       {/* Replacing signs every other Device out, so it asks first. Creating a

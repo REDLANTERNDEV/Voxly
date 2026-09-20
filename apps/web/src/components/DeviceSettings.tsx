@@ -5,6 +5,7 @@ import { fetchDevices, signOutDevice } from "../api.js";
 import { LinkDeviceDialog } from "../features/auth/LinkDeviceDialog.js";
 import { ConfirmDialog } from "./ui/Dialogs.js";
 import { LeaveIcon } from "./ui/Icons.js";
+import { InlineAlert } from "./ui/Notifications.js";
 
 /**
  * What is signed in as you, and how you close one.
@@ -57,7 +58,7 @@ export function DeviceSettings({ t }: { t: Translate }) {
     <section className="theme-card device-card">
       <div className="theme-card-head"><span className="label">{t("devices.title")}</span></div>
       <p className="muted small">{t("devices.hint")}</p>
-      {error ? <p className="small device-error" role="alert">{error}</p> : null}
+      {error ? <InlineAlert title={t("notification.settingsErrorTitle")} message={error} dismissLabel={t("notification.dismiss")} onDismiss={() => setError("")} /> : null}
       {devices === null && !error ? <p className="muted small">{t("devices.loading")}</p> : null}
       <button className="btn btn-ghost device-link-action" type="button" onClick={() => setLinking(true)}>
         {t("devices.linkDevice")}

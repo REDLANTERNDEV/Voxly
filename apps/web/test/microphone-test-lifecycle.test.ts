@@ -28,6 +28,6 @@ describe("microphone test lifecycle integration", () => {
       chrome,
       /const closeSettings = useCallback\(\(\) => \{[\s\S]*?props\.onCloseAudioSettings\(\);[\s\S]*?setSettingsOpen\(false\);[\s\S]*?\}, \[props\.onCloseAudioSettings\]\)/
     );
-    assert.match(chrome, /<SettingsDialog \{\.\.\.props\} onClose=\{closeSettings\} \/>/);
+    assert.match(chrome, /<SettingsDialog \{\.\.\.props\} initialSection=\{settingsSection\} contextError=\{settingsContextError\} onClose=\{closeSettings\} \/>/);
   });
 });

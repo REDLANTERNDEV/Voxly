@@ -112,7 +112,12 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const [peerConnectionStates, setPeerConnectionStates] = useState<Record<string, PeerConnectionState>>({});
   const [localPreviews, setLocalPreviews] = useState<LocalPreviewState[]>([]);
   const [microphoneMonitorStream, setMicrophoneMonitorStream] = useState<MediaStream | null>(null);
-  const [error, setError] = useState<VoiceErrorKey | "">("");
+  const [error, setErrorState] = useState<VoiceErrorKey | "">("");
+  const [errorRevision, setErrorRevision] = useState(0);
+  const setError = useCallback((next: VoiceErrorKey | "") => {
+    setErrorState(next);
+    if (next) setErrorRevision((current) => current + 1);
+  }, []);
   const localStreamsRef = useRef<Partial<Record<LocalStreamKind, MediaStream>>>({});
   const microphoneInputRef = useRef<MicrophoneInput | null>(null);
   const iceServersRef = useRef(iceServers);
@@ -1652,6 +1657,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     activeRoomId,
     controls,
     error,
+    errorRevision,
     join,
     leave,
     localPreviews,

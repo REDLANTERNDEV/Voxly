@@ -4,6 +4,7 @@ import { AudioDeviceSettings } from "../AudioDeviceSettings.js";
 import { DeviceSettings } from "../DeviceSettings.js";
 import { RecoverySettings } from "../RecoverySettings.js";
 import { PreferencesCard } from "../ui/Primitives.js";
+import type { TranslationKey } from "../../lib/i18n.js";
 
 /**
  * Settings, in a window over the room rather than stacked down the channel rail.
@@ -19,12 +20,12 @@ import { PreferencesCard } from "../ui/Primitives.js";
  * 260-pixel column ever wanted to be.
  */
 
-type SettingsSection = "account" | "audio" | "appearance";
+export type SettingsSection = "account" | "audio" | "appearance";
 
 const sections: readonly SettingsSection[] = ["account", "audio", "appearance"];
 
-export function SettingsDialog(props: ShellModel & ShellActions & { onClose: () => void }) {
-  const [section, setSection] = useState<SettingsSection>("account");
+export function SettingsDialog(props: ShellModel & ShellActions & { initialSection?: SettingsSection; contextError?: TranslationKey | ""; onClose: () => void }) {
+  const [section, setSection] = useState<SettingsSection>(props.initialSection ?? "account");
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -86,6 +87,7 @@ export function SettingsDialog(props: ShellModel & ShellActions & { onClose: () 
                 microphoneTestError={props.microphoneTestError}
                 loading={props.audioDevices.loading}
                 error={props.audioDevices.error ? props.t(props.audioDevices.error) : ""}
+                contextError={props.contextError ? props.t(props.contextError) : ""}
                 unavailableSelections={props.audioDevices.unavailableSelections}
                 outputSelectionSupported={props.audioDevices.outputSelectionSupported}
                 labels={{
@@ -112,6 +114,8 @@ export function SettingsDialog(props: ShellModel & ShellActions & { onClose: () 
                   testHint: props.t("audio.testHint"),
                   testPermission: props.t("audio.testPermission"),
                   testUnavailable: props.t("audio.testUnavailable"),
+                  errorTitle: props.t("notification.settingsErrorTitle"),
+                  dismissError: props.t("notification.dismiss"),
                   closeSettings: props.t("audio.closeSettings")
                 }}
                 onOpen={() => props.audioDevices.refresh(true)}
