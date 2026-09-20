@@ -35,4 +35,9 @@ describe("notification presentation", () => {
     assert.match(recovery, /<InlineAlert[\s\S]*occurrences=\{errorOccurrence\?\.count\}/);
     assert.match(notifications(), /occurrences > 1[\s\S]*className="notification-count"/);
   });
+
+  it("keeps inline error copy at foreground contrast", () => {
+    assert.match(css(), /\.inline-alert-copy > span:not\(\.inline-alert-title-row\)\s*\{[^}]*color: var\(--fg\)/);
+    assert.doesNotMatch(css(), /\.inline-alert-copy span\s*\{[^}]*color: var\(--muted\)/);
+  });
 });
