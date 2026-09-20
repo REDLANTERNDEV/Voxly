@@ -36,18 +36,4 @@ export function saveThemeChoice(theme: ThemeChoice) {
 export function applyThemeChoice(theme: ThemeChoice) {
   if (theme === "auto") document.documentElement.removeAttribute("data-theme");
   else document.documentElement.setAttribute("data-theme", theme);
-
-  const mediaQuery = typeof window !== "undefined" && typeof window.matchMedia === "function"
-    ? window.matchMedia("(prefers-color-scheme: dark)")
-    : null;
-  const updateThemeColor = () => {
-    const effectiveTheme = theme === "auto" && mediaQuery?.matches ? "dark" : theme === "dark" ? "dark" : "light";
-    document.querySelector?.('meta[name="theme-color"]')?.setAttribute("content", effectiveTheme === "dark" ? "#0B0F14" : "#FFFFFF");
-    document.querySelector?.('meta[name="color-scheme"]')?.setAttribute("content", effectiveTheme);
-    document.querySelector?.('link[rel="manifest"]')?.setAttribute("href", effectiveTheme === "dark" ? "/manifest-dark.webmanifest" : "/manifest-light.webmanifest");
-  };
-  updateThemeColor();
-  if (theme !== "auto" || !mediaQuery) return;
-  mediaQuery.addEventListener("change", updateThemeColor);
-  return () => mediaQuery.removeEventListener("change", updateThemeColor);
 }

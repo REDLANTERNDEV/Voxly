@@ -4,8 +4,8 @@
   "description": "Private voice rooms for small groups.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0B0F14",
-  "theme_color": "#0B0F14",
+  "background_color": "#FBFBFA",
+  "theme_color": "#FFFFFF",
   "icons": [
     {
       "src": "/brand/pwa/icon-primary-192x192.png",
