@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   readVoiceCounters,
   readVoiceTransport,
-  updateVoiceQualityRecovery,
+  voiceMediaStalled,
   voiceQualityReading,
   worstVoiceQuality,
   worstVoiceTransport,
@@ -60,6 +60,7 @@ function collectStats(report: RTCStatsReport) {
 export interface VoiceStatsPeer {
   userId: string;
   peer: RTCPeerConnection;
+  expectingAudio?: boolean;
 }
 
 export type VoiceStatsSource = () => Iterable<VoiceStatsPeer>;
@@ -102,7 +103,7 @@ export function useVoiceQuality(
         const transportReadings: VoiceTransportReading[] = [];
         const recoveryRequests: VoiceQualityRecoveryRequest[] = [];
         const clearPeers: VoiceStatsPeer[] = [];
-        for (const { userId, peer } of peers()) {
+        for (const { userId, peer, expectingAudio = false } of peers()) {
           const previousRecovery = recoveryRef.current.get(userId) ?? {
             consecutiveDegradedSamples: 0,
             lastRecoveryAt: null
@@ -116,7 +117,7 @@ export function useVoiceQuality(
             if (transport.candidatePairState) transportReadings.push(transport);
             voiceDiagnostics.record("sample", {
               connection: peer.connectionState, ice: peer.iceConnectionState,
-              signaling: peer.signalingState, transport, audio: safeAudioStats(report)
+              signaling: peer.signalingState, expectingAudio, transport, audio: safeAudioStats(report)
             }, peer);
           } catch {
             // A peer closing mid-sample rejects rather than resolving empty. It
@@ -127,18 +128,37 @@ export function useVoiceQuality(
           current.set(peer, counters);
           const previous = previousRef.current.get(peer);
           const reading = previous ? voiceQualityReading(previous, counters) : null;
-          if (reading) {
-            readings.push(reading);
-            if (reading.grade === "clear") clearPeers.push({ userId, peer });
-            const recovery = updateVoiceQualityRecovery(previousRecovery, reading, Date.now());
-            currentRecovery.set(userId, recovery.state);
-            if (recovery.recover) {
+          const mediaStalled = Boolean(
+            previous
+            && peer.connectionState === "connected"
+            && voiceMediaStalled(previous, counters, expectingAudio)
+          );
+          if (mediaStalled) {
+            const consecutive = Math.min(2, previousRecovery.consecutiveDegradedSamples + 1);
+            const now = Date.now();
+            const cooldownElapsed = previousRecovery.lastRecoveryAt === null
+              || now - previousRecovery.lastRecoveryAt >= 15_000;
+            const recover = consecutive >= 2 && cooldownElapsed;
+            currentRecovery.set(userId, recover
+              ? { consecutiveDegradedSamples: 0, lastRecoveryAt: now }
+              : { ...previousRecovery, consecutiveDegradedSamples: consecutive });
+            if (recover) {
               recoveryRequests.push({
                 peerUserId: userId,
                 peer,
                 requestId: ++recoveryRequestIdRef.current
               });
             }
+          } else if (reading) {
+            readings.push(reading);
+            if (reading.grade === "clear") clearPeers.push({ userId, peer });
+            // Loss, jitter, and speed correction are useful quality signals,
+            // but they do not prove that the peer is broken. ICE restart on a
+            // merely congested path can interrupt a call that the browser's
+            // Opus jitter buffer would have recovered by itself. Automatic
+            // recovery is reserved for the explicit no-RTP stall branch above
+            // and for connection-state failures owned by useVoiceMedia.
+            currentRecovery.set(userId, { ...previousRecovery, consecutiveDegradedSamples: 0 });
           } else {
             currentRecovery.set(userId, previousRecovery);
           }

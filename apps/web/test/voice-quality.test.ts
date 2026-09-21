@@ -5,6 +5,7 @@ import {
   readVoiceCounters,
   readVoiceTransport,
   updateVoiceQualityRecovery,
+  voiceMediaStalled,
   voiceQualityReading,
   worstVoiceTransport,
   worstVoiceQuality,
@@ -103,6 +104,19 @@ describe("voice quality counters", () => {
 });
 
 describe("voice quality reading", () => {
+  it("detects silent concealment while the sender says it is speaking", () => {
+    assert.equal(voiceMediaStalled(
+      counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND }),
+      counters({ packetsReceived: 10, silentConcealedSamples: SECOND * 2, jitterBufferEmittedCount: SECOND * 2 }),
+      true
+    ), true);
+    assert.equal(voiceMediaStalled(
+      counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND }),
+      counters({ packetsReceived: 10, silentConcealedSamples: SECOND * 2, jitterBufferEmittedCount: SECOND * 2 }),
+      false
+    ), false);
+  });
+
   it("reports nothing until enough audio has played to divide by", () => {
     // A member alone, deafened, or in a silent room. Reporting "clear" here
     // would be a verdict on a path nothing crossed.
@@ -301,7 +315,8 @@ describe("voice quality recovery", () => {
   it("keeps recovery requests per peer and leaves execution to the media owner", () => {
     const sampler = readFileSync("src/lib/useVoiceQuality.ts", "utf8");
 
-    assert.match(sampler, /updateVoiceQualityRecovery/);
+    assert.match(sampler, /voiceMediaStalled/);
+    assert.doesNotMatch(sampler, /updateVoiceQualityRecovery\(previousRecovery, reading/);
     assert.match(sampler, /userId/);
     assert.match(sampler, /recoveryRequests/);
     assert.doesNotMatch(sampler, /recoverPeer\s*\(/);

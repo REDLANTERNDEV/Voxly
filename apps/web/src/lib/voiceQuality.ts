@@ -303,6 +303,19 @@ export function voiceQualityReading(previous: VoiceCounters, next: VoiceCounters
   };
 }
 
+/**
+ * Silent concealment is normally harmless while a talker is paused or quiet.
+ * When the sender explicitly says it is speaking, the same counters mean the
+ * receiver is filling the gap with silence because media stopped arriving.
+ */
+export function voiceMediaStalled(previous: VoiceCounters, next: VoiceCounters, expectingAudio: boolean) {
+  if (!expectingAudio) return false;
+  const received = delta(previous.packetsReceived, next.packetsReceived);
+  const emitted = delta(previous.jitterBufferEmittedCount, next.jitterBufferEmittedCount);
+  const silent = delta(previous.silentConcealedSamples, next.silentConcealedSamples);
+  return received === 0 && (silent >= decoderSampleRate / 2 || emitted === 0);
+}
+
 const gradeSeverity: Record<VoiceQualityGrade, number> = {
   measuring: 0,
   clear: 1,

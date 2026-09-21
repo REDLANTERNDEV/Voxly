@@ -109,6 +109,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const [controls, setControls] = useState<VoiceControls>(() => createInitialVoiceControls());
   const [voiceModeration, setVoiceModeration] = useState<VoiceModerationState>({ muted: false, deafened: false });
   const [voiceSnapshots, setVoiceSnapshots] = useState<Record<string, VoiceSnapshot>>({});
+  const voiceSnapshotsRef = useRef<Record<string, VoiceSnapshot>>({});
   const [visualTargets, setVisualTargets] = useState<VisualTarget[]>([]);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStreamState[]>([]);
   const [peerConnectionStates, setPeerConnectionStates] = useState<Record<string, PeerConnectionState>>({});
@@ -830,7 +831,13 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         output: voiceOutputDiagnostics()
       });
     } catch { /* Optional observation must never interrupt voice measurement. */ }
-    return [...peersRef.current.entries()].map(([userId, peer]) => ({ userId, peer }));
+    const snapshot = roomRef.current ? voiceSnapshotsRef.current[roomRef.current] : undefined;
+    const members = new Map(snapshot?.members.map((member) => [member.user.userId, member.media.speaking]) ?? []);
+    return [...peersRef.current.entries()].map(([userId, peer]) => ({
+      userId,
+      peer,
+      expectingAudio: members.get(userId) === true
+    }));
   }, []);
 
   const renegotiatePeers = useCallback(() => {
@@ -896,6 +903,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   }, [persistVoiceResume, socket]);
 
   const applyVoiceSnapshot = useCallback((nextSnapshot: VoiceSnapshot) => {
+    voiceSnapshotsRef.current[nextSnapshot.roomId] = nextSnapshot;
     setVoiceSnapshots((current) => ({ ...current, [nextSnapshot.roomId]: nextSnapshot }));
     if (roomRef.current !== nextSnapshot.roomId) return;
 
@@ -1167,6 +1175,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (storage) clearVoiceResume(storage);
     setActiveRoomId(null);
     setVoiceSnapshots({});
+    voiceSnapshotsRef.current = {};
     setLocalPreviews([]);
     setError("");
     setControls(createInitialVoiceControls());
@@ -1417,7 +1426,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (peerGeneration === undefined || !isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
     if (isRtcRecoveryRequest(signal)) {
       if (!userIdRef.current || !shouldInitiatePeerConnection(userIdRef.current, payload.fromUserId)) return;
-      recoverPeer(payload.fromUserId);
+      // The remote decoder requested media recovery. ICE may still look
+      // connected while the RTP pipeline is stalled, so replace this peer
+      // instead of restarting the same transport in place.
+      schedulePeerRecovery(payload.fromUserId, peer, { type: "failed" });
       return;
     }
     if (signal.type === "offer") {
@@ -1489,7 +1501,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       if (!isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
       await peer.addIceCandidate(signal.candidate);
     }
-  }, [ensurePeer, flushPendingCandidates, isCurrentPeer, localStreamDescriptors, rememberRemoteStreamKinds, sendOffer, socket]);
+  }, [ensurePeer, flushPendingCandidates, isCurrentPeer, localStreamDescriptors, rememberRemoteStreamKinds, schedulePeerRecovery, sendOffer, socket]);
 
   useEffect(() => {
     const saveResume = () => {
@@ -1683,7 +1695,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       socket.off("voice:visualSubscriberState", onVisualSubscriberState);
       socket.off("rtc:signal", onSignal);
     };
-  }, [applyVoiceSnapshot, ensureInitialOffer, ensurePeer, handleSignal, recoverPeer, sendOffer, socket, syncLocalTracks]);
+  }, [applyVoiceSnapshot, ensureInitialOffer, ensurePeer, handleSignal, recoverPeer, schedulePeerRecovery, sendOffer, socket, syncLocalTracks]);
 
   useEffect(() => {
     if (!user) {

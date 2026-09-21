@@ -171,6 +171,29 @@ describe("a Listener hears the bot", () => {
       await bot.close();
     }
   });
+
+  it("keeps a Listener hearing after repeated pause and resume cycles", async () => {
+    const bot = startBot(botBelow);
+    const listener = new FakeListener({ relay: bot.relay, userId: listenerMiddle, peerUserId: botBelow });
+    bot.listeners.push(listener);
+
+    try {
+      bot.mesh.applySnapshot(snapshotOf(botBelow, listenerMiddle));
+      await listener.announce();
+      bot.player.start();
+      await until(() => listener.received.length > 20, "audio before pause cycles");
+
+      for (let cycle = 0; cycle < 8; cycle += 1) {
+        bot.player.stop();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const before = listener.received.length;
+        bot.player.start();
+        await until(() => listener.received.length > before + 10, `audio after pause cycle ${cycle + 1}`);
+      }
+    } finally {
+      await bot.close();
+    }
+  });
 });
 
 describe("more than one Listener", () => {

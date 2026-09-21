@@ -328,7 +328,7 @@ describe("voice snapshot reconciliation", () => {
     assert.match(source, /type: expectedPeer \? "quality_degraded" : "recovery_requested"/);
     assert.match(source, /transition\.action !== "restart_ice"/);
     assert.match(source, /voicePeerConnectionTimeoutMs/);
-    assert.match(source, /recoverPeer\(payload\.fromUserId\)/);
+    assert.match(source, /schedulePeerRecovery\(payload\.fromUserId, peer, \{ type: "failed" \}\)/);
   });
 
   it("invalidates an in-flight local offer before accepting a colliding offer", () => {
