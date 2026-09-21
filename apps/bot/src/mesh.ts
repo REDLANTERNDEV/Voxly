@@ -66,8 +66,8 @@ interface StreamDescriptor {
 /** The signalling the mesh needs, narrowed so tests can stand in for a socket. */
 export interface MeshSignalling {
   emit: (payload: { roomId: string; toUserId: string; signal: RtcSignal }) => void;
-  on: (handler: (payload: { roomId: string; fromUserId: string; signal: RtcSignal }) => void) => void;
-  off: (handler: (payload: { roomId: string; fromUserId: string; signal: RtcSignal }) => void) => void;
+  on: (handler: (payload: { roomId: string; fromUserId: string; mediaInstanceId?: string; signal: RtcSignal }) => void) => void;
+  off: (handler: (payload: { roomId: string; fromUserId: string; mediaInstanceId?: string; signal: RtcSignal }) => void) => void;
 }
 
 export interface MeshOptions {
@@ -107,6 +107,7 @@ const recoveryGraceMs = 3_000;
 const recoveryTimeoutMs = 10_000;
 
 export class VoiceMesh {
+  private readonly mediaInstances = new Map<string, string>();
   private readonly peers = new Map<string, Peer>();
   private readonly log: (message: string) => void;
   private started = false;
@@ -138,6 +139,7 @@ export class VoiceMesh {
     this.options.signalling.off(this.onSignal);
     this.started = false;
     await Promise.all([...this.peers.keys()].map((userId) => this.removePeer(userId)));
+    this.mediaInstances.clear();
   }
 
   /**
@@ -155,11 +157,28 @@ export class VoiceMesh {
     for (const userId of this.peers.keys()) {
       if (!present.has(userId)) void this.removePeer(userId);
     }
-    for (const userId of present) this.ensureOffered(this.ensurePeer(userId));
+    for (const userId of this.mediaInstances.keys()) {
+      if (!present.has(userId)) this.mediaInstances.delete(userId);
+    }
+    for (const member of snapshot.members) {
+      const userId = member.user.userId;
+      if (!present.has(userId)) continue;
+      const instance = member.mediaInstanceId;
+      const previous = this.mediaInstances.get(userId);
+      if (instance && previous && instance !== previous) {
+        // removePeer detaches synchronously before awaiting transport cleanup.
+        void this.removePeer(userId);
+      }
+      if (instance) this.mediaInstances.set(userId, instance);
+      this.ensureOffered(this.ensurePeer(userId));
+    }
   }
 
-  private readonly onSignal = (payload: { roomId: string; fromUserId: string; signal: RtcSignal }) => {
-    if (payload.roomId !== this.options.roomId) return;
+  private readonly onSignal = (payload: { roomId: string; fromUserId: string; mediaInstanceId?: string; signal: RtcSignal }) => {
+    if (!this.started || payload.roomId !== this.options.roomId) return;
+    const instance = this.mediaInstances.get(payload.fromUserId);
+    if (payload.mediaInstanceId && instance && payload.mediaInstanceId !== instance) return;
+    if (payload.mediaInstanceId) this.mediaInstances.set(payload.fromUserId, payload.mediaInstanceId);
     void this.handleSignal(payload.fromUserId, payload.signal as PeerSignal).catch((cause: unknown) => {
       // Fire and forget on purpose: one peer's failed negotiation must not take
       // the process, or anybody else's audio, down with it.
@@ -197,10 +216,11 @@ export class VoiceMesh {
     this.peers.set(userId, peer);
 
     connection.onIceCandidate.subscribe((candidate) => {
-      if (!candidate) return;
+      if (!candidate || this.peers.get(userId) !== peer) return;
       this.emitSignal(userId, { type: "candidate", candidate: candidate.toJSON() });
     });
     connection.connectionStateChange.subscribe((state) => {
+      if (this.peers.get(userId) !== peer) return;
       this.log(`listener ${short(userId)} ${state}`);
       if (state === "connected") {
         if (peer.recoveryTimer !== null) {
@@ -266,7 +286,9 @@ export class VoiceMesh {
 
   private rebuildPeer(peer: Peer) {
     if (this.peers.get(peer.userId) !== peer) return;
+    const instance = this.mediaInstances.get(peer.userId);
     void this.removePeer(peer.userId).then(() => {
+      if (!this.started || this.peers.has(peer.userId) || this.mediaInstances.get(peer.userId) !== instance) return;
       const replacement = this.ensurePeer(peer.userId);
       this.ensureOffered(replacement);
       if (!shouldInitiatePeerConnection(this.options.selfUserId, peer.userId)) {
@@ -285,7 +307,7 @@ export class VoiceMesh {
    * the silence the rule exists to prevent.
    */
   private ensureOffered(peer: Peer) {
-    if (peer.offered) return;
+    if (peer.offered || peer.makingOffer) return;
     if (!shouldInitiatePeerConnection(this.options.selfUserId, peer.userId)) return;
     void this.sendOffer(peer).catch((cause: unknown) => {
       this.log(`offer to ${short(peer.userId)} failed: ${String(cause)}`);
@@ -339,11 +361,17 @@ export class VoiceMesh {
       // The polite side drops its own attempt rather than cancelling both.
       if (connection.signalingState !== "stable") {
         await connection.setLocalDescription({ type: "rollback" });
+        if (this.peers.get(fromUserId) !== peer) return;
       }
       peer.ignoringOffer = false;
       await connection.setRemoteDescription({ type: "offer", sdp: signal.sdp });
+      if (this.peers.get(fromUserId) !== peer) return;
       await this.flushCandidates(peer);
-      await connection.setLocalDescription(await connection.createAnswer());
+      if (this.peers.get(fromUserId) !== peer) return;
+      const answer = await connection.createAnswer();
+      if (this.peers.get(fromUserId) !== peer) return;
+      await connection.setLocalDescription(answer);
+      if (this.peers.get(fromUserId) !== peer) return;
       const sdp = connection.localDescription?.sdp;
       if (sdp) this.emitSignal(fromUserId, { type: "answer", sdp, streams: streamDescriptors(peer) });
       // Answering settles the connection, so this side's own audio is already
@@ -356,7 +384,9 @@ export class VoiceMesh {
     if (signal.type === "answer") {
       peer.ignoringOffer = false;
       await connection.setRemoteDescription({ type: "answer", sdp: signal.sdp });
+      if (this.peers.get(fromUserId) !== peer) return;
       await this.flushCandidates(peer);
+      if (this.peers.get(fromUserId) !== peer) return;
       await this.resumePendingOffer(peer);
       return;
     }
@@ -372,7 +402,7 @@ export class VoiceMesh {
   }
 
   private async resumePendingOffer(peer: Peer) {
-    if (!peer.pendingOffer) return;
+    if (this.peers.get(peer.userId) !== peer || !peer.pendingOffer) return;
     peer.pendingOffer = false;
     await this.sendOffer(peer);
   }
@@ -381,6 +411,7 @@ export class VoiceMesh {
     const candidates = peer.pendingCandidates;
     peer.pendingCandidates = [];
     for (const candidate of candidates) {
+      if (this.peers.get(peer.userId) !== peer) return;
       // One candidate left over from an ignored offer carries a stale ufrag and
       // is rejected. Keep going so it cannot block the valid ones behind it.
       await peer.connection.addIceCandidate(candidate).catch(() => undefined);

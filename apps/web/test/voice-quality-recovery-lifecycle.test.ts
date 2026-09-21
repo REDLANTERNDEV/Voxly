@@ -33,6 +33,7 @@ function harness() {
   let requests = 0;
   let rebuilds = 0;
   const dependencies = {
+    voiceDiagnostics: { record: () => undefined },
     peersRef, peerRecoveryStatesRef, peerConnectionTimeoutsRef,
     peer, peerUserId: "member", peerGeneration: 1,
     peerRecoveryTimersRef: { current: new Map<string, number>() },
@@ -147,5 +148,69 @@ describe("recovery cancellation", () => {
     h.recover("member", h.peer);
     assert.equal(h.requests, 0);
     assert.equal(h.timers.size, 0);
+  });
+});
+
+describe("initial negotiation and media instance lifecycle", () => {
+  it("offers a peer created by an early candidate exactly once", () => {
+    const peer = {};
+    const offeredPeersRef = { current: new Set<unknown>() };
+    let offers = 0;
+    const offer = callback("ensureInitialOffer", {
+      userIdRef: { current: "a" }, offeredPeersRef,
+      makingOfferPeersRef: { current: new Set() },
+      shouldInitiatePeerConnection: (a: string, b: string) => a < b,
+      sendOffer: async (_id: string, connection: unknown) => { offers++; offeredPeersRef.current.add(connection); },
+      setError: () => assert.fail("unexpected offer error")
+    });
+    // The candidate handler already created this peer before the snapshot.
+    offer("b", peer);
+    offer("b", peer);
+    assert.equal(offers, 1);
+  });
+
+  it("replaces the remote connection on reload, but not on repeated snapshots", () => {
+    const peersRef = { current: new Map<string, object>([["member", {}]]) };
+    const remoteMediaInstancesRef = { current: new Map([["member", "old"]]) };
+    let removals = 0;
+    let offers = 0;
+    const apply = callback("applyVoiceSnapshot", {
+      roomRef: { current: "room" }, userIdRef: { current: "self" },
+      peersRef, remoteMediaInstancesRef,
+      setVoiceSnapshots: () => undefined, setRemoteStreams: () => undefined,
+      peerRecoveryTimersRef: { current: new Map() },
+      activeVoiceMemberUserIdsRef: { current: new Set() },
+      visualTargetsRef: { current: [] },
+      staleVoicePeerUserIds: (tracked: Set<string>, active: Set<string>) => [...tracked].filter(id => !active.has(id)),
+      removePeer: (id: string, options: { preserveVisualSubscriptions?: boolean }) => {
+        assert.equal(options.preserveVisualSubscriptions, true);
+        removals++; peersRef.current.delete(id);
+      },
+      ensurePeer: (id: string) => {
+        if (!peersRef.current.has(id)) peersRef.current.set(id, {});
+        return peersRef.current.get(id);
+      },
+      ensureInitialOffer: () => { offers++; }
+    });
+    const snapshot = (mediaInstanceId: string) => ({ roomId: "room", members: [
+      { user: { userId: "member" }, media: {}, mediaInstanceId }
+    ] });
+    apply(snapshot("old"));
+    assert.equal(removals, 0);
+    const old = peersRef.current.get("member");
+    apply(snapshot("new"));
+    assert.equal(removals, 1);
+    assert.notEqual(peersRef.current.get("member"), old);
+    apply(snapshot("new"));
+    assert.equal(removals, 1);
+    assert.equal(offers, 3);
+  });
+
+  it("discards signals from a replaced media instance before touching a peer", async () => {
+    const handle = callback("handleSignal", {
+      remoteMediaInstancesRef: { current: new Map([["member", "new"]]) },
+      ensurePeer: () => assert.fail("stale signal must not touch the replacement")
+    });
+    await handle({ fromUserId: "member", mediaInstanceId: "old", signal: { type: "offer", sdp: "stale" } });
   });
 });

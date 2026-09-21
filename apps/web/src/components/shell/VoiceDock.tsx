@@ -1,3 +1,4 @@
+import { downloadVoiceDiagnostics } from "../../lib/voiceDiagnostics.js";
 import { useState } from "react";
 import { activeServerRole,connectionCopy,connectionLabel,initial,voiceDockSilenced,voiceDockStatusLabel,voiceSignalPresentation } from "../../app/presentation.js";
 import type { ShellActions,ShellModel,Translate } from "../../app/types.js";
@@ -95,6 +96,9 @@ export function ConnectionSignal({ health, quality, inCall, t }: {
         <rect x="16" y="1" width="3" height="14" rx="1" />
       </svg>
       <span>{value}</span>
+      {inCall && <button type="button" className="voice-diagnostics-download" onClick={downloadVoiceDiagnostics} title={t("voiceQuality.downloadDiagnostics")} aria-label={t("voiceQuality.downloadDiagnostics")}>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 13v4h14v-4" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+      </button>}
     </span>
   );
 }

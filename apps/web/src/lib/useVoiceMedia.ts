@@ -25,7 +25,8 @@ import {
 import { requestVoiceJoin } from "./voiceJoin.js";
 import { requestVisualSubscriptions, voiceRecoveryRetryDelayMs } from "./voiceRecovery.js";
 import { DEFAULT_NOISE_SUPPRESSION, microphoneCaptureChange, openMicrophoneCapture } from "./noiseSuppression.js";
-import { releaseUnusedSharedAudioOutput } from "./audioOutput.js";
+import { voiceDiagnostics } from "./voiceDiagnostics.js";
+import { releaseUnusedSharedAudioOutput, voiceOutputDiagnostics } from "./audioOutput.js";
 import {
   shouldIgnoreIncomingOffer,
   shouldInitiatePeerConnection,
@@ -125,6 +126,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const microphoneVolumeRef = useRef(microphoneVolume);
   const noiseSuppressionRef = useRef(noiseSuppression);
   const appliedMicrophoneCaptureRef = useRef({ deviceId: microphoneDeviceId });
+  const mediaInstanceIdRef = useRef<string | null>(null);
+  const remoteMediaInstancesRef = useRef(new Map<string, string>());
+  const offeredPeersRef = useRef(new Set<RTCPeerConnection>());
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const remoteStreamKindsRef = useRef<Map<string, Map<string, RemoteMediaKind>>>(new Map());
   const viewerVisualSubscriptionsRef = useRef<Map<string, Set<VisualMediaKind>>>(new Map());
@@ -340,6 +344,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       peer.close();
     }
     peersRef.current.clear();
+    mediaInstanceIdRef.current = null;
+    remoteMediaInstancesRef.current.clear();
+    offeredPeersRef.current.clear();
     remoteStreamKindsRef.current.clear();
     viewerVisualSubscriptionsRef.current.clear();
     makingOfferPeersRef.current.clear();
@@ -367,6 +374,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (options.expectedPeer && peer !== options.expectedPeer) return false;
     const peerGeneration = peerGenerationsRef.current.get(peerUserId) ?? 0;
     peerGenerationsRef.current.set(peerUserId, peerGeneration + 1);
+    if (peer) offeredPeersRef.current.delete(peer);
     peer?.close();
     const connectionTimeout = peerConnectionTimeoutsRef.current.get(peerUserId);
     if (connectionTimeout !== undefined) window.clearTimeout(connectionTimeout);
@@ -514,13 +522,16 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         peer.localDescription?.type !== "offer" ||
         !roomRef.current
       ) return;
+      offeredPeersRef.current.add(peer);
       socket.emit("rtc:signal", {
         roomId: roomRef.current,
         toUserId: peerUserId,
         signal: { type: "offer", sdp: peer.localDescription.sdp ?? "", streams: localStreamDescriptors(peerUserId) }
       });
     } finally {
-      makingOfferPeersRef.current.delete(peerUserId);
+      if (isCurrentPeer(peerUserId, peer, peerGeneration)) {
+        makingOfferPeersRef.current.delete(peerUserId);
+      }
     }
   }, [isCurrentPeer, localStreamDescriptors, socket]);
 
@@ -697,6 +708,14 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     return peer;
   }, [isCurrentPeer, requestPeerRecovery, schedulePeerRecovery, syncLocalTracks]);
 
+  const ensureInitialOffer = useCallback((peerUserId: string, peer: RTCPeerConnection | null) => {
+    const currentUserId = userIdRef.current;
+    if (!peer || !currentUserId || offeredPeersRef.current.has(peer)
+      || makingOfferPeersRef.current.has(peerUserId)
+      || !shouldInitiatePeerConnection(currentUserId, peerUserId)) return;
+    void sendOffer(peerUserId, peer).catch(() => setError("voiceError.startPeer"));
+  }, [sendOffer]);
+
   const recoverPeer = useCallback((peerUserId: string, expectedPeer?: RTCPeerConnection) => {
     const peer = peersRef.current.get(peerUserId);
     // Quality observations belong to the exact connection that was measured.
@@ -711,6 +730,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     );
     peerRecoveryStatesRef.current.set(peerUserId, transition.state);
     if (transition.action !== "restart_ice") return;
+    voiceDiagnostics.record("recovery", { reason: expectedPeer ? "quality" : "transport" }, peer);
     setPeerConnectionStates((current) => ({ ...current, [peerUserId]: "reconnecting" }));
     try {
       requestPeerRecovery(peerUserId, peer);
@@ -800,6 +820,12 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
    * it stood when it last rendered.
    */
   const peerConnections = useCallback(() => {
+    try {
+      voiceDiagnostics.record("input-output", {
+        microphone: microphoneInputRef.current?.diagnostics?.() ?? null,
+        output: voiceOutputDiagnostics()
+      });
+    } catch { /* Optional observation must never interrupt voice measurement. */ }
     return [...peersRef.current.entries()].map(([userId, peer]) => ({ userId, peer }));
   }, []);
 
@@ -911,6 +937,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     ]);
     for (const stalePeerUserId of staleVoicePeerUserIds(trackedPeerUserIds, activeMemberUserIds)) {
       removePeer(stalePeerUserId);
+      remoteMediaInstancesRef.current.delete(stalePeerUserId);
     }
     const availableTargets = visualTargetsRef.current.filter((target) => membersByUserId.get(target.publisherUserId)?.[target.kind]);
     if (availableTargets.length !== visualTargetsRef.current.length) {
@@ -920,14 +947,15 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     }
     for (const member of nextSnapshot.members) {
       const peerUserId = member.user.userId;
-      const currentUserId = userIdRef.current;
-      const wasKnown = peersRef.current.has(peerUserId);
-      const peer = ensurePeer(peerUserId);
-      if (!wasKnown && peer && currentUserId && shouldInitiatePeerConnection(currentUserId, peerUserId)) {
-        void sendOffer(peerUserId, peer).catch(() => setError("voiceError.startPeer"));
+      const instance = member.mediaInstanceId;
+      const previousInstance = remoteMediaInstancesRef.current.get(peerUserId);
+      if (instance && previousInstance && instance !== previousInstance) {
+        removePeer(peerUserId, { preserveVisualSubscriptions: true });
       }
+      if (instance) remoteMediaInstancesRef.current.set(peerUserId, instance);
+      ensureInitialOffer(peerUserId, ensurePeer(peerUserId));
     }
-  }, [emitMediaState, ensurePeer, persistVoiceResume, removePeer, sendOffer]);
+  }, [emitMediaState, ensureInitialOffer, ensurePeer, persistVoiceResume, removePeer]);
 
   const join = useCallback(async (roomId: string, restoredTargets: VisualTarget[] = [], options: VoiceJoinOptions = {}) => {
     if (!socket || !user) {
@@ -973,7 +1001,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       ...localStreamsRef.current,
       mic: microphoneEnabled ? mic : undefined
     };
+    const mediaInstanceId = mediaInstanceIdRef.current ?? crypto.randomUUID();
     const response = await requestVoiceJoin(socket, {
+      mediaInstanceId,
       roomId,
       media: effectiveVoiceMediaState(nextControls, candidateStreams)
     });
@@ -1004,6 +1034,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     microphoneOnBeforeDeafenRef.current = response.state.media.mic;
     deafenTransitionRef.current += 1;
     controlsRef.current = acceptedControls;
+    if (!roomRef.current) voiceDiagnostics.begin();
+    mediaInstanceIdRef.current = mediaInstanceId;
     roomRef.current = roomId;
     setControls(acceptedControls);
     setActiveRoomId(roomId);
@@ -1094,6 +1126,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   }, [activateMicrophoneInput, activeRoomId, microphoneDeviceId, prepareMicrophoneInput, stopStream]);
 
   const leave = useCallback(() => {
+    if (roomRef.current) voiceDiagnostics.end();
     joinAttemptRef.current += 1;
     recoveryAttemptInFlightRef.current = false;
     if (recoveryRetryTimerRef.current !== null) {
@@ -1369,7 +1402,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     }
   }, [requestSnapshot, socket, voiceRoomIds]);
 
-  const handleSignal = useCallback(async (payload: { fromUserId: string; signal: RtcSignal }) => {
+  const handleSignal = useCallback(async (payload: { fromUserId: string; mediaInstanceId?: string; signal: RtcSignal }) => {
+    const knownInstance = remoteMediaInstancesRef.current.get(payload.fromUserId);
+    if (payload.mediaInstanceId && knownInstance && payload.mediaInstanceId !== knownInstance) return;
+    if (payload.mediaInstanceId) remoteMediaInstancesRef.current.set(payload.fromUserId, payload.mediaInstanceId);
     const signal = payload.signal as PeerSignal;
     const peer = ensurePeer(payload.fromUserId);
     if (!peer) return;
@@ -1410,8 +1446,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       await flushPendingCandidates(payload.fromUserId, peer, peerGeneration);
       if (!isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
       const answer = await peer.createAnswer();
+      if (!isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
       await peer.setLocalDescription(answer);
       if (socket && roomRef.current && isCurrentPeer(payload.fromUserId, peer, peerGeneration)) {
+        offeredPeersRef.current.add(peer);
         socket.emit("rtc:signal", {
           roomId: roomRef.current,
           toUserId: payload.fromUserId,
@@ -1499,7 +1537,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       let retry = false;
       try {
         const media = effectiveVoiceMediaState(controlsRef.current, localStreamsRef.current);
-        const response = await requestVoiceJoin(socket, { roomId: activeRoomId, media });
+        const mediaInstanceId = mediaInstanceIdRef.current ?? crypto.randomUUID();
+        const response = await requestVoiceJoin(socket, { roomId: activeRoomId, media, mediaInstanceId });
         if (disposed || attempt !== joinAttemptRef.current || roomRef.current !== activeRoomId || !socket.connected) return;
         if (!response.ok) {
           setError("voiceError.restoreVoice");
@@ -1507,6 +1546,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           return;
         }
 
+        mediaInstanceIdRef.current = mediaInstanceId;
         requestKnownSnapshots();
         const subscription = await setVisualSubscriptions(visualTargetsRef.current);
         if (disposed || attempt !== joinAttemptRef.current || roomRef.current !== activeRoomId || !socket.connected) return;
@@ -1616,15 +1656,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       if (roomRef.current !== roomId) {
         return;
       }
-      const currentUserId = userIdRef.current;
-      const wasKnown = peersRef.current.has(joinedUser.userId);
-      const peer = ensurePeer(joinedUser.userId);
-      if (wasKnown || !peer || !currentUserId || !shouldInitiatePeerConnection(currentUserId, joinedUser.userId)) {
-        return;
-      }
-      void sendOffer(joinedUser.userId, peer).catch(() => setError("voiceError.startPeer"));
+      ensureInitialOffer(joinedUser.userId, ensurePeer(joinedUser.userId));
     };
-    const onSignal = (payload: { fromUserId: string; signal: RtcSignal }) => {
+    const onSignal = (payload: { fromUserId: string; mediaInstanceId?: string; signal: RtcSignal }) => {
       void handleSignal(payload).catch(() => setError("voiceError.signal"));
     };
     const onVisualSubscriberState = (payload: { roomId: string; viewerUserId: string; subscribedKinds: VisualMediaKind[] }) => {
@@ -1645,11 +1679,12 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       socket.off("voice:visualSubscriberState", onVisualSubscriberState);
       socket.off("rtc:signal", onSignal);
     };
-  }, [applyVoiceSnapshot, ensurePeer, handleSignal, recoverPeer, sendOffer, socket, syncLocalTracks]);
+  }, [applyVoiceSnapshot, ensureInitialOffer, ensurePeer, handleSignal, recoverPeer, sendOffer, socket, syncLocalTracks]);
 
   useEffect(() => {
     if (!user) {
       leave();
+      voiceDiagnostics.clear();
     }
   }, [leave, user]);
 

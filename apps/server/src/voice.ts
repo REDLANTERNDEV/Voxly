@@ -16,6 +16,7 @@
  * sites is how one of them gets missed.
  */
 
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type {
   PresenceUser,
@@ -295,6 +296,16 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
       return;
     }
 
+    const suppliedInstance = candidate?.mediaInstanceId;
+    if (suppliedInstance !== undefined && (typeof suppliedInstance !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(suppliedInstance))) {
+      ack({ ok: false, error: "forbidden" });
+      return;
+    }
+    // Older clients get a public id per socket. Updated clients retain their
+    // media id across a signalling-only reconnect, but never across a reload.
+    socket.data.voiceMediaInstanceId ??= randomUUID();
+    const mediaInstanceId = suppliedInstance ?? (socket.data.voiceMediaInstanceId as string);
+
     const requested = candidate?.media as Partial<VoiceMediaState> | undefined;
     const moderation = voiceModeration(membership);
     const media = normalizeVoiceMedia({
@@ -339,11 +350,12 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
         leaveVoiceMember(context, activeRoomId, user.userId);
       }
     }
+    socket.data.voiceMediaInstanceId = mediaInstanceId;
     socket.join(`voice:${roomId}`);
     // Media and moderation are rebuilt from the request and the membership row
     // above, so the member arrives on the new Device muted if they were muted,
     // and stays muted if an owner muted them.
-    const memberState: VoiceMemberState = { user: roomUser, media, moderation };
+    const memberState: VoiceMemberState = { user: roomUser, media, moderation, mediaInstanceId };
     members.set(user.userId, memberState);
     context.holders.set(user.userId, { roomId, sessionId });
     // Clear any pending disconnect timer for this user (reconnect succeeded)
@@ -433,6 +445,11 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
     const parsed = rtcSignalPayloadSchema.safeParse(payload);
     if (!parsed.success) {
       callAck(ack, { ok: false, error: "room_not_found" });
+      return;
+    }
+    if (!socket.rooms.has(`voice:${parsed.data.roomId}`)
+      || context.membership.get(parsed.data.roomId)?.get(user.userId)?.mediaInstanceId !== socket.data.voiceMediaInstanceId) {
+      callAck(ack, { ok: false, error: "not_in_voice_room" });
       return;
     }
     callAck(ack, forwardRtcSignal(context, user.userId, parsed.data));
@@ -687,6 +704,7 @@ function forwardRtcSignal(
       socket.emit("rtc:signal", {
         roomId: payload.roomId,
         fromUserId,
+        mediaInstanceId: members.get(fromUserId)?.mediaInstanceId,
         signal: payload.signal
       });
     }

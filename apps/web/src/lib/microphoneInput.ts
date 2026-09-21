@@ -23,6 +23,7 @@ export interface MicrophoneInput {
    * precisely so the preference never has to reopen the capture device.
    */
   setNoiseSuppression(enabled: boolean): void;
+  diagnostics?(): { contextState: string; sampleRate: number; inputRms: number; suppression: boolean; worklet: boolean; trackLive: boolean; trackEnabled: boolean };
   dispose(): void;
 }
 
@@ -191,6 +192,17 @@ export function createMicrophoneInput(
         return;
       }
       applyGateGain(noiseGateTargetGain(enabled, gateState.open), gateState.open);
+    },
+    diagnostics() {
+      analyser.getFloatTimeDomainData(samples);
+      let energy = 0;
+      for (const sample of samples) energy += sample * sample;
+      const track = voiceDestination.stream.getAudioTracks()[0];
+      return {
+        contextState: context.state, sampleRate: context.sampleRate,
+        inputRms: Math.sqrt(energy / samples.length), suppression: noiseSuppression,
+        worklet: suppressor !== null, trackLive: track?.readyState === "live", trackEnabled: track?.enabled === true
+      };
     },
     dispose() {
       if (disposed) return;

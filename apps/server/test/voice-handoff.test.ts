@@ -160,6 +160,46 @@ describe("voice follows the newest Device", () => {
     assert.deepEqual(displaced, []);
   });
 
+  it("publishes a new media instance on reload but preserves one on signalling reconnect", async () => {
+    const owner = await bootstrapOwner(app);
+    const first = await connect(owner.cookies.voxly_session);
+    const joinInstance = (socket: Socket, mediaInstanceId: string): Promise<VoiceJoinAck> =>
+      new Promise((resolve) => socket.emit("voice:join", { roomId: "lobby", media: joinMedia, mediaInstanceId }, resolve));
+    const instance = (ack: VoiceJoinAck) => ack.ok ? ack.state.mediaInstanceId : undefined;
+    const initial = await joinInstance(first, "page-one");
+    assert.equal(instance(initial), "page-one");
+    first.disconnect();
+    await settle();
+    const reconnect = await connect(owner.cookies.voxly_session);
+    assert.equal(instance(await joinInstance(reconnect, "page-one")), "page-one");
+    reconnect.disconnect();
+    await settle();
+    const reload = await connect(owner.cookies.voxly_session);
+    assert.equal(instance(await joinInstance(reload, "page-two")), "page-two");
+    const snapshot = await snapshotOf(reload, "lobby");
+    assert.equal(snapshot.members.length, 1);
+    assert.equal(snapshot.members[0]?.mediaInstanceId, "page-two");
+  });
+
+  it("does not forward stale signalling from the replaced media instance", async () => {
+    const owner = await bootstrapOwner(app);
+    const other = await acceptInvite(app, owner.cookies, "Ece");
+    const listener = await connect(other.cookies.voxly_session);
+    await joinVoice(listener, "lobby");
+    const oldPage = await connect(owner.cookies.voxly_session);
+    await joinVoice(oldPage, "lobby");
+    const newPage = await connect(owner.cookies.voxly_session);
+    const joined = await joinVoice(newPage, "lobby");
+    assert.ok(joined.ok);
+    const send = (socket: Socket): Promise<{ ok: boolean; error?: string }> => new Promise(resolve => {
+      socket.emit("rtc:signal", { roomId: "lobby", toUserId: other.user.id, signal: { type: "recovery-request" } }, resolve);
+    });
+    assert.deepEqual(await send(oldPage), { ok: false, error: "not_in_voice_room" });
+    const forwarded = onceEvent<{ mediaInstanceId: string }>(listener, "rtc:signal");
+    assert.deepEqual(await send(newPage), { ok: true });
+    assert.equal((await forwarded).mediaInstanceId, joined.state.mediaInstanceId);
+  });
+
   it("keeps an owner's mute across the handoff", async () => {
     // Moderation belongs to the account, not to a Device, and a member must not
     // be able to shed a mute by picking up their phone.

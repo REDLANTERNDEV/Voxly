@@ -5669,3 +5669,23 @@ button.reply-quote:focus-visible .reply-quote-body {
 .device-sign-out {
   flex: 0 0 auto;
 }
+
+
+.voice-diagnostics-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.voice-diagnostics-download:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}

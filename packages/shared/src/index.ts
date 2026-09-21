@@ -153,12 +153,16 @@ export interface VoiceModerationState {
 }
 
 export interface VoiceMemberState {
+  /** Public, ephemeral identity of the member's live media runtime, never an auth token. */
+  mediaInstanceId?: string;
   user: PresenceUser;
   media: VoiceMediaState;
   moderation: VoiceModerationState;
 }
 
 export interface VoiceJoinRequest {
+  /** Stable over signalling reconnects; replaced when the media runtime is recreated. */
+  mediaInstanceId?: string;
   roomId: string;
   media: VoiceMediaState;
 }
@@ -720,7 +724,7 @@ export interface ServerToClientEvents {
    */
   "server:roomsChanged": (payload: { serverId: string; deletedRoomId?: string }) => void;
   "server:deleted": (payload: { serverId: string }) => void;
-  "rtc:signal": (payload: { roomId: string; fromUserId: string; signal: RtcSignal }) => void;
+  "rtc:signal": (payload: { roomId: string; fromUserId: string; mediaInstanceId?: string; signal: RtcSignal }) => void;
   /**
    * A member asked the Music bot for something. Only ever delivered to that
    * server's bot account: the request has already been authorized against the

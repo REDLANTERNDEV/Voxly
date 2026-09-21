@@ -1,3 +1,4 @@
+import { safeAudioStats, voiceDiagnostics } from "./voiceDiagnostics.js";
 import { useEffect, useRef, useState } from "react";
 import {
   readVoiceCounters,
@@ -90,67 +91,77 @@ export function useVoiceQuality(
       return;
     }
 
+    let sampling = false;
     const sample = async () => {
-      const current = new Map<RTCPeerConnection, VoiceCounters>();
-      const currentRecovery = new Map<string, VoiceQualityRecoveryState>();
-      const readings: VoiceQualityReading[] = [];
-      const transportReadings: VoiceTransportReading[] = [];
-      const recoveryRequests: VoiceQualityRecoveryRequest[] = [];
-      const clearPeers: VoiceStatsPeer[] = [];
-      for (const { userId, peer } of peers()) {
-        const previousRecovery = recoveryRef.current.get(userId) ?? {
-          consecutiveDegradedSamples: 0,
-          lastRecoveryAt: null
-        };
-        let counters: VoiceCounters;
-        try {
-          const report = collectStats(await peer.getStats());
-          counters = readVoiceCounters(report);
-          const transport = readVoiceTransport(report);
-          if (transport.candidatePairState) transportReadings.push(transport);
-        } catch {
-          // A peer closing mid-sample rejects rather than resolving empty. It
-          // simply does not contribute this tick.
-          continue;
+      if (sampling) return;
+      sampling = true;
+      try {
+        const current = new Map<RTCPeerConnection, VoiceCounters>();
+        const currentRecovery = new Map<string, VoiceQualityRecoveryState>();
+        const readings: VoiceQualityReading[] = [];
+        const transportReadings: VoiceTransportReading[] = [];
+        const recoveryRequests: VoiceQualityRecoveryRequest[] = [];
+        const clearPeers: VoiceStatsPeer[] = [];
+        for (const { userId, peer } of peers()) {
+          const previousRecovery = recoveryRef.current.get(userId) ?? {
+            consecutiveDegradedSamples: 0,
+            lastRecoveryAt: null
+          };
+          let counters: VoiceCounters;
+          try {
+            const report = collectStats(await peer.getStats());
+            if (generation !== generationRef.current) return;
+            counters = readVoiceCounters(report);
+            const transport = readVoiceTransport(report);
+            if (transport.candidatePairState) transportReadings.push(transport);
+            voiceDiagnostics.record("sample", {
+              connection: peer.connectionState, ice: peer.iceConnectionState,
+              signaling: peer.signalingState, transport, audio: safeAudioStats(report)
+            }, peer);
+          } catch {
+            // A peer closing mid-sample rejects rather than resolving empty. It
+            // simply does not contribute this tick.
+            continue;
+          }
+          if (generation !== generationRef.current) return;
+          current.set(peer, counters);
+          const previous = previousRef.current.get(peer);
+          const reading = previous ? voiceQualityReading(previous, counters) : null;
+          if (reading) {
+            readings.push(reading);
+            if (reading.grade === "clear") clearPeers.push({ userId, peer });
+            const recovery = updateVoiceQualityRecovery(previousRecovery, reading, Date.now());
+            currentRecovery.set(userId, recovery.state);
+            if (recovery.recover) {
+              recoveryRequests.push({
+                peerUserId: userId,
+                peer,
+                requestId: ++recoveryRequestIdRef.current
+              });
+            }
+          } else {
+            currentRecovery.set(userId, previousRecovery);
+          }
         }
-        if (generation !== generationRef.current) return;
-        current.set(peer, counters);
-        const previous = previousRef.current.get(peer);
-        const reading = previous ? voiceQualityReading(previous, counters) : null;
-        if (reading) {
-          readings.push(reading);
-          if (reading.grade === "clear") clearPeers.push({ userId, peer });
-          const recovery = updateVoiceQualityRecovery(previousRecovery, reading, Date.now());
-          currentRecovery.set(userId, recovery.state);
-          if (recovery.recover) {
-            recoveryRequests.push({
-              peerUserId: userId,
-              peer,
-              requestId: ++recoveryRequestIdRef.current
+        previousRef.current = current;
+        recoveryRef.current = currentRecovery;
+        const worst = worstVoiceQuality(readings);
+        setQuality(worst
+          ? {
+              grade: worst.grade,
+              symptom: worst.symptom,
+              reading: worst,
+              transport: worstVoiceTransport(transportReadings),
+              recoveryRequests,
+              clearPeers
+            }
+          : {
+              ...measuring,
+              transport: worstVoiceTransport(transportReadings),
+              recoveryRequests,
+              clearPeers
             });
-          }
-        } else {
-          currentRecovery.set(userId, previousRecovery);
-        }
-      }
-      previousRef.current = current;
-      recoveryRef.current = currentRecovery;
-      const worst = worstVoiceQuality(readings);
-      setQuality(worst
-        ? {
-            grade: worst.grade,
-            symptom: worst.symptom,
-            reading: worst,
-            transport: worstVoiceTransport(transportReadings),
-            recoveryRequests,
-            clearPeers
-          }
-        : {
-            ...measuring,
-            transport: worstVoiceTransport(transportReadings),
-            recoveryRequests,
-            clearPeers
-          });
+      } finally { sampling = false; }
     };
 
     void sample();

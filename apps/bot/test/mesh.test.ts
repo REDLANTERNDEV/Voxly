@@ -280,3 +280,39 @@ describe("the mesh's own bookkeeping", () => {
     }
   });
 });
+
+
+describe("Listener media instance replacement", () => {
+  for (const botId of [botBelow, botAbove]) {
+    it(`restores audio after reload without a membership departure (${botId})`, async () => {
+      const bot = startBot(botId);
+      let listener = new FakeListener({ relay: bot.relay, userId: listenerMiddle, peerUserId: botId });
+      bot.listeners.push(listener);
+      const snapshot = (instance: string) => {
+        const value = snapshotOf(botId, listenerMiddle);
+        value.members[1].mediaInstanceId = instance;
+        return value;
+      };
+      try {
+        bot.mesh.applySnapshot(snapshot("before-reload"));
+        await listener.announce();
+        bot.player.start();
+        await until(() => listener.received.length > 20, "audio before reload");
+        const offersBefore = listener.offersReceived;
+        bot.mesh.applySnapshot(snapshot("before-reload"));
+        await new Promise(resolve => setTimeout(resolve, 50));
+        assert.equal(listener.offersReceived, offersBefore, "same media instance must not renegotiate");
+        await listener.close();
+        listener = new FakeListener({ relay: bot.relay, userId: listenerMiddle, peerUserId: botId });
+        bot.listeners.push(listener);
+        // The server retains the same member through a refresh; only the
+        // media instance changes. No empty-room snapshot occurs in between.
+        bot.mesh.applySnapshot(snapshot("after-reload"));
+        await listener.announce();
+        await until(() => listener.received.length > 20, "audio after reload", 5_000);
+      } finally {
+        await bot.close();
+      }
+    });
+  }
+});

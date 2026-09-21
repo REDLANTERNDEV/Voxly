@@ -348,3 +348,15 @@ export function connectAudioOutput(
   })();
   return output;
 }
+
+/** Only playback state; no stream ids, device labels, addresses or audio samples. */
+export function voiceOutputDiagnostics() {
+  return {
+    contextState: sharedContext?.state ?? null,
+    outputs: [...managedOutputs].map(({ element }) => ({
+      paused: element.paused, muted: element.muted, volume: element.volume,
+      readyState: element.readyState, errorCode: element.error?.code ?? null
+    })),
+    blockedCount: blockedOutputs.size
+  };
+}
