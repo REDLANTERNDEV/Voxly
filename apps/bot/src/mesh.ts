@@ -346,8 +346,12 @@ export class VoiceMesh {
     const { connection } = peer;
 
     if (isRtcRecoveryRequest(signal)) {
-      if (!shouldInitiatePeerConnection(this.options.selfUserId, fromUserId)) return;
-      this.recoverPeer(peer);
+      // A Listener sends this after its decoder has stopped receiving useful
+      // media. ICE may still be connected in that situation, so an ICE restart
+      // alone can leave the same sender/receiver pipeline stuck forever. Drop
+      // the whole peer and negotiate a fresh media section. The polite side
+      // asks the elected offerer to continue after its own replacement.
+      this.rebuildPeer(peer);
       return;
     }
 

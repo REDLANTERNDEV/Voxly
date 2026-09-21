@@ -66,6 +66,7 @@ interface Harness {
   player: TrackPlayer;
   relay: SignalRelay;
   listeners: FakeListener[];
+  removed: string[];
   /** Who the transport is actually up for. Writes before this land nowhere. */
   connected: Set<string>;
   close: () => Promise<void>;
@@ -76,6 +77,7 @@ function startBot(selfUserId: string): Harness {
   const player = new TrackPlayer();
   player.load(TrackBuffer.of(track.packets));
   const listeners: FakeListener[] = [];
+  const removed: string[] = [];
   const connected = new Set<string>();
   const mesh = new VoiceMesh({
     signalling: relay.endpointFor(selfUserId),
@@ -88,6 +90,7 @@ function startBot(selfUserId: string): Harness {
       player.startTalkspurt(peerUserId);
     },
     onPeerRemoved: (peerUserId) => {
+      removed.push(peerUserId);
       connected.delete(peerUserId);
       player.release(peerUserId);
     }
@@ -98,6 +101,7 @@ function startBot(selfUserId: string): Harness {
     player,
     relay,
     listeners,
+    removed,
     connected,
     async close() {
       player.close();
@@ -214,7 +218,7 @@ describe("more than one Listener", () => {
     }
   });
 
-  it("restarts an offerer's connection when a Listener requests recovery", async () => {
+  it("rebuilds an offerer's connection when a Listener requests media recovery", async () => {
     const bot = startBot(botBelow);
     const listener = new FakeListener({ relay: bot.relay, userId: listenerMiddle, peerUserId: botBelow });
     bot.listeners.push(listener);
@@ -234,7 +238,9 @@ describe("more than one Listener", () => {
       });
 
       await until(
-        () => listener.offersReceived > beforeOffers && listener.answersSent > beforeAnswers,
+        () => bot.removed.includes(listenerMiddle)
+          && listener.offersReceived > beforeOffers
+          && listener.answersSent > beforeAnswers,
         "the coordinated recovery negotiation"
       );
     } finally {
