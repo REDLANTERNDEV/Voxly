@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import ts from "typescript";
-import { advancePeerRecovery, initialPeerRecoveryState, voicePeerConnectionTimeoutMs, type PeerRecoveryState } from "../src/lib/voicePeerRecovery.js";
+import { advancePeerRecovery, initialPeerRecoveryState, isPeerConnectionReady, voicePeerConnectionTimeoutMs, type PeerRecoveryState } from "../src/lib/voicePeerRecovery.js";
 
 // Execute the hook's actual callbacks with controlled peer/timer boundaries.
 // These tests cover the orchestration that state-machine-only tests missed.
@@ -39,6 +39,7 @@ function harness() {
     peerRecoveryTimersRef: { current: new Map<string, number>() },
     ensurePeer: () => peer,
     advancePeerRecovery, initialPeerRecoveryState, voicePeerConnectionTimeoutMs,
+    isPeerConnectionReady,
     peerGenerationsRef: { current: new Map([["member", 1]]) },
     isCurrentPeer: (id: string, expected: unknown) => peersRef.current.get(id) === expected,
     setPeerConnectionStates: () => undefined,
@@ -59,6 +60,11 @@ function harness() {
 }
 
 describe("connected peer audio recovery", () => {
+  it("does not treat ICE connectivity as a completed media connection", () => {
+    assert.equal(isPeerConnectionReady("connecting"), false);
+    assert.equal(isPeerConnectionReady("connected"), true);
+  });
+
   it("rebuilds a still-degraded connected peer when the recovery deadline expires", () => {
     const h = harness();
     h.recover("member", h.peer);
@@ -98,6 +104,14 @@ describe("connected peer audio recovery", () => {
 });
 
 describe("recovery event ordering", () => {
+  it("keeps the initial deadline alive when ICE wins the race with DTLS", () => {
+    const h = harness();
+    h.peer.connectionState = "connecting";
+    h.dependencies.peerConnectionTimeoutsRef.current.set("member", 99);
+    callback("peer.oniceconnectionstatechange", h.dependencies)();
+    assert.equal(h.dependencies.peerConnectionTimeoutsRef.current.get("member"), 99);
+  });
+
   for (const event of ["peer.onconnectionstatechange", "peer.oniceconnectionstatechange"]) {
     it(`keeps the audio deadline alive through ${event}`, () => {
       const h = harness();

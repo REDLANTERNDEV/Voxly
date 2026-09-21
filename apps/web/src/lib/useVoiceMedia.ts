@@ -36,6 +36,7 @@ import {
 import {
   advancePeerRecovery,
   initialPeerRecoveryState,
+  isPeerConnectionReady,
   voicePeerConnectionTimeoutMs,
   voicePeerRecoveryGraceMs,
   type PeerRecoveryEvent,
@@ -631,6 +632,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
       const iceState = peer.iceConnectionState;
       if (iceState === "connected" || iceState === "completed") {
+        // ICE only proves that candidates can reach each other. Keep the
+        // connection deadline alive until DTLS and the peer itself are ready.
+        if (!isPeerConnectionReady(peer.connectionState)) return;
         const isRestarting = peerRecoveryStatesRef.current.get(peerUserId)?.phase === "restarting";
         const transition = advancePeerRecovery(
           peerRecoveryStatesRef.current.get(peerUserId) ?? initialPeerRecoveryState(),
@@ -689,7 +693,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         const restartTimeout = window.setTimeout(() => {
           peerConnectionTimeoutsRef.current.delete(peerUserId);
           if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
-          if (peer.connectionState === "connected" || peer.iceConnectionState === "connected" || peer.iceConnectionState === "completed") return;
+          if (isPeerConnectionReady(peer.connectionState)) return;
           schedulePeerRecovery(peerUserId, peer, { type: "restart_failed" });
         }, voicePeerConnectionTimeoutMs);
         peerConnectionTimeoutsRef.current.set(peerUserId, restartTimeout);
@@ -700,7 +704,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     const connectionTimeout = window.setTimeout(() => {
       peerConnectionTimeoutsRef.current.delete(peerUserId);
       if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
-      if (peer.connectionState === "connected" || peer.iceConnectionState === "connected" || peer.iceConnectionState === "completed") return;
+      if (isPeerConnectionReady(peer.connectionState)) return;
       schedulePeerRecovery(peerUserId, peer);
     }, voicePeerConnectionTimeoutMs);
     peerConnectionTimeoutsRef.current.set(peerUserId, connectionTimeout);

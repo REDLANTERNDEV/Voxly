@@ -1,6 +1,12 @@
 export const voicePeerRecoveryGraceMs = 3_000;
 export const voicePeerConnectionTimeoutMs = 10_000;
 
+/** ICE connectivity only proves a candidate route. Media is ready after the
+ * peer connection itself reaches connected, which includes DTLS completion. */
+export function isPeerConnectionReady(connectionState: string) {
+  return connectionState === "connected";
+}
+
 const rebuildBackoffMs = [0, 1_000, 2_000, 5_000] as const;
 
 export type PeerRecoveryPhase = "idle" | "stable" | "grace" | "restarting" | "rebuilding";
