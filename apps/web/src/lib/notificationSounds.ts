@@ -195,7 +195,9 @@ export function activeVoiceRosterUserIds(
   snapshot: VoiceSnapshot | undefined,
   currentUserId: string | undefined
 ) {
-  if (!activeRoomId || !currentUserId || snapshot?.roomId !== activeRoomId) return null;
+  // A server snapshot can describe a room the listener is observing without
+  // being in it; the explicit audience bit is authoritative for audible cues.
+  if (!activeRoomId || !currentUserId || snapshot?.roomId !== activeRoomId || snapshot.viewerInVoiceRoom !== true) return null;
   if (!snapshot.members.some((member) => member.user.userId === currentUserId)) return null;
   return snapshot.members
     .map((member) => member.user.userId)
@@ -211,7 +213,7 @@ export function activeVoiceScreenMembers(
   snapshot: VoiceSnapshot | undefined,
   currentUserId: string | undefined
 ): VoiceScreenMemberState[] | null {
-  if (!activeRoomId || !currentUserId || snapshot?.roomId !== activeRoomId) return null;
+  if (!activeRoomId || !currentUserId || snapshot?.roomId !== activeRoomId || snapshot.viewerInVoiceRoom !== true) return null;
   if (!snapshot.members.some((member) => member.user.userId === currentUserId)) return null;
   return snapshot.members.map((member) => ({
     userId: member.user.userId,

@@ -386,15 +386,16 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
   socket.on("voice:snapshot", safeSocketHandler("voice:snapshot", (roomId, ack) => {
     const parsed = roomIdPayloadSchema.safeParse(roomId);
     if (!parsed.success) {
-      callAck(ack, { roomId: typeof roomId === "string" ? roomId : "", members: [] });
+      callAck(ack, { roomId: typeof roomId === "string" ? roomId : "", viewerInVoiceRoom: false, members: [] });
       return;
     }
     const room = roomById(database.sqlite, parsed.data);
     if (!room || !hasActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
-      callAck(ack, { roomId: parsed.data, members: [] });
+      callAck(ack, { roomId: parsed.data, viewerInVoiceRoom: false, members: [] });
       return;
     }
-    callAck(ack, voiceSnapshot(parsed.data, context.membership.get(parsed.data), socket.rooms.has(`voice:${parsed.data}`)));
+    const viewerInVoiceRoom = socket.rooms.has(`voice:${parsed.data}`);
+    callAck(ack, voiceSnapshot(parsed.data, context.membership.get(parsed.data), viewerInVoiceRoom, viewerInVoiceRoom));
   }));
 
   socket.on("voice:setMediaState", safeSocketHandler("voice:setMediaState", (payload, ack) => {
@@ -546,8 +547,10 @@ function emitVoiceSnapshot(context: VoiceContext, roomId: string, members: Voice
   const room = roomById(context.database.sqlite, roomId);
   if (!room) return;
   const voiceRoom = `voice:${roomId}`;
-  context.io.to(voiceRoom).emit("voice:snapshot", voiceSnapshot(roomId, members, true));
-  context.io.to(`server:${room.serverId}`).except(voiceRoom).emit("voice:snapshot", voiceSnapshot(roomId, members, false));
+  // Observer snapshots intentionally carry the room roster, but they must not
+  // be mistaken for proof that the receiving socket is in that voice room.
+  context.io.to(voiceRoom).emit("voice:snapshot", voiceSnapshot(roomId, members, true, true));
+  context.io.to(`server:${room.serverId}`).except(voiceRoom).emit("voice:snapshot", voiceSnapshot(roomId, members, false, false));
 }
 
 function setVisualSubscriptions(
@@ -728,9 +731,15 @@ export function voiceModeration(membership: ServerMemberRow): VoiceModerationSta
   };
 }
 
-export function voiceSnapshot(roomId: string, members: VoiceRoomMembership | undefined, includeSpeaking: boolean): VoiceSnapshot {
+export function voiceSnapshot(
+  roomId: string,
+  members: VoiceRoomMembership | undefined,
+  includeSpeaking: boolean,
+  viewerInVoiceRoom: boolean
+): VoiceSnapshot {
   return {
     roomId,
+    viewerInVoiceRoom,
     members: members
       ? [...members.values()].map((member) => includeSpeaking
         ? member

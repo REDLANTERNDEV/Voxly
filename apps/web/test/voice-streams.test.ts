@@ -14,12 +14,12 @@ describe("voice remote stream state", () => {
     const local = { userId: "local", nickname: "Local", role: "member" as const };
 
     assert.deepEqual(
-      participantsForViewedRoom({ roomId: "empty", members: [] }, "empty", "active", local),
+      participantsForViewedRoom({ roomId: "empty", viewerInVoiceRoom: false, members: [] }, "empty", "active", local),
       []
     );
     assert.deepEqual(participantsForViewedRoom(undefined, "active", "active", local), [local]);
     assert.deepEqual(
-      participantsForViewedRoom({ roomId: "active", members: [] }, "active", "active", local),
+      participantsForViewedRoom({ roomId: "active", viewerInVoiceRoom: true, members: [] }, "active", "active", local),
       []
     );
   });

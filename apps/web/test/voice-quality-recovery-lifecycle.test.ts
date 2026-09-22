@@ -207,7 +207,7 @@ describe("initial negotiation and media instance lifecycle", () => {
       },
       ensureInitialOffer: () => { offers++; }
     });
-    const snapshot = (mediaInstanceId: string) => ({ roomId: "room", members: [
+    const snapshot = (mediaInstanceId: string) => ({ roomId: "room", viewerInVoiceRoom: true, members: [
       { user: { userId: "member" }, media: {}, mediaInstanceId }
     ] });
     apply(snapshot("old"));

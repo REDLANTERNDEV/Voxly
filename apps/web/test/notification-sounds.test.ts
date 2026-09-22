@@ -117,11 +117,12 @@ describe("notification sound gating", () => {
 describe("audible voice roster", () => {
   const snapshot = {
     roomId: "voice-1",
+    viewerInVoiceRoom: true,
     members: [
       { user: { userId: "ada" } },
       { user: { userId: "lin" } }
     ]
-  } as VoiceSnapshot;
+  } as unknown as VoiceSnapshot;
 
   it("uses a snapshot only when it confirms the listener is in that voice room", () => {
     assert.deepEqual(activeVoiceRosterUserIds("voice-1", snapshot, "ada"), ["lin"]);
@@ -135,11 +136,19 @@ describe("audible voice roster", () => {
   it("rejects a snapshot for another room", () => {
     assert.equal(activeVoiceRosterUserIds("voice-2", snapshot, "ada"), null);
   });
+
+  it("keeps an observer silent when a stale snapshot still contains the listener", () => {
+    assert.equal(activeVoiceRosterUserIds("voice-1", {
+      ...snapshot,
+      viewerInVoiceRoom: false
+    } as VoiceSnapshot, "ada"), null);
+  });
 });
 
 describe("screen-share cue transitions", () => {
   const snapshot = {
     roomId: "voice-1",
+    viewerInVoiceRoom: true,
     members: [
       { user: { userId: "ada" }, media: { screen: true } },
       { user: { userId: "lin" }, media: { screen: false } }
@@ -152,6 +161,13 @@ describe("screen-share cue transitions", () => {
       { userId: "lin", sharing: false }
     ]);
     assert.equal(activeVoiceScreenMembers("voice-1", snapshot, "observer"), null);
+  });
+
+  it("does not announce screen changes from an observer snapshot", () => {
+    assert.equal(activeVoiceScreenMembers("voice-1", {
+      ...snapshot,
+      viewerInVoiceRoom: false
+    }, "ada"), null);
   });
 
   it("reports only start and stop changes for members who remain in the room", () => {

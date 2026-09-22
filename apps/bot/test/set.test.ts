@@ -106,6 +106,7 @@ function newSet(recorder: Recorder, onListenersChanged?: (listenerUserIds: strin
 function snapshotOf(userIds: string[], speaking = false): VoiceSnapshot {
   return {
     roomId,
+    viewerInVoiceRoom: true,
     members: userIds.map((userId) => ({
       user: { userId, nickname: userId, role: "member" as const },
       media: { mic: true, camera: false, screen: false, deafened: false, speaking },
@@ -289,6 +290,7 @@ describe("ending a Set", () => {
 
     recorder.publish({
       roomId,
+      viewerInVoiceRoom: true,
       members: [{
         user: { userId: "ada", nickname: "Ada", role: "member" },
         media: { mic: true, camera: false, screen: false, deafened: false, speaking: false },

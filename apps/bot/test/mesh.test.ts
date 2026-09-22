@@ -53,6 +53,7 @@ function matchingFrames(left: RtpPacket[], right: RtpPacket[]): Array<[RtpPacket
 function snapshotOf(...userIds: string[]): VoiceSnapshot {
   return {
     roomId,
+    viewerInVoiceRoom: true,
     members: userIds.map((userId) => ({
       user: { userId, nickname: userId, role: "member" as const },
       media: { mic: true, camera: false, screen: false, deafened: false, speaking: false },

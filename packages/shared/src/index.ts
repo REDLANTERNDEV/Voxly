@@ -177,6 +177,8 @@ export type VoiceSetMediaAck =
 
 export interface VoiceSnapshot {
   roomId: string;
+  /** Whether the server delivered this snapshot to a socket currently in the room. */
+  viewerInVoiceRoom: boolean;
   members: VoiceMemberState[];
 }
 

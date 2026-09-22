@@ -92,7 +92,9 @@ describe("voice moderation state", () => {
 describe("voice snapshots", () => {
   it("carries live speaking state to the room itself", () => {
     const members = membership(member("ece", media({ mic: true, speaking: true })));
-    assert.equal(voiceSnapshot("stage", members, true).members[0].media.speaking, true);
+    const snapshot = voiceSnapshot("stage", members, true, true);
+    assert.equal(snapshot.members[0].media.speaking, true);
+    assert.equal(snapshot.viewerInVoiceRoom, true);
   });
 
   it("redacts every member's speaking flag for an audience outside the room", () => {
@@ -100,17 +102,18 @@ describe("voice snapshots", () => {
       member("ece", media({ mic: true, speaking: true })),
       member("kerem", media({ mic: true, speaking: true }))
     );
-    const snapshot = voiceSnapshot("stage", members, false);
+    const snapshot = voiceSnapshot("stage", members, false, false);
     assert.deepEqual(snapshot.members.map((entry) => entry.media.speaking), [false, false]);
+    assert.equal(snapshot.viewerInVoiceRoom, false);
   });
 
   it("leaves the stored state untouched when redacting", () => {
     const members = membership(member("ece", media({ mic: true, speaking: true })));
-    voiceSnapshot("stage", members, false);
+    voiceSnapshot("stage", members, false, false);
     assert.equal(members.get("ece")?.media.speaking, true);
   });
 
   it("reports an empty room rather than failing when nobody is present", () => {
-    assert.deepEqual(voiceSnapshot("stage", undefined, true), { roomId: "stage", members: [] });
+    assert.deepEqual(voiceSnapshot("stage", undefined, true, false), { roomId: "stage", viewerInVoiceRoom: false, members: [] });
   });
 });
