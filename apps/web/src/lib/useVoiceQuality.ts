@@ -5,6 +5,7 @@ import {
   readVoiceTransport,
   voiceMediaStalled,
   voiceQualityReading,
+  voiceQualityNeedsRecovery,
   worstVoiceQuality,
   worstVoiceTransport,
   type VoiceCounters,
@@ -133,7 +134,17 @@ export function useVoiceQuality(
             && peer.connectionState === "connected"
             && voiceMediaStalled(previous, counters, expectingAudio)
           );
-          if (mediaStalled) {
+          if (reading) {
+            readings.push(reading);
+            if (reading.grade === "clear") clearPeers.push({ userId, peer });
+          }
+          const severeQuality = Boolean(
+            previous
+            && peer.connectionState === "connected"
+            && reading
+            && voiceQualityNeedsRecovery(reading, expectingAudio)
+          );
+          if (mediaStalled || severeQuality) {
             const consecutive = Math.min(2, previousRecovery.consecutiveDegradedSamples + 1);
             const now = Date.now();
             const cooldownElapsed = previousRecovery.lastRecoveryAt === null
@@ -150,14 +161,10 @@ export function useVoiceQuality(
               });
             }
           } else if (reading) {
-            readings.push(reading);
-            if (reading.grade === "clear") clearPeers.push({ userId, peer });
             // Loss, jitter, and speed correction are useful quality signals,
-            // but they do not prove that the peer is broken. ICE restart on a
-            // merely congested path can interrupt a call that the browser's
-            // Opus jitter buffer would have recovered by itself. Automatic
-            // recovery is reserved for the explicit no-RTP stall branch above
-            // and for connection-state failures owned by useVoiceMedia.
+            // but mild or isolated changes do not prove that the peer is
+            // broken. Leave those to the jitter buffer; recover only a
+            // sustained no-RTP stall or severe audible quality failure.
             currentRecovery.set(userId, { ...previousRecovery, consecutiveDegradedSamples: 0 });
           } else {
             currentRecovery.set(userId, previousRecovery);

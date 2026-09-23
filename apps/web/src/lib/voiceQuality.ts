@@ -304,6 +304,23 @@ export function voiceQualityReading(previous: VoiceCounters, next: VoiceCounters
 }
 
 /**
+ * Mild degradation is reported to the member but left to the jitter buffer.
+ * Sustained audible concealment is different: the receiver is already
+ * inventing enough non-silent audio to make speech sound broken. Severe loss
+ * or resynchronization also qualifies while the remote member is speaking.
+ */
+export function voiceQualityNeedsRecovery(reading: VoiceQualityReading, expectingAudio: boolean) {
+  return reading.grade === "breaking" && (
+    reading.concealedMs >= breakingMsPerSecond
+    || (expectingAudio && (
+      reading.lossPercent >= breakingPercent
+      || reading.spedUpMs >= breakingMsPerSecond
+      || reading.slowedDownMs >= breakingMsPerSecond
+    ))
+  );
+}
+
+/**
  * Silent concealment is normally harmless while a talker is paused or quiet.
  * When the sender explicitly says it is speaking, the same counters mean the
  * receiver is filling the gap with silence because media stopped arriving.
