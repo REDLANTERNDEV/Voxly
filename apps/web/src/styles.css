@@ -1517,7 +1517,12 @@ h3 {
   display: grid;
   gap: 12px;
   margin-top: 12px;
+  min-width: 0;
   padding: 16px;
+}
+
+.owner-account-card h3 {
+  overflow-wrap: anywhere;
 }
 
 .owner-account-card > div:first-child,
@@ -1527,15 +1532,25 @@ h3 {
 }
 
 .owner-account-layout {
+  align-items: start;
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(220px, .8fr) minmax(280px, 1.2fr);
-  margin-top: 16px;
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  min-width: 0;
+}
+
+.owner-account-layout.is-empty {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.owner-account-layout > .owner-account-card {
+  margin-top: 0;
 }
 
 .owner-account-list {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .owner-account-row {
@@ -1546,13 +1561,79 @@ h3 {
   cursor: pointer;
   display: grid;
   gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 11px 12px;
   text-align: left;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+  width: 100%;
 }
 
+.owner-account-row:hover {
+  border-color: var(--accent);
+}
+
+.owner-account-row[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.owner-account-row strong,
 .owner-account-row span {
+  overflow-wrap: anywhere;
+}
+
+.owner-account-row span,
+.account-memberships li span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.owner-account-search {
+  min-width: 0;
+}
+
+.owner-account-search .form-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.owner-account-search > .btn {
+  flex: 0 0 auto;
+}
+
+.owner-account-placeholder,
+.owner-account-empty {
+  align-content: center;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  display: grid;
+  justify-items: center;
+  min-height: 112px;
+  min-width: 0;
+  padding: 20px;
+  text-align: center;
+}
+
+.account-memberships {
+  list-style: none;
+  padding: 0;
+}
+
+.account-memberships li {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 9px 11px;
+}
+
+.account-memberships li > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .inline-form {
@@ -1561,11 +1642,13 @@ h3 {
   gap: 10px;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .owner-account-layout {
     grid-template-columns: minmax(0, 1fr);
   }
+}
 
+@media (max-width: 720px) {
   .inline-form {
     align-items: stretch;
     flex-direction: column;

@@ -109,7 +109,9 @@ export function OwnerAccountsSection({ t }: { t: Translate }) {
 
   const search = useCallback(async (value: string) => {
     try {
-      setAccounts((await fetchOwnerAccounts(value)).accounts);
+      const results = (await fetchOwnerAccounts(value)).accounts;
+      setAccounts(results);
+      setSelected((current) => current && results.some((account) => account.id === current.id) ? current : null);
     } catch {
       setStatus(t("ownerAccounts.loadFailed"));
     }
@@ -151,27 +153,35 @@ export function OwnerAccountsSection({ t }: { t: Translate }) {
         <h2>{t("ownerAccounts.accounts")}</h2>
         <p className="muted small">{t("ownerAccounts.accountsCopy")}</p>
       </header>
-      <form className="inline-form" onSubmit={(event) => { event.preventDefault(); void search(query); }}>
+      <form className="inline-form owner-account-search" onSubmit={(event) => { event.preventDefault(); void search(query); }}>
         <label className="form-field">
           <span>{t("ownerAccounts.search")}</span>
           <input className="input" value={query} onChange={(event) => setQuery(event.currentTarget.value)} />
         </label>
         <button className="btn" type="submit">{t("ownerAccounts.searchAction")}</button>
       </form>
-      <div className="owner-account-layout">
+      <div className={`owner-account-layout ${accounts.length === 0 ? "is-empty" : ""}`}>
         <div className="owner-account-list">
-          {accounts.map((account) => (
-            <button className="owner-account-row" type="button" key={account.id} onClick={() => void select(account)}>
+          {accounts.length > 0 ? accounts.map((account) => (
+            <button
+              className="owner-account-row"
+              type="button"
+              key={account.id}
+              aria-pressed={selected?.id === account.id}
+              onClick={() => void select(account)}
+            >
               <strong>{account.deletedAt ? t("common.deletedMember") : account.nickname}</strong>
               <span>{account.bannedAt ? t("common.banned") : account.deletedAt ? t("ownerAccounts.deletedState") : t("common.active")} · {t("ownerAccounts.serverCount", { count: account.serverCount })}</span>
             </button>
-          ))}
+          )) : <p className="owner-account-empty muted">{t("ownerAccounts.noAccountsFound")}</p>}
         </div>
-        {selected ? <article className="owner-account-card">
-          <h3>{selected.deletedAt ? t("common.deletedMember") : selected.nickname}</h3>
-          <Memberships memberships={selected.memberships} t={t} />
-          {canDelete ? <button className="btn btn-danger" type="button" onClick={() => openDeleteDialog(selected)}>{t("ownerAccounts.deleteNow")}</button> : <p className="muted small">{t("ownerAccounts.protected")}</p>}
-        </article> : null}
+        {selected ? (
+          <article className="owner-account-card">
+            <h3>{selected.deletedAt ? t("common.deletedMember") : selected.nickname}</h3>
+            <Memberships memberships={selected.memberships} t={t} />
+            {canDelete ? <button className="btn btn-danger" type="button" onClick={() => openDeleteDialog(selected)}>{t("ownerAccounts.deleteNow")}</button> : <p className="muted small">{t("ownerAccounts.protected")}</p>}
+          </article>
+        ) : accounts.length > 0 ? <p className="owner-account-placeholder muted">{t("ownerAccounts.selectPrompt")}</p> : null}
       </div>
       {status ? <p role="status">{status}</p> : null}
       {deleteTarget ? <div className="confirm-backdrop" role="presentation">
