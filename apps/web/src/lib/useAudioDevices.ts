@@ -65,6 +65,8 @@ export function useAudioDevices({
   const [unavailableSelections, setUnavailableSelections] = useState<AudioDevicePreferenceKind[]>([]);
   const selectedInputRef = useRef("");
   const selectedOutputRef = useRef("");
+  const refreshRequestRef = useRef(0);
+  const devicesRef = useRef(emptyDevices);
   const outputSelectionRequestRef = useRef(0);
   const clearError = useCallback(() => setError(""), []);
   const reportError = useCallback((next: AudioErrorKey) => {
@@ -90,7 +92,9 @@ export function useAudioDevices({
   }, [clearError, reportError, storage, userId]);
 
   const refresh = useCallback(async (requestPermission = false) => {
+    const requestId = ++refreshRequestRef.current;
     if (!mediaDevices) {
+      devicesRef.current = emptyDevices;
       setDevices(emptyDevices);
       reportError("audioError.unavailable");
       return emptyDevices;
@@ -100,21 +104,29 @@ export function useAudioDevices({
     clearError();
     try {
       const nextDevices = await enumerateAudioDevices(mediaDevices, { requestPermission });
-      const nextInput = reconcileAudioDevicePreference(selectedInputRef.current, nextDevices.inputs);
+      // Device lists can briefly omit a Bluetooth input while the headset
+      // changes profiles. Keep the member's selection so a later devicechange
+      // can find the same input again; an ended capture still stays muted
+      // until the member explicitly turns the microphone back on.
+      const nextInput = selectedInputRef.current && !nextDevices.inputs.some(
+        (device) => device.deviceId === selectedInputRef.current
+      ) ? selectedInputRef.current : reconcileAudioDevicePreference(selectedInputRef.current, nextDevices.inputs);
       const nextOutput = reconcileAudioDevicePreference(selectedOutputRef.current, nextDevices.outputs);
       const unavailable: AudioDevicePreferenceKind[] = [];
-      if (selectedInputRef.current && !nextInput) unavailable.push("input");
+      if (selectedInputRef.current && !nextDevices.inputs.some((device) => device.deviceId === selectedInputRef.current)) unavailable.push("input");
       if (selectedOutputRef.current && !nextOutput) unavailable.push("output");
+
+      if (requestId !== refreshRequestRef.current) return devicesRef.current;
 
       selectedInputRef.current = nextInput;
       selectedOutputRef.current = nextOutput;
       setSelectedInputId(nextInput);
       setSelectedOutputId(nextOutput);
       setUnavailableSelections(unavailable);
+      devicesRef.current = nextDevices;
       setDevices(nextDevices);
 
       if (userId && storage) {
-        if (unavailable.includes("input")) writeAudioDevicePreference(storage, userId, "input", "");
         if (unavailable.includes("output")) writeAudioDevicePreference(storage, userId, "output", "");
       }
       if (unavailable.includes("output")) {
@@ -122,19 +134,31 @@ export function useAudioDevices({
       }
       return nextDevices;
     } catch (cause) {
+      if (requestId !== refreshRequestRef.current) return devicesRef.current;
       reportError("audioError.load");
       throw cause;
     } finally {
-      setLoading(false);
+      if (requestId === refreshRequestRef.current) setLoading(false);
     }
   }, [clearError, mediaDevices, reportError, storage, userId]);
 
   useEffect(() => {
     if (!mediaDevices) return;
     void refresh(false).catch(() => undefined);
-    return subscribeToAudioDeviceChanges(mediaDevices, () => {
-      void refresh(false).catch(() => undefined);
+    let timer: number | null = null;
+    const unsubscribe = subscribeToAudioDeviceChanges(mediaDevices, () => {
+      if (timer !== null) window.clearTimeout(timer);
+      // Bluetooth devices can emit several changes while switching profiles.
+      // Read the settled list once, and let the request id discard stale scans.
+      timer = window.setTimeout(() => {
+        timer = null;
+        void refresh(false).catch(() => undefined);
+      }, 300);
     });
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      unsubscribe();
+    };
   }, [mediaDevices, refresh]);
 
   const selectInput = useCallback((deviceId: string) => {

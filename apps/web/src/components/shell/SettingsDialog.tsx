@@ -102,6 +102,7 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
                   microphone: props.t("audio.microphone"),
                   output: props.t("audio.output"),
                   systemDefault: props.t("audio.systemDefault"),
+                  inputUnavailable: props.t("audio.inputUnavailable"),
                   browserControlled: props.t("audio.browserControlled"),
                   refresh: props.t("audio.refresh"),
                   unavailable: props.t("audio.unavailable"),

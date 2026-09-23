@@ -79,7 +79,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
       titleKey: "notification.voiceErrorTitle",
       messageKey: props.voiceError,
       timeoutMs: null,
-      action: "open-audio-settings"
+      action: props.voiceError === "voiceError.microphoneDisconnected" ? undefined : "open-audio-settings"
     });
   }, [notifications.push, props.voiceError, props.voiceErrorRevision]);
 

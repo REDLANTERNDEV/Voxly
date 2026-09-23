@@ -43,6 +43,7 @@ interface AudioDeviceSettingsProps {
     notificationMessage: string;
     notificationConnection: string;
     systemDefault: string;
+    inputUnavailable: string;
     browserControlled: string;
     refresh: string;
     unavailable: string;
@@ -197,6 +198,9 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
               <span>{props.labels.microphone}</span>
               <select className="input" name="audioInput" value={props.selectedInputId} onChange={(event) => props.onSelectInput(event.currentTarget.value)}>
                 <option value="">{props.labels.systemDefault}</option>
+                {props.selectedInputId && props.unavailableSelections.includes("input")
+                  ? <option value={props.selectedInputId} disabled>{props.labels.inputUnavailable}</option>
+                  : null}
                 {props.inputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{audioDeviceDisplayName(device, props.labels.microphone, index)}</option>)}
               </select>
             </label>

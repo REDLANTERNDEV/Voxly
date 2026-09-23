@@ -192,6 +192,10 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   reopen always leaves the previous microphone to fall back to; record the
   device each graph was opened with so unchanged settings never reopen it.
   Preserve mute, deafen, and owner-mute on the replacement track.
+- If a selected microphone briefly disappears from the device list, retain its
+  saved selection and show it as unavailable instead of silently selecting the
+  system default. An ended capture stays unpublished until the member explicitly
+  turns the microphone on; that action retries the selected input.
 - Support means "can this browser build the graph", not "does it advertise the
   constraint". Probe for an audio context.
 - The preference is stored per account in local storage and defaults off: the
