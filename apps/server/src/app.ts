@@ -676,7 +676,11 @@ function registerRealtime(
   const music = createMusicRealtime(io, database, voice);
 
   io.use((socket, next) => {
-    const user = authenticateSocket(database, socket.handshake.headers.cookie);
+    const user = authenticateSocket(
+      database,
+      socket.handshake.headers.cookie,
+      socket.handshake.headers["user-agent"]
+    );
     if (!user) {
       next(new Error("unauthorized"));
       return;

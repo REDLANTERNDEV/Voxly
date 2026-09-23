@@ -171,6 +171,22 @@ export function createSession(
   return token;
 }
 
+/**
+ * Older sessions predate the coarse label column, and sessions created while
+ * a caller omitted its User-Agent may have the same fallback. Recover the
+ * label the next time that Device authenticates with a usable header. Keep the
+ * raw header transient and never replace a label that was already recorded.
+ */
+function refreshUnknownDeviceLabel(database: VoxlyDatabase, sessionId: string, userAgent?: string) {
+  const label = deviceLabel(userAgent);
+  if (label === "Unknown device") return;
+
+  const changed = database.sqlite.prepare(
+    "update sessions set label = ? where id = ? and (label is null or label = 'Unknown device')"
+  ).run(label, sessionId).changes;
+  if (changed > 0) database.save();
+}
+
 type AuthenticationResult =
   | { status: "authenticated"; user: AuthUser; confirmsReplacement: boolean }
   | { status: "unconfirmed_rotation"; user: AuthUser; retiredTokenHash: string; currentTokenHash: string }
@@ -297,6 +313,7 @@ export function authenticateHttp(
   }
 
   if (result.status === "unconfirmed_rotation") {
+    refreshUnknownDeviceLabel(database, result.user.sessionId, request.headers["user-agent"]);
     touchSession(database, result.user);
     if (sessionToken) {
       recoverUnconfirmedRotation(database, result, reply, secureCookies);
@@ -305,6 +322,7 @@ export function authenticateHttp(
   }
 
   const { user } = result;
+  refreshUnknownDeviceLabel(database, user.sessionId, request.headers["user-agent"]);
   if (result.confirmsReplacement) confirmReplacementDelivery(database, user.sessionId);
   if (sessionToken) {
     // Renewal rides on the touch throttle: seen means still in use, and still
@@ -507,11 +525,13 @@ export function authenticateWithoutRenewal(database: VoxlyDatabase, request: Fas
  * authenticated before any connection exists, so there is no Fastify request to
  * carry parsed cookies.
  */
-export function authenticateSocket(database: VoxlyDatabase, cookieHeader: string | undefined) {
-  return authenticatedUser(
+export function authenticateSocket(database: VoxlyDatabase, cookieHeader: string | undefined, userAgent?: string) {
+  const user = authenticatedUser(
     database,
     authenticate(database.sqlite, readSessionToken(parseCookieHeader(cookieHeader ?? "")))
   );
+  if (user) refreshUnknownDeviceLabel(database, user.sessionId, userAgent);
+  return user;
 }
 
 export function requireUser(
