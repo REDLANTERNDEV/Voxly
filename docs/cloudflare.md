@@ -11,6 +11,14 @@ Cloudflare can provide DNS, HTTPS edge termination, WAF rules, coarse rate
 limiting, WebSocket proxying, and optional Turnstile protection. It does not
 replace Voxly's backend authorization.
 
+Cloudflare JavaScript Detections may inject an inline script into HTML
+responses. Voxly sends a fresh CSP script nonce on each response so Cloudflare
+can authorize that script. Keep `script-src` free of `'unsafe-inline'`; the
+Turnstile and configured analytics origins are already added by the application
+policy. If a proxy or custom response-header rule replaces Voxly's
+`Content-Security-Policy`, preserve the complete per-response header, including
+its nonce, or JavaScript Detections will be blocked.
+
 Do not apply Turnstile or interactive challenges to Socket.IO, room state,
 voice signaling, or WebRTC traffic. If Turnstile is enabled, configure it only
 for the low-frequency invite acceptance flow and set both values in `.env`:

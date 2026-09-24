@@ -58,6 +58,10 @@ export function contentSecurityPolicyDirectives(options: { upgradeInsecureReques
 
 export function helmetOptions(options: { https: boolean; analytics?: AnalyticsConfig }) {
   return {
+    // Cloudflare JavaScript Detections injects a small inline script into HTML
+    // responses. Per-response nonces let Cloudflare authorize that script
+    // without opening script-src to arbitrary inline JavaScript.
+    enableCSPNonces: true,
     contentSecurityPolicy: {
       useDefaults: false,
       directives: contentSecurityPolicyDirectives({ upgradeInsecureRequests: options.https, analytics: options.analytics })
