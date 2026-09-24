@@ -55,6 +55,7 @@ export function moveGroup(groups: ChannelGroup[], categoryId: string | null, tar
   const [source] = next.splice(sourceIndex, 1);
   const adjustedTarget = next.findIndex((group) => group.category?.id === targetId || (group.category === null && targetId === null));
   next.splice(adjustedTarget + (after ? 1 : 0), 0, source);
+  if (next.every((group, index) => group.category?.id === groups[index]?.category?.id)) return groups;
   return normalizeGroups(next);
 }
 

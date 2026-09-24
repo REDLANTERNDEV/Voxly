@@ -689,6 +689,28 @@ h3 {
   gap: 6px;
   margin-top: 12px;
   min-width: 0;
+  position: relative;
+}
+
+.channel-category.is-category-drop-before::before,
+.channel-category.is-category-drop-after::after {
+  background: var(--accent);
+  border-radius: 2px;
+  content: "";
+  height: 3px;
+  left: 6px;
+  pointer-events: none;
+  position: absolute;
+  right: 6px;
+  z-index: 2;
+}
+
+.channel-category.is-category-drop-before::before {
+  top: -7px;
+}
+
+.channel-category.is-category-drop-after::after {
+  bottom: -7px;
 }
 
 .channel-category-head {

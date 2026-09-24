@@ -45,6 +45,8 @@ describe("server channel layout", () => {
     ]);
 
     assert.deepEqual(moveGroup(groups, "two", "one").map((group) => group.category?.id ?? null), [null, "two", "one"]);
+    assert.deepEqual(moveGroup(groups, "one", null).map((group) => group.category?.id ?? null), ["one", null, "two"]);
+    assert.strictEqual(moveGroup(groups, "one", "two"), groups, "dropping directly before the next group is a no-op");
     assert.deepEqual(moveGroupBy(groups, "two", -1).map((group) => group.category?.id ?? null), [null, "two", "one"]);
     assert.deepEqual(moveGroupBy(groups, null, 1).map((group) => group.category?.id ?? null), ["one", null, "two"]);
     assert.deepEqual(moveRoomBy(groups, "b", -1)[1].rooms.map((item) => item.id), ["b", "a"]);

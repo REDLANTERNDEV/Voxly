@@ -9,7 +9,7 @@ import { ContextMenu } from "../ContextMenu.js";
 import type { SidebarActionMenuController } from "./SidebarMenus.js";
 
 type DragKind = "category" | "room";
-type DropState = { kind: "category"; categoryId: string | null } | { kind: "room"; roomId: string; categoryId: string | null; after: boolean } | { kind: "group"; categoryId: string | null };
+type DropState = { kind: "category"; categoryId: string | null; after: boolean } | { kind: "room"; roomId: string; categoryId: string | null; after: boolean } | { kind: "group"; categoryId: string | null };
 type DragState = {
   kind: DragKind;
   id: string;
@@ -82,6 +82,10 @@ export function ChannelOrganizer({
   const groups = useMemo(() => channelGroups(categories, rooms, uncategorizedPosition), [categories, rooms, uncategorizedPosition]);
   const [localGroups, setLocalGroups] = useState(groups);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsed(serverId));
+  const categoryDropTarget = dragging?.kind === "category" && dragging.target?.kind === "category" ? dragging.target : null;
+  const categoryDropPreview = categoryDropTarget && dragging?.kind === "category"
+    ? moveGroup(localGroups, dragging.id === "__uncategorized__" ? null : dragging.id, categoryDropTarget.categoryId, categoryDropTarget.after)
+    : localGroups;
 
   useEffect(() => setLocalGroups(groups), [groups]);
   useEffect(() => setCollapsed(readCollapsed(serverId)), [serverId]);
@@ -186,8 +190,15 @@ export function ChannelOrganizer({
     const node = document.elementFromPoint(x, y);
     if (!(node instanceof Element)) return null;
     if (kind === "category") {
-      const header = node.closest<HTMLElement>("[data-drop-category]");
-      if (header) return { kind: "category", categoryId: header.dataset.dropCategory || null };
+      const group = node.closest<HTMLElement>("[data-category-id]");
+      if (group) {
+        const rect = group.getBoundingClientRect();
+        return {
+          kind: "category",
+          categoryId: group.dataset.categoryId || null,
+          after: y >= rect.top + rect.height / 2
+        };
+      }
       return null;
     }
     const roomNode = node.closest<HTMLElement>("[data-drop-room]");
@@ -266,11 +277,9 @@ export function ChannelOrganizer({
       return;
     }
     if (target.kind === "category") {
-      const targetNode = Array.from(organizerRef.current?.querySelectorAll<HTMLElement>("[data-drop-category]") ?? [])
-        .find((node) => (node.dataset.dropCategory || null) === target.categoryId);
-      const after = Boolean(targetNode && event.clientY >= targetNode.getBoundingClientRect().top + targetNode.getBoundingClientRect().height / 2);
       const sourceId = candidate.id === "__uncategorized__" ? null : candidate.id;
-      void persist(moveGroup(localGroups, sourceId, target.categoryId, after));
+      const next = moveGroup(localGroups, sourceId, target.categoryId, target.after);
+      if (next !== localGroups) void persist(next);
     }
   }
 
@@ -353,6 +362,11 @@ export function ChannelOrganizer({
         const collapseId = category?.id ?? "uncategorized";
         const isCollapsed = category ? collapsed.has(collapseId) : false;
         const isGroupDropTarget = dragging?.target?.kind === "group" && dragging.target.categoryId === (category?.id ?? null);
+        const categoryDropClass = categoryDropTarget
+          && categoryDropPreview !== localGroups
+          && categoryDropTarget.categoryId === (category?.id ?? null)
+          ? `is-category-drop-${categoryDropTarget.after ? "after" : "before"}`
+          : "";
         const categoryMenuKey = `category:${id || "uncategorized"}`;
         const categoryHandle = canManage ? <button
           className="channel-drag-handle category-drag-handle"
@@ -371,9 +385,9 @@ export function ChannelOrganizer({
           }}
         ><GripIcon /></button> : null;
         return (
-          <section className={`rail-section channel-category ${isGroupDropTarget ? "is-drop-target" : ""}`} data-category-id={id} key={category?.id ?? "uncategorized"}>
+          <section className={`rail-section channel-category ${isGroupDropTarget ? "is-drop-target" : ""} ${categoryDropClass}`} data-category-id={id} key={category?.id ?? "uncategorized"}>
             <div
-              className={`rail-section-head channel-category-head ${category ? "" : "channel-uncategorized-head"} ${isGroupDropTarget || (dragging?.target?.kind === "category" && dragging.target.categoryId === category?.id) ? "is-drop-target" : ""}`}
+              className={`rail-section-head channel-category-head ${category ? "" : "channel-uncategorized-head"} ${isGroupDropTarget ? "is-drop-target" : ""}`}
               data-drop-category={id}
               data-drop-group={id}
               onContextMenu={category && canManage ? (event) => {

@@ -64,6 +64,15 @@ describe("server channel organizer", () => {
     assert.equal((organizer.match(/<GripIcon \/>/g) ?? []).length, 2, "room and category handles use the same grip icon");
     assert.match(styles, /\.channel-uncategorized-empty\s*\{[^}]*min-height: 20px;/);
     assert.match(styles, /\.channel-organizer\.is-dragging \.channel-uncategorized-empty\s*\{[^}]*border-color:/);
+    assert.match(organizer, /categoryDropTarget\.categoryId === \(category\?\.id \?\? null\)/, "the uncategorized category target is compared as null in its preview state");
+  });
+
+  it("targets full category groups and previews the exact before or after placement", () => {
+    assert.match(organizer, /type DropState = \{ kind: "category"; categoryId: string \| null; after: boolean \}/);
+    assert.match(organizer, /node\.closest<HTMLElement>\("\[data-category-id\]"\)/);
+    assert.match(organizer, /after: y >= rect\.top \+ rect\.height \/ 2/);
+    assert.match(organizer, /moveGroup\(localGroups, sourceId, target\.categoryId, target\.after\)/);
+    assert.match(styles, /\.channel-category\.is-category-drop-before::before,[\s\S]*?\.channel-category\.is-category-drop-after::after/);
   });
 
   it("keeps the category chevron in its own fixed-width slot without rotation animation", () => {
