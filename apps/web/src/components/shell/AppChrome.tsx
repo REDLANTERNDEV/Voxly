@@ -145,6 +145,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           noiseSuppressionSupported={props.noiseSuppressionSupported}
           notificationSounds={props.notificationSounds}
           rooms={props.rooms}
+          categories={props.categories}
           route={props.route}
           servers={props.servers}
           socketState={props.socketState}
@@ -156,6 +157,10 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           voiceSnapshots={props.voiceSnapshots}
           onCloseAudioSettings={props.onCloseAudioSettings}
           onCreateRoom={props.onCreateRoom}
+          onCreateCategory={props.onCreateCategory}
+          onRenameCategory={props.onRenameCategory}
+          onDeleteCategory={props.onDeleteCategory}
+          onSaveRoomLayout={props.onSaveRoomLayout}
           onDeleteRoom={props.onDeleteRoom}
           onInputVolumeChange={props.onInputVolumeChange}
           onJoinVoice={props.onJoinVoice}

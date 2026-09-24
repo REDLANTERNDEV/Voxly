@@ -13,7 +13,7 @@ import {
 } from "../src/lib/idleActivity.js";
 
 function room(id: string, serverId: string, isAfk = false): RoomSummary {
-  return { id, serverId, name: id, kind: "voice", position: 10, isAfk };
+  return { id, serverId, name: id, kind: "voice", categoryId: null, position: 10, isAfk };
 }
 
 const rooms = [

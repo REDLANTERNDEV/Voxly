@@ -1,4 +1,4 @@
-import type { AfkTimeoutMinutes, MusicCommand,MusicControlAck,MusicQueueState,PresenceUser,PublicUser,RoomSummary,VisualTarget,VoiceModerationState,VoiceSnapshot } from "@voxly/shared";
+import type { AfkTimeoutMinutes, CategorySummary, MusicCommand,MusicControlAck,MusicQueueState,PresenceUser,PublicUser,RoomSummary,ServerRoomLayout,VisualTarget,VoiceModerationState,VoiceSnapshot } from "@voxly/shared";
 import { type AudioLevels } from "../lib/audioLevels.js";
 import type { RoomHistory } from "../lib/channelState.js";
 import { type LanguageCode,type TranslationKey,type VoiceErrorKey } from "../lib/i18n.js";
@@ -41,6 +41,7 @@ export interface ShellModel {
   servers: ServerSummary[];
   activeServerId: string;
   rooms: { text: RoomSummary[]; voice: RoomSummary[] };
+  categories: CategorySummary[];
   onlineUsers: PresenceUser[];
   serverMembers: PresenceUser[];
   socketState: "connecting" | "live" | "reconnecting" | "offline";
@@ -98,7 +99,11 @@ export interface ShellActions {
   onCreateServer: (name: string) => Promise<void>;
   onUpdateServerName: (name: string) => Promise<ServerSummary>;
   onSetAfkTimeout: (minutes: AfkTimeoutMinutes) => Promise<void>;
-  onCreateRoom: (name: string, kind: "text" | "voice") => Promise<void>;
+  onCreateRoom: (name: string, kind: "text" | "voice", categoryId?: string | null) => Promise<void>;
+  onCreateCategory: (name: string) => Promise<void>;
+  onRenameCategory: (categoryId: string, name: string) => Promise<void>;
+  onDeleteCategory: (categoryId: string) => Promise<void>;
+  onSaveRoomLayout: (layout: ServerRoomLayout) => Promise<void>;
   onDeleteRoom: (roomId: string) => Promise<void>;
   onDeleteServer: () => Promise<void>;
   onModerateMember: (userId: string, action: "ban" | "unban" | "kick") => Promise<void>;

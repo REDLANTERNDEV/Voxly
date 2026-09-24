@@ -23,6 +23,7 @@ import {
   afkRoomName,
   DEFAULT_AFK_TIMEOUT_MINUTES,
   isAfkTimeoutMinutes,
+  type CategorySummary,
   type AfkTimeoutMinutes,
   type RoomSummary
 } from "@voxly/shared";
@@ -55,9 +56,22 @@ import {
  */
 const maxRoomsPerServer = 100;
 const maxServersPerOwner = 50;
+const maxCategoriesPerServer = 100;
 
 export const serverNameSchema = z.string().trim().min(2).max(64);
 export const roomNameSchema = z.string().trim().min(2).max(64);
+export const categoryNameSchema = z.string().trim().min(2).max(64);
+
+type CategoryRow = Record<string, unknown> & CategorySummary;
+const categoryColumns = "id, server_id as serverId, name, position";
+
+function categoriesForServer(database: VoxlyDatabase, serverId: string) {
+  return all<CategoryRow>(
+    database.sqlite,
+    `select ${categoryColumns} from categories where server_id = ? order by position asc`,
+    [serverId]
+  );
+}
 
 export function registerServerRoutes(context: RouteContext) {
   const { fastify, database, io, realtime, secureCookies } = context;
@@ -128,7 +142,8 @@ export function registerServerRoutes(context: RouteContext) {
         database.sqlite,
         `select ${roomColumns} from rooms where server_id = ? order by position asc`,
         [serverId]
-      ).map(publicRoom)
+      ).map(publicRoom),
+      categories: categoriesForServer(database, serverId)
     };
   });
 
@@ -136,7 +151,11 @@ export function registerServerRoutes(context: RouteContext) {
     const scope = requireOwnedServer(context, request, reply);
     if (!scope) return;
     const { owner, serverId } = scope;
-    const body = z.object({ name: roomNameSchema, kind: z.enum(["text", "voice"]) }).parse(request.body);
+    const body = z.object({
+      name: roomNameSchema,
+      kind: z.enum(["text", "voice"]),
+      categoryId: z.string().min(1).max(128).nullable().optional()
+    }).parse(request.body);
     const roomTotal = one<{ count: number }>(
       database.sqlite,
       "select count(*) as count from rooms where server_id = ?",
@@ -145,12 +164,17 @@ export function registerServerRoutes(context: RouteContext) {
     if (roomTotal >= maxRoomsPerServer) {
       return reply.code(409).send({ error: "room_limit_reached" });
     }
+    const categoryId = body.categoryId ?? null;
+    if (categoryId && !one<{ id: string }>(database.sqlite,
+      "select id from categories where id = ? and server_id = ?", [categoryId, serverId])) {
+      return reply.code(404).send({ error: "category_not_found" });
+    }
     const position = one<{ position: number | null }>(
       database.sqlite,
       "select max(position) as position from rooms where server_id = ?",
       [serverId]
     )?.position ?? 0;
-    const room = createServerRoom(database, serverId, body.name, body.kind, position + 10);
+    const room = createServerRoom(database, serverId, body.name, body.kind, position + 10, false, categoryId);
     audit(database, owner.id, "room.created", null, serverId);
     database.save();
     // Members already in the server hold a cached room list, so a new channel is
@@ -158,6 +182,158 @@ export function registerServerRoutes(context: RouteContext) {
     // also covers creation.
     io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
     return reply.code(201).send({ room });
+  });
+
+  fastify.post("/api/servers/:serverId/categories", async (request, reply) => {
+    const scope = requireOwnedServer(context, request, reply);
+    if (!scope) return;
+    const { owner, serverId } = scope;
+    const { name } = z.object({ name: categoryNameSchema }).parse(request.body);
+    const categoryCount = one<{ count: number }>(
+      database.sqlite,
+      "select count(*) as count from categories where server_id = ?",
+      [serverId]
+    )?.count ?? 0;
+    if (categoryCount >= maxCategoriesPerServer) {
+      return reply.code(409).send({ error: "category_limit_reached" });
+    }
+    const position = one<{ position: number | null }>(
+      database.sqlite,
+      "select max(position) as position from categories where server_id = ?",
+      [serverId]
+    )?.position ?? 0;
+    const category: CategorySummary = { id: crypto.randomUUID(), serverId, name, position: position + 10 };
+    run(database.sqlite, "insert into categories (id, server_id, name, position) values (?, ?, ?, ?)", [
+      category.id, category.serverId, category.name, category.position
+    ]);
+    audit(database, owner.id, "category.created", null, serverId);
+    database.save();
+    io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
+    return reply.code(201).send({ category });
+  });
+
+  fastify.patch("/api/servers/:serverId/categories/:categoryId", async (request, reply) => {
+    const scope = requireOwnedServer(context, request, reply, { categoryId: z.string().min(1).max(128) });
+    if (!scope) return;
+    const { owner, serverId, categoryId } = scope;
+    const { name } = z.object({ name: categoryNameSchema }).parse(request.body);
+    const current = one<CategoryRow>(
+      database.sqlite,
+      `select ${categoryColumns} from categories where id = ? and server_id = ?`,
+      [categoryId, serverId]
+    );
+    if (!current) return reply.code(404).send({ error: "category_not_found" });
+    run(database.sqlite, "update categories set name = ? where id = ? and server_id = ?", [name, categoryId, serverId]);
+    audit(database, owner.id, "category.renamed", null, serverId);
+    database.save();
+    const category = { ...current, name };
+    io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
+    return { category };
+  });
+
+  fastify.delete("/api/servers/:serverId/categories/:categoryId", async (request, reply) => {
+    const scope = requireOwnedServer(context, request, reply, { categoryId: z.string().min(1).max(128) });
+    if (!scope) return;
+    const { owner, serverId, categoryId } = scope;
+    const category = one<CategoryRow>(
+      database.sqlite,
+      `select ${categoryColumns} from categories where id = ? and server_id = ?`,
+      [categoryId, serverId]
+    );
+    if (!category) return reply.code(404).send({ error: "category_not_found" });
+    database.sqlite.exec("begin immediate");
+    try {
+      run(database.sqlite, "update rooms set category_id = null where server_id = ? and category_id = ?", [serverId, categoryId]);
+      run(database.sqlite, "delete from categories where id = ? and server_id = ?", [categoryId, serverId]);
+      // The category's rooms retain their relative order when joined to the
+      // existing ungrouped rooms. Re-number this one visible group to keep the
+      // following layout write simple and deterministic.
+      const uncategorized = all<{ id: string }>(
+        database.sqlite,
+        "select id from rooms where server_id = ? and category_id is null order by position asc, id asc",
+        [serverId]
+      );
+      uncategorized.forEach((room, index) => {
+        run(database.sqlite, "update rooms set position = ? where id = ? and server_id = ?", [(index + 1) * 10, room.id, serverId]);
+      });
+      audit(database, owner.id, "category.deleted", null, serverId);
+      database.sqlite.exec("commit");
+    } catch (cause) {
+      database.sqlite.exec("rollback");
+      throw cause;
+    }
+    database.save();
+    io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
+    return reply.code(204).send();
+  });
+
+  fastify.patch("/api/servers/:serverId/layout", async (request, reply) => {
+    const scope = requireOwnedServer(context, request, reply);
+    if (!scope) return;
+    const { serverId } = scope;
+    const body = z.object({
+      uncategorizedRoomIds: z.array(z.string().min(1).max(128)).max(maxRoomsPerServer),
+      categories: z.array(z.object({
+        categoryId: z.string().min(1).max(128),
+        roomIds: z.array(z.string().min(1).max(128)).max(maxRoomsPerServer)
+      }).strict()).max(maxCategoriesPerServer)
+    }).strict().parse(request.body);
+
+    database.sqlite.exec("begin immediate");
+    try {
+      const currentRooms = all<{ id: string }>(database.sqlite, "select id from rooms where server_id = ?", [serverId]);
+      const currentCategories = all<{ id: string }>(database.sqlite, "select id from categories where server_id = ?", [serverId]);
+      const requestedRoomIds = [
+        ...body.uncategorizedRoomIds,
+        ...body.categories.flatMap((category) => category.roomIds)
+      ];
+      const requestedCategoryIds = body.categories.map((category) => category.categoryId);
+      const sameIds = (requested: string[], current: string[]) => {
+        const requestedSet = new Set(requested);
+        const currentSet = new Set(current);
+        return requestedSet.size === requested.length
+          && requestedSet.size === currentSet.size
+          && [...requestedSet].every((id) => currentSet.has(id));
+      };
+      if (!sameIds(requestedRoomIds, currentRooms.map((room) => room.id))
+        || !sameIds(requestedCategoryIds, currentCategories.map((category) => category.id))) {
+        database.sqlite.exec("rollback");
+        return reply.code(400).send({ error: "invalid_room_layout" });
+      }
+
+      body.categories.forEach((category, index) => {
+        run(database.sqlite, "update categories set position = ? where id = ? and server_id = ?", [
+          (index + 1) * 10, category.categoryId, serverId
+        ]);
+      });
+      let position = 10;
+      for (const roomId of body.uncategorizedRoomIds) {
+        run(database.sqlite, "update rooms set category_id = null, position = ? where id = ? and server_id = ?", [position, roomId, serverId]);
+        position += 10;
+      }
+      for (const category of body.categories) {
+        for (const roomId of category.roomIds) {
+          run(database.sqlite, "update rooms set category_id = ?, position = ? where id = ? and server_id = ?", [
+            category.categoryId, position, roomId, serverId
+          ]);
+          position += 10;
+        }
+      }
+      database.sqlite.exec("commit");
+    } catch (cause) {
+      database.sqlite.exec("rollback");
+      throw cause;
+    }
+    database.save();
+    io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
+    return {
+      rooms: all<RoomRow>(
+        database.sqlite,
+        `select ${roomColumns} from rooms where server_id = ? order by position asc`,
+        [serverId]
+      ).map(publicRoom),
+      categories: categoriesForServer(database, serverId)
+    };
   });
 
   fastify.patch("/api/servers/:serverId/afk", async (request, reply) => {
@@ -240,6 +416,7 @@ export function registerServerRoutes(context: RouteContext) {
       run(database.sqlite, "delete from access_claims where server_id = ?", [serverId]);
       run(database.sqlite, "delete from server_members where server_id = ?", [serverId]);
       run(database.sqlite, "delete from rooms where server_id = ?", [serverId]);
+      run(database.sqlite, "delete from categories where server_id = ?", [serverId]);
       audit(database, owner.id, "server.deleted", null, serverId);
       run(database.sqlite, "delete from servers where id = ?", [serverId]);
       database.sqlite.exec("commit");
@@ -264,7 +441,8 @@ export function registerServerRoutes(context: RouteContext) {
     if (!requireServerMember(database, defaultServerId, user.id, reply)) return;
 
     return {
-      rooms: all<RoomRow>(database.sqlite, `select ${roomColumns} from rooms where server_id = ? order by position asc`, [defaultServerId]).map(publicRoom)
+      rooms: all<RoomRow>(database.sqlite, `select ${roomColumns} from rooms where server_id = ? order by position asc`, [defaultServerId]).map(publicRoom),
+      categories: categoriesForServer(database, defaultServerId)
     };
   });
 }
@@ -286,21 +464,23 @@ export function createServerRoom(
   name: string,
   kind: "text" | "voice",
   position: number,
-  isAfk = false
+  isAfk = false,
+  categoryId: string | null = null
 ) {
   const id = serverId === defaultServerId && name === "general" && kind === "text"
     ? "general"
     : serverId === defaultServerId && name === "Lobby" && kind === "voice"
       ? "lobby"
       : crypto.randomUUID();
-  const room: RoomSummary = { id, serverId, name, kind, position, isAfk };
-  run(database.sqlite, "insert into rooms (id, server_id, name, kind, position, is_afk) values (?, ?, ?, ?, ?, ?)", [
+  const room: RoomSummary = { id, serverId, name, kind, position, categoryId, isAfk };
+  run(database.sqlite, "insert into rooms (id, server_id, name, kind, position, is_afk, category_id) values (?, ?, ?, ?, ?, ?, ?)", [
     room.id,
     room.serverId,
     room.name,
     room.kind,
     room.position,
-    room.isAfk ? 1 : 0
+    room.isAfk ? 1 : 0,
+    room.categoryId
   ]);
   return room;
 }

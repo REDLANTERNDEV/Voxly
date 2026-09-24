@@ -45,7 +45,7 @@ function declaration(name: string, boundary: string) {
   return source?.[0] ?? "";
 }
 
-const narrow = mediaBlock("(max-width: 900px)");
+const narrow = mediaBlock("(max-width: 900px)", ".room-header");
 const phone = mediaBlock("(max-width: 560px)");
 
 describe("narrow layout", () => {

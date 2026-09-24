@@ -19,9 +19,10 @@ export type RoomRow = {
   /** SQLite has no boolean; `publicRoom` is what turns this into the DTO. */
   isAfkFlag: number;
   position: number;
+  categoryId: string | null;
 };
 
-export const roomColumns = "id, server_id as serverId, name, kind, position, coalesce(is_afk, 0) as isAfkFlag";
+export const roomColumns = "id, server_id as serverId, name, kind, position, category_id as categoryId, coalesce(is_afk, 0) as isAfkFlag";
 
 export function publicRoom(row: RoomRow): RoomSummary {
   return {
@@ -30,6 +31,7 @@ export function publicRoom(row: RoomRow): RoomSummary {
     name: row.name,
     kind: row.kind,
     position: row.position,
+    categoryId: row.categoryId,
     isAfk: row.isAfkFlag === 1
   };
 }

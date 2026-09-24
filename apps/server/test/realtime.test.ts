@@ -31,6 +31,26 @@ describe("Voxly realtime MVP", () => {
     await assert.rejects(connectSocket(baseUrl, "bad-token"), /connect_error/);
   });
 
+  it("notifies every server member when the shared room layout changes", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Layout member");
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(ownerSocket, memberSocket);
+    const ownerNotice = onceEvent<{ serverId: string }>(ownerSocket, "server:roomsChanged");
+    const memberNotice = onceEvent<{ serverId: string }>(memberSocket, "server:roomsChanged");
+
+    const category = await app.server.inject({
+      method: "POST",
+      url: "/api/servers/the-basement/categories",
+      cookies: owner.cookies,
+      payload: { name: "Shared layout" }
+    });
+    assert.equal(category.statusCode, 201);
+    assert.deepEqual(await ownerNotice, { serverId: "the-basement" });
+    assert.deepEqual(await memberNotice, { serverId: "the-basement" });
+  });
+
   it("emits presence and voice room membership for authenticated sessions", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ece");

@@ -54,6 +54,8 @@ describe("Voxly HTTP MVP", () => {
       assert.equal(server.id, defaultServerId);
       assert.equal(server.name, "The Basement");
       assert.equal(tables.prepare("select server_id from rooms where id = 'history'").get()?.server_id, defaultServerId);
+      assert.equal(tables.prepare("select category_id from rooms where id = 'history'").get()?.category_id, null);
+      assert.ok(tables.prepare("select name from sqlite_master where type = 'table' and name = 'categories'").get());
       assert.equal(tables.prepare("select server_id from invites where id = 'invite'").get()?.server_id, defaultServerId);
       const membership = tables.prepare("select server_id, role from server_members where user_id = 'owner'").get() as { server_id: string; role: string };
       assert.equal(membership.server_id, defaultServerId);
@@ -70,7 +72,7 @@ describe("Voxly HTTP MVP", () => {
       const indexNames = [
         ...tables.prepare("select name from sqlite_master where type = 'index'").all()
       ].map((index) => (index as { name: string }).name);
-      for (const indexName of ["idx_server_members_user", "idx_rooms_server_position", "idx_invites_server_created", "idx_messages_room_created"]) {
+      for (const indexName of ["idx_server_members_user", "idx_rooms_server_position", "idx_rooms_category_position", "idx_categories_server_position", "idx_invites_server_created", "idx_messages_room_created"]) {
         assert.ok(indexNames.includes(indexName));
       }
       const accessClaimColumns = tables.prepare("pragma table_info(access_claims)").all()
@@ -1047,6 +1049,215 @@ describe("Voxly HTTP MVP", () => {
     const servers = await app.server.inject({ method: "GET", url: "/api/servers", cookies: owner.cookies });
     const fresh = servers.json().servers.find((server: { id: string }) => server.id === serverId);
     assert.equal(fresh.afkTimeoutMinutes, DEFAULT_AFK_TIMEOUT_MINUTES);
+  });
+
+  it("lets the owner create empty categories, rename them, and delete them without deleting rooms or messages", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Category member");
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/servers/the-basement/categories",
+      cookies: owner.cookies,
+      payload: { name: "  Planning  " }
+    });
+    assert.equal(created.statusCode, 201);
+    const category = created.json().category as { id: string; name: string; position: number; serverId: string };
+    assert.deepEqual(category, { id: category.id, serverId: "the-basement", name: "Planning", position: 10 });
+
+    const second = await app.server.inject({
+      method: "POST",
+      url: "/api/servers/the-basement/categories",
+      cookies: owner.cookies,
+      payload: { name: "Empty category" }
+    });
+    assert.equal(second.statusCode, 201, "empty categories are valid");
+
+    const roomCreated = await app.server.inject({
+      method: "POST",
+      url: "/api/servers/the-basement/rooms",
+      cookies: owner.cookies,
+      payload: { name: "planning", kind: "text", categoryId: category.id }
+    });
+    assert.equal(roomCreated.statusCode, 201);
+    const roomId = roomCreated.json().room.id as string;
+    const messageCreated = await app.server.inject({
+      method: "POST",
+      url: `/api/rooms/${roomId}/messages`,
+      cookies: owner.cookies,
+      payload: { body: "Keep this message" }
+    });
+    assert.equal(messageCreated.statusCode, 201);
+
+    const listed = await app.server.inject({
+      method: "GET",
+      url: "/api/servers/the-basement/rooms",
+      cookies: member.cookies
+    });
+    assert.equal(listed.statusCode, 200);
+    assert.ok(listed.json().categories.some((item: { id: string }) => item.id === category.id));
+    assert.equal(listed.json().rooms.find((room: { id: string }) => room.id === roomId).categoryId, category.id);
+
+    const renamed = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/the-basement/categories/${category.id}`,
+      cookies: owner.cookies,
+      payload: { name: "  Roadmap  " }
+    });
+    assert.equal(renamed.statusCode, 200);
+    assert.equal(renamed.json().category.name, "Roadmap");
+
+    const memberCreate = await app.server.inject({
+      method: "POST",
+      url: "/api/servers/the-basement/categories",
+      cookies: member.cookies,
+      payload: { name: "Member category" }
+    });
+    assert.equal(memberCreate.statusCode, 403);
+    const memberRename = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/the-basement/categories/${category.id}`,
+      cookies: member.cookies,
+      payload: { name: "Not allowed" }
+    });
+    assert.equal(memberRename.statusCode, 403);
+    const memberDelete = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/the-basement/categories/${category.id}`,
+      cookies: member.cookies
+    });
+    assert.equal(memberDelete.statusCode, 403);
+
+    const deleted = await app.server.inject({
+      method: "DELETE",
+      url: `/api/servers/the-basement/categories/${category.id}`,
+      cookies: owner.cookies
+    });
+    assert.equal(deleted.statusCode, 204);
+    const afterDelete = await app.server.inject({
+      method: "GET",
+      url: "/api/servers/the-basement/rooms",
+      cookies: member.cookies
+    });
+    assert.equal(afterDelete.json().rooms.find((room: { id: string }) => room.id === roomId).categoryId, null);
+    assert.ok(afterDelete.json().rooms.some((room: { id: string }) => room.id === roomId));
+    assert.ok(!afterDelete.json().categories.some((item: { id: string }) => item.id === category.id));
+    const history = await app.server.inject({
+      method: "GET",
+      url: `/api/rooms/${roomId}/messages`,
+      cookies: member.cookies
+    });
+    assert.equal(history.json().messages[0].body, "Keep this message");
+  });
+
+  it("validates full room and category layouts atomically before saving", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Layout member");
+    const makeCategory = async (name: string) => {
+      const response = await app.server.inject({
+        method: "POST",
+        url: "/api/servers/the-basement/categories",
+        cookies: owner.cookies,
+        payload: { name }
+      });
+      assert.equal(response.statusCode, 201);
+      return response.json().category as { id: string };
+    };
+    const firstCategory = await makeCategory("Text and voice");
+    const secondCategory = await makeCategory("Empty");
+    const makeRoom = async (name: string, kind: "text" | "voice", categoryId: string) => {
+      const response = await app.server.inject({
+        method: "POST",
+        url: "/api/servers/the-basement/rooms",
+        cookies: owner.cookies,
+        payload: { name, kind, categoryId }
+      });
+      assert.equal(response.statusCode, 201);
+      return response.json().room as { id: string };
+    };
+    const textRoom = await makeRoom("notes", "text", firstCategory.id);
+    const voiceRoom = await makeRoom("hangout", "voice", firstCategory.id);
+    const foreignServer = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Elsewhere" }
+    });
+    const foreignServerId = foreignServer.json().server.id as string;
+    const foreignCategoryResponse = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${foreignServerId}/categories`,
+      cookies: owner.cookies,
+      payload: { name: "Foreign category" }
+    });
+    const foreignCategoryId = foreignCategoryResponse.json().category.id as string;
+    const foreignRoomResponse = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${foreignServerId}/rooms`,
+      cookies: owner.cookies,
+      payload: { name: "foreign room", kind: "text" }
+    });
+    const foreignRoomId = foreignRoomResponse.json().room.id as string;
+
+    const roomsResponse = await app.server.inject({
+      method: "GET",
+      url: "/api/servers/the-basement/rooms",
+      cookies: owner.cookies
+    });
+    const rooms = roomsResponse.json().rooms as Array<{ id: string }>;
+    const fullLayout = {
+      uncategorizedRoomIds: rooms.filter((room) => room.id !== textRoom.id && room.id !== voiceRoom.id).map((room) => room.id),
+      categories: [
+        { categoryId: firstCategory.id, roomIds: [textRoom.id, voiceRoom.id] },
+        { categoryId: secondCategory.id, roomIds: [] }
+      ]
+    };
+    const applied = await app.server.inject({
+      method: "PATCH",
+      url: "/api/servers/the-basement/layout",
+      cookies: owner.cookies,
+      payload: fullLayout
+    });
+    assert.equal(applied.statusCode, 200);
+    assert.equal(applied.json().rooms.find((room: { id: string }) => room.id === textRoom.id).categoryId, firstCategory.id);
+    assert.equal(applied.json().rooms.find((room: { id: string }) => room.id === voiceRoom.id).categoryId, firstCategory.id);
+    assert.equal(applied.json().categories.find((category: { id: string }) => category.id === secondCategory.id).position, 20);
+
+    const snapshot = (response: { json: () => any }) => ({
+      rooms: response.json().rooms.map((room: { id: string; categoryId: string | null; position: number }) => ({ id: room.id, categoryId: room.categoryId, position: room.position })),
+      categories: response.json().categories.map((category: { id: string; position: number }) => ({ id: category.id, position: category.position }))
+    });
+    const before = snapshot(applied);
+    const invalidLayouts = [
+      { ...fullLayout, uncategorizedRoomIds: fullLayout.uncategorizedRoomIds.slice(1) },
+      { ...fullLayout, uncategorizedRoomIds: [...fullLayout.uncategorizedRoomIds, fullLayout.uncategorizedRoomIds[0]!] },
+      { ...fullLayout, uncategorizedRoomIds: fullLayout.uncategorizedRoomIds.map((id, index) => index === 0 ? foreignRoomId : id) },
+      { ...fullLayout, categories: [{ categoryId: firstCategory.id, roomIds: [] }, { categoryId: firstCategory.id, roomIds: [] }] },
+      { ...fullLayout, categories: [{ categoryId: firstCategory.id, roomIds: [] }, { categoryId: foreignCategoryId, roomIds: [] }] }
+    ];
+    for (const layout of invalidLayouts) {
+      const rejected = await app.server.inject({
+        method: "PATCH",
+        url: "/api/servers/the-basement/layout",
+        cookies: owner.cookies,
+        payload: layout
+      });
+      assert.equal(rejected.statusCode, 400);
+      assert.equal(rejected.json().error, "invalid_room_layout");
+      const current = await app.server.inject({
+        method: "GET",
+        url: "/api/servers/the-basement/rooms",
+        cookies: owner.cookies
+      });
+      assert.deepEqual(snapshot(current), before, "a rejected layout leaves every position and assignment intact");
+    }
+
+    const memberLayout = await app.server.inject({
+      method: "PATCH",
+      url: "/api/servers/the-basement/layout",
+      cookies: member.cookies,
+      payload: fullLayout
+    });
+    assert.equal(memberLayout.statusCode, 403);
   });
 
   it("lets the owner choose the AFK timeout and refuses values off the list", async () => {

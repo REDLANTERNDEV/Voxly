@@ -13,7 +13,7 @@ import type { RealtimeModeration, RouteContext } from "../src/http.js";
 import { defaultServerId, one, openDatabase, run, type VoxlyDatabase } from "../src/db/database.js";
 import type { VoxlyIoServer } from "../src/socket.js";
 
-type RoomRecord = { id: string; name: string; kind: string; position: number; is_afk: number };
+type RoomRecord = { id: string; name: string; kind: string; position: number; category_id: string | null; is_afk: number };
 
 describe("servers and the rooms inside them", () => {
   let database: VoxlyDatabase | undefined;
@@ -29,7 +29,7 @@ describe("servers and the rooms inside them", () => {
   }
 
   function storedRoom(db: VoxlyDatabase, roomId: string) {
-    return one<RoomRecord>(db.sqlite, "select id, name, kind, position, is_afk from rooms where id = ?", [roomId]);
+    return one<RoomRecord>(db.sqlite, "select id, name, kind, position, category_id, is_afk from rooms where id = ?", [roomId]);
   }
 
   describe("creating a room", () => {
@@ -67,6 +67,7 @@ describe("servers and the rooms inside them", () => {
         name: afkRoomName,
         kind: "voice",
         position: 30,
+        categoryId: null,
         isAfk: true
       });
       assert.equal(storedRoom(db, afk.id)?.is_afk, 1);
@@ -132,6 +133,7 @@ describe("servers and the rooms inside them", () => {
       // neighbouring group during tickets 17-19 fails here rather than silently.
       assert.deepEqual(registered.sort(), [
         "DELETE /api/servers/:serverId",
+        "DELETE /api/servers/:serverId/categories/:categoryId",
         "DELETE /api/servers/:serverId/rooms/:roomId",
         "GET /api/rooms",
         "GET /api/servers",
@@ -141,7 +143,10 @@ describe("servers and the rooms inside them", () => {
         "HEAD /api/servers/:serverId/rooms",
         "PATCH /api/servers/:serverId",
         "PATCH /api/servers/:serverId/afk",
+        "PATCH /api/servers/:serverId/categories/:categoryId",
+        "PATCH /api/servers/:serverId/layout",
         "POST /api/servers",
+        "POST /api/servers/:serverId/categories",
         "POST /api/servers/:serverId/rooms"
       ]);
     });

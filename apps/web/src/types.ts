@@ -1,8 +1,8 @@
 import type { AfkTimeoutMinutes } from "@voxly/shared";
-import type { ChatMessage, PresenceUser, PublicUser, RoomSummary, VoiceModerationState } from "@voxly/shared";
+import type { CategorySummary, ChatMessage, PresenceUser, PublicUser, RoomSummary, VoiceModerationState } from "@voxly/shared";
 import type { AnalyticsSettings } from "./lib/analytics.js";
 
-export type { ChatMessage, PresenceUser, PublicUser, RoomSummary };
+export type { CategorySummary, ChatMessage, PresenceUser, PublicUser, RoomSummary };
 
 export interface CurrentUserResponse {
   user: PublicUser;
@@ -10,6 +10,7 @@ export interface CurrentUserResponse {
 
 export interface RoomsResponse {
   rooms: RoomSummary[];
+  categories: CategorySummary[];
 }
 
 export interface ServerSummary {

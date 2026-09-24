@@ -115,12 +115,20 @@ export const ownerClaims = sqliteTable("owner_claims", {
   consumedAt: text("consumed_at")
 });
 
+export const categories = sqliteTable("categories", {
+  id: text("id").primaryKey(),
+  serverId: text("server_id").notNull(),
+  name: text("name").notNull(),
+  position: integer("position").notNull()
+});
+
 export const rooms = sqliteTable("rooms", {
   id: text("id").primaryKey(),
   serverId: text("server_id").notNull(),
   name: text("name").notNull(),
   kind: text("kind", { enum: ["text", "voice"] }).notNull(),
-  position: integer("position").notNull()
+  position: integer("position").notNull(),
+  categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" })
 });
 
 export const servers = sqliteTable("servers", {

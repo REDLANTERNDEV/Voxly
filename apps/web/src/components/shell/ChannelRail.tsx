@@ -1,5 +1,5 @@
 import type { PresenceUser,RoomSummary } from "@voxly/shared";
-import { useEffect,useRef,useState } from "react";
+import { useEffect,useRef,useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ApiError } from "../../api.js";
 import { serverPath } from "../../app/navigation.js";
@@ -17,15 +17,16 @@ import { LiveStreamPopover } from "../LiveStreamPopover.js";
 import { ServerSwitcher } from "../ServerSwitcher.js";
 import { InviteQuickAction } from "../../features/invites/InviteQuickAction.js";
 import { MemberActionMenu,memberActionMenuHeight,openSidebarMenuFromPointer,SidebarMenuTrigger,type SidebarActionMenuController } from "./SidebarMenus.js";
+import { ChannelOrganizer, type ChannelRoomActions } from "./ChannelOrganizer.js";
 type ChannelRailProps = Pick<ShellModel,
   "activeServerId" | "activeVoiceRoomId" | "appConfig" | "audioDevices" | "audioLevels" |
   "controls" | "currentNickname" | "language" | "memberVolumes" |
   "microphoneTestActive" | "microphoneTestError" | "noiseSuppression" |
-  "noiseSuppressionSupported" | "notificationSounds" | "rooms" | "route" |
+  "noiseSuppressionSupported" | "notificationSounds" | "rooms" | "categories" | "route" |
   "servers" | "socketState" | "t" | "theme" | "unreadByRoom" | "user" |
   "voiceModeration" | "voiceSnapshots" | "micLockedByRoom"
 > & Pick<ShellActions,
-  "onCloseAudioSettings" | "onCreateRoom" | "onDeleteRoom" |
+  "onCloseAudioSettings" | "onCreateRoom" | "onCreateCategory" | "onRenameCategory" | "onDeleteCategory" | "onSaveRoomLayout" | "onDeleteRoom" |
   "onInputVolumeChange" | "onJoinVoice" | "onLanguageChange" |
   "onMemberVolumeChange" | "onNavigate" | "onNoiseSuppressionChange" |
   "onNotificationSoundsChange" | "onOutputVolumeChange" |
@@ -64,8 +65,166 @@ export function ChannelRail(props: ChannelRailProps) {
       })
       .finally(() => setJoiningRoomId(null));
   };
+  const categoryChoices = [
+    { id: null, name: props.t("room.uncategorized") },
+    ...props.categories.map((category) => ({ id: category.id, name: category.name }))
+  ];
+  const renderRoom = (room: RoomSummary, dragHandle: ReactNode, actions: ChannelRoomActions) => {
+    const actionMenuHeight = channelActionMenuHeight();
+    const actionControl = canManageServer ? <ChannelDeleteControl
+      actionMenu={props.actionMenu}
+      room={room}
+      categories={categoryChoices}
+      actions={actions}
+      disabled={props.rooms.text.length + props.rooms.voice.length <= 1}
+      onRequest={() => setDeleteTarget(room)}
+      t={props.t}
+    /> : null;
+    const rowData = {
+      "data-drop-room": room.id,
+      "data-drop-category-id": room.categoryId ?? ""
+    };
+    if (room.kind === "text") {
+      return <div
+        className={`channel-row ${dragHandle ? "has-drag-handle" : ""}`}
+        key={room.id}
+        {...rowData}
+        onContextMenu={canManageServer ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, `channel:${room.id}`, 220, actionMenuHeight) : undefined}
+      >
+        {dragHandle}
+        <NavLink className={`channel-item ${props.route.name === "text" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "text", room.id)} onNavigate={props.onNavigate}>
+          <span className="channel-prefix">#</span><span>{room.name}</span>{props.unreadByRoom[room.id] ? <span className="badge unread-badge">{props.unreadByRoom[room.id]}</span> : <span />}
+        </NavLink>
+        {actionControl}
+      </div>;
+    }
+
+    const members = voiceMembersForRoom(props, room.id);
+    return <div className="voice-channel-block" key={room.id}>
+      <div
+        className={`channel-row ${dragHandle ? "has-drag-handle" : ""}`}
+        {...rowData}
+        onContextMenu={canManageServer ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, `channel:${room.id}`, 220, actionMenuHeight) : undefined}
+      >
+        {dragHandle}
+        <NavLink
+          className={`channel-item ${props.route.name === "voice" && props.route.roomId === room.id ? "is-active" : ""}`}
+          href={serverPath(props.activeServerId, "voice", room.id)}
+          onNavigate={props.onNavigate}
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+            event.preventDefault();
+            if (joiningRoomId) return;
+            activateVoiceRoom(room);
+          }}
+        >
+          <span className="channel-prefix" aria-hidden="true"><MicIcon off={false} /></span><span>{room.name}</span>
+        </NavLink>
+        {actionControl}
+      </div>
+      {members.length > 0 ? (
+        <div className="voice-channel-users">
+          {members.map((member) => {
+            const isRemote = member.user.userId !== props.user.id;
+            // Your own name is yours. Somebody else's is the owner's.
+            const canRename = !isRemote
+              || (canManageServer && member.user.role === "member");
+            const canModerate = canOwnerVoiceModerate(activeServerRole(props), props.user.id, member.user);
+            const canVoiceModerate = canModerate;
+            const canModeratePerson = canOwnerModeratePerson(activeServerRole(props), props.user.id, member.user);
+            const canAssignRoles = canManageServer && member.user.role === "member" && !member.user.isBot;
+            const menuHeight = memberActionMenuHeight({
+              hasVolume: isRemote,
+              canRename,
+              canDisconnect: canModerate,
+              canModerate: canModeratePerson,
+              canVoiceModerate,
+              canAssignRoles,
+              canMove: canModeratePerson && props.rooms.voice.length > 1,
+              hasSelfControls: !isRemote && Boolean(props.activeVoiceRoomId)
+            });
+            const hasActions = isRemote || canRename || canModerate || canAssignRoles || !isRemote;
+            const menuKey = `rail-member:${member.user.userId}`;
+            return <div
+              className={`voice-channel-user ${member.media.speaking && member.media.mic && !member.media.deafened && !member.moderation.muted ? "is-speaking" : ""}`}
+              key={member.user.userId}
+              tabIndex={hasActions ? 0 : undefined}
+              onContextMenu={hasActions ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, menuKey, 220, menuHeight) : undefined}
+              onKeyDown={hasActions ? (event) => {
+                if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+                event.preventDefault();
+                const rect = event.currentTarget.getBoundingClientRect();
+                props.actionMenu.open({ key: menuKey, x: rect.right - 220, y: rect.bottom + 4, menuWidth: 220, menuHeight, trigger: null });
+              } : undefined}
+            >
+              <span className="avatar">{initial(member.user.nickname)}</span>
+              <span className="voice-channel-user-copy">
+                <span className="voice-channel-user-name">
+                  {member.media.screen ? <LiveStreamPopover
+                    icon={<ScreenIcon off={false} />}
+                    liveLabel={props.t("common.live")}
+                    nickname={member.user.nickname}
+                    watchLabel={props.t("voice.watchStream")}
+                    watchAriaLabel={props.t("voice.watchUserStream", { nickname: member.user.nickname })}
+                    onWatch={() => props.onWatchLive({ serverId: props.activeServerId, roomId: room.id, publisherUserId: member.user.userId, nickname: member.user.nickname })}
+                  /> : <span>{member.user.nickname}</span>}
+                </span>
+              </span>
+              <span className="voice-channel-statuses">
+                {member.moderation.deafened ? <span className="voice-channel-status is-enforced" aria-label={props.t("member.ownerDeafened")}><HeadsetIcon off /></span> : null}
+                {member.moderation.muted ? <span className="voice-channel-status is-enforced" aria-label={props.t("member.ownerMuted")}><MicIcon off /></span> : null}
+                {sidebarVoiceStatusKeys(member.media, member.moderation).map((status) => (
+                  <span className={`voice-channel-status is-${status} is-self`} aria-label={props.t(sidebarVoiceStatusLabelKeys[status])} key={status}>
+                    {status === "deafened" ? <HeadsetIcon off /> : status === "camera" ? <CameraIcon off={false} /> : <MicIcon off />}
+                  </span>
+                ))}
+              </span>
+              {hasActions ? <MemberActionMenu
+                actionMenu={props.actionMenu}
+                menuKey={menuKey}
+                member={member.user}
+                volume={isRemote ? props.memberVolumes[member.user.userId] ?? DEFAULT_VOLUME_PERCENT : undefined}
+                onVolumeChange={isRemote ? (volume) => props.onMemberVolumeChange(member.user.userId, volume) : undefined}
+                canRename={canRename}
+                canDisconnect={canModerate}
+                canModerate={canModeratePerson}
+                moderation={canVoiceModerate ? member.moderation : undefined}
+                onVoiceModeration={canVoiceModerate ? (moderation) => { void props.onVoiceModeration(member.user.userId, moderation); } : undefined}
+                onToggleInviteRole={canAssignRoles ? (canInviteMember) => { void props.onUpdateMemberPermissions(member.user.userId, canInviteMember); } : undefined}
+                moveTargets={canModeratePerson ? props.rooms.voice.filter((target) => target.id !== room.id) : undefined}
+                onMove={canModeratePerson ? (targetRoomId) => props.onMoveMember(member.user.userId, targetRoomId) : undefined}
+                selfControls={!isRemote && props.activeVoiceRoomId ? {
+                  mic: props.controls.mic.on,
+                  deafen: props.controls.deafen.on,
+                  micEnabled: !props.micLockedByRoom && !props.voiceModeration.muted && props.controls.mic.enabled && props.socketState === "live",
+                  deafenEnabled: !props.voiceModeration.deafened && props.controls.deafen.enabled && !props.microphoneTestActive && props.socketState === "live",
+                  onToggle: props.onToggleControl
+                } : undefined}
+                onRename={(returnFocus) => props.onRequestNickname(member.user, returnFocus)}
+                onRequestAction={(action) => props.onRequestMemberAction(member.user, action, room.id)}
+                t={props.t}
+              /> : null}
+            </div>;
+          })}
+        </div>
+      ) : null}
+    </div>;
+  };
   return (
-    <aside className="rail">
+    <aside className="rail" onContextMenu={canManageServer ? (event) => {
+      if (event.defaultPrevented) return;
+      const target = event.target as Element;
+      if (target.closest("button, a, input, select, .rail-head, .server-switcher, [data-drop-room], [data-drop-category]")) return;
+      event.preventDefault();
+      props.actionMenu.open({
+        key: "channel-layout:background",
+        x: event.clientX,
+        y: event.clientY,
+        menuWidth: 196,
+        menuHeight: 88,
+        trigger: null
+      });
+    } : undefined}>
       <div className="rail-head">
         <BrandLockup subtitle="" href={serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general")} onNavigate={props.onNavigate} />
         {canInvite ? <InviteQuickAction
@@ -84,167 +243,20 @@ export function ChannelRail(props: ChannelRailProps) {
         }}
         onSelect={props.onSelectServer}
       />
-      <section className="rail-section">
-        <div className="rail-section-head"><span className="label">{props.t("room.textRooms")}</span>{canManageServer ? <ChannelCreateControl kind="text" onCreate={props.onCreateRoom} t={props.t} /> : null}</div>
-        {props.rooms.text.map((room) => (
-          <div
-            className="channel-row"
-            key={room.id}
-            onContextMenu={canManageServer ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, `channel:${room.id}`, 176, 48) : undefined}
-          >
-            <NavLink className={`channel-item ${props.route.name === "text" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "text", room.id)} onNavigate={props.onNavigate}>
-              <span className="channel-prefix">#</span><span>{room.name}</span>{props.unreadByRoom[room.id] ? <span className="badge unread-badge">{props.unreadByRoom[room.id]}</span> : <span />}
-            </NavLink>
-            {canManageServer ? <ChannelDeleteControl actionMenu={props.actionMenu} room={room} disabled={props.rooms.text.length + props.rooms.voice.length <= 1} onRequest={() => setDeleteTarget(room)} t={props.t} /> : null}
-          </div>
-        ))}
-      </section>
-      <section className="rail-section">
-        <div className="rail-section-head"><span className="label">{props.t("room.voiceRooms")}</span>{canManageServer ? <ChannelCreateControl kind="voice" onCreate={props.onCreateRoom} t={props.t} /> : null}</div>
-        {props.rooms.voice.map((room) => {
-          const members = voiceMembersForRoom(props, room.id);
-          return (
-            <div className="voice-channel-block" key={room.id}>
-              <div
-                className="channel-row"
-                onContextMenu={canManageServer ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, `channel:${room.id}`, 176, 48) : undefined}
-              >
-                <NavLink
-                  className={`channel-item ${props.route.name === "voice" && props.route.roomId === room.id ? "is-active" : ""}`}
-                  href={serverPath(props.activeServerId, "voice", room.id)}
-                  onNavigate={props.onNavigate}
-                  onClick={(event) => {
-                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-                    event.preventDefault();
-                    if (joiningRoomId) return;
-                    activateVoiceRoom(room);
-                  }}
-                >
-                  <span className="channel-prefix" aria-hidden="true"><MicIcon off={false} /></span><span>{room.name}</span>
-                </NavLink>
-                {canManageServer ? <ChannelDeleteControl actionMenu={props.actionMenu} room={room} disabled={props.rooms.text.length + props.rooms.voice.length <= 1} onRequest={() => setDeleteTarget(room)} t={props.t} /> : null}
-              </div>
-              {members.length > 0 ? (
-                <div className="voice-channel-users">
-                  {members.map((member) => {
-                    const isRemote = member.user.userId !== props.user.id;
-                    // Your own name is yours. Somebody else's is the owner's.
-                    const canRename = !isRemote
-                      || (canManageServer && member.user.role === "member");
-                    const canModerate = canOwnerVoiceModerate(activeServerRole(props), props.user.id, member.user);
-                    const canVoiceModerate = canModerate;
-                    const canModeratePerson = canOwnerModeratePerson(activeServerRole(props), props.user.id, member.user);
-                    const canAssignRoles = canManageServer && member.user.role === "member" && !member.user.isBot;
-                    const menuHeight = memberActionMenuHeight({
-                      hasVolume: isRemote,
-                      canRename,
-                      canDisconnect: canModerate,
-                      canModerate: canModeratePerson,
-                      canVoiceModerate,
-                      canAssignRoles,
-                      canMove: canModeratePerson && props.rooms.voice.length > 1,
-                      hasSelfControls: !isRemote && Boolean(props.activeVoiceRoomId)
-                    });
-                    // Own row: rename and the two self-silences. Remote row:
-                    // volume, and whatever moderation the caller is allowed.
-                    const hasActions = isRemote || canRename || canModerate || canAssignRoles || !isRemote;
-                    const menuKey = `rail-member:${member.user.userId}`;
-                    return (
-                    <div
-                      className={`voice-channel-user ${member.media.speaking && member.media.mic && !member.media.deafened && !member.moderation.muted ? "is-speaking" : ""}`}
-                      key={member.user.userId}
-                      tabIndex={hasActions ? 0 : undefined}
-                      onContextMenu={hasActions
-                        ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, menuKey, 220, menuHeight)
-                        : undefined}
-                      onKeyDown={hasActions ? (event) => {
-                        if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
-                        event.preventDefault();
-                        const rect = event.currentTarget.getBoundingClientRect();
-                        props.actionMenu.open({
-                          key: menuKey,
-                          x: rect.right - 220,
-                          y: rect.bottom + 4,
-                          menuWidth: 220,
-                          menuHeight,
-                          trigger: null
-                        });
-                      } : undefined}
-                    >
-                      <span className="avatar">{initial(member.user.nickname)}</span>
-                      <span className="voice-channel-user-copy">
-                        <span className="voice-channel-user-name">
-                          {member.media.screen ? (
-                            <LiveStreamPopover
-                              icon={<ScreenIcon off={false} />}
-                              liveLabel={props.t("common.live")}
-                              nickname={member.user.nickname}
-                              watchLabel={props.t("voice.watchStream")}
-                              watchAriaLabel={props.t("voice.watchUserStream", { nickname: member.user.nickname })}
-                              onWatch={() => props.onWatchLive({
-                                serverId: props.activeServerId,
-                                roomId: room.id,
-                                publisherUserId: member.user.userId,
-                                nickname: member.user.nickname
-                              })}
-                            />
-                          ) : <span>{member.user.nickname}</span>}
-                        </span>
-                      </span>
-                      <span className="voice-channel-statuses">
-                        {member.moderation.deafened ? <span className="voice-channel-status is-enforced" aria-label={props.t("member.ownerDeafened")}><HeadsetIcon off /></span> : null}
-                        {member.moderation.muted ? <span className="voice-channel-status is-enforced" aria-label={props.t("member.ownerMuted")}><MicIcon off /></span> : null}
-                        {sidebarVoiceStatusKeys(member.media, member.moderation).map((status) => (
-                          <span className={`voice-channel-status is-${status} is-self`} aria-label={props.t(sidebarVoiceStatusLabelKeys[status])} key={status}>
-                            {status === "deafened" ? <HeadsetIcon off /> : status === "camera" ? <CameraIcon off={false} /> : <MicIcon off />}
-                          </span>
-                        ))}
-                      </span>
-                      {hasActions ? (
-                        <MemberActionMenu
-                          actionMenu={props.actionMenu}
-                          menuKey={menuKey}
-                          member={member.user}
-                          volume={isRemote ? props.memberVolumes[member.user.userId] ?? DEFAULT_VOLUME_PERCENT : undefined}
-                          onVolumeChange={isRemote ? (volume) => props.onMemberVolumeChange(member.user.userId, volume) : undefined}
-                          canRename={canRename}
-                          canDisconnect={canModerate}
-                          canModerate={canModeratePerson}
-                          moderation={canVoiceModerate ? member.moderation : undefined}
-                          onVoiceModeration={canVoiceModerate ? (moderation) => { void props.onVoiceModeration(member.user.userId, moderation); } : undefined}
-                          onToggleInviteRole={canAssignRoles ? (canInviteMember) => { void props.onUpdateMemberPermissions(member.user.userId, canInviteMember); } : undefined}
-                          moveTargets={canModeratePerson ? props.rooms.voice.filter((target) => target.id !== room.id) : undefined}
-                          onMove={canModeratePerson ? (targetRoomId) => props.onMoveMember(member.user.userId, targetRoomId) : undefined}
-                          selfControls={!isRemote && props.activeVoiceRoomId ? {
-                            mic: props.controls.mic.on,
-                            deafen: props.controls.deafen.on,
-                            // The dock's rules, restated here rather than
-                            // guessed at: an owner's silence and the AFK
-                            // channel's are not a member's to undo.
-                            micEnabled: !props.micLockedByRoom
-                              && !props.voiceModeration.muted
-                              && props.controls.mic.enabled
-                              && props.socketState === "live",
-                            deafenEnabled: !props.voiceModeration.deafened
-                              && props.controls.deafen.enabled
-                              && !props.microphoneTestActive
-                              && props.socketState === "live",
-                            onToggle: props.onToggleControl
-                          } : undefined}
-                          onRename={(returnFocus) => props.onRequestNickname(member.user, returnFocus)}
-                          onRequestAction={(action) => props.onRequestMemberAction(member.user, action, room.id)}
-                          t={props.t}
-                        />
-                      ) : null}
-                    </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-      </section>
+      <ChannelOrganizer
+        serverId={props.activeServerId}
+        categories={props.categories}
+        rooms={[...props.rooms.text, ...props.rooms.voice]}
+        canManage={canManageServer}
+        actionMenu={props.actionMenu}
+        t={props.t}
+        onCreateCategory={props.onCreateCategory}
+        onRenameCategory={props.onRenameCategory}
+        onDeleteCategory={props.onDeleteCategory}
+        onCreateRoom={props.onCreateRoom}
+        onSaveLayout={props.onSaveRoomLayout}
+        renderRoom={renderRoom}
+      />
       {/* The rail is the drawer a phone opens with "Rooms", and the dock's own
           settings button is hidden at that width — so this is the mobile way
           in. On a wide screen it sits below the channels, out of the way of
@@ -300,23 +312,40 @@ export function ChannelRail(props: ChannelRailProps) {
 export function ChannelDeleteControl({
   actionMenu,
   room,
+  categories,
+  actions,
   disabled,
   onRequest,
   t
 }: {
   actionMenu: SidebarActionMenuController;
   room: RoomSummary;
+  categories: Array<{ id: string | null; name: string }>;
+  actions: ChannelRoomActions;
   disabled: boolean;
   onRequest: () => void;
   t: Translate;
 }) {
   const menuKey = `channel:${room.id}`;
   const label = t("room.actionsFor", { channel: room.name });
+  const menuHeight = channelActionMenuHeight();
   return (
     <>
-      <SidebarMenuTrigger actionMenu={actionMenu} menuKey={menuKey} label={label} menuWidth={176} menuHeight={48} />
+      <SidebarMenuTrigger actionMenu={actionMenu} menuKey={menuKey} label={label} menuWidth={220} menuHeight={menuHeight} />
       {actionMenu.active?.key === menuKey ? (
         <ContextMenu descriptor={actionMenu.active} label={label} onClose={actionMenu.close}>
+          <label className="channel-move-menu-field">
+            <span>{t("channel.moveTo")}</span>
+            <select className="input" aria-label={t("channel.moveTo")} value={room.categoryId ?? ""} onChange={(event) => {
+              const categoryId = event.currentTarget.value || null;
+              actionMenu.close();
+              if (categoryId !== room.categoryId) actions.moveTo(categoryId);
+            }}>
+              {categories.map((category) => <option value={category.id ?? ""} key={category.id ?? "uncategorized"}>{category.name}</option>)}
+            </select>
+          </label>
+          <button type="button" role="menuitem" disabled={!actions.canMoveUp} onClick={() => { actionMenu.close(); actions.moveUp(); }}>{t("channel.moveUp")}</button>
+          <button type="button" role="menuitem" disabled={!actions.canMoveDown} onClick={() => { actionMenu.close(); actions.moveDown(); }}>{t("channel.moveDown")}</button>
           <button className="is-danger" type="button" disabled={disabled} onClick={() => {
             actionMenu.close();
             onRequest();
@@ -325,6 +354,10 @@ export function ChannelDeleteControl({
       ) : null}
     </>
   );
+}
+
+function channelActionMenuHeight() {
+  return 194;
 }
 
 

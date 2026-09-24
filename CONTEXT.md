@@ -141,4 +141,4 @@ takes our word, theirs takes theirs.
 
 ### Terms still being resolved
 
-- **Room vs channel** — the codebase types say `RoomSummary`/`RoomKind` while the interface and CSS say channel throughout. Pre-existing, unresolved, and out of scope for the music bot work.
+- **Room vs channel** — the codebase types say `RoomSummary`/`RoomKind` while the interface and CSS say channel throughout. Pre-existing and unresolved; Category and channel organization do not settle it.

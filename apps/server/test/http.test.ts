@@ -35,7 +35,7 @@ function replyDouble() {
 }
 
 function requestDouble(token: string | null, params: Record<string, string>) {
-  return { cookies: token ? { [sessionCookieName]: token } : {}, params } as unknown as FastifyRequest;
+  return { cookies: token ? { [sessionCookieName]: token } : {}, headers: {}, params } as unknown as FastifyRequest;
 }
 
 describe("the shared route preamble", () => {

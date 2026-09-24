@@ -38,12 +38,27 @@ export interface RoomSummary {
   name: string;
   kind: RoomKind;
   position: number;
+  categoryId: string | null;
   /**
    * Where idle members are parked. Exactly one voice room per server carries
    * this, and it is otherwise an ordinary room: it can be renamed, moved, and
    * joined by hand like any other.
    */
   isAfk: boolean;
+}
+
+/** A server-wide group of text and voice rooms. */
+export interface CategorySummary {
+  id: string;
+  serverId: string;
+  name: string;
+  position: number;
+}
+
+/** The complete, server-scoped order used for one atomic room layout change. */
+export interface ServerRoomLayout {
+  uncategorizedRoomIds: string[];
+  categories: Array<{ categoryId: string; roomIds: string[] }>;
 }
 
 /**

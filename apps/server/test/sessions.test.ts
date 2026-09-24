@@ -56,7 +56,7 @@ function replyDouble() {
 }
 
 function requestDouble(cookies: Record<string, string>) {
-  return { cookies } as unknown as FastifyRequest;
+  return { cookies, headers: {} } as unknown as FastifyRequest;
 }
 
 describe("sessions", () => {

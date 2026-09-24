@@ -49,6 +49,7 @@ export function dumpTables(sqlite: DatabaseSync) {
     invites: all(sqlite, "select * from invites"),
     inviteUses: all(sqlite, "select * from invite_uses"),
     sessions: all(sqlite, "select * from sessions"),
+    categories: all(sqlite, "select * from categories"),
     rooms: all(sqlite, "select * from rooms"),
     messages: all(sqlite, "select * from messages"),
     ownerClaims: all(sqlite, "select * from owner_claims"),
@@ -146,13 +147,21 @@ function migrate(sqlite: DatabaseSync) {
       revoked_at text
     );
 
+    create table if not exists categories (
+      id text primary key,
+      server_id text not null,
+      name text not null,
+      position integer not null
+    );
+
     create table if not exists rooms (
       id text primary key,
       server_id text,
       name text not null,
       kind text not null check (kind in ('text', 'voice')),
       position integer not null,
-      is_afk integer not null default 0
+      is_afk integer not null default 0,
+      category_id text references categories(id) on delete set null
     );
 
     create table if not exists messages (
@@ -232,6 +241,7 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "messages", "reply_to_message_id", "text");
   addColumnIfMissing(sqlite, "rooms", "server_id", "text");
   addColumnIfMissing(sqlite, "rooms", "is_afk", "integer not null default 0");
+  addColumnIfMissing(sqlite, "rooms", "category_id", "text references categories(id) on delete set null");
   addColumnIfMissing(sqlite, "servers", "afk_timeout_minutes", "integer");
   addColumnIfMissing(sqlite, "invites", "server_id", "text");
   addColumnIfMissing(sqlite, "invites", "max_uses", "integer default 1");
@@ -266,6 +276,10 @@ function migrate(sqlite: DatabaseSync) {
       on server_members (user_id, banned_at, removed_at);
     create index if not exists idx_rooms_server_position
       on rooms (server_id, position);
+    create index if not exists idx_rooms_category_position
+      on rooms (category_id, position);
+    create index if not exists idx_categories_server_position
+      on categories (server_id, position);
     create index if not exists idx_invites_server_created
       on invites (server_id, created_at desc);
     create index if not exists idx_invite_uses_invite

@@ -666,6 +666,209 @@ h3 {
   min-width: 0;
 }
 
+.channel-row.has-drag-handle {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.channel-organizer {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+
+.channel-organizer-tools {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: 16px;
+  min-height: 36px;
+}
+
+.category-create-trigger {
+  gap: 6px;
+  padding: 0 8px;
+  width: auto;
+}
+
+.category-create-trigger span {
+  font-size: 0.82rem;
+}
+
+.channel-category {
+  gap: 6px;
+  margin-top: 12px;
+  min-width: 0;
+}
+
+.channel-category-head {
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  gap: 4px;
+  min-height: 36px;
+  padding: 2px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.channel-category-head.is-drop-target,
+.channel-category.is-drop-target > .channel-category-head {
+  background: color-mix(in oklab, var(--accent), var(--rail-bg) 86%);
+  border-color: var(--accent);
+}
+
+.channel-category-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  gap: 7px;
+  min-height: 32px;
+  min-width: 0;
+  padding: 3px 5px;
+  text-align: left;
+}
+
+.channel-category-toggle .label,
+.channel-uncategorized-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-category-toggle:hover,
+.channel-category-toggle:focus-visible {
+  background: color-mix(in oklab, var(--accent), var(--rail-bg) 90%);
+  outline: none;
+}
+
+.channel-category-toggle:focus-visible,
+.channel-drag-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.channel-category-chevron {
+  color: var(--rail-muted);
+  display: inline-block;
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.channel-category-chevron.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.channel-uncategorized-label {
+  flex: 1;
+  padding-left: 7px;
+}
+
+.channel-category-rooms {
+  display: grid;
+  gap: 4px;
+  min-height: 4px;
+  min-width: 0;
+}
+
+.channel-category-empty {
+  border: 1px dashed color-mix(in oklab, var(--rail-muted), transparent 45%);
+  border-radius: var(--radius-md);
+  min-height: 34px;
+}
+
+.channel-sort-item {
+  border-radius: var(--radius-md);
+  min-width: 0;
+  position: relative;
+}
+
+.channel-sort-item.is-drop-before::before,
+.channel-sort-item.is-drop-after::after {
+  background: var(--accent);
+  border-radius: 2px;
+  content: "";
+  height: 3px;
+  left: 6px;
+  pointer-events: none;
+  position: absolute;
+  right: 6px;
+  z-index: 1;
+}
+
+.channel-sort-item.is-drop-before::before {
+  top: -3px;
+}
+
+.channel-sort-item.is-drop-after::after {
+  bottom: -3px;
+}
+
+.channel-organizer.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.channel-drag-handle {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--rail-muted);
+  cursor: grab;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  height: 28px;
+  justify-content: center;
+  letter-spacing: -0.14em;
+  padding: 0 3px 2px 1px;
+  touch-action: none;
+  user-select: none;
+  width: 22px;
+  -webkit-user-select: none;
+}
+
+.channel-drag-handle:hover,
+.channel-organizer.is-dragging .channel-drag-handle {
+  background: color-mix(in oklab, var(--accent), var(--rail-bg) 88%);
+  color: var(--fg);
+}
+
+.channel-drag-handle:active {
+  cursor: grabbing;
+}
+
+.category-drag-handle {
+  height: 32px;
+  width: 24px;
+}
+
+.category-menu-trigger {
+  opacity: 1;
+}
+
+.channel-move-menu-field {
+  display: grid;
+  gap: 5px;
+  padding: 5px 8px;
+}
+
+.channel-move-menu-field > span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.channel-move-menu-field .input {
+  min-height: 36px;
+  width: 100%;
+}
+
 .sidebar-menu-trigger {
   align-items: center;
   background: transparent;
@@ -4631,7 +4834,20 @@ button.reply-quote:focus-visible .reply-quote-body {
   z-index: calc(var(--layer-modal) + 1);
 }
 
-.channel-create-popover form {
+.channel-organizer-editor {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  min-width: 220px;
+  padding: 10px;
+  position: fixed;
+  width: min(248px, calc(100vw - 16px));
+  z-index: calc(var(--layer-modal) + 1);
+}
+
+.channel-create-popover form,
+.channel-organizer-editor form {
   display: grid;
   gap: 8px;
 }
@@ -4718,6 +4934,20 @@ button.reply-quote:focus-visible .reply-quote-body {
   .app-shell-skeleton {
     grid-template-columns: minmax(0, 1fr);
     padding: 8px 8px calc(var(--dock) + 16px);
+  }
+
+  .channel-drag-handle {
+    height: 40px;
+    width: 32px;
+  }
+
+  .category-drag-handle {
+    height: 40px;
+    width: 32px;
+  }
+
+  .channel-category-toggle {
+    min-height: 40px;
   }
 
   .app-shell-skeleton .skeleton-rail,
@@ -5167,6 +5397,20 @@ button.reply-quote:focus-visible .reply-quote-body {
     font-size: 13px;
   }
 
+  .channel-organizer-tools {
+    min-height: 42px;
+  }
+
+  .channel-create-trigger {
+    height: 36px;
+    min-width: 36px;
+  }
+
+  .channel-category-head .category-menu-trigger {
+    height: 40px;
+    width: 40px;
+  }
+
   .invite-shell {
     padding: 14px;
   }
@@ -5243,6 +5487,11 @@ button.reply-quote:focus-visible .reply-quote-body {
      strip, and widening them there costs the message its text column. */
   .sidebar-menu-trigger {
     height: 36px;
+    width: 36px;
+  }
+
+  .channel-drag-handle {
+    height: 40px;
     width: 36px;
   }
 }

@@ -1,5 +1,6 @@
 import type {
   AppConfigResponse,
+  CategorySummary,
   CurrentUserResponse,
   InviteResponse,
   InviteExpiryMinutes,
@@ -21,7 +22,7 @@ import type {
   OwnerAccountMembership,
   OwnerDeletionRequest
 } from "./types.js";
-import type { DeviceSummary, VoiceModerationState } from "@voxly/shared";
+import type { DeviceSummary, ServerRoomLayout, VoiceModerationState } from "@voxly/shared";
 
 type JsonBody = Record<string, unknown>;
 type AccessClaimResponse = CurrentUserResponse & { serverId: string };
@@ -207,8 +208,32 @@ export async function fetchServerDirectory(serverId: string) {
   return apiGet<{ members: PresenceUser[] }>(`/api/servers/${encodeURIComponent(serverId)}/directory`);
 }
 
-export async function createServerRoom(serverId: string, name: string, kind: "text" | "voice") {
-  return apiPost<{ room: RoomSummary }>(`/api/servers/${encodeURIComponent(serverId)}/rooms`, { name, kind });
+export async function createServerRoom(serverId: string, name: string, kind: "text" | "voice", categoryId: string | null = null) {
+  return apiPost<{ room: RoomSummary }>(`/api/servers/${encodeURIComponent(serverId)}/rooms`, { name, kind, categoryId });
+}
+
+export async function createServerCategory(serverId: string, name: string) {
+  return apiPost<{ category: CategorySummary }>(`/api/servers/${encodeURIComponent(serverId)}/categories`, { name });
+}
+
+export async function renameServerCategory(serverId: string, categoryId: string, name: string) {
+  return request<{ category: CategorySummary }>(`/api/servers/${encodeURIComponent(serverId)}/categories/${encodeURIComponent(categoryId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name })
+  });
+}
+
+export async function deleteServerCategory(serverId: string, categoryId: string) {
+  await request<void>(`/api/servers/${encodeURIComponent(serverId)}/categories/${encodeURIComponent(categoryId)}`, {
+    method: "DELETE"
+  });
+}
+
+export async function updateServerRoomLayout(serverId: string, layout: ServerRoomLayout) {
+  return request<RoomsResponse>(`/api/servers/${encodeURIComponent(serverId)}/layout`, {
+    method: "PATCH",
+    body: JSON.stringify(layout)
+  });
 }
 
 export async function deleteServerRoom(serverId: string, roomId: string) {
