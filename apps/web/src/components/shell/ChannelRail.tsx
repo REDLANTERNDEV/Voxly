@@ -1,5 +1,5 @@
 import type { PresenceUser,RoomSummary } from "@voxly/shared";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { ApiError } from "../../api.js";
 import { serverPath } from "../../app/navigation.js";
 import { activeServerRole,canInviteToActiveServer,initial,voiceMembersForRoom } from "../../app/presentation.js";
@@ -68,7 +68,7 @@ export function ChannelRail(props: ChannelRailProps) {
     { id: null, name: props.t("room.uncategorized") },
     ...props.categories.map((category) => ({ id: category.id, name: category.name }))
   ];
-  const renderRoom = (room: RoomSummary, dragHandle: ReactNode, actions: ChannelRoomActions) => {
+  const renderRoom = (room: RoomSummary, actions: ChannelRoomActions) => {
     const actionMenuHeight = channelActionMenuHeight();
     const actionControl = canManageServer ? <ChannelDeleteControl
       actionMenu={props.actionMenu}
@@ -81,16 +81,17 @@ export function ChannelRail(props: ChannelRailProps) {
     /> : null;
     const rowData = {
       "data-drop-room": room.id,
-      "data-drop-category-id": room.categoryId ?? ""
+      "data-drop-category-id": room.categoryId ?? "",
+      "data-drag-kind": canManageServer ? "room" : undefined,
+      "data-drag-id": canManageServer ? room.id : undefined
     };
     if (room.kind === "text") {
       return <div
-        className={`channel-row ${dragHandle ? "has-drag-handle" : ""}`}
+        className="channel-row"
         key={room.id}
         {...rowData}
         onContextMenu={canManageServer ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, `channel:${room.id}`, 220, actionMenuHeight) : undefined}
       >
-        {dragHandle}
         <NavLink className={`channel-item ${props.route.name === "text" && props.route.roomId === room.id ? "is-active" : ""}`} href={serverPath(props.activeServerId, "text", room.id)} onNavigate={props.onNavigate}>
           <span className="channel-prefix">#</span><span>{room.name}</span>{props.unreadByRoom[room.id] ? <span className="badge unread-badge">{props.unreadByRoom[room.id]}</span> : <span />}
         </NavLink>
@@ -101,11 +102,10 @@ export function ChannelRail(props: ChannelRailProps) {
     const members = voiceMembersForRoom(props, room.id);
     return <div className="voice-channel-block" key={room.id}>
       <div
-        className={`channel-row ${dragHandle ? "has-drag-handle" : ""}`}
+        className="channel-row"
         {...rowData}
         onContextMenu={canManageServer ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, `channel:${room.id}`, 220, actionMenuHeight) : undefined}
       >
-        {dragHandle}
         <NavLink
           className={`channel-item ${props.route.name === "voice" && props.route.roomId === room.id ? "is-active" : ""}`}
           href={serverPath(props.activeServerId, "voice", room.id)}

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, 
 import { createPortal } from "react-dom";
 import type { Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
-import { ChevronIcon, GripIcon, MoreIcon, PlusIcon } from "../../components/ui/Icons.js";
+import { ChevronIcon, MoreIcon, PlusIcon } from "../../components/ui/Icons.js";
 import { channelGroups, moveGroup, moveGroupBy, moveRoom, moveRoomBy, roomLayout, type ChannelDropTarget, type ChannelGroup } from "../../lib/channelLayout.js";
 import { ContextMenu } from "../ContextMenu.js";
 import type { SidebarActionMenuController } from "./SidebarMenus.js";
@@ -14,6 +14,7 @@ type DragState = {
   kind: DragKind;
   id: string;
   pointerId: number;
+  pointerType: string;
   startX: number;
   startY: number;
   x: number;
@@ -65,10 +66,12 @@ export function ChannelOrganizer({
   onDeleteCategory: (categoryId: string) => Promise<void>;
   onCreateRoom: (name: string, kind: RoomKind, categoryId: string | null) => Promise<void>;
   onSaveLayout: (layout: ServerRoomLayout) => Promise<void>;
-  renderRoom: (room: RoomSummary, dragHandle: ReactNode, actions: ChannelRoomActions) => ReactNode;
+  renderRoom: (room: RoomSummary, actions: ChannelRoomActions) => ReactNode;
 }) {
   const organizerRef = useRef<HTMLDivElement | null>(null);
   const dragCandidateRef = useRef<DragState | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const suppressClickRef = useRef(false);
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [saving, setSaving] = useState(false);
   const [layoutError, setLayoutError] = useState(false);
@@ -88,6 +91,15 @@ export function ChannelOrganizer({
     : localGroups;
 
   useEffect(() => setLocalGroups(groups), [groups]);
+  useEffect(() => {
+    const organizer = organizerRef.current;
+    if (!organizer) return;
+    const preventScrollDuringTouchDrag = (event: TouchEvent) => {
+      if (dragCandidateRef.current?.started) event.preventDefault();
+    };
+    organizer.addEventListener("touchmove", preventScrollDuringTouchDrag, { passive: false });
+    return () => organizer.removeEventListener("touchmove", preventScrollDuringTouchDrag);
+  }, []);
   useEffect(() => setCollapsed(readCollapsed(serverId)), [serverId]);
   useEffect(() => {
     try {
@@ -218,17 +230,20 @@ export function ChannelOrganizer({
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (!canManage || saving || event.button !== 0) return;
-    const handle = (event.target as Element).closest<HTMLElement>("[data-drag-kind]");
-    if (!handle) return;
-    const kind = handle.dataset.dragKind as DragKind;
-    const id = handle.dataset.dragId;
+    const target = event.target as Element;
+    if (target.closest(".sidebar-menu-trigger, .channel-organizer-tools, .channel-organizer-modal")) return;
+    const dragSurface = target.closest<HTMLElement>("[data-drag-kind]");
+    if (!dragSurface) return;
+    const kind = dragSurface.dataset.dragKind as DragKind;
+    const id = dragSurface.dataset.dragId;
     if (!id || (kind !== "category" && kind !== "room")) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
+    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
+    suppressClickRef.current = false;
     dragCandidateRef.current = {
       kind,
       id,
       pointerId: event.pointerId,
+      pointerType: event.pointerType,
       startX: event.clientX,
       startY: event.clientY,
       x: event.clientX,
@@ -236,13 +251,32 @@ export function ChannelOrganizer({
       started: false,
       target: null
     };
+    if (event.pointerType === "touch") {
+      longPressTimerRef.current = window.setTimeout(() => {
+        const candidate = dragCandidateRef.current;
+        if (!candidate || candidate.pointerId !== event.pointerId) return;
+        const next = { ...candidate, started: true, target: targetAt(candidate.x, candidate.y, candidate.kind) };
+        dragCandidateRef.current = next;
+        organizerRef.current?.setPointerCapture(candidate.pointerId);
+        setDragging(next);
+      }, 320);
+    }
   }
 
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     const candidate = dragCandidateRef.current;
     if (!candidate || candidate.pointerId !== event.pointerId) return;
     const distance = Math.hypot(event.clientX - candidate.startX, event.clientY - candidate.startY);
+    if (!candidate.started && candidate.pointerType === "touch") {
+      if (distance >= 6) {
+        if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+        dragCandidateRef.current = null;
+      }
+      return;
+    }
     if (!candidate.started && distance < 6) return;
+    if (!candidate.started) event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
     const rail = organizerRef.current?.closest<HTMLElement>(".rail");
     if (rail) {
@@ -264,11 +298,16 @@ export function ChannelOrganizer({
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
     const candidate = dragCandidateRef.current;
     if (!candidate || candidate.pointerId !== event.pointerId) return;
+    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
     if (candidate.started) event.preventDefault();
     const target = targetAt(event.clientX, event.clientY, candidate.kind);
     dragCandidateRef.current = null;
     setDragging(null);
-    if (!candidate.started || !target) return;
+    if (!candidate.started) return;
+    suppressClickRef.current = true;
+    window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+    if (!target) return;
     if (candidate.kind === "room") {
       const roomTarget: ChannelDropTarget = target.kind === "room"
         ? { categoryId: target.categoryId, roomId: target.roomId, after: target.after }
@@ -285,8 +324,17 @@ export function ChannelOrganizer({
 
   function onPointerCancel(event: ReactPointerEvent<HTMLDivElement>) {
     if (dragCandidateRef.current?.pointerId !== event.pointerId) return;
+    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
     dragCandidateRef.current = null;
     setDragging(null);
+  }
+
+  function onClickCapture(event: MouseEvent<HTMLDivElement>) {
+    if (!suppressClickRef.current) return;
+    suppressClickRef.current = false;
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   function openBackgroundMenu(event: MouseEvent<HTMLDivElement>) {
@@ -313,26 +361,6 @@ export function ChannelOrganizer({
     });
   }
 
-  function roomHandle(room: RoomSummary) {
-    if (!canManage) return null;
-    return <button
-      className="channel-drag-handle"
-      type="button"
-      data-drag-kind="room"
-      data-drag-id={room.id}
-      data-dragging={dragging?.started && dragging.kind === "room" && dragging.id === room.id ? "true" : undefined}
-      aria-label={t("channel.dragHandle", { channel: room.name })}
-      aria-disabled={saving}
-      aria-keyshortcuts={["ArrowUp", "ArrowDown"].join(" ")}
-      title={t("channel.dragHandle", { channel: room.name })}
-      onKeyDown={(event) => {
-        if (saving || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
-        event.preventDefault();
-        void persist(moveRoomBy(localGroups, room.id, event.key === "ArrowUp" ? -1 : 1));
-      }}
-    ><GripIcon /></button>;
-  }
-
   return (
     <div
       className={`channel-organizer ${dragging?.started ? "is-dragging" : ""}`}
@@ -341,6 +369,7 @@ export function ChannelOrganizer({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      onClickCapture={onClickCapture}
       onContextMenu={openBackgroundMenu}
     >
       {canManage ? <div className="channel-organizer-tools">
@@ -368,34 +397,28 @@ export function ChannelOrganizer({
           ? `is-category-drop-${categoryDropTarget.after ? "after" : "before"}`
           : "";
         const categoryMenuKey = `category:${id || "uncategorized"}`;
-        const categoryHandle = canManage ? <button
-          className="channel-drag-handle category-drag-handle"
-          type="button"
-          data-drag-kind="category"
-          data-drag-id={category?.id ?? "__uncategorized__"}
-          data-dragging={dragging?.started && dragging.kind === "category" && dragging.id === (category?.id ?? "__uncategorized__") ? "true" : undefined}
-          aria-label={t("category.dragHandle", { category: label })}
-          aria-disabled={saving}
-          aria-keyshortcuts={["ArrowUp", "ArrowDown"].join(" ")}
-          title={t("category.dragHandle", { category: label })}
-          onKeyDown={(event) => {
-            if (saving || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
-            event.preventDefault();
-            void persist(moveGroupBy(localGroups, category?.id ?? null, event.key === "ArrowUp" ? -1 : 1));
-          }}
-        ><GripIcon /></button> : null;
         return (
           <section className={`rail-section channel-category ${isGroupDropTarget ? "is-drop-target" : ""} ${categoryDropClass}`} data-category-id={id} key={category?.id ?? "uncategorized"}>
             <div
               className={`rail-section-head channel-category-head ${category ? "" : "channel-uncategorized-head"} ${isGroupDropTarget ? "is-drop-target" : ""}`}
               data-drop-category={id}
               data-drop-group={id}
+              data-drag-kind={canManage ? "category" : undefined}
+              data-drag-id={canManage ? category?.id ?? "__uncategorized__" : undefined}
+              tabIndex={canManage && !category ? 0 : undefined}
+              role={canManage && !category ? "group" : undefined}
+              aria-label={canManage && !category ? t("category.dragHandle", { category: label }) : undefined}
+              aria-keyshortcuts={canManage && !category ? ["ArrowUp", "ArrowDown"].join(" ") : undefined}
+              onKeyDown={canManage && !category ? (event) => {
+                if (saving || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+                event.preventDefault();
+                void persist(moveGroupBy(localGroups, null, event.key === "ArrowUp" ? -1 : 1));
+              } : undefined}
               onContextMenu={category && canManage ? (event) => {
                 event.preventDefault();
                 actionMenu.open({ key: categoryMenuKey, x: event.clientX, y: event.clientY, menuWidth: 220, menuHeight: 220, trigger: null });
               } : undefined}
             >
-              {categoryHandle}
               {category ? <button
                 className="channel-category-toggle"
                 type="button"
@@ -435,7 +458,7 @@ export function ChannelOrganizer({
                   data-drop-category-id={category?.id ?? ""}
                   key={room.id}
                 >
-                  {renderRoom(room, roomHandle(room), {
+                  {renderRoom(room, {
                     moveTo: (categoryId) => moveRoomTo(room.id, categoryId),
                     moveUp: () => { void persist(moveRoomBy(localGroups, room.id, -1)); },
                     moveDown: () => { void persist(moveRoomBy(localGroups, room.id, 1)); },
@@ -444,7 +467,12 @@ export function ChannelOrganizer({
                   })}
                 </div>
               ))}
-              {group.rooms.length === 0 ? <div className={`channel-category-empty ${category ? "" : "channel-uncategorized-empty"}`} aria-hidden="true" /> : null}
+              {group.rooms.length === 0 ? <div
+                className={`channel-category-empty ${category ? "" : "channel-uncategorized-empty"}`}
+                data-drag-kind={canManage && !category ? "category" : undefined}
+                data-drag-id={canManage && !category ? "__uncategorized__" : undefined}
+                aria-hidden="true"
+              /> : null}
             </div> : null}
           </section>
         );

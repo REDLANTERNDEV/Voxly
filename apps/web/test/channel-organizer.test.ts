@@ -52,7 +52,7 @@ describe("server channel organizer", () => {
   it("retains empty categories and supports mixed room kinds in each group", () => {
     assert.match(organizer, /channelGroups\(categories, rooms, uncategorizedPosition\)/);
     assert.match(organizer, /!isCollapsed \? <div className="channel-category-rooms"/);
-    assert.match(organizer, /group\.rooms\.length === 0 \? <div className=\{`channel-category-empty \$\{category \? "" : "channel-uncategorized-empty"\}`\}/);
+    assert.match(organizer, /group\.rooms\.length === 0 \? <div[\s\S]*?className=\{`channel-category-empty \$\{category \? "" : "channel-uncategorized-empty"\}`\}/);
     assert.match(rail, /rooms=\{\[\.\.\.props\.rooms\.text, \.\.\.props\.rooms\.voice\]\}/);
   });
 
@@ -61,7 +61,7 @@ describe("server channel organizer", () => {
     assert.match(organizer, /className=\{`rail-section-head channel-category-head \$\{category \? "" : "channel-uncategorized-head"\}/);
     assert.match(organizer, /data-drop-group=\{id\}/);
     assert.doesNotMatch(organizer, /channel-uncategorized-toggle/);
-    assert.equal((organizer.match(/<GripIcon \/>/g) ?? []).length, 2, "room and category handles use the same grip icon");
+    assert.doesNotMatch(organizer, /<GripIcon \/>/, "the owner rail has no visible drag grip");
     assert.match(styles, /\.channel-uncategorized-empty\s*\{[^}]*min-height: 20px;/);
     assert.match(styles, /\.channel-organizer\.is-dragging \.channel-uncategorized-empty\s*\{[^}]*border-color:/);
     assert.match(organizer, /categoryDropTarget\.categoryId === \(category\?\.id \?\? null\)/, "the uncategorized category target is compared as null in its preview state");
@@ -83,18 +83,28 @@ describe("server channel organizer", () => {
     assert.doesNotMatch(styles, /\.channel-category-chevron\.is-collapsed/);
   });
 
-  it("uses isolated drag handles, visible targets, auto-scroll, and suppresses click actions", () => {
-    assert.match(organizer, /data-drag-kind="room"/);
-    assert.match(organizer, /data-drag-kind="category"/);
+  it("drags the full owner channel row and category header without stealing normal clicks", () => {
+    assert.match(rail, /"data-drag-kind": canManageServer \? "room" : undefined/);
+    assert.match(organizer, /data-drag-kind=\{canManage \? "category" : undefined\}/);
+    const pointerDown = organizer.match(/function onPointerDown\(event:[\s\S]*?\n  }/)?.[0] ?? "";
+    assert.doesNotMatch(pointerDown, /event\.preventDefault\(\)/, "normal pointer presses keep their click behavior");
     assert.match(organizer, /event\.currentTarget\.setPointerCapture\(event\.pointerId\)/);
+    assert.match(organizer, /suppressClickRef\.current = true/);
     assert.match(organizer, /event\.preventDefault\(\)/);
     assert.match(organizer, /targetAt\(event\.clientX, event\.clientY, candidate\.kind\)/);
     assert.match(organizer, /closest<HTMLElement>\("\.rail"\)/);
+    assert.match(organizer, /candidate\.pointerType === "touch"/);
+    assert.match(organizer, /}, 320\)/, "touch drag starts after a hold while early movement can scroll the rail");
+    assert.match(organizer, /preventScrollDuringTouchDrag/);
+    assert.match(organizer, /persist\(moveGroupBy\(localGroups, null, event\.key === "ArrowUp" \? -1 : 1\)\)/, "Uncategorized stays keyboard reorderable without a visible handle");
+    assert.doesNotMatch(organizer, /GripIcon|channel-drag-handle/);
+    assert.doesNotMatch(rail, /has-drag-handle|dragHandle/);
+    assert.doesNotMatch(styles, /channel-drag-handle|has-drag-handle/);
+    assert.match(styles, /\.voice-channel-users\s*\{[^}]*padding-left: 28px;/, "voice members keep their normal-user alignment when owners drag the row");
+    assert.match(styles, /\.channel-row\[data-drag-kind="room"\]\s*\{[^}]*touch-action: pan-y;/);
     assert.match(styles, /\.channel-sort-item\.is-drop-before::before,[\s\S]*?background: var\(--accent\)/);
-    assert.match(styles, /\.channel-drag-handle\s*\{[^}]*touch-action: none;/);
     assert.match(styles, /\.channel-organizer-modal\s*\{[^}]*position: fixed;/);
     assert.match(styles, /\.channel-organizer-editor\s*\{[^}]*width: min\(480px, 100%\)/);
-    assert.match(styles, /\.channel-drag-handle \.grip-icon\s*\{[^}]*width: 12px;/);
   });
 
   it("keeps keyboard move controls and restores the previous layout after a failed save", () => {
@@ -104,8 +114,6 @@ describe("server channel organizer", () => {
     assert.match(organizer, /moveGroupBy\(localGroups, category\.id, -1\)/);
     assert.match(organizer, /moveGroupBy\(localGroups, category\.id, 1\)/);
     assert.match(organizer, /category\?\.id \?\? "__uncategorized__"/);
-    assert.match(organizer, /aria-keyshortcuts=\{\["ArrowUp", "ArrowDown"\]\.join\(" "\)\}/);
-    assert.match(organizer, /event\.key === "ArrowUp" \? -1 : 1/);
     assert.match(organizer, /catch \{\s*setLocalGroups\(groups\);\s*setLayoutError\(true\);/);
   });
 
@@ -115,7 +123,6 @@ describe("server channel organizer", () => {
     const narrow = mediaBlock("(max-width: 900px)", ".app-shell.drawer-channels .rail");
     assert.match(narrow, /max-width: min\(84vw, 330px\)/);
     assert.match(narrow, /width: 320px/);
-    assert.match(narrow, /\.channel-drag-handle \{\s*height: 40px;\s*width: 32px;/);
     assert.match(styles, /@media \(max-width: 560px\)/);
   });
 

@@ -666,10 +666,6 @@ h3 {
   min-width: 0;
 }
 
-.channel-row.has-drag-handle {
-  grid-template-columns: auto minmax(0, 1fr) auto;
-}
-
 .channel-organizer {
   display: grid;
   gap: 0;
@@ -721,6 +717,11 @@ h3 {
   padding: 2px;
 }
 
+.channel-category-head[data-drag-kind="category"],
+.channel-row[data-drag-kind="room"] {
+  touch-action: pan-y;
+}
+
 .channel-uncategorized-head {
   justify-content: flex-start;
   min-height: 8px;
@@ -756,13 +757,13 @@ h3 {
 }
 
 .channel-category-toggle:hover,
-.channel-category-toggle:focus-visible {
+.channel-category-toggle:focus-visible,
+.channel-uncategorized-head:focus-visible {
   background: color-mix(in oklab, var(--accent), var(--rail-bg) 90%);
   outline: none;
 }
 
-.channel-category-toggle:focus-visible,
-.channel-drag-handle:focus-visible {
+.channel-category-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
@@ -828,50 +829,6 @@ h3 {
   cursor: grabbing;
   user-select: none;
   -webkit-user-select: none;
-}
-
-.channel-drag-handle {
-  align-items: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  color: var(--rail-muted);
-  cursor: grab;
-  display: inline-flex;
-  flex: 0 0 auto;
-  height: 28px;
-  justify-content: center;
-  padding: 0;
-  touch-action: none;
-  user-select: none;
-  width: 22px;
-  -webkit-user-select: none;
-}
-
-.channel-drag-handle:hover,
-.channel-drag-handle[data-dragging="true"] {
-  background: color-mix(in oklab, var(--accent), var(--rail-bg) 92%);
-  border-color: color-mix(in oklab, var(--accent), transparent 68%);
-  color: var(--fg);
-}
-
-.channel-drag-handle .grip-icon {
-  height: 16px;
-  stroke: none;
-  width: 12px;
-}
-
-.channel-drag-handle .grip-icon circle {
-  fill: currentColor;
-}
-
-.channel-drag-handle:active {
-  cursor: grabbing;
-}
-
-.category-drag-handle {
-  height: 30px;
-  width: 26px;
 }
 
 .category-menu-trigger {
@@ -5003,16 +4960,6 @@ button.reply-quote:focus-visible .reply-quote-body {
     padding: 8px 8px calc(var(--dock) + 16px);
   }
 
-  .channel-drag-handle {
-    height: 40px;
-    width: 32px;
-  }
-
-  .category-drag-handle {
-    height: 40px;
-    width: 32px;
-  }
-
   .channel-category-toggle {
     min-height: 40px;
   }
@@ -5574,10 +5521,6 @@ button.reply-quote:focus-visible .reply-quote-body {
     width: 36px;
   }
 
-  .channel-drag-handle {
-    height: 40px;
-    width: 36px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
