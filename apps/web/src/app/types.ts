@@ -42,6 +42,7 @@ export interface ShellModel {
   activeServerId: string;
   rooms: { text: RoomSummary[]; voice: RoomSummary[] };
   categories: CategorySummary[];
+  uncategorizedPosition: number;
   onlineUsers: PresenceUser[];
   serverMembers: PresenceUser[];
   socketState: "connecting" | "live" | "reconnecting" | "offline";

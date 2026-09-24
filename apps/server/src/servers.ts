@@ -73,6 +73,14 @@ function categoriesForServer(database: VoxlyDatabase, serverId: string) {
   );
 }
 
+function uncategorizedPositionForServer(database: VoxlyDatabase, serverId: string) {
+  return one<{ position: number }>(
+    database.sqlite,
+    "select uncategorized_position as position from servers where id = ?",
+    [serverId]
+  )?.position ?? 0;
+}
+
 export function registerServerRoutes(context: RouteContext) {
   const { fastify, database, io, realtime, secureCookies } = context;
   fastify.get("/api/servers", async (request, reply) => {
@@ -143,7 +151,8 @@ export function registerServerRoutes(context: RouteContext) {
         `select ${roomColumns} from rooms where server_id = ? order by position asc`,
         [serverId]
       ).map(publicRoom),
-      categories: categoriesForServer(database, serverId)
+      categories: categoriesForServer(database, serverId),
+      uncategorizedPosition: uncategorizedPositionForServer(database, serverId)
     };
   });
 
@@ -197,12 +206,13 @@ export function registerServerRoutes(context: RouteContext) {
     if (categoryCount >= maxCategoriesPerServer) {
       return reply.code(409).send({ error: "category_limit_reached" });
     }
-    const position = one<{ position: number | null }>(
+    const categoryPosition = one<{ position: number | null }>(
       database.sqlite,
       "select max(position) as position from categories where server_id = ?",
       [serverId]
     )?.position ?? 0;
-    const category: CategorySummary = { id: crypto.randomUUID(), serverId, name, position: position + 10 };
+    const position = Math.max(categoryPosition, uncategorizedPositionForServer(database, serverId)) + 10;
+    const category: CategorySummary = { id: crypto.randomUUID(), serverId, name, position };
     run(database.sqlite, "insert into categories (id, server_id, name, position) values (?, ?, ?, ?)", [
       category.id, category.serverId, category.name, category.position
     ]);
@@ -272,22 +282,18 @@ export function registerServerRoutes(context: RouteContext) {
     if (!scope) return;
     const { serverId } = scope;
     const body = z.object({
-      uncategorizedRoomIds: z.array(z.string().min(1).max(128)).max(maxRoomsPerServer),
-      categories: z.array(z.object({
-        categoryId: z.string().min(1).max(128),
+      groups: z.array(z.object({
+        categoryId: z.string().min(1).max(128).nullable(),
         roomIds: z.array(z.string().min(1).max(128)).max(maxRoomsPerServer)
-      }).strict()).max(maxCategoriesPerServer)
+      }).strict()).max(maxCategoriesPerServer + 1)
     }).strict().parse(request.body);
 
     database.sqlite.exec("begin immediate");
     try {
       const currentRooms = all<{ id: string }>(database.sqlite, "select id from rooms where server_id = ?", [serverId]);
       const currentCategories = all<{ id: string }>(database.sqlite, "select id from categories where server_id = ?", [serverId]);
-      const requestedRoomIds = [
-        ...body.uncategorizedRoomIds,
-        ...body.categories.flatMap((category) => category.roomIds)
-      ];
-      const requestedCategoryIds = body.categories.map((category) => category.categoryId);
+      const requestedRoomIds = body.groups.flatMap((group) => group.roomIds);
+      const requestedCategoryIds = body.groups.flatMap((group) => group.categoryId === null ? [] : [group.categoryId]);
       const sameIds = (requested: string[], current: string[]) => {
         const requestedSet = new Set(requested);
         const currentSet = new Set(current);
@@ -295,26 +301,25 @@ export function registerServerRoutes(context: RouteContext) {
           && requestedSet.size === currentSet.size
           && [...requestedSet].every((id) => currentSet.has(id));
       };
-      if (!sameIds(requestedRoomIds, currentRooms.map((room) => room.id))
+      if (body.groups.filter((group) => group.categoryId === null).length !== 1
+        || !sameIds(requestedRoomIds, currentRooms.map((room) => room.id))
         || !sameIds(requestedCategoryIds, currentCategories.map((category) => category.id))) {
         database.sqlite.exec("rollback");
         return reply.code(400).send({ error: "invalid_room_layout" });
       }
 
-      body.categories.forEach((category, index) => {
-        run(database.sqlite, "update categories set position = ? where id = ? and server_id = ?", [
-          (index + 1) * 10, category.categoryId, serverId
-        ]);
+      body.groups.forEach((group, index) => {
+        if (group.categoryId === null) {
+          run(database.sqlite, "update servers set uncategorized_position = ? where id = ?", [index * 10, serverId]);
+        } else {
+          run(database.sqlite, "update categories set position = ? where id = ? and server_id = ?", [index * 10, group.categoryId, serverId]);
+        }
       });
       let position = 10;
-      for (const roomId of body.uncategorizedRoomIds) {
-        run(database.sqlite, "update rooms set category_id = null, position = ? where id = ? and server_id = ?", [position, roomId, serverId]);
-        position += 10;
-      }
-      for (const category of body.categories) {
-        for (const roomId of category.roomIds) {
+      for (const group of body.groups) {
+        for (const roomId of group.roomIds) {
           run(database.sqlite, "update rooms set category_id = ?, position = ? where id = ? and server_id = ?", [
-            category.categoryId, position, roomId, serverId
+            group.categoryId, position, roomId, serverId
           ]);
           position += 10;
         }
@@ -332,7 +337,8 @@ export function registerServerRoutes(context: RouteContext) {
         `select ${roomColumns} from rooms where server_id = ? order by position asc`,
         [serverId]
       ).map(publicRoom),
-      categories: categoriesForServer(database, serverId)
+      categories: categoriesForServer(database, serverId),
+      uncategorizedPosition: uncategorizedPositionForServer(database, serverId)
     };
   });
 
@@ -442,7 +448,8 @@ export function registerServerRoutes(context: RouteContext) {
 
     return {
       rooms: all<RoomRow>(database.sqlite, `select ${roomColumns} from rooms where server_id = ? order by position asc`, [defaultServerId]).map(publicRoom),
-      categories: categoriesForServer(database, defaultServerId)
+      categories: categoriesForServer(database, defaultServerId),
+      uncategorizedPosition: uncategorizedPositionForServer(database, defaultServerId)
     };
   });
 }

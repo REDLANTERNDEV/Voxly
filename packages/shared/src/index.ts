@@ -57,8 +57,7 @@ export interface CategorySummary {
 
 /** The complete, server-scoped order used for one atomic room layout change. */
 export interface ServerRoomLayout {
-  uncategorizedRoomIds: string[];
-  categories: Array<{ categoryId: string; roomIds: string[] }>;
+  groups: Array<{ categoryId: string | null; roomIds: string[] }>;
 }
 
 /**

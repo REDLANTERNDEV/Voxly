@@ -6,7 +6,7 @@ import { readAppSource } from "./app-source.js";
 describe("voice rail live controls", () => {
   it("omits channel and participant totals from the rail", () => {
     const app = readAppSource();
-    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
+    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction channelActionMenuHeight/)?.[0] ?? "";
 
     assert.doesNotMatch(rail, /props\.rooms\.text\.length\}<\/span>/);
     assert.doesNotMatch(rail, /props\.rooms\.voice\.length\}<\/span>/);
@@ -15,7 +15,7 @@ describe("voice rail live controls", () => {
 
   it("keeps the rail compact while retaining the speaking avatar ring", () => {
     const app = readAppSource();
-    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
+    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction channelActionMenuHeight/)?.[0] ?? "";
 
     assert.doesNotMatch(rail, /<VoiceStatusBadges[^>]*compact/);
     assert.match(rail, /member\.media\.speaking[\s\S]*?is-speaking/);
@@ -23,7 +23,7 @@ describe("voice rail live controls", () => {
 
   it("shows LIVE only for screen sharing and shares the existing member volume state", () => {
     const app = readAppSource();
-    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
+    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction channelActionMenuHeight/)?.[0] ?? "";
 
     assert.match(rail, /member\.media\.screen[\s\S]*?<LiveStreamPopover[\s\S]*?common\.live/);
     assert.match(rail, /<LiveStreamPopover[\s\S]*?props\.onWatchLive/);
@@ -34,7 +34,7 @@ describe("voice rail live controls", () => {
 
   it("renders compact accessible mute and deafen icons for each rail member", () => {
     const app = readAppSource();
-    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
+    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction channelActionMenuHeight/)?.[0] ?? "";
 
     assert.match(rail, /sidebarVoiceStatusKeys\(member\.media, member\.moderation\)/);
     assert.match(rail, /voice-channel-statuses/);
@@ -45,7 +45,7 @@ describe("voice rail live controls", () => {
   it("gives a live camera its own neutral rail indicator without borrowing the LIVE badge", () => {
     const app = readAppSource();
     const styles = readFileSync("src/styles.css", "utf8");
-    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
+    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction channelActionMenuHeight/)?.[0] ?? "";
 
     assert.match(rail, /<CameraIcon off=\{false\} \/>/);
     // LIVE stays reserved for screen sharing.
@@ -58,7 +58,7 @@ describe("voice rail live controls", () => {
   it("uses a microphone icon for voice channels", () => {
     const app = readAppSource();
     const styles = readFileSync("src/styles.css", "utf8");
-    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
+    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction channelActionMenuHeight/)?.[0] ?? "";
 
     assert.match(rail, /className="channel-prefix"[^>]*><MicIcon off=\{false\} \/>/);
     assert.doesNotMatch(rail, /className="channel-prefix">vc</i);

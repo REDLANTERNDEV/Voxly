@@ -181,7 +181,7 @@ export function App() {
     route,
     servers: workspace.servers,
     activeServerId: workspace.activeServerId,
-    rooms: workspace.roomGroups, categories: workspace.categories,
+    rooms: workspace.roomGroups, categories: workspace.categories, uncategorizedPosition: workspace.uncategorizedPosition,
     onlineUsers: workspace.onlineUsers,
     serverMembers: workspace.serverMembers,
     socketState: realtime.socketState,

@@ -16,7 +16,7 @@ describe("member volume menus", () => {
     const app = readAppSource();
     const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelDeleteControl/)?.[0] ?? "";
     const panel = app.match(/function MemberPanel[\s\S]*?\n}\n\nfunction VoiceDock/)?.[0] ?? "";
-    const menu = app.match(/function MemberActionMenu[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
+    const menu = app.match(/function MemberActionMenu[\s\S]*?\n}\n\nfunction channelActionMenuHeight/)?.[0] ?? "";
 
     assert.match(panel, /memberVolumes:\s*Record<string, number>/);
     assert.match(panel, /onMemberVolumeChange:\s*\(userId: string, volume: number\) => void/);

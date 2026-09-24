@@ -190,7 +190,8 @@ function migrate(sqlite: DatabaseSync) {
       name text not null,
       created_by_user_id text,
       created_at text not null,
-      afk_timeout_minutes integer
+      afk_timeout_minutes integer,
+      uncategorized_position integer not null default 0
     );
 
     create table if not exists server_members (
@@ -243,6 +244,7 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "rooms", "is_afk", "integer not null default 0");
   addColumnIfMissing(sqlite, "rooms", "category_id", "text references categories(id) on delete set null");
   addColumnIfMissing(sqlite, "servers", "afk_timeout_minutes", "integer");
+  addColumnIfMissing(sqlite, "servers", "uncategorized_position", "integer not null default 0");
   addColumnIfMissing(sqlite, "invites", "server_id", "text");
   addColumnIfMissing(sqlite, "invites", "max_uses", "integer default 1");
   addColumnIfMissing(sqlite, "audit_events", "server_id", "text");

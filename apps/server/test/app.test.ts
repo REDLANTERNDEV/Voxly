@@ -1205,8 +1205,8 @@ describe("Voxly HTTP MVP", () => {
     });
     const rooms = roomsResponse.json().rooms as Array<{ id: string }>;
     const fullLayout = {
-      uncategorizedRoomIds: rooms.filter((room) => room.id !== textRoom.id && room.id !== voiceRoom.id).map((room) => room.id),
-      categories: [
+      groups: [
+        { categoryId: null, roomIds: rooms.filter((room) => room.id !== textRoom.id && room.id !== voiceRoom.id).map((room) => room.id) },
         { categoryId: firstCategory.id, roomIds: [textRoom.id, voiceRoom.id] },
         { categoryId: secondCategory.id, roomIds: [] }
       ]
@@ -1224,15 +1224,18 @@ describe("Voxly HTTP MVP", () => {
 
     const snapshot = (response: { json: () => any }) => ({
       rooms: response.json().rooms.map((room: { id: string; categoryId: string | null; position: number }) => ({ id: room.id, categoryId: room.categoryId, position: room.position })),
-      categories: response.json().categories.map((category: { id: string; position: number }) => ({ id: category.id, position: category.position }))
+      categories: response.json().categories.map((category: { id: string; position: number }) => ({ id: category.id, position: category.position })),
+      uncategorizedPosition: response.json().uncategorizedPosition
     });
     const before = snapshot(applied);
     const invalidLayouts = [
-      { ...fullLayout, uncategorizedRoomIds: fullLayout.uncategorizedRoomIds.slice(1) },
-      { ...fullLayout, uncategorizedRoomIds: [...fullLayout.uncategorizedRoomIds, fullLayout.uncategorizedRoomIds[0]!] },
-      { ...fullLayout, uncategorizedRoomIds: fullLayout.uncategorizedRoomIds.map((id, index) => index === 0 ? foreignRoomId : id) },
-      { ...fullLayout, categories: [{ categoryId: firstCategory.id, roomIds: [] }, { categoryId: firstCategory.id, roomIds: [] }] },
-      { ...fullLayout, categories: [{ categoryId: firstCategory.id, roomIds: [] }, { categoryId: foreignCategoryId, roomIds: [] }] }
+      { ...fullLayout, groups: fullLayout.groups.map((group, index) => index === 0 ? { ...group, roomIds: group.roomIds.slice(1) } : group) },
+      { ...fullLayout, groups: fullLayout.groups.map((group, index) => index === 0 ? { ...group, roomIds: [...group.roomIds, group.roomIds[0]!] } : group) },
+      { ...fullLayout, groups: fullLayout.groups.map((group, index) => index === 0 ? { ...group, roomIds: group.roomIds.map((id, roomIndex) => roomIndex === 0 ? foreignRoomId : id) } : group) },
+      { ...fullLayout, groups: [fullLayout.groups[0]!, { categoryId: firstCategory.id, roomIds: [] }, { categoryId: firstCategory.id, roomIds: [] }] },
+      { ...fullLayout, groups: [fullLayout.groups[0]!, { categoryId: firstCategory.id, roomIds: [] }, { categoryId: foreignCategoryId, roomIds: [] }] },
+      { ...fullLayout, groups: fullLayout.groups.filter((group) => group.categoryId !== null) },
+      { ...fullLayout, groups: [{ categoryId: null, roomIds: [] }, ...fullLayout.groups] }
     ];
     for (const layout of invalidLayouts) {
       const rejected = await app.server.inject({
@@ -1258,6 +1261,22 @@ describe("Voxly HTTP MVP", () => {
       payload: fullLayout
     });
     assert.equal(memberLayout.statusCode, 403);
+
+    const movedUncategorized = await app.server.inject({
+      method: "PATCH",
+      url: "/api/servers/the-basement/layout",
+      cookies: owner.cookies,
+      payload: { groups: [fullLayout.groups[1], fullLayout.groups[0], fullLayout.groups[2]] }
+    });
+    assert.equal(movedUncategorized.statusCode, 200);
+    assert.equal(movedUncategorized.json().uncategorizedPosition, 10);
+    assert.equal(movedUncategorized.json().categories.find((category: { id: string }) => category.id === firstCategory.id).position, 0);
+    const reloadedLayout = await app.server.inject({
+      method: "GET",
+      url: "/api/servers/the-basement/rooms",
+      cookies: owner.cookies
+    });
+    assert.equal(reloadedLayout.json().uncategorizedPosition, 10, "group order is stored for later room-list reads");
   });
 
   it("lets the owner choose the AFK timeout and refuses values off the list", async () => {

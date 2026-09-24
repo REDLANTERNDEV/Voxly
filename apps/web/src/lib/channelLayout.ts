@@ -11,25 +11,23 @@ export type ChannelDropTarget = {
   after?: boolean;
 };
 
-export function channelGroups(categories: CategorySummary[], rooms: RoomSummary[]): ChannelGroup[] {
-  const groups: ChannelGroup[] = [{
-    category: null,
-    rooms: rooms.filter((room) => room.categoryId === null).sort((a, b) => a.position - b.position)
-  }];
-  for (const category of [...categories].sort((a, b) => a.position - b.position)) {
-    groups.push({
+export function channelGroups(categories: CategorySummary[], rooms: RoomSummary[], uncategorizedPosition = 0): ChannelGroup[] {
+  return [
+    { category: null, position: uncategorizedPosition, rooms: rooms.filter((room) => room.categoryId === null) },
+    ...categories.map((category) => ({ category, position: category.position, rooms: rooms.filter((room) => room.categoryId === category.id) }))
+  ].sort((a, b) => a.position - b.position)
+    .map(({ category, rooms: groupedRooms }) => ({
       category,
-      rooms: rooms.filter((room) => room.categoryId === category.id).sort((a, b) => a.position - b.position)
-    });
-  }
-  return groups;
+      rooms: groupedRooms.sort((a, b) => a.position - b.position)
+    }));
 }
 
 export function roomLayout(groups: ChannelGroup[]): ServerRoomLayout {
   return {
-    uncategorizedRoomIds: groups.find((group) => group.category === null)?.rooms.map((room) => room.id) ?? [],
-    categories: groups.filter((group): group is ChannelGroup & { category: CategorySummary } => group.category !== null)
-      .map((group) => ({ categoryId: group.category.id, roomIds: group.rooms.map((room) => room.id) }))
+    groups: groups.map((group) => ({
+      categoryId: group.category?.id ?? null,
+      roomIds: group.rooms.map((room) => room.id)
+    }))
   };
 }
 
@@ -49,13 +47,13 @@ export function moveRoom(groups: ChannelGroup[], roomId: string, target: Channel
   return normalizeGroups(next);
 }
 
-export function moveCategory(groups: ChannelGroup[], categoryId: string, targetId: string, after = false): ChannelGroup[] {
-  const sourceIndex = groups.findIndex((group) => group.category?.id === categoryId);
-  const targetIndex = groups.findIndex((group) => group.category?.id === targetId);
-  if (sourceIndex < 1 || targetIndex < 1 || sourceIndex === targetIndex) return groups;
+export function moveGroup(groups: ChannelGroup[], categoryId: string | null, targetId: string | null, after = false): ChannelGroup[] {
+  const sourceIndex = groups.findIndex((group) => group.category?.id === categoryId || (group.category === null && categoryId === null));
+  const targetIndex = groups.findIndex((group) => group.category?.id === targetId || (group.category === null && targetId === null));
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return groups;
   const next = [...groups];
   const [source] = next.splice(sourceIndex, 1);
-  const adjustedTarget = next.findIndex((group) => group.category?.id === targetId);
+  const adjustedTarget = next.findIndex((group) => group.category?.id === targetId || (group.category === null && targetId === null));
   next.splice(adjustedTarget + (after ? 1 : 0), 0, source);
   return normalizeGroups(next);
 }
@@ -74,10 +72,10 @@ export function moveRoomBy(groups: ChannelGroup[], roomId: string, offset: -1 | 
   return normalizeGroups(next);
 }
 
-export function moveCategoryBy(groups: ChannelGroup[], categoryId: string, offset: -1 | 1): ChannelGroup[] {
-  const sourceIndex = groups.findIndex((group) => group.category?.id === categoryId);
+export function moveGroupBy(groups: ChannelGroup[], categoryId: string | null, offset: -1 | 1): ChannelGroup[] {
+  const sourceIndex = groups.findIndex((group) => group.category?.id === categoryId || (group.category === null && categoryId === null));
   const targetIndex = sourceIndex + offset;
-  if (sourceIndex < 1 || targetIndex < 1 || targetIndex >= groups.length) return groups;
+  if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= groups.length) return groups;
   const next = [...groups];
   [next[sourceIndex], next[targetIndex]] = [next[targetIndex], next[sourceIndex]];
   return normalizeGroups(next);

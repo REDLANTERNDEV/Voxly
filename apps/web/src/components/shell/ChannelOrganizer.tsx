@@ -3,13 +3,13 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, 
 import { createPortal } from "react-dom";
 import type { Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
-import { MoreIcon, PlusIcon } from "../../components/ui/Icons.js";
-import { channelGroups, moveCategory, moveCategoryBy, moveRoom, moveRoomBy, roomLayout, type ChannelDropTarget, type ChannelGroup } from "../../lib/channelLayout.js";
+import { ChevronIcon, GripIcon, MoreIcon, PlusIcon } from "../../components/ui/Icons.js";
+import { channelGroups, moveGroup, moveGroupBy, moveRoom, moveRoomBy, roomLayout, type ChannelDropTarget, type ChannelGroup } from "../../lib/channelLayout.js";
 import { ContextMenu } from "../ContextMenu.js";
 import type { SidebarActionMenuController } from "./SidebarMenus.js";
 
 type DragKind = "category" | "room";
-type DropState = { kind: "category"; categoryId: string } | { kind: "room"; roomId: string; categoryId: string | null; after: boolean } | { kind: "group"; categoryId: string | null };
+type DropState = { kind: "category"; categoryId: string | null } | { kind: "room"; roomId: string; categoryId: string | null; after: boolean } | { kind: "group"; categoryId: string | null };
 type DragState = {
   kind: DragKind;
   id: string;
@@ -22,11 +22,8 @@ type DragState = {
   target: DropState | null;
 };
 type EditorState = {
-  kind: "category" | "rename" | "room";
+  kind: "choose" | "category" | "rename" | "room";
   categoryId: string | null;
-  initialName: string;
-  roomKind: RoomKind;
-  position: { top: number; left: number };
   trigger: HTMLElement | null;
 };
 
@@ -41,20 +38,11 @@ function readCollapsed(serverId: string) {
   }
 }
 
-function editorPosition(trigger: HTMLElement | null) {
-  const rect = trigger?.getBoundingClientRect();
-  const width = 248;
-  const height = 250;
-  return {
-    top: rect ? Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - height - 8)) : 72,
-    left: rect ? Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) : 24
-  };
-}
-
 export function ChannelOrganizer({
   serverId,
   categories,
   rooms,
+  uncategorizedPosition,
   canManage,
   actionMenu,
   t,
@@ -68,6 +56,7 @@ export function ChannelOrganizer({
   serverId: string;
   categories: CategorySummary[];
   rooms: RoomSummary[];
+  uncategorizedPosition: number;
   canManage: boolean;
   actionMenu: SidebarActionMenuController;
   t: Translate;
@@ -90,7 +79,7 @@ export function ChannelOrganizer({
   const [editorError, setEditorError] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CategorySummary | null>(null);
   const [deleteError, setDeleteError] = useState(false);
-  const groups = useMemo(() => channelGroups(categories, rooms), [categories, rooms]);
+  const groups = useMemo(() => channelGroups(categories, rooms, uncategorizedPosition), [categories, rooms, uncategorizedPosition]);
   const [localGroups, setLocalGroups] = useState(groups);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsed(serverId));
 
@@ -106,22 +95,36 @@ export function ChannelOrganizer({
 
   useEffect(() => {
     if (!editor) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const input = document.querySelector<HTMLInputElement>(".channel-organizer-editor input[name='organizerName']");
-    input?.focus();
+    const firstAction = document.querySelector<HTMLElement>(".channel-organizer-editor [data-autofocus='true']");
+    (input ?? firstAction)?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeEditor();
-    };
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      const form = document.querySelector(".channel-organizer-editor");
-      if (form && !form.contains(event.target as Node) && !editor.trigger?.contains(event.target as Node)) closeEditor();
+      if (event.key === "Escape" && !editorBusy) {
+        closeEditor();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const dialog = document.querySelector<HTMLElement>(".channel-organizer-editor");
+      const focusable = dialog?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])");
+      if (!focusable?.length) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", closeOnEscape);
-    window.addEventListener("pointerdown", closeOnOutsidePointer);
     return () => {
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", closeOnEscape);
-      window.removeEventListener("pointerdown", closeOnOutsidePointer);
     };
-  }, [editor]);
+  }, [editor, editorBusy]);
 
   function closeEditor() {
     const trigger = editor?.trigger;
@@ -132,7 +135,7 @@ export function ChannelOrganizer({
   }
 
   function openEditor(kind: EditorState["kind"], categoryId: string | null, trigger: HTMLElement | null, initialName = "") {
-    setEditor({ kind, categoryId, initialName, roomKind: "text", position: editorPosition(trigger), trigger });
+    setEditor({ kind, categoryId, trigger });
     setEditorName(initialName);
     setEditorRoomKind("text");
     setEditorError(false);
@@ -141,7 +144,7 @@ export function ChannelOrganizer({
   async function submitEditor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = editorName.trim();
-    if (!editor || name.length < 2) {
+    if (!editor || editor.kind === "choose" || name.length < 2) {
       setEditorError(true);
       return;
     }
@@ -184,8 +187,7 @@ export function ChannelOrganizer({
     if (!(node instanceof Element)) return null;
     if (kind === "category") {
       const header = node.closest<HTMLElement>("[data-drop-category]");
-      const id = header?.dataset.dropCategory;
-      if (id) return { kind: "category", categoryId: id };
+      if (header) return { kind: "category", categoryId: header.dataset.dropCategory || null };
       return null;
     }
     const roomNode = node.closest<HTMLElement>("[data-drop-room]");
@@ -265,9 +267,10 @@ export function ChannelOrganizer({
     }
     if (target.kind === "category") {
       const targetNode = Array.from(organizerRef.current?.querySelectorAll<HTMLElement>("[data-drop-category]") ?? [])
-        .find((node) => node.dataset.dropCategory === target.categoryId);
+        .find((node) => (node.dataset.dropCategory || null) === target.categoryId);
       const after = Boolean(targetNode && event.clientY >= targetNode.getBoundingClientRect().top + targetNode.getBoundingClientRect().height / 2);
-      void persist(moveCategory(localGroups, candidate.id, target.categoryId, after));
+      const sourceId = candidate.id === "__uncategorized__" ? null : candidate.id;
+      void persist(moveGroup(localGroups, sourceId, target.categoryId, after));
     }
   }
 
@@ -308,6 +311,7 @@ export function ChannelOrganizer({
       type="button"
       data-drag-kind="room"
       data-drag-id={room.id}
+      data-dragging={dragging?.started && dragging.kind === "room" && dragging.id === room.id ? "true" : undefined}
       aria-label={t("channel.dragHandle", { channel: room.name })}
       aria-disabled={saving}
       aria-keyshortcuts={["ArrowUp", "ArrowDown"].join(" ")}
@@ -317,7 +321,7 @@ export function ChannelOrganizer({
         event.preventDefault();
         void persist(moveRoomBy(localGroups, room.id, event.key === "ArrowUp" ? -1 : 1));
       }}
-    >⋮⋮</button>;
+    ><GripIcon /></button>;
   }
 
   return (
@@ -332,8 +336,8 @@ export function ChannelOrganizer({
     >
       {canManage ? <div className="channel-organizer-tools">
         <span className="label">{t("room.channels")}</span>
-        <button className="channel-create-trigger category-create-trigger" type="button" aria-label={t("category.create")} onClick={(event) => openEditor("category", null, event.currentTarget)}>
-          <PlusIcon /><span>{t("category.create")}</span>
+        <button className="channel-create-trigger" type="button" aria-label={t("organizer.createTitle")} title={t("organizer.createTitle")} onClick={(event) => openEditor("choose", null, event.currentTarget)}>
+          <PlusIcon />
         </button>
       </div> : null}
       {actionMenu.active?.key === "channel-layout:background" ? (
@@ -346,53 +350,48 @@ export function ChannelOrganizer({
         const category = group.category;
         const id = category?.id ?? "";
         const label = category?.name ?? t("room.uncategorized");
-        const isCollapsed = category ? collapsed.has(category.id) : false;
+        const collapseId = category?.id ?? "uncategorized";
+        const isCollapsed = category ? collapsed.has(collapseId) : false;
         const isGroupDropTarget = dragging?.target?.kind === "group" && dragging.target.categoryId === (category?.id ?? null);
         const categoryMenuKey = `category:${id || "uncategorized"}`;
-        const categoryHandle = category && canManage ? <button
+        const categoryHandle = canManage ? <button
           className="channel-drag-handle category-drag-handle"
           type="button"
           data-drag-kind="category"
-          data-drag-id={category.id}
-          aria-label={t("category.dragHandle", { category: category.name })}
+          data-drag-id={category?.id ?? "__uncategorized__"}
+          data-dragging={dragging?.started && dragging.kind === "category" && dragging.id === (category?.id ?? "__uncategorized__") ? "true" : undefined}
+          aria-label={t("category.dragHandle", { category: label })}
           aria-disabled={saving}
           aria-keyshortcuts={["ArrowUp", "ArrowDown"].join(" ")}
-          title={t("category.dragHandle", { category: category.name })}
+          title={t("category.dragHandle", { category: label })}
           onKeyDown={(event) => {
             if (saving || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
             event.preventDefault();
-            void persist(moveCategoryBy(localGroups, category.id, event.key === "ArrowUp" ? -1 : 1));
+            void persist(moveGroupBy(localGroups, category?.id ?? null, event.key === "ArrowUp" ? -1 : 1));
           }}
-        >⋮⋮</button> : null;
+        ><GripIcon /></button> : null;
         return (
           <section className={`rail-section channel-category ${isGroupDropTarget ? "is-drop-target" : ""}`} data-category-id={id} key={category?.id ?? "uncategorized"}>
             <div
-              className={`rail-section-head channel-category-head ${isGroupDropTarget || (dragging?.target?.kind === "category" && dragging.target.categoryId === category?.id) ? "is-drop-target" : ""}`}
+              className={`rail-section-head channel-category-head ${category ? "" : "channel-uncategorized-head"} ${isGroupDropTarget || (dragging?.target?.kind === "category" && dragging.target.categoryId === category?.id) ? "is-drop-target" : ""}`}
               data-drop-category={id}
               data-drop-group={id}
               onContextMenu={category && canManage ? (event) => {
                 event.preventDefault();
-                actionMenu.open({ key: categoryMenuKey, x: event.clientX, y: event.clientY, menuWidth: 196, menuHeight: 184, trigger: null });
+                actionMenu.open({ key: categoryMenuKey, x: event.clientX, y: event.clientY, menuWidth: 220, menuHeight: 220, trigger: null });
               } : undefined}
             >
-              {category ? categoryHandle : null}
+              {categoryHandle}
               {category ? <button
                 className="channel-category-toggle"
                 type="button"
                 aria-expanded={!isCollapsed}
                 aria-label={t(isCollapsed ? "category.expand" : "category.collapse", { category: label })}
-                onClick={() => toggleCollapsed(category.id)}
+                onClick={() => toggleCollapsed(collapseId)}
               >
-                <span className={`channel-category-chevron ${isCollapsed ? "is-collapsed" : ""}`} aria-hidden="true">⌄</span>
+                <ChevronIcon direction={isCollapsed ? "right" : "down"} />
                 <span className="label">{label}</span>
-              </button> : <span className="label channel-uncategorized-label">{label}</span>}
-              {canManage ? <button
-                className="channel-create-trigger"
-                type="button"
-                aria-label={t("channel.createInCategory", { category: label })}
-                title={t("channel.createInCategory", { category: label })}
-                onClick={(event) => openEditor("room", category?.id ?? null, event.currentTarget)}
-              ><PlusIcon /></button> : null}
+              </button> : null}
               {category && canManage ? <button
                 className="sidebar-menu-trigger category-menu-trigger"
                 type="button"
@@ -401,15 +400,16 @@ export function ChannelOrganizer({
                 aria-expanded={actionMenu.active?.key === categoryMenuKey}
                 onClick={(event) => {
                   const rect = event.currentTarget.getBoundingClientRect();
-                  actionMenu.open({ key: categoryMenuKey, x: rect.right - 196, y: rect.bottom + 4, menuWidth: 196, menuHeight: 184, trigger: event.currentTarget });
+                  actionMenu.open({ key: categoryMenuKey, x: rect.right - 220, y: rect.bottom + 4, menuWidth: 220, menuHeight: 220, trigger: event.currentTarget });
                 }}
               ><MoreIcon /></button> : null}
             </div>
             {category && actionMenu.active?.key === categoryMenuKey ? (
               <ContextMenu descriptor={actionMenu.active} label={t("category.actionsFor", { category: category.name })} onClose={actionMenu.close}>
+                <button type="button" role="menuitem" onClick={() => { actionMenu.close(); openEditor("room", category.id, null); }}>{t("channel.createInCategory", { category: category.name })}</button>
                 <button type="button" role="menuitem" onClick={() => { actionMenu.close(); openEditor("rename", category.id, null, category.name); }}>{t("category.rename")}</button>
-                <button type="button" role="menuitem" disabled={groupIndex <= 1 || saving} onClick={() => { actionMenu.close(); void persist(moveCategoryBy(localGroups, category.id, -1)); }}>{t("category.moveUp")}</button>
-                <button type="button" role="menuitem" disabled={groupIndex >= localGroups.length - 1 || saving} onClick={() => { actionMenu.close(); void persist(moveCategoryBy(localGroups, category.id, 1)); }}>{t("category.moveDown")}</button>
+                <button type="button" role="menuitem" disabled={groupIndex === 0 || saving} onClick={() => { actionMenu.close(); void persist(moveGroupBy(localGroups, category.id, -1)); }}>{t("category.moveUp")}</button>
+                <button type="button" role="menuitem" disabled={groupIndex >= localGroups.length - 1 || saving} onClick={() => { actionMenu.close(); void persist(moveGroupBy(localGroups, category.id, 1)); }}>{t("category.moveDown")}</button>
                 <button className="is-danger" type="button" role="menuitem" onClick={() => { actionMenu.close(); setDeleteTarget(category); }}>{t("category.delete")}</button>
               </ContextMenu>
             ) : null}
@@ -430,7 +430,7 @@ export function ChannelOrganizer({
                   })}
                 </div>
               ))}
-              {group.rooms.length === 0 ? <div className="channel-category-empty" aria-hidden="true" /> : null}
+              {group.rooms.length === 0 ? <div className={`channel-category-empty ${category ? "" : "channel-uncategorized-empty"}`} aria-hidden="true" /> : null}
             </div> : null}
           </section>
         );
@@ -451,30 +451,48 @@ export function ChannelOrganizer({
         }}
       /> : null}
       {editor ? createPortal(
-        <div className="channel-organizer-editor" role="dialog" aria-modal="false" aria-label={t(editor.kind === "room" ? "channel.create" : editor.kind === "category" ? "category.create" : "category.rename")} style={editor.position}>
-          <form onSubmit={(event) => void submitEditor(event)}>
-            {editor.kind === "room" ? <>
-              <label className="form-field">
+        <div className="channel-organizer-modal" onPointerDown={(event) => { if (event.target === event.currentTarget && !editorBusy) closeEditor(); }}>
+          <section className="channel-organizer-editor" role="dialog" aria-modal="true" aria-labelledby="channel-organizer-title">
+            <header className="channel-organizer-modal-head">
+              <h2 id="channel-organizer-title">{t(editor.kind === "choose" ? "organizer.createTitle" : editor.kind === "room" ? "organizer.createChannelTitle" : editor.kind === "category" ? "organizer.createCategoryTitle" : "category.rename")}</h2>
+              <button className="icon-btn" type="button" aria-label={t("common.close")} disabled={editorBusy} onClick={closeEditor}>×</button>
+            </header>
+            {editor.kind === "choose" ? <div className="channel-organizer-choices">
+              <button className="channel-organizer-choice" type="button" data-autofocus="true" onClick={() => setEditor((current) => current ? { ...current, kind: "category" } : current)}>
+                <strong>{t("organizer.chooseCategory")}</strong>
+                <span>{t("category.name")}</span>
+              </button>
+              <button className="channel-organizer-choice" type="button" onClick={() => setEditor((current) => current ? { ...current, kind: "room" } : current)}>
+                <strong>{t("organizer.chooseChannel")}</strong>
                 <span>{t("channel.type")}</span>
-                <select className="input" value={editorRoomKind} onChange={(event) => setEditorRoomKind(event.currentTarget.value as RoomKind)}>
-                  <option value="text">{t("channel.typeText")}</option>
-                  <option value="voice">{t("channel.typeVoice")}</option>
-                </select>
-              </label>
-              <label className="form-field">
-                <span>{t(editorRoomKind === "text" ? "channel.textName" : "channel.voiceName")}</span>
-                <input className="input" name="organizerName" value={editorName} onChange={(event) => setEditorName(event.currentTarget.value)} maxLength={64} minLength={2} required autoComplete="off" />
-              </label>
-            </> : <label className="form-field">
-              <span>{t("category.name")}</span>
-              <input className="input" name="organizerName" value={editorName} onChange={(event) => setEditorName(event.currentTarget.value)} maxLength={64} minLength={2} required autoComplete="off" />
-            </label>}
-            {editorError ? <p className="error-text" role="alert">{t(editorName.trim().length < 2 ? "channel.nameTooShort" : editor.kind === "room" ? "channel.createFailed" : editor.kind === "category" ? "category.createFailed" : "category.renameFailed")}</p> : null}
-            <div className="channel-create-actions">
-              <button className="btn btn-ghost" type="button" disabled={editorBusy} onClick={closeEditor}>{t("common.cancel")}</button>
-              <button className="btn btn-primary" type="submit" disabled={editorBusy}>{t(editorBusy ? "channel.creating" : "channel.create")}</button>
-            </div>
-          </form>
+              </button>
+            </div> : <form onSubmit={(event) => void submitEditor(event)}>
+              {editor.kind === "room" ? <>
+                <label className="form-field">
+                  <span>{t("channel.type")}</span>
+                  <select className="input" value={editorRoomKind} onChange={(event) => setEditorRoomKind(event.currentTarget.value as RoomKind)}>
+                    <option value="text">{t("channel.typeText")}</option>
+                    <option value="voice">{t("channel.typeVoice")}</option>
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span>{t(editorRoomKind === "text" ? "channel.textName" : "channel.voiceName")}</span>
+                  <input className="input" data-autofocus="true" name="organizerName" value={editorName} onChange={(event) => setEditorName(event.currentTarget.value)} maxLength={64} minLength={2} required autoComplete="off" />
+                </label>
+              </> : <label className="form-field">
+                <span>{t("category.name")}</span>
+                <input className="input" data-autofocus="true" name="organizerName" value={editorName} onChange={(event) => setEditorName(event.currentTarget.value)} maxLength={64} minLength={2} required autoComplete="off" />
+              </label>}
+              {editorError ? <p className="error-text" role="alert">{t(editorName.trim().length < 2 ? "channel.nameTooShort" : editor.kind === "room" ? "channel.createFailed" : editor.kind === "category" ? "category.createFailed" : "category.renameFailed")}</p> : null}
+              <div className="channel-create-actions">
+                <button className="btn btn-ghost" type="button" disabled={editorBusy} onClick={() => {
+                  if (editor.kind === "rename") closeEditor();
+                  else { setEditor({ ...editor, kind: "choose" }); setEditorName(""); setEditorError(false); }
+                }}>{t(editor.kind === "rename" ? "common.cancel" : "organizer.back")}</button>
+                <button className="btn btn-primary" type="submit" disabled={editorBusy}>{t(editorBusy ? "channel.creating" : editor.kind === "rename" ? "common.save" : "channel.create")}</button>
+              </div>
+            </form>}
+          </section>
         </div>,
         document.body
       ) : null}

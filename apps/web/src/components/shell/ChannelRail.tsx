@@ -1,12 +1,11 @@
 import type { PresenceUser,RoomSummary } from "@voxly/shared";
-import { useEffect,useRef,useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useState, type ReactNode } from "react";
 import { ApiError } from "../../api.js";
 import { serverPath } from "../../app/navigation.js";
 import { activeServerRole,canInviteToActiveServer,initial,voiceMembersForRoom } from "../../app/presentation.js";
 import type { MemberAction,ShellActions,ShellModel,Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
-import { CameraIcon,GearIcon,HeadsetIcon,MicIcon,PlusIcon,ScreenIcon } from "../../components/ui/Icons.js";
+import { CameraIcon, GearIcon, HeadsetIcon, MicIcon, ScreenIcon } from "../../components/ui/Icons.js";
 import { BrandLockup,NavLink } from "../../components/ui/Navigation.js";
 import { canOwnerModeratePerson,canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
 import { voiceChannelActivation } from "../../lib/voiceChannelActivation.js";
@@ -22,7 +21,7 @@ type ChannelRailProps = Pick<ShellModel,
   "activeServerId" | "activeVoiceRoomId" | "appConfig" | "audioDevices" | "audioLevels" |
   "controls" | "currentNickname" | "language" | "memberVolumes" |
   "microphoneTestActive" | "microphoneTestError" | "noiseSuppression" |
-  "noiseSuppressionSupported" | "notificationSounds" | "rooms" | "categories" | "route" |
+  "noiseSuppressionSupported" | "notificationSounds" | "rooms" | "categories" | "uncategorizedPosition" | "route" |
   "servers" | "socketState" | "t" | "theme" | "unreadByRoom" | "user" |
   "voiceModeration" | "voiceSnapshots" | "micLockedByRoom"
 > & Pick<ShellActions,
@@ -246,6 +245,7 @@ export function ChannelRail(props: ChannelRailProps) {
       <ChannelOrganizer
         serverId={props.activeServerId}
         categories={props.categories}
+        uncategorizedPosition={props.uncategorizedPosition}
         rooms={[...props.rooms.text, ...props.rooms.voice]}
         canManage={canManageServer}
         actionMenu={props.actionMenu}
@@ -309,6 +309,10 @@ export function ChannelRail(props: ChannelRailProps) {
   );
 }
 
+function channelActionMenuHeight() {
+  return 194;
+}
+
 export function ChannelDeleteControl({
   actionMenu,
   room,
@@ -352,73 +356,6 @@ export function ChannelDeleteControl({
           }}>{t("room.deleteChannel")}</button>
         </ContextMenu>
       ) : null}
-    </>
-  );
-}
-
-function channelActionMenuHeight() {
-  return 194;
-}
-
-
-export function ChannelCreateControl({ kind, onCreate, t }: { kind: "text" | "voice"; onCreate: (name: string, kind: "text" | "voice") => Promise<void>; t: Translate }) {
-  const [name, setName] = useState("");
-  const [isBusy, setIsBusy] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-
-  const close = () => {
-    setIsOpen(false);
-    window.setTimeout(() => triggerRef.current?.focus(), 0);
-  };
-
-  const open = () => {
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) {
-      setPosition({ top: rect.bottom + 8, left: Math.max(8, Math.min(rect.left, window.innerWidth - 228)) });
-    }
-    setIsOpen(true);
-  };
-
-  useEffect(() => {
-    if (!isOpen) return;
-    inputRef.current?.focus();
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!popoverRef.current?.contains(event.target as Node) && !triggerRef.current?.contains(event.target as Node)) close();
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    window.addEventListener("pointerdown", closeOnOutsidePointer);
-    return () => {
-      window.removeEventListener("keydown", closeOnEscape);
-      window.removeEventListener("pointerdown", closeOnOutsidePointer);
-    };
-  }, [isOpen]);
-
-  return (
-    <>
-      <button className="channel-create-trigger" ref={triggerRef} type="button" onClick={open} aria-label={t(kind === "text" ? "channel.createText" : "channel.createVoice")} aria-expanded={isOpen}><PlusIcon /></button>
-      {isOpen ? createPortal(<div className="channel-create-popover" ref={popoverRef} role="dialog" aria-label={t(kind === "text" ? "channel.createText" : "channel.createVoice")} style={position}>
-        <form onSubmit={(event) => {
-        event.preventDefault();
-        const nextName = name.trim();
-        if (!nextName) return;
-        setIsBusy(true);
-        void onCreate(nextName, kind).finally(() => {
-          setName("");
-          setIsBusy(false);
-          setIsOpen(false);
-        });
-      }}>
-          <label className="form-field"><span>{t(kind === "text" ? "channel.textName" : "channel.voiceName")}</span><input className="input" ref={inputRef} name={`${kind}ChannelName`} value={name} onChange={(event) => setName(event.currentTarget.value)} maxLength={64} autoComplete="off" /></label>
-          <div className="channel-create-actions"><button className="btn btn-ghost" type="button" onClick={close}>{t("common.cancel")}</button><button className="btn btn-primary" type="submit" disabled={isBusy}>{t(isBusy ? "channel.creating" : "channel.create")}</button></div>
-        </form>
-      </div>, document.body) : null}
     </>
   );
 }

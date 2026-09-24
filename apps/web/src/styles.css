@@ -685,16 +685,6 @@ h3 {
   min-height: 36px;
 }
 
-.category-create-trigger {
-  gap: 6px;
-  padding: 0 8px;
-  width: auto;
-}
-
-.category-create-trigger span {
-  font-size: 0.82rem;
-}
-
 .channel-category {
   gap: 6px;
   margin-top: 12px;
@@ -704,10 +694,15 @@ h3 {
 .channel-category-head {
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  gap: 4px;
+  gap: 8px;
   min-height: 36px;
   padding: 2px;
-  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.channel-uncategorized-head {
+  justify-content: flex-start;
+  min-height: 8px;
+  padding: 0;
 }
 
 .channel-category-head.is-drop-target,
@@ -725,15 +720,14 @@ h3 {
   cursor: pointer;
   display: flex;
   flex: 1;
-  gap: 7px;
+  gap: 9px;
   min-height: 32px;
   min-width: 0;
   padding: 3px 5px;
   text-align: left;
 }
 
-.channel-category-toggle .label,
-.channel-uncategorized-label {
+.channel-category-toggle .label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -753,19 +747,9 @@ h3 {
 
 .channel-category-chevron {
   color: var(--rail-muted);
-  display: inline-block;
-  font-size: 1rem;
-  line-height: 1;
-  transition: transform 120ms ease;
-}
-
-.channel-category-chevron.is-collapsed {
-  transform: rotate(-90deg);
-}
-
-.channel-uncategorized-label {
-  flex: 1;
-  padding-left: 7px;
+  flex: 0 0 13px;
+  height: 13px;
+  width: 13px;
 }
 
 .channel-category-rooms {
@@ -779,6 +763,16 @@ h3 {
   border: 1px dashed color-mix(in oklab, var(--rail-muted), transparent 45%);
   border-radius: var(--radius-md);
   min-height: 34px;
+}
+
+.channel-uncategorized-empty {
+  border-color: transparent;
+  min-height: 20px;
+}
+
+.channel-organizer.is-dragging .channel-uncategorized-empty {
+  background: color-mix(in oklab, var(--accent), var(--rail-bg) 94%);
+  border-color: color-mix(in oklab, var(--accent), transparent 48%);
 }
 
 .channel-sort-item {
@@ -823,11 +817,9 @@ h3 {
   cursor: grab;
   display: inline-flex;
   flex: 0 0 auto;
-  font-size: 0.78rem;
   height: 28px;
   justify-content: center;
-  letter-spacing: -0.14em;
-  padding: 0 3px 2px 1px;
+  padding: 0;
   touch-action: none;
   user-select: none;
   width: 22px;
@@ -835,9 +827,20 @@ h3 {
 }
 
 .channel-drag-handle:hover,
-.channel-organizer.is-dragging .channel-drag-handle {
-  background: color-mix(in oklab, var(--accent), var(--rail-bg) 88%);
+.channel-drag-handle[data-dragging="true"] {
+  background: color-mix(in oklab, var(--accent), var(--rail-bg) 92%);
+  border-color: color-mix(in oklab, var(--accent), transparent 68%);
   color: var(--fg);
+}
+
+.channel-drag-handle .grip-icon {
+  height: 16px;
+  stroke: none;
+  width: 12px;
+}
+
+.channel-drag-handle .grip-icon circle {
+  fill: currentColor;
 }
 
 .channel-drag-handle:active {
@@ -845,8 +848,8 @@ h3 {
 }
 
 .category-drag-handle {
-  height: 32px;
-  width: 24px;
+  height: 30px;
+  width: 26px;
 }
 
 .category-menu-trigger {
@@ -4823,15 +4826,17 @@ button.reply-quote:focus-visible .reply-quote-body {
   border-color: color-mix(in oklab, var(--accent), var(--rail-bg) 64%);
 }
 
-.channel-create-popover {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow);
-  min-width: 220px;
-  padding: 10px;
+.channel-organizer-modal {
+  align-items: center;
+  background: color-mix(in oklab, #000, transparent 38%);
+  display: grid;
+  inset: 0;
+  justify-items: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px;
   position: fixed;
-  z-index: calc(var(--layer-modal) + 1);
+  z-index: var(--layer-modal);
 }
 
 .channel-organizer-editor {
@@ -4839,17 +4844,57 @@ button.reply-quote:focus-visible .reply-quote-body {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow);
-  min-width: 220px;
-  padding: 10px;
-  position: fixed;
-  width: min(248px, calc(100vw - 16px));
-  z-index: calc(var(--layer-modal) + 1);
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  padding: 22px;
+  width: min(480px, 100%);
 }
 
-.channel-create-popover form,
 .channel-organizer-editor form {
   display: grid;
+  gap: 16px;
+}
+
+.channel-organizer-modal-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.channel-organizer-modal-head h2 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.channel-organizer-choices {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.channel-organizer-choice {
+  background: var(--rail-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: inherit;
+  cursor: pointer;
+  display: grid;
   gap: 8px;
+  min-height: 116px;
+  padding: 18px;
+  text-align: left;
+}
+
+.channel-organizer-choice:hover,
+.channel-organizer-choice:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in oklab, var(--accent), transparent 72%);
+  outline-offset: 1px;
+}
+
+.channel-organizer-choice span {
+  color: var(--muted);
 }
 
 .channel-create-actions {
@@ -5404,6 +5449,23 @@ button.reply-quote:focus-visible .reply-quote-body {
   .channel-create-trigger {
     height: 36px;
     min-width: 36px;
+  }
+
+  .channel-organizer-modal {
+    padding: 0;
+  }
+
+  .channel-organizer-editor {
+    border: 0;
+    border-radius: 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    padding: max(20px, env(safe-area-inset-top)) 18px max(20px, env(safe-area-inset-bottom));
+    width: 100%;
+  }
+
+  .channel-organizer-choices {
+    grid-template-columns: 1fr;
   }
 
   .channel-category-head .category-menu-trigger {

@@ -11,6 +11,7 @@ export interface CurrentUserResponse {
 export interface RoomsResponse {
   rooms: RoomSummary[];
   categories: CategorySummary[];
+  uncategorizedPosition: number;
 }
 
 export interface ServerSummary {

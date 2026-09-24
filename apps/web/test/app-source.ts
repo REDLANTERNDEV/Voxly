@@ -31,7 +31,7 @@ const declarations: Array<[string, string]> = [
   ["src/components/shell/SidebarMenus.tsx", "memberActionMenuHeight"],
   ["src/components/shell/SidebarMenus.tsx", "MemberActionMenu"],
   ["src/components/shell/SidebarMenus.tsx", "MemberMoveSubmenu"],
-  ["src/components/shell/ChannelRail.tsx", "ChannelCreateControl"],
+  ["src/components/shell/ChannelRail.tsx", "channelActionMenuHeight"],
   ["src/components/shell/MemberPanel.tsx", "MemberPanel"],
   ["src/components/ui/Primitives.tsx", "RoomHeader"],
   ["src/components/shell/VoiceDock.tsx", "VoiceDock"],

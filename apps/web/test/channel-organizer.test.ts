@@ -25,30 +25,53 @@ function mediaBlock(condition: string, contains: string) {
 }
 
 describe("server channel organizer", () => {
-  it("creates categories independently and creates channels in the selected group", () => {
+  it("keeps one plus button and opens a shared category or channel flow", () => {
     assert.match(organizer, /onCreateCategory\(name\)/);
     assert.match(organizer, /onCreateRoom\(name, editorRoomKind, editor\.categoryId\)/);
-    assert.match(organizer, /category-create-trigger/);
-    assert.match(organizer, /openEditor\("room", category\?\.id \?\? null, event\.currentTarget\)/);
+    assert.equal((organizer.match(/<PlusIcon \/>/g) ?? []).length, 1, "the organizer has a single plus button");
+    assert.match(organizer, /openEditor\("choose", null, event\.currentTarget\)/);
+    assert.match(organizer, /organizer\.chooseCategory/);
+    assert.match(organizer, /organizer\.chooseChannel/);
+    assert.match(organizer, /openEditor\("room", category\.id, null\)/);
     assert.match(organizer, /openEditor\("room", null, null\)/, "the blank rail action creates an uncategorized room");
     assert.match(rail, /<aside className="rail" onContextMenu=/);
   });
 
-  it("keeps channel type and name in one cancelable form", () => {
+  it("uses one fullscreen dialog for category names and channel type plus name", () => {
+    assert.match(organizer, /className="channel-organizer-modal"/);
+    assert.match(organizer, /className="channel-organizer-editor" role="dialog" aria-modal="true"/);
     assert.match(organizer, /<select className="input" value=\{editorRoomKind\}/);
     assert.match(organizer, /<option value="text">\{t\("channel\.typeText"\)\}<\/option>/);
     assert.match(organizer, /<option value="voice">\{t\("channel\.typeVoice"\)\}<\/option>/);
     assert.match(organizer, /name="organizerName" value=\{editorName\}/);
-    assert.match(organizer, /type="button" disabled=\{editorBusy\} onClick=\{closeEditor\}/);
+    assert.match(organizer, /organizer\.back/);
     const closeEditor = organizer.match(/function closeEditor\(\) \{[\s\S]*?\n  }/)?.[0] ?? "";
     assert.doesNotMatch(closeEditor, /onCreate|onRename|onDelete|persist/);
   });
 
   it("retains empty categories and supports mixed room kinds in each group", () => {
-    assert.match(organizer, /channelGroups\(categories, rooms\)/);
+    assert.match(organizer, /channelGroups\(categories, rooms, uncategorizedPosition\)/);
     assert.match(organizer, /!isCollapsed \? <div className="channel-category-rooms"/);
-    assert.match(organizer, /group\.rooms\.length === 0 \? <div className="channel-category-empty"/);
+    assert.match(organizer, /group\.rooms\.length === 0 \? <div className=\{`channel-category-empty \$\{category \? "" : "channel-uncategorized-empty"\}`\}/);
     assert.match(rail, /rooms=\{\[\.\.\.props\.rooms\.text, \.\.\.props\.rooms\.voice\]\}/);
+  });
+
+  it("keeps Uncategorized unlabeled while preserving its group drop target", () => {
+    assert.match(organizer, /const isCollapsed = category \? collapsed\.has\(collapseId\) : false/);
+    assert.match(organizer, /className=\{`rail-section-head channel-category-head \$\{category \? "" : "channel-uncategorized-head"\}/);
+    assert.match(organizer, /data-drop-group=\{id\}/);
+    assert.doesNotMatch(organizer, /channel-uncategorized-toggle/);
+    assert.equal((organizer.match(/<GripIcon \/>/g) ?? []).length, 2, "room and category handles use the same grip icon");
+    assert.match(styles, /\.channel-uncategorized-empty\s*\{[^}]*min-height: 20px;/);
+    assert.match(styles, /\.channel-organizer\.is-dragging \.channel-uncategorized-empty\s*\{[^}]*border-color:/);
+  });
+
+  it("keeps the category chevron in its own fixed-width slot without rotation animation", () => {
+    assert.match(organizer, /<ChevronIcon direction=\{isCollapsed \? "right" : "down"\} \/>/);
+    assert.doesNotMatch(organizer, /⌄/);
+    assert.match(styles, /\.channel-category-toggle\s*\{[^}]*gap: 9px;/);
+    assert.match(styles, /\.channel-category-chevron\s*\{[^}]*flex: 0 0 13px;[^}]*width: 13px;/);
+    assert.doesNotMatch(styles, /\.channel-category-chevron\.is-collapsed/);
   });
 
   it("uses isolated drag handles, visible targets, auto-scroll, and suppresses click actions", () => {
@@ -60,15 +83,18 @@ describe("server channel organizer", () => {
     assert.match(organizer, /closest<HTMLElement>\("\.rail"\)/);
     assert.match(styles, /\.channel-sort-item\.is-drop-before::before,[\s\S]*?background: var\(--accent\)/);
     assert.match(styles, /\.channel-drag-handle\s*\{[^}]*touch-action: none;/);
-    assert.match(styles, /\.channel-organizer-editor\s*\{[^}]*position: fixed;[^}]*width: min\(248px, calc\(100vw - 16px\)\)/);
+    assert.match(styles, /\.channel-organizer-modal\s*\{[^}]*position: fixed;/);
+    assert.match(styles, /\.channel-organizer-editor\s*\{[^}]*width: min\(480px, 100%\)/);
+    assert.match(styles, /\.channel-drag-handle \.grip-icon\s*\{[^}]*width: 12px;/);
   });
 
   it("keeps keyboard move controls and restores the previous layout after a failed save", () => {
     assert.match(rail, /actions\.moveTo\(categoryId\)/);
     assert.match(rail, /actions\.moveUp\(\)/);
     assert.match(rail, /actions\.moveDown\(\)/);
-    assert.match(organizer, /moveCategoryBy\(localGroups, category\.id, -1\)/);
-    assert.match(organizer, /moveCategoryBy\(localGroups, category\.id, 1\)/);
+    assert.match(organizer, /moveGroupBy\(localGroups, category\.id, -1\)/);
+    assert.match(organizer, /moveGroupBy\(localGroups, category\.id, 1\)/);
+    assert.match(organizer, /category\?\.id \?\? "__uncategorized__"/);
     assert.match(organizer, /aria-keyshortcuts=\{\["ArrowUp", "ArrowDown"\]\.join\(" "\)\}/);
     assert.match(organizer, /event\.key === "ArrowUp" \? -1 : 1/);
     assert.match(organizer, /catch \{\s*setLocalGroups\(groups\);\s*setLayoutError\(true\);/);
@@ -85,7 +111,7 @@ describe("server channel organizer", () => {
   });
 
   it("provides the organizer copy in English and Turkish", () => {
-    for (const key of ["category.create", "category.deleteCopy", "category.rename", "channel.moveTo", "channel.layoutFailed"]) {
+    for (const key of ["category.create", "category.deleteCopy", "category.rename", "channel.moveTo", "channel.layoutFailed", "organizer.createTitle", "organizer.chooseChannel"]) {
       assert.equal(translations.match(new RegExp(`"${key}"`, "g"))?.length, 2, `${key} has both languages`);
     }
   });

@@ -146,6 +146,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           notificationSounds={props.notificationSounds}
           rooms={props.rooms}
           categories={props.categories}
+          uncategorizedPosition={props.uncategorizedPosition}
           route={props.route}
           servers={props.servers}
           socketState={props.socketState}

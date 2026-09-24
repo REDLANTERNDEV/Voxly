@@ -135,7 +135,8 @@ export const servers = sqliteTable("servers", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   createdByUserId: text("created_by_user_id"),
-  createdAt: text("created_at").notNull()
+  createdAt: text("created_at").notNull(),
+  uncategorizedPosition: integer("uncategorized_position").notNull().default(0)
 });
 
 export const serverMembers = sqliteTable("server_members", {

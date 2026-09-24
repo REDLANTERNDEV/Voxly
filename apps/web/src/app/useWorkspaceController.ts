@@ -24,6 +24,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
   const [serverListReady, setServerListReady] = useState(false);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [categories, setCategories] = useState<CategorySummary[]>([]);
+  const [uncategorizedPosition, setUncategorizedPosition] = useState(0);
   const [onlineUsersByServer, setOnlineUsersByServer] = useState<Record<string, PresenceUser[]>>({});
   const [serverMembersByServer, setServerMembersByServer] = useState<Record<string, PresenceUser[]>>({});
   // Accumulates across servers, unlike `rooms`, which only ever holds the active
@@ -71,6 +72,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
     indexRooms(response.rooms);
     setRooms(response.rooms);
     setCategories(response.categories);
+    setUncategorizedPosition(response.uncategorizedPosition);
     if ((currentRoute.name === "text" || currentRoute.name === "voice") && currentRoute.roomId === deletedRoomId) {
       const target = response.rooms.find((room) => room.kind === currentRoute.name) ?? response.rooms[0];
       if (target) navigate(serverPath(serverId, target.kind, target.id));
@@ -86,6 +88,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
     if (!targetServer) {
       setRooms([]);
       setCategories([]);
+      setUncategorizedPosition(0);
       navigate("/invite");
       return;
     }
@@ -93,6 +96,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
     indexRooms(roomResponse.rooms);
     setRooms(roomResponse.rooms);
     setCategories(roomResponse.categories);
+    setUncategorizedPosition(roomResponse.uncategorizedPosition);
     navigate(firstServerRoomPath(targetServer.id, roomResponse.rooms));
   }, [indexRooms, navigate]);
 
@@ -102,6 +106,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
     indexRooms(roomResponse.rooms);
     setRooms(roomResponse.rooms);
     setCategories(roomResponse.categories);
+    setUncategorizedPosition(roomResponse.uncategorizedPosition);
     navigate(firstServerRoomPath(serverId, roomResponse.rooms));
   }, [indexRooms, navigate]);
 
@@ -140,8 +145,8 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
     if (!user || !activeServerId) return;
     let mounted = true;
     fetchServerRooms(activeServerId).then((response) => {
-      if (mounted) { indexRooms(response.rooms); setRooms(response.rooms); setCategories(response.categories); }
-    }).catch(() => { if (mounted) { setRooms([]); setCategories([]); } });
+      if (mounted) { indexRooms(response.rooms); setRooms(response.rooms); setCategories(response.categories); setUncategorizedPosition(response.uncategorizedPosition); }
+    }).catch(() => { if (mounted) { setRooms([]); setCategories([]); setUncategorizedPosition(0); } });
     fetchServerDirectory(activeServerId).then((response) => {
       if (mounted) setServerMembersByServer((current) => ({ ...current, [activeServerId]: response.members }));
     }).catch(() => { if (mounted) setServerMembersByServer((current) => ({ ...current, [activeServerId]: [] })); });
@@ -215,6 +220,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
       indexRooms(response.rooms);
       setRooms(response.rooms);
       setCategories(response.categories);
+      setUncategorizedPosition(response.uncategorizedPosition);
     },
     setAfkTimeout: async (minutes: AfkTimeoutMinutes) => {
       await updateServerAfkTimeout(activeServerId, minutes);
@@ -241,7 +247,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
   };
 
   return {
-    servers, rooms, categories: categories.filter((category) => category.serverId === activeServerId), serverListReady, activeServerId, onlineUsers, serverMembers, activeRooms, currentRoom, roomGroups, voiceRoomIds, afkRoomIds,
+    servers, rooms, categories: categories.filter((category) => category.serverId === activeServerId), uncategorizedPosition, serverListReady, activeServerId, onlineUsers, serverMembers, activeRooms, currentRoom, roomGroups, voiceRoomIds, afkRoomIds,
     afkTimeoutsByServerRef,
     afkRoomIdsByServerRef,
     roomServerIdsRef, loadAcceptedServer, refreshServerDirectory, refreshRooms, refreshServersAfterDeletion, actions,

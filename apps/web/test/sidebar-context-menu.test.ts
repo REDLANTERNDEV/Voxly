@@ -15,7 +15,7 @@ describe("exclusive sidebar context menus", () => {
 
   it("opens actionable channel and member rows from right click or ellipsis", () => {
     const app = readAppSource();
-    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelCreateControl/)?.[0] ?? "";
+    const rail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction channelActionMenuHeight/)?.[0] ?? "";
     const members = app.match(/function MemberPanel[\s\S]*?\n}\n\nfunction RoomHeader/)?.[0] ?? "";
 
     assert.match(rail, /onContextMenu=/);
