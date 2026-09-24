@@ -61,6 +61,7 @@ describe("voice quality counters", () => {
 
     assert.equal(totals.packetsReceived, 0);
     assert.equal(totals.concealedSamples, 0);
+    assert.equal(totals.jitterBufferEmittedCountAvailable, false);
   });
 
   it("accepts the legacy mediaType field for inbound audio", () => {
@@ -114,6 +115,19 @@ describe("voice quality reading", () => {
       counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND }),
       counters({ packetsReceived: 10, silentConcealedSamples: SECOND * 2, jitterBufferEmittedCount: SECOND * 2 }),
       false
+    ), false);
+  });
+
+  it("detects a receiver that gets packets but emits no audio", () => {
+    assert.equal(voiceMediaStalled(
+      counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND, jitterBufferEmittedCountAvailable: true }),
+      counters({ packetsReceived: 60, jitterBufferEmittedCount: SECOND, jitterBufferEmittedCountAvailable: true }),
+      true
+    ), true);
+    assert.equal(voiceMediaStalled(
+      counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND, jitterBufferEmittedCountAvailable: true }),
+      counters({ packetsReceived: 60, jitterBufferEmittedCount: SECOND }),
+      true
     ), false);
   });
 

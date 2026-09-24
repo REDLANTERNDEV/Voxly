@@ -211,6 +211,7 @@ export function connectAudioOutput(
   let disposed = false;
   let generation = 0;
   let boostGraph: BoostGraph | null = null;
+  let hasPlayed = false;
 
   const applyDirectState = () => {
     const switched = element.srcObject !== stream;
@@ -290,6 +291,18 @@ export function connectAudioOutput(
     return played.ok;
   };
 
+  const onPlaying = () => {
+    hasPlayed = true;
+  };
+
+  const onPause = () => {
+    if (disposed || !hasPlayed || !element.paused) return;
+    hasPlayed = false;
+    // The hidden output has no user-facing play control. If the browser pauses
+    // it after playback began, try to restore it while its remote stream lives.
+    void retry();
+  };
+
   const refreshBoost = (forceRebuild = false) => {
     if (disposed) return;
     generation += 1;
@@ -325,6 +338,8 @@ export function connectAudioOutput(
       if (disposed) return;
       disposed = true;
       generation += 1;
+      element.removeEventListener("playing", onPlaying);
+      element.removeEventListener("pause", onPause);
       disposeBoost();
       managedOutputs.delete(output);
       setOutputBlocked(output, false);
@@ -335,6 +350,8 @@ export function connectAudioOutput(
     }
   };
 
+  element.addEventListener("playing", onPlaying);
+  element.addEventListener("pause", onPause);
   applyDirectState();
   activeOutputs += 1;
   managedOutputs.add(output);

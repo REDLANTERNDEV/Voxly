@@ -40,6 +40,10 @@ function createElement(options: {
   setSinkId?: (sinkId: string) => Promise<void>;
 } = {}) {
   let pauses = 0;
+  const listeners = new Map<string, Set<() => void>>();
+  const emit = (type: string) => {
+    for (const listener of listeners.get(type) ?? []) listener();
+  };
   const element = {
     muted: false,
     paused: true,
@@ -48,15 +52,30 @@ function createElement(options: {
     async play() {
       await options.play?.();
       element.paused = false;
+      emit("playing");
     },
     pause() {
       pauses += 1;
       element.paused = true;
+      emit("pause");
     },
+    addEventListener(type: string, listener: () => void) {
+      const current = listeners.get(type) ?? new Set();
+      current.add(listener);
+      listeners.set(type, current);
+    },
+    removeEventListener(type: string, listener: () => void) {
+      listeners.get(type)?.delete(listener);
+    },
+    emit,
     setSinkId: options.setSinkId ?? (async () => undefined),
     pauseCount() { return pauses; }
   };
-  return element as unknown as HTMLAudioElement & { pauseCount(): number };
+  return element as unknown as Omit<HTMLAudioElement, "paused"> & {
+    emit: (type: string) => void;
+    pauseCount(): number;
+    paused: boolean;
+  };
 }
 
 function connect(element: HTMLAudioElement, stream: MediaStream, muted: boolean, volume: number) {
@@ -375,6 +394,22 @@ describe("hybrid voice audio output", () => {
     assert.equal(attempts, 2);
     assert.equal(blockedStates.at(-1), false);
     unsubscribe();
+  });
+
+  it("retries playback if a previously playing remote output pauses", async () => {
+    installWindow();
+    let attempts = 0;
+    const element = createElement({ play: async () => { attempts += 1; } });
+    const output = connect(element, { id: "remote" } as MediaStream, false, 100);
+    await output.ready;
+
+    element.paused = true;
+    element.emit("pause");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.equal(attempts, 2);
+    assert.equal(element.paused, false);
   });
 
   it("routes a speaker change to active and future native elements", async () => {

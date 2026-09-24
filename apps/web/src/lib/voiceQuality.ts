@@ -54,6 +54,8 @@ export interface VoiceCounters {
   insertedSamplesForDeceleration: number;
   jitterBufferDelay: number;
   jitterBufferEmittedCount: number;
+  /** False when this browser does not expose the decoder output counter. */
+  jitterBufferEmittedCountAvailable?: boolean;
 }
 
 export interface VoiceQualityReading {
@@ -93,7 +95,8 @@ const emptyCounters: VoiceCounters = {
   removedSamplesForAcceleration: 0,
   insertedSamplesForDeceleration: 0,
   jitterBufferDelay: 0,
-  jitterBufferEmittedCount: 0
+  jitterBufferEmittedCount: 0,
+  jitterBufferEmittedCountAvailable: false
 };
 
 function count(value: unknown) {
@@ -129,7 +132,11 @@ export function readVoiceCounters(report: Iterable<Record<string, unknown>>): Vo
     totals.removedSamplesForAcceleration += count(entry.removedSamplesForAcceleration);
     totals.insertedSamplesForDeceleration += count(entry.insertedSamplesForDeceleration);
     totals.jitterBufferDelay += count(entry.jitterBufferDelay);
-    totals.jitterBufferEmittedCount += count(entry.jitterBufferEmittedCount);
+    const emitted = finiteNumber(entry.jitterBufferEmittedCount);
+    if (emitted !== null) {
+      totals.jitterBufferEmittedCount += emitted;
+      totals.jitterBufferEmittedCountAvailable = true;
+    }
   }
   return totals;
 }
@@ -322,15 +329,18 @@ export function voiceQualityNeedsRecovery(reading: VoiceQualityReading, expectin
 
 /**
  * Silent concealment is normally harmless while a talker is paused or quiet.
- * When the sender explicitly says it is speaking, the same counters mean the
- * receiver is filling the gap with silence because media stopped arriving.
+ * When the sender explicitly says it is speaking, no emitted audio means the
+ * receiver is stuck even if RTP packets keep arriving.
  */
 export function voiceMediaStalled(previous: VoiceCounters, next: VoiceCounters, expectingAudio: boolean) {
   if (!expectingAudio) return false;
   const received = delta(previous.packetsReceived, next.packetsReceived);
   const emitted = delta(previous.jitterBufferEmittedCount, next.jitterBufferEmittedCount);
   const silent = delta(previous.silentConcealedSamples, next.silentConcealedSamples);
-  return received === 0 && (silent >= decoderSampleRate / 2 || emitted === 0);
+  const decoderStopped = previous.jitterBufferEmittedCountAvailable === true
+    && next.jitterBufferEmittedCountAvailable === true
+    && emitted === 0;
+  return decoderStopped || (received === 0 && (silent >= decoderSampleRate / 2 || emitted === 0));
 }
 
 const gradeSeverity: Record<VoiceQualityGrade, number> = {
