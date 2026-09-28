@@ -108,7 +108,23 @@ export function ReconnectOverlay({ health, t }: { health: ConnectionHealth; t: T
       <div className="reconnect-panel">
         <div className="reconnect-indicator" aria-hidden="true">
           <span className="reconnect-spinner" />
-          <img className="reconnect-logo" src="/brand/svg/voxly-mark-primary.svg" alt="" width="48" height="48" />
+          <svg className="reconnect-logo" viewBox="0 0 512 512" width="48" height="48">
+            <defs>
+              <linearGradient id="reconnect-logo-gradient" x1="0" y1="1" x2="1" y2="0">
+                <stop offset="0%" stopColor="#7E8996" />
+                <stop offset="52%" stopColor="#BFC7D1" />
+                <stop offset="100%" stopColor="#FFFFFF" />
+              </linearGradient>
+            </defs>
+            <path d="M 110 125 L 235 360 L 335 245" fill="none" stroke="url(#reconnect-logo-gradient)" strokeWidth="94" strokeLinecap="round" strokeLinejoin="round" />
+            <g fill="url(#reconnect-logo-gradient)" shapeRendering="geometricPrecision">
+              <rect x="282" y="116" width="26" height="56" rx="13" />
+              <rect x="322" y="98" width="26" height="92" rx="13" />
+              <rect x="362" y="80" width="26" height="128" rx="13" />
+              <rect x="402" y="98" width="26" height="92" rx="13" />
+              <rect x="442" y="116" width="26" height="56" rx="13" />
+            </g>
+          </svg>
         </div>
         <strong>{t("connection.reconnecting")}</strong>
         <span>{copy}</span>
