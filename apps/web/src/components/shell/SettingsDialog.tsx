@@ -4,6 +4,7 @@ import { AudioDeviceSettings } from "../AudioDeviceSettings.js";
 import { DeviceSettings } from "../DeviceSettings.js";
 import { RecoverySettings } from "../RecoverySettings.js";
 import { PreferencesCard } from "../ui/Primitives.js";
+import { GearIcon, HeadsetIcon, ShieldIcon, UsersIcon } from "../ui/Icons.js";
 import type { TranslationKey } from "../../lib/i18n.js";
 import { ExternalPreviewSettings } from "../ExternalPreviewSettings.js";
 import { AccountDeletionSettings } from "../AccountDeletionSettings.js";
@@ -25,6 +26,12 @@ import { AccountDeletionSettings } from "../AccountDeletionSettings.js";
 export type SettingsSection = "account" | "audio" | "appearance" | "privacy";
 
 const sections: readonly SettingsSection[] = ["account", "audio", "appearance", "privacy"];
+const sectionIcons = {
+  account: <UsersIcon />,
+  audio: <HeadsetIcon off={false} />,
+  appearance: <GearIcon />,
+  privacy: <ShieldIcon />
+} as const;
 
 export function SettingsDialog(props: ShellModel & ShellActions & { initialSection?: SettingsSection; contextError?: TranslationKey | ""; onClose: () => void }) {
   const [section, setSection] = useState<SettingsSection>(props.initialSection ?? "account");
@@ -42,7 +49,7 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
   return (
     <div className="settings-backdrop" role="presentation" onMouseDown={props.onClose}>
       <section
-        className="settings-dialog"
+        className={`settings-dialog settings-${section}`}
         role="dialog"
         aria-modal="true"
         aria-label={props.t("settings.title")}
@@ -58,14 +65,18 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
               aria-current={section === item}
               onClick={() => setSection(item)}
             >
+              <span className="settings-nav-icon" aria-hidden="true">{sectionIcons[item]}</span>
               {props.t(`settings.${item}`)}
             </button>
           ))}
         </nav>
         <div className="settings-body">
-          <button className="settings-close btn btn-ghost" type="button" ref={closeRef} onClick={props.onClose}>
-            {props.t("common.close")}
-          </button>
+          <header className="settings-section-header">
+            <div><span className="label">{props.t("settings.title")}</span><h2>{props.t(`settings.${section}`)}</h2></div>
+            <button className="settings-close btn btn-ghost" type="button" ref={closeRef} onClick={props.onClose}>
+              {props.t("common.close")}
+            </button>
+          </header>
           <div className="settings-content">
             {section === "account" ? (
               <>

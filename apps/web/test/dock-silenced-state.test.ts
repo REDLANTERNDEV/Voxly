@@ -71,12 +71,10 @@ describe("dock self-silenced state", () => {
     assert.doesNotMatch(styles(), /self-silenced-in[^;]*infinite/);
   });
 
-  it("agrees with the sentence the dock writes beside it", () => {
-    // One rule behind both signals: a colour on a button cannot say *which* of
-    // the two silences it is, and the sentence is what does.
-    assert.match(dock(), /voiceDockSilenced\(props\.controls\)/);
-    assert.match(dock(), /dock-status-silenced/);
-    assert.match(styles(), /\.dock-status-silenced\s*\{/);
+  it("keeps the dock label short and silence accessible on its controls", () => {
+    assert.doesNotMatch(dock(), /voiceDockStatusLabel|dock-status-silenced/);
+    assert.match(dock(), /<strong>\{roomName\}<\/strong>/);
+    assert.match(dock(), /label=\{props\.t\(`common\.\$\{micControl\.action\}`/);
   });
 
   it("reports silence for a muted microphone, a deafened member, and neither otherwise", async () => {

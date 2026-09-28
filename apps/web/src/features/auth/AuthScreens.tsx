@@ -2,10 +2,10 @@ import { useEffect } from "react";
 import type { Translate } from "../../app/types.js";
 import { ArrowIcon } from "../../components/ui/Icons.js";
 import { BrandLockup,NavLink } from "../../components/ui/Navigation.js";
-import { LanguageSwitch } from "../../components/ui/Primitives.js";
+import { AuthPageHeader,LanguageSwitch } from "../../components/ui/Primitives.js";
 import { trackLandingView,type AnalyticsSettings } from "../../lib/analytics.js";
 import { type LanguageCode,type TranslationKey } from "../../lib/i18n.js";
-const landingPrincipleKeys = ["privateAccess", "selfHosted", "lowFootprint"] as const;
+const landingPrincipleKeys = ["privateAccess", "selfHosted", "voiceReady", "lowFootprint"] as const;
 export function LandingPage({ language, analytics, signedOutReason = "", t, onLanguageChange, onNavigate }: {
   /** Why the member is here rather than in the app, when it is worth saying. */
   signedOutReason?: "" | "reused" | "revoked" | "request_approved" | "owner_initiated"; language: LanguageCode; analytics: AnalyticsSettings | null; t: Translate; onLanguageChange: (language: LanguageCode) => void; onNavigate: (path: string) => void }) {
@@ -48,6 +48,9 @@ export function LandingPage({ language, analytics, signedOutReason = "", t, onLa
               <ArrowIcon />
               <span>{t("landing.inviteCta")}</span>
             </NavLink>
+            <a className="btn btn-ghost" href="https://github.com/REDLANTERNDEV/Voxly/blob/main/docs/self-hosting.md" target="_blank" rel="noopener noreferrer">
+              <span>{t("landing.selfHostCta")}</span>
+            </a>
           </div>
           {/* The two ways back for somebody who already has an account. Quiet,
               below the invite, and in that order deliberately: linking costs
@@ -59,17 +62,40 @@ export function LandingPage({ language, analytics, signedOutReason = "", t, onLa
             <NavLink className="landing-returning-link" href="/recover" onNavigate={onNavigate}><span>{t("landing.recover")}</span></NavLink>
           </p>
         </div>
-        <div className="landing-signal" aria-hidden="true">
-          <span className="landing-signal-ring landing-signal-ring-one" />
-          <span className="landing-signal-ring landing-signal-ring-two" />
-          <span className="landing-signal-ring landing-signal-ring-three" />
-          <span className="landing-signal-core"><img src="/brand/svg/voxly-mark-primary.svg" alt="" width="54" height="54" /></span>
+        <div className="landing-preview" aria-hidden="true">
+          <div className="landing-preview-top"><span /><span /><span /></div>
+          <div className="landing-preview-workspace">
+            <div className="landing-preview-rail">
+              <img src="/brand/svg/voxly-mark-monochrome-light.svg" alt="" width="26" height="26" />
+              <span className="landing-preview-server" />
+              <span className="landing-preview-channel is-selected" />
+              <span className="landing-preview-channel" />
+              <span className="landing-preview-channel is-short" />
+              <span className="landing-preview-group" />
+              <span className="landing-preview-channel" />
+              <span className="landing-preview-channel is-short" />
+            </div>
+            <div className="landing-preview-chat">
+              <div className="landing-preview-room"><span className="landing-preview-hash">#</span><span className="landing-preview-room-name" /></div>
+              <div className="landing-preview-messages">
+                <span className="landing-preview-message"><i /><span><b /><em /></span></span>
+                <span className="landing-preview-message"><i /><span><b /><em /><em className="is-short" /></span></span>
+                <span className="landing-preview-message"><i /><span><b /><em /></span></span>
+              </div>
+              <div className="landing-preview-composer" />
+            </div>
+            <div className="landing-preview-members">
+              <span className="landing-preview-member-heading" />
+              <span className="landing-preview-member" /><span className="landing-preview-member" />
+              <span className="landing-preview-member" /><span className="landing-preview-member" />
+            </div>
+          </div>
         </div>
       </section>
 
       <ul className="landing-principles" aria-label={t("landing.features")}>
         {landingPrincipleKeys.map((key) => (
-          <li key={key}>{t(`landing.${key}.title` as TranslationKey)}</li>
+          <li key={key}><span className="landing-principle-mark" aria-hidden="true" />{t(`landing.${key}.title` as TranslationKey)}</li>
         ))}
       </ul>
     </main>
@@ -81,8 +107,7 @@ export function InviteRequiredScreen({ language, t, onLanguageChange, onNavigate
     <main className="invite-shell">
       <div className="invite-layout invite-layout-simple">
         <section className="invite-card">
-          <BrandLockup subtitle={t("landing.brandSubtitle")} />
-          <LanguageSwitch language={language} t={t} onLanguageChange={onLanguageChange} />
+          <AuthPageHeader subtitle={t("landing.brandSubtitle")} language={language} t={t} onLanguageChange={onLanguageChange} />
           <div>
             <p className="label">{t("invite.privateInvite")}</p>
             <h1>{t("invite.missingTitle")}</h1>

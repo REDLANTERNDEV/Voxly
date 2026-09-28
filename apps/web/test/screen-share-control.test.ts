@@ -20,10 +20,13 @@ describe("screen share control", () => {
   it("keeps every compact media control visually symmetric", () => {
     const app = readAppSource();
     const styles = readFileSync("src/styles.css", "utf8");
+    const visual = readFileSync("src/visual-refresh.css", "utf8");
 
     assert.doesNotMatch(app, /className="screen-share-control"/);
     assert.match(styles, /\.dock-controls \.control-icon\s*\{[^}]*height:\s*44px[^}]*width:\s*44px/s);
     assert.match(styles, /\.dock-controls \.control-icon \.ui-icon\s*\{[^}]*height:\s*24px[^}]*width:\s*24px/s);
+    assert.match(visual, /\.dock-controls \.control-icon\s*\{[^}]*height:\s*44px;[^}]*width:\s*44px;/s);
+    assert.match(visual, /@media \(max-width: 900px\) \{[\s\S]*?\.dock-controls \.control-icon \{ height: 40px; min-height: 40px; width: 40px; \}/);
     assert.doesNotMatch(styles, /\.dock-controls \.screen-share-control/);
   });
 

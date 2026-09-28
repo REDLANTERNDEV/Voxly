@@ -7,7 +7,7 @@ import type { ShellActions,ShellModel } from "../../app/types.js";
 import { ContextMenu } from "../../components/ContextMenu.js";
 import { SidebarMenuTrigger,type SidebarActionMenuController } from "../../components/shell/SidebarMenus.js";
 import { ConfirmDialog,NicknameDialog } from "../../components/ui/Dialogs.js";
-import { ChatIcon,CopyIcon,LinkIcon,ShieldIcon,TrashIcon,UserPlusIcon,UsersIcon } from "../../components/ui/Icons.js";
+import { ChatIcon,CopyIcon,GearIcon,LinkIcon,ShieldIcon,TrashIcon,UserPlusIcon,UsersIcon } from "../../components/ui/Icons.js";
 import { BrandLockup,NavLink } from "../../components/ui/Navigation.js";
 import { EmptyState,MemberRow,StatusPill } from "../../components/ui/Primitives.js";
 import { resolveServerTextRoom } from "../../lib/channelState.js";
@@ -39,6 +39,14 @@ const ownerSections: Array<{ id: OwnerSection; titleKey: "owner.sectionOverview"
 ];
 
 const memberMenuWidth = 232;
+const ownerSectionIcons = {
+  overview: <ShieldIcon />,
+  invites: <LinkIcon />,
+  members: <UsersIcon />,
+  server: <GearIcon />,
+  deletionRequests: <TrashIcon />,
+  accounts: <UserPlusIcon />
+} as const;
 
 export function OwnerPanel(props: OwnerPanelProps) {
   const [section, setSection] = useState<OwnerSection>("overview");
@@ -153,6 +161,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
               aria-current={section === item.id ? "page" : undefined}
               onClick={() => setSection(item.id)}
             >
+              <span className="dash-nav-icon" aria-hidden="true">{ownerSectionIcons[item.id]}</span>
               {props.t(item.titleKey)}
               {item.id === "deletionRequests" && deletionRequestCount > 0 ? <span className="owner-alert-badge">{deletionRequestCount}</span> : null}
             </button>
@@ -161,7 +170,6 @@ export function OwnerPanel(props: OwnerPanelProps) {
         <div className="dash-sidebar-foot">
           <span className="label">{props.t("owner.access")}</span>
           <MemberRow user={props.currentNickname} detail={props.t("owner.sessionDetail")} owner />
-          <p className="muted small">{props.t("owner.normalViewCopy")}</p>
         </div>
       </aside>
       <main className="dash-main" id="main-content">
@@ -204,7 +212,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
                 </article>
               ))}
             </section>
-            <div className="dash-split">
+            <div className="dash-overview-invite">
               <section className="dash-panel">
                 <header className="dash-panel-head">
                   <h2>{props.t("owner.createInviteFor", { server: serverName })}</h2>
@@ -218,17 +226,7 @@ export function OwnerPanel(props: OwnerPanelProps) {
                   onCreated={reload}
                 />
               </section>
-              <section className="dash-panel">
-                <header className="dash-panel-head">
-                  <h2>{props.t("owner.policyTitle")}</h2>
-                  <p className="muted small">{props.t("owner.policyCopy")}</p>
-                </header>
-                <ul className="dash-notes">
-                  <li>{props.t("owner.noteDelegation")}</li>
-                  <li>{props.t("owner.normalViewCopy")}</li>
-                  <li>{props.t("owner.newInviteLinkCopy")}</li>
-                </ul>
-              </section>
+
             </div>
           </div>
         ) : null}
@@ -441,7 +439,6 @@ export function OwnerPanel(props: OwnerPanelProps) {
             activeServerId={props.activeServerId}
             servers={props.servers}
             t={props.t}
-            onSelect={(serverId) => props.onNavigate(`/app/server/${encodeURIComponent(serverId)}/owner`)}
             onCreate={props.onCreateServer}
             onRename={props.onUpdateServerName}
             onSetAfkTimeout={props.onSetAfkTimeout}

@@ -125,8 +125,9 @@ describe("the signed-out screens", () => {
     // A member arriving here may belong to several servers, and "The Basement"
     // is one of them rather than the product.
     for (const path of ["src/features/auth/LinkDeviceScreen.tsx", "src/features/auth/RecoverScreen.tsx"]) {
-      assert.match(readFileSync(path, "utf8"), /<BrandLockup subtitle="" \/>/);
+      assert.match(readFileSync(path, "utf8"), /<AuthPageHeader language=\{language\}/);
     }
+    assert.match(readFileSync("src/components/ui/Primitives.tsx", "utf8"), /AuthPageHeader\(\{ subtitle = ""/);
   });
 });
 

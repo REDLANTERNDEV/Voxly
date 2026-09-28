@@ -784,8 +784,8 @@ describe("the Queue on the page", () => {
   it("gives the Queue a role, so the heading labelling it is not dropped", () => {
     // `aria-labelledby` on a plain div names nothing: without a role there is
     // no region for the heading to be the name of.
-    assert.match(musicPanel, /<section className="music-queue" aria-labelledby="musicQueueTitle">/);
-    assert.match(musicPanel, /<p className="label" id="musicQueueTitle">\{t\("music\.queue"\)\}<\/p>/);
+    assert.match(musicPanel, /<details className="music-queue">/);
+    assert.match(musicPanel, /<summary className="label" id="musicQueueTitle">\{t\("music\.queue"\)\}/);
   });
 
   it("gives every row its Requester and its length", () => {
@@ -806,7 +806,7 @@ describe("the Queue on the page", () => {
   });
 
   it("sits after the participant list, in the page's own flow", () => {
-    const voiceRoomFlow = voiceRoom.slice(voiceRoom.indexOf('className="voice-participants"'));
+    const voiceRoomFlow = voiceRoom.slice(voiceRoom.indexOf('className="voice-tile-grid"'));
 
     assert.match(voiceRoomFlow, /<MusicPanel/, "the panel comes after the participants, not before them");
     assert.doesNotMatch(styles, /\.music-panel\s*\{[^}]*position:\s*(?:fixed|absolute|sticky)/);
@@ -839,8 +839,8 @@ describe("the Set log on the page", () => {
   });
 
   it("gives the log a role, so the heading labelling it is not dropped", () => {
-    assert.match(musicPanel, /<section className="music-log" aria-labelledby="musicLogTitle">/);
-    assert.match(musicPanel, /<p className="label" id="musicLogTitle">\{t\("music\.log"\)\}<\/p>/);
+    assert.match(musicPanel, /<details className="music-log">/);
+    assert.match(musicPanel, /<summary className="label" id="musicLogTitle">\{t\("music\.log"\)\}<\/summary>/);
   });
 
   it("shows nothing at all until somebody has done something", () => {

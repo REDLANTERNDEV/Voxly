@@ -1,5 +1,5 @@
 import type { CategorySummary, RoomKind, RoomSummary, ServerRoomLayout } from "@voxly/shared";
-import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
@@ -452,20 +452,26 @@ export function ChannelOrganizer({
             ) : null}
             {!isCollapsed ? <div className="channel-category-rooms" data-drop-group={id}>
               {group.rooms.map((room, roomIndex) => (
-                <div
-                  className={`channel-sort-item ${dragging?.target?.kind === "room" && dragging.target.roomId === room.id ? `is-drop-${dragging.target.after ? "after" : "before"}` : ""}`}
-                  data-drop-room={room.id}
-                  data-drop-category-id={category?.id ?? ""}
-                  key={room.id}
-                >
-                  {renderRoom(room, {
-                    moveTo: (categoryId) => moveRoomTo(room.id, categoryId),
-                    moveUp: () => { void persist(moveRoomBy(localGroups, room.id, -1)); },
-                    moveDown: () => { void persist(moveRoomBy(localGroups, room.id, 1)); },
-                    canMoveUp: roomIndex > 0,
-                    canMoveDown: roomIndex < group.rooms.length - 1
-                  })}
-                </div>
+                <Fragment key={room.id}>
+                  {!category && group.rooms[roomIndex - 1]?.kind !== room.kind ? (
+                    <div className="channel-kind-heading" role="heading" aria-level={3}>
+                      {t(room.kind === "text" ? "room.textRooms" : "room.voiceRooms")}
+                    </div>
+                  ) : null}
+                  <div
+                    className={`channel-sort-item ${dragging?.target?.kind === "room" && dragging.target.roomId === room.id ? `is-drop-${dragging.target.after ? "after" : "before"}` : ""}`}
+                    data-drop-room={room.id}
+                    data-drop-category-id={category?.id ?? ""}
+                  >
+                    {renderRoom(room, {
+                      moveTo: (categoryId) => moveRoomTo(room.id, categoryId),
+                      moveUp: () => { void persist(moveRoomBy(localGroups, room.id, -1)); },
+                      moveDown: () => { void persist(moveRoomBy(localGroups, room.id, 1)); },
+                      canMoveUp: roomIndex > 0,
+                      canMoveDown: roomIndex < group.rooms.length - 1
+                    })}
+                  </div>
+                </Fragment>
               ))}
               {group.rooms.length === 0 ? <div
                 className={`channel-category-empty ${category ? "" : "channel-uncategorized-empty"}`}

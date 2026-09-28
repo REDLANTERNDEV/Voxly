@@ -39,8 +39,8 @@ describe("bot member counts", () => {
   });
 
   it("counts the member badges and the mobile subtitle by people", () => {
-    assert.match(memberPanel, /<span className="badge">\{countPeople\(groupedMembers\.online\)\}<\/span>/);
-    assert.match(memberPanel, /<span className="badge">\{countPeople\(groupedMembers\.offline\)\}<\/span>/);
+    assert.match(memberPanel, /<span className="badge">\{countPeople\(visibleOnline\)\}<\/span>/);
+    assert.match(memberPanel, /<span className="badge">\{countPeople\(visibleOffline\)\}<\/span>/);
     assert.match(appChrome, /const onlineCount = countPeople\(props\.onlineUsers\) \|\| 1;/);
   });
 });

@@ -2,7 +2,8 @@ import { useCallback, useState } from "react";
 import { redeemRecoveryCode } from "../../api.js";
 import type { Translate } from "../../app/types.js";
 import { TurnstileWidget } from "./InviteScreen.js";
-import { BrandLockup } from "../../components/ui/Navigation.js";
+import { AuthPageHeader } from "../../components/ui/Primitives.js";
+import type { LanguageCode } from "../../lib/i18n.js";
 import { formatRecoveryCodeInput, isCompleteRecoveryCode } from "../../lib/linkCodeInput.js";
 import { readRecoverGuideDismissed, writeRecoverGuideDismissed } from "../../lib/linkGuide.js";
 
@@ -20,8 +21,10 @@ import { readRecoverGuideDismissed, writeRecoverGuideDismissed } from "../../lib
  * spent either way. The settings card then says the account has none, so making
  * a new one is a decision rather than a step to click past.
  */
-export function RecoverScreen({ t, onRecovered, turnstileSiteKey }: {
+export function RecoverScreen({ language, t, onLanguageChange, onRecovered, turnstileSiteKey }: {
+  language: LanguageCode;
   t: Translate;
+  onLanguageChange: (language: LanguageCode) => void;
   onRecovered: () => void;
   /** The operator's challenge, when they configured one. */
   turnstileSiteKey: string | null;
@@ -57,7 +60,7 @@ export function RecoverScreen({ t, onRecovered, turnstileSiteKey }: {
 
   return (
     <main className="landing link-screen">
-      <BrandLockup subtitle="" />
+      <AuthPageHeader language={language} t={t} onLanguageChange={onLanguageChange} />
       {guiding ? (
         <section className="link-panel">
           <strong>{t("recovery.guideTitle")}</strong>

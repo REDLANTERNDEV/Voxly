@@ -5,8 +5,7 @@ import { acceptInvite,ApiError,previewInvite } from "../../api.js";
 import { extractInviteToken,inviteAvailabilityCopy,inviteStatusTitle,statusClass } from "../../app/presentation.js";
 import type { Translate } from "../../app/types.js";
 import { ArrowIcon } from "../../components/ui/Icons.js";
-import { BrandLockup } from "../../components/ui/Navigation.js";
-import { LanguageSwitch } from "../../components/ui/Primitives.js";
+import { AuthPageHeader } from "../../components/ui/Primitives.js";
 import { type LanguageCode } from "../../lib/i18n.js";
 import { loadTurnstile } from "../../lib/turnstile.js";
 import type { TimeFormatPreference } from "../../lib/timeFormat.js";
@@ -102,8 +101,7 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
     <main className="invite-shell">
       <div className="invite-layout invite-layout-simple">
         <section className="invite-card">
-          <BrandLockup subtitle={t("landing.brandSubtitle")} />
-          <LanguageSwitch language={language} t={t} onLanguageChange={onLanguageChange} />
+          <AuthPageHeader subtitle={t("landing.brandSubtitle")} language={language} t={t} onLanguageChange={onLanguageChange} />
           <div>
             <p className="label">{t("invite.privateInvite")}</p>
             <h1>{serverName ? t("invite.joinServerTitle", { server: serverName }) : t("invite.joinTitle")}</h1>

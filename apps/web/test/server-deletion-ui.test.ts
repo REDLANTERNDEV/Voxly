@@ -23,7 +23,7 @@ describe("server and channel deletion UI", () => {
 
     assert.match(ownerPanel, /className="owner-server-context"/);
     assert.match(ownerPanel, /function OwnerServerContext/);
-    assert.match(ownerPanel, /encodeURIComponent\(serverId\)[\s\S]*?\/owner/);
+    assert.match(ownerPanel, /encodeURIComponent\(event\.currentTarget\.value\)[\s\S]*?\/owner/);
     assert.match(ownerPanel, /props\.onCreateServer/);
     assert.match(ownerPanel, /props\.onUpdateServerName/);
     assert.match(ownerPanel, /onRename=\{props\.onUpdateServerName\}/);

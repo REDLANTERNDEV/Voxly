@@ -1,122 +1,27 @@
+/* Layout mechanics and interaction contracts. Palette values live in
+   visual-refresh.css, which is imported after this file. */
 :root {
   color-scheme: light;
-  --neutral-gray: #9b9b95;
-  --khaki-beige: var(--neutral-gray);
-  --hot-fuchsia: #ff4365;
-  --black: #0a0a09;
-  --turquoise: #00d9c0;
-  --ivory: #f7f7f4;
-  --bg: #fbfbfa;
-  --surface: color-mix(in oklab, var(--bg), var(--khaki-beige) 8%);
-  --surface-warm: color-mix(in oklab, var(--bg), var(--khaki-beige) 13%);
-  --surface-2: color-mix(in oklab, var(--bg), var(--khaki-beige) 18%);
-  --fg: var(--black);
-  --fg-2: color-mix(in oklab, var(--black), var(--khaki-beige) 26%);
-  --muted: color-mix(in oklab, var(--black), var(--khaki-beige) 48%);
-  --muted-2: color-mix(in oklab, var(--black), var(--khaki-beige) 64%);
-  --border: color-mix(in oklab, var(--khaki-beige), var(--ivory) 42%);
-  --border-soft: color-mix(in oklab, var(--khaki-beige), var(--ivory) 68%);
-  --accent: var(--turquoise);
-  --accent-on: var(--black);
-  --success: var(--turquoise);
-  --warn: var(--khaki-beige);
-  --danger: var(--hot-fuchsia);
-  --scene: color-mix(in oklab, var(--black), var(--khaki-beige) 9%);
-  --on-scene: var(--ivory);
-  --graphite-a: color-mix(in oklab, var(--black), var(--khaki-beige) 12%);
-  --graphite-b: color-mix(in oklab, var(--black), var(--khaki-beige) 15%);
-  --graphite-c: color-mix(in oklab, var(--black), var(--khaki-beige) 22%);
-  --rail-bg: #ffffff;
-  --rail-surface: #f4f4f1;
-  --rail-fg: var(--black);
-  --rail-muted: #5f5f5a;
-  --rail-border: #d7d7d2;
-  --accent-soft: color-mix(in oklab, var(--accent), var(--bg) 82%);
-  --success-soft: color-mix(in oklab, var(--success), var(--bg) 88%);
-  --speaking: color-mix(in oklab, var(--turquoise), var(--black) 16%);
-  --speaking-soft: color-mix(in oklab, var(--accent), var(--bg) 84%);
-  --warn-soft: color-mix(in oklab, var(--warn), var(--bg) 74%);
-  --danger-soft: color-mix(in oklab, var(--danger), var(--bg) 88%);
-  --shadow: 0 16px 44px rgba(10, 10, 9, 0.1);
   --font-display: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-body: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --sidebar: 278px;
-  --memberbar: 292px;
+  --radius-sm: 7px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --sidebar: 264px;
+  --memberbar: 280px;
   --dock: 76px;
   --layer-dock: 20;
   --layer-popover: 30;
   --layer-drawer: 40;
-  /* Above the drawers. A menu portalled to the body is opened from inside one
-     of them as often as not, and on a phone the drawer covers the screen — so
-     anything under this layer opens where nobody can see or reach it. */
+  /* A menu opened inside a phone drawer must appear above that drawer. */
   --layer-menu: 45;
   --layer-modal: 50;
 }
 
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: color-mix(in oklab, var(--black), var(--ivory) 8%);
-  --surface: color-mix(in oklab, var(--black), var(--khaki-beige) 14%);
-  --surface-warm: color-mix(in oklab, var(--black), var(--khaki-beige) 18%);
-  --surface-2: color-mix(in oklab, var(--black), var(--khaki-beige) 26%);
-  --fg: color-mix(in oklab, var(--ivory), var(--khaki-beige) 5%);
-  --fg-2: color-mix(in oklab, var(--ivory), var(--khaki-beige) 20%);
-  --muted: color-mix(in oklab, var(--ivory), var(--black) 34%);
-  --muted-2: color-mix(in oklab, var(--ivory), var(--black) 50%);
-  --border: color-mix(in oklab, var(--khaki-beige), var(--black) 55%);
-  --border-soft: color-mix(in oklab, var(--khaki-beige), var(--black) 72%);
-  --scene: color-mix(in oklab, var(--black), var(--khaki-beige) 7%);
-  --on-scene: var(--ivory);
-  --graphite-a: color-mix(in oklab, var(--black), var(--khaki-beige) 13%);
-  --graphite-b: color-mix(in oklab, var(--black), var(--khaki-beige) 19%);
-  --graphite-c: color-mix(in oklab, var(--black), var(--khaki-beige) 27%);
-  --rail-bg: var(--black);
-  --rail-surface: #181816;
-  --rail-fg: var(--ivory);
-  --rail-muted: #b8b8b2;
-  --rail-border: #343430;
-  --accent-soft: color-mix(in oklab, var(--accent), var(--bg) 86%);
-  --success-soft: color-mix(in oklab, var(--success), var(--bg) 87%);
-  --speaking-soft: color-mix(in oklab, var(--accent), var(--bg) 78%);
-  --warn-soft: color-mix(in oklab, var(--warn), var(--bg) 82%);
-  --danger-soft: color-mix(in oklab, var(--danger), var(--bg) 86%);
-  --shadow: 0 18px 52px rgba(0, 0, 0, 0.38);
-}
-
+:root[data-theme="dark"] { color-scheme: dark; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --bg: color-mix(in oklab, var(--black), var(--ivory) 8%);
-    --surface: color-mix(in oklab, var(--black), var(--khaki-beige) 14%);
-    --surface-warm: color-mix(in oklab, var(--black), var(--khaki-beige) 18%);
-    --surface-2: color-mix(in oklab, var(--black), var(--khaki-beige) 26%);
-    --fg: color-mix(in oklab, var(--ivory), var(--khaki-beige) 5%);
-    --fg-2: color-mix(in oklab, var(--ivory), var(--khaki-beige) 20%);
-    --muted: color-mix(in oklab, var(--ivory), var(--black) 34%);
-    --muted-2: color-mix(in oklab, var(--ivory), var(--black) 50%);
-    --border: color-mix(in oklab, var(--khaki-beige), var(--black) 55%);
-    --border-soft: color-mix(in oklab, var(--khaki-beige), var(--black) 72%);
-    --scene: color-mix(in oklab, var(--black), var(--khaki-beige) 7%);
-    --on-scene: var(--ivory);
-    --graphite-a: color-mix(in oklab, var(--black), var(--khaki-beige) 13%);
-    --graphite-b: color-mix(in oklab, var(--black), var(--khaki-beige) 19%);
-    --graphite-c: color-mix(in oklab, var(--black), var(--khaki-beige) 27%);
-    --rail-bg: var(--black);
-    --rail-surface: #181816;
-    --rail-fg: var(--ivory);
-    --rail-muted: #b8b8b2;
-    --rail-border: #343430;
-    --accent-soft: color-mix(in oklab, var(--accent), var(--bg) 86%);
-    --success-soft: color-mix(in oklab, var(--success), var(--bg) 87%);
-    --speaking-soft: color-mix(in oklab, var(--accent), var(--bg) 78%);
-    --warn-soft: color-mix(in oklab, var(--warn), var(--bg) 82%);
-    --danger-soft: color-mix(in oklab, var(--danger), var(--bg) 86%);
-    --shadow: 0 18px 52px rgba(0, 0, 0, 0.38);
-  }
+  :root:not([data-theme="light"]) { color-scheme: dark; }
 }
 
 * {
@@ -4936,8 +4841,8 @@ button.reply-quote:focus-visible .reply-quote-body {
   :root {
     /* The dock is two rows on a phone — status and account above, the call
        controls below — and one row when there is no call to control. */
-    --dock: 108px;
-    --dock-quiet: 60px;
+    --dock: 112px;
+    --dock-quiet: 64px;
     /* The bar the two drawers hang off: one 40px control tall, plus its own
        padding and rule. The shell subtracts exactly this. */
     --topbar: 57px;

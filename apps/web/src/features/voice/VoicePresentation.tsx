@@ -29,8 +29,8 @@ export interface StageSource {
  * and the tooltip, and the colour keeps the one distinction that matters —
  * red is an owner's doing, grey is your own.
  */
-export function VoiceStatusBadges({ media, moderation, t }: { media: VoiceMediaState | undefined; moderation?: VoiceModerationState; t: Translate }) {
-  const items = voiceStatusItems(media, moderation, t);
+export function VoiceStatusBadges({ media, moderation, t, showVisual = true }: { media: VoiceMediaState | undefined; moderation?: VoiceModerationState; t: Translate; showVisual?: boolean }) {
+  const items = voiceStatusItems(media && !showVisual ? { ...media, screen: false, camera: false } : media, moderation, t);
   if (items.length === 0) {
     return null;
   }
@@ -123,6 +123,7 @@ export function VisualStage({
   screenVolumes,
   outputVolume,
   onFocus,
+  onDismiss,
   onScreenVolumeChange,
   t
 }: {
@@ -131,6 +132,7 @@ export function VisualStage({
   screenVolumes: Record<string, number>;
   outputVolume: number;
   onFocus: (key: string) => void;
+  onDismiss: (source: StageSource) => void;
   onScreenVolumeChange: (streamId: string, volume: number) => void;
   t: Translate;
 }) {
@@ -165,9 +167,9 @@ export function VisualStage({
             className={`stage-media ${source.key === focusedSource?.key ? "is-focused" : ""}`}
             type="button"
             key={source.key}
-            onClick={() => onFocus(source.key)}
+            onClick={() => source.key === focusedSource?.key ? onDismiss(source) : onFocus(source.key)}
             aria-pressed={source.key === focusedSource?.key}
-            aria-label={`${source.ownerName} ${source.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}`}
+            aria-label={t("voice.removeFromStage", { nickname: source.ownerName })}
           >
             {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span className="screen-stage-placeholder">{source.connectionStatus === "failed" ? t("voice.retry") : source.connectionStatus === "reconnecting" ? t("voice.reconnecting") : t("voice.connecting")}</span>}
             {source.key !== focusedSource?.key ? <span className="stage-media-label"><strong>{source.ownerName}</strong><span>{source.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}</span></span> : null}

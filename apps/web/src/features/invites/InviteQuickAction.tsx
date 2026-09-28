@@ -69,6 +69,7 @@ export function InviteQuickAction({ serverId, serverName, publicUrl, t }: {
         }}
       >
         <UserPlusIcon />
+        <span>{t("common.invite")}</span>
       </button>
       {isOpen ? createPortal(
         <div className="invite-popover" ref={popoverRef} role="dialog" aria-label={label} style={position}>
@@ -77,7 +78,6 @@ export function InviteQuickAction({ serverId, serverName, publicUrl, t }: {
             <strong>{serverName}</strong>
             <button className="icon-btn" type="button" aria-label={t("common.cancel")} onClick={close}><CloseIcon /></button>
           </header>
-          <p className="muted small">{t("invite.quickCopy")}</p>
           <InviteComposer serverId={serverId} publicUrl={publicUrl} idPrefix="railInvite" t={t} />
         </div>,
         document.body

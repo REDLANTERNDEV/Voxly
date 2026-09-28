@@ -86,8 +86,8 @@ describe("idle setting copy", () => {
     // deny it, so it is pinned positively rather than by absence.
     assert.doesNotMatch(translate("en", "owner.afkTimeout"), /Move to/i);
     assert.doesNotMatch(translate("tr", "owner.afkTimeout"), /taşıma/i);
-    assert.match(translate("en", "owner.afkTimeoutHint"), /Nobody is moved or muted/);
-    assert.match(translate("tr", "owner.afkTimeoutHint"), /Kimse taşınmaz veya susturulmaz/);
+    assert.match(translate("en", "owner.afkTimeoutHint"), /inactive members as idle/);
+    assert.match(translate("tr", "owner.afkTimeoutHint"), /Aktif olmayan üyeleri boşta/);
   });
 
   it("names all three presence states in both languages", () => {

@@ -85,7 +85,7 @@ describe("voice rail live controls", () => {
     const voiceRoom = app.match(/function VoiceRoomScreen[\s\S]*?\n}\n\nfunction OwnerPanel/)?.[0] ?? "";
     const watchSource = voiceRoom.match(/const watchSource = \(source: StageSource\) => \{[\s\S]*?\n  };/)?.[0] ?? "";
 
-    assert.match(voiceRoom, /className="visual-source-main"[\s\S]*?onClick=\{\(\) => watchSource\(source\)\}/);
+    assert.match(voiceRoom, /className="voice-stream-watch"[\s\S]*?onClick=\{\(\) => watchSource\(source\)\}/);
     assert.doesNotMatch(voiceRoom, /source-watch/);
     assert.doesNotMatch(voiceRoom, /props\.t\("voice\.watch"\)/);
     assert.match(watchSource, /source\.kind === "screen"/);

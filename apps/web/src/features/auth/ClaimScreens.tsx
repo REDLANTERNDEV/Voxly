@@ -2,8 +2,8 @@ import type { PublicUser } from "@voxly/shared";
 import { useEffect,useState } from "react";
 import { claimAccessLink,claimOwnerSession } from "../../api.js";
 import type { Translate } from "../../app/types.js";
-import { BrandLockup,NavLink } from "../../components/ui/Navigation.js";
-import { LanguageSwitch } from "../../components/ui/Primitives.js";
+import { NavLink } from "../../components/ui/Navigation.js";
+import { AuthPageHeader } from "../../components/ui/Primitives.js";
 import { type LanguageCode } from "../../lib/i18n.js";
 export function OwnerClaimScreen({ token, language, t, onLanguageChange, onClaimed }: { token: string; language: LanguageCode; t: Translate; onLanguageChange: (language: LanguageCode) => void; onClaimed: (user: PublicUser) => void }) {
   const [status, setStatus] = useState<"loading" | "danger">("loading");
@@ -36,8 +36,7 @@ export function OwnerClaimScreen({ token, language, t, onLanguageChange, onClaim
     <main className="invite-shell">
       <div className="invite-layout invite-layout-simple">
         <section className="invite-card">
-          <BrandLockup subtitle={t("ownerClaim.label")} />
-          <LanguageSwitch language={language} t={t} onLanguageChange={onLanguageChange} />
+          <AuthPageHeader subtitle={t("ownerClaim.label")} language={language} t={t} onLanguageChange={onLanguageChange} />
           <div>
             <p className="label">{t("ownerClaim.label")}</p>
             <h1>{t("ownerClaim.title")}</h1>
@@ -53,7 +52,7 @@ export function OwnerClaimScreen({ token, language, t, onLanguageChange, onClaim
   );
 }
 
-export function AccessClaimScreen({ token, t, onNavigate, onClaimed }: { token: string; t: Translate; onNavigate: (path: string) => void; onClaimed: (user: PublicUser, serverId: string) => void }) {
+export function AccessClaimScreen({ token, language, t, onLanguageChange, onNavigate, onClaimed }: { token: string; language: LanguageCode; t: Translate; onLanguageChange: (language: LanguageCode) => void; onNavigate: (path: string) => void; onClaimed: (user: PublicUser, serverId: string) => void }) {
   const [status, setStatus] = useState<"loading" | "danger">("loading");
 
   useEffect(() => {
@@ -77,7 +76,7 @@ export function AccessClaimScreen({ token, t, onNavigate, onClaimed }: { token: 
   return (
     <main className="invite-shell">
       <section className="invite-card">
-        <BrandLockup />
+        <AuthPageHeader language={language} t={t} onLanguageChange={onLanguageChange} />
         <div className={`invite-status ${status === "danger" ? "is-danger" : "is-loading"}`} aria-live="polite">
           <strong>{status === "danger" ? t("accessClaim.invalid") : t("accessClaim.restoring")}</strong>
           <span className="muted small">{status === "danger" ? t("accessClaim.invalidCopy") : t("accessClaim.restoringCopy")}</span>

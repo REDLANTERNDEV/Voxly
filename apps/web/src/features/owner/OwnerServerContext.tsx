@@ -21,7 +21,6 @@ export function OwnerServerContext({
   activeServerId,
   servers,
   t,
-  onSelect,
   onCreate,
   onRename,
   onSetAfkTimeout,
@@ -30,7 +29,6 @@ export function OwnerServerContext({
   activeServerId: string;
   servers: ServerSummary[];
   t: Translate;
-  onSelect: (serverId: string) => void;
   onCreate: (name: string) => Promise<void>;
   onRename: (name: string) => Promise<ServerSummary>;
   onSetAfkTimeout: (minutes: AfkTimeoutMinutes) => Promise<void>;
@@ -55,16 +53,8 @@ export function OwnerServerContext({
   return (
     <section className="owner-server-context" aria-labelledby="ownerServerContextTitle">
       <div className="owner-server-context-copy">
-        <p className="label">{t("owner.serverContextLabel")}</p>
         <h2 id="ownerServerContextTitle">{t("owner.serverContextTitle")}</h2>
-        <p className="muted small">{t("owner.serverContextCopy")}</p>
       </div>
-      <label className="form-field owner-server-select" htmlFor="ownerServerSelect">
-        <span>{t("owner.targetServer")}</span>
-        <select className="input" id="ownerServerSelect" value={activeServerId} onChange={(event) => onSelect(event.currentTarget.value)}>
-          {ownerServers.map((server) => <option key={server.id} value={server.id}>{server.name}</option>)}
-        </select>
-      </label>
       <div className="owner-server-actions">
         <button className="btn btn-primary" type="button" aria-expanded={showCreate} aria-controls="owner-server-create-form" onClick={() => {
           setShowCreate((current) => !current);

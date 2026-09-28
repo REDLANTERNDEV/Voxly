@@ -2,8 +2,7 @@ import { useCallback,useEffect,useState,type ReactNode } from "react";
 import type { Translate } from "../app/types.js";
 import { isSteamGameOverlay } from "../lib/browserEnvironment.js";
 import { readLanguageChoice,saveLanguageChoice,translate,type LanguageCode } from "../lib/i18n.js";
-import { LanguageSwitch } from "./ui/Primitives.js";
-import { BrandLockup } from "./ui/Navigation.js";
+import { AuthPageHeader } from "./ui/Primitives.js";
 
 export function BrowserCompatibilityGate({ userAgent, children }: { userAgent: string; children: ReactNode }) {
   if (!isSteamGameOverlay(userAgent)) return children;
@@ -26,8 +25,7 @@ function SteamOverlayWarning() {
     <main className="invite-shell steam-overlay-warning">
       <div className="invite-layout invite-layout-simple">
         <section className="invite-card" aria-labelledby="steamOverlayWarningTitle">
-          <BrandLockup subtitle={t("landing.brandSubtitle")} />
-          <LanguageSwitch language={language} t={t} onLanguageChange={changeLanguage} />
+          <AuthPageHeader subtitle={t("landing.brandSubtitle")} language={language} t={t} onLanguageChange={changeLanguage} />
           <div>
             <p className="label">{t("browser.steamOverlayLabel")}</p>
             <h1 id="steamOverlayWarningTitle">{t("browser.steamOverlayTitle")}</h1>

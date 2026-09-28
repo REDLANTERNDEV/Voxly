@@ -53,6 +53,23 @@ export function TextRoomScreen(props: TextRoomProps) {
   }, []);
 
   useLayoutEffect(() => {
+    const field = composerRef.current;
+    if (!field) return;
+    const resize = () => {
+      field.style.height = "0px";
+      const style = getComputedStyle(field);
+      const line = parseFloat(style.lineHeight) || 21;
+      const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      const limit = Math.min(line * (window.innerWidth <= 560 ? 6 : 15) + padding, window.innerHeight * .4);
+      field.style.height = `${Math.min(field.scrollHeight, limit)}px`;
+      field.style.overflowY = field.scrollHeight > limit ? "auto" : "hidden";
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [draft]);
+
+  useLayoutEffect(() => {
     previousMessageIdsRef.current = messageListIds(props.messages.map((message) => message.id), props.outbox);
     wasNearBottomRef.current = true;
     setHasNewMessages(false);
@@ -123,7 +140,7 @@ export function TextRoomScreen(props: TextRoomProps) {
   return (
     <main className="main-panel" id="main-content">
         <RoomHeader
-          title={`#${props.currentRoom?.name ?? "lobby"}`}
+          title={props.currentRoom?.name ?? "lobby"}
           subtitle={props.t("room.generalTalk")}
           actionLabel={targetVoiceRoom ? props.t("room.openChannel", { channel: targetVoiceRoom.name }) : undefined}
           onAction={targetVoiceRoom ? () => props.onNavigate(serverPath(props.activeServerId, "voice", targetVoiceRoom.id)) : undefined}

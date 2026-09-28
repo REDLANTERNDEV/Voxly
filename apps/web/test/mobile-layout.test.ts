@@ -68,7 +68,7 @@ describe("narrow layout", () => {
   it("names the controls whose words the narrow layout drops", () => {
     assert.match(declaration("TextRoomScreen", "StageSource"), /className="btn btn-primary composer-send"[^>]*aria-label=/);
     assert.match(declaration("VoiceDock", "ConnectionSignal"), /className="btn btn-danger dock-leave"[^>]*aria-label=/);
-    assert.match(declaration("VoiceDock", "ConnectionSignal"), /className="btn btn-ghost dock-owner"[^>]*label=/);
+    assert.match(declaration("VoiceDock", "ConnectionSignal"), /className="btn btn-ghost account-owner-link"[^>]*label=/);
 
     assert.match(narrow, /\.mobile-topbar \.icon-btn span \{\s*display: none;/);
     assert.match(narrow, /\.dock-leave span,\s*\.dock-owner span \{\s*display: none;/);
@@ -81,6 +81,11 @@ describe("narrow layout", () => {
     assert.match(narrow, /\.dock-controls:empty \{\s*display: none;/);
     // The shell reserves the dock it actually has under it.
     assert.match(narrow, /body:has\(\.dock-controls:empty\) \.app-shell \{\s*padding-bottom: calc\(var\(--dock-quiet\) \+ 16px\);/);
+    // The visual layer reserves both rows in a call and only the status row
+    // when the controls are absent. Its bottom inset must match the top.
+    const visual = readFileSync("src/visual-refresh.css", "utf8");
+    assert.match(visual, /@media \(max-width: 900px\) \{[\s\S]*?\.voice-dock \{[^}]*min-height: var\(--dock\);[^}]*padding: 10px 10px calc\(10px \+ env\(safe-area-inset-bottom\)\);/);
+    assert.match(visual, /body:has\(\.dock-controls:empty\) \.voice-dock \{ min-height: var\(--dock-quiet\); \}/);
   });
 
   it("keeps the dock controls at the documented mobile hit area", () => {

@@ -90,6 +90,7 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
   // published, so one message moves the whole panel and no two controls here
   // can disagree about what is happening. ADR-0006.
   const transport = musicTransport(bot, queue);
+  const currentTrack = rows.find((row) => row.isCurrent);
 
   /**
    * `closesWhatWasPressed` names the controls that take away the thing they act
@@ -197,6 +198,68 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
           <p className="label" id="musicPanelTitle">{t("music.title")}</p>
         </div>
       </header>
+      <div className="music-player-head">
+        <span className={`music-artwork ${transport.playing ? "is-playing" : ""}`} aria-hidden="true"><span>♪</span></span>
+        <div className="music-now-playing">
+          <span className="music-playing-label">{currentTrack ? t(transport.playing ? "music.nowPlaying" : "music.pausedTrack") : t("music.title")}</span>
+          <strong>{currentTrack?.title ?? t("music.queueEmpty")}</strong>
+          <span className="muted small">{currentTrack ? t("music.requestedBy", { nickname: currentTrack.requester }) : t("music.widgetHint")}</span>
+          {currentTrack ? <span className="music-track-duration muted small">{currentTrack.length}</span> : null}
+        </div>
+      {transport.present || roomNotice ? (
+      <div className="music-panel-controls">
+        {transport.present ? (
+          <>
+            {/* One button, and the mark on it says which half it is. The word
+                moved from the face into the accessible name when the face
+                became an icon: it is still the only place the pressed state is
+                said, because "Pause, pressed" leaves a listener working out
+                whether the music is running or stopped, which is the one thing
+                the name has already told them. */}
+            <button
+              aria-label={transport.playing ? t("music.pause") : t("music.play")}
+              className="icon-btn music-transport"
+              disabled={transportDisabled}
+              onClick={() => void send(transportToggleCommand(transport))}
+              title={transport.playing ? t("music.pause") : t("music.play")}
+              type="button"
+            >
+              {transport.playing ? <PauseIcon /> : <PlayIcon />}
+            </button>
+            {/* The skip names the entry it believes is playing. A panel one
+                message out of date therefore skips nothing rather than skipping
+                whatever moved up — which is what makes two members pressing it
+                together cost one Track. */}
+            <button
+              aria-label={t("music.skip")}
+              className="icon-btn music-transport"
+              disabled={transportDisabled}
+              onClick={() => {
+                // Narrowing, not a second guard: `disabled` has already ruled
+                // this out, and the command cannot carry a null entry.
+                if (transport.currentEntryId) void send({ kind: "skip", entryId: transport.currentEntryId });
+              }}
+              title={t("music.skip")}
+              type="button"
+            >
+              <SkipIcon />
+            </button>
+          </>
+        ) : null}
+        {/* The room's own notice, and the only thing left in it: the mute,
+            which is the one state the room cannot see for itself. Before the
+            control that sends the bot away, so that control keeps the same
+            place on the row whether or not an owner has muted anything. */}
+        {roomNotice ? <span className="music-room-notice muted small">{roomNotice}</span> : null}
+        {transport.present ? (
+          <button className="btn btn-ghost music-leave" type="button" disabled={busy} onClick={() => void send({ kind: "leave" })}>
+            <LeaveIcon />
+            <span>{t("music.leave")}</span>
+          </button>
+        ) : null}
+      </div>
+      ) : null}
+      </div>
       <form
         className="music-panel-link"
         onSubmit={(event) => {
@@ -277,8 +340,8 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
         </section>
       ) : null}
       {queue ? (
-        <section className="music-queue" aria-labelledby="musicQueueTitle">
-          <p className="label" id="musicQueueTitle">{t("music.queue")}</p>
+        <details className="music-queue">
+          <summary className="label" id="musicQueueTitle">{t("music.queue")} · {rows.length}</summary>
           {rows.length > 0 ? (
             <ol className="music-queue-list">
               {rows.map((row) => (
@@ -320,60 +383,7 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
           ) : (
             <p className="muted small">{t("music.queueEmpty")}</p>
           )}
-        </section>
-      ) : null}
-      {transport.present || roomNotice ? (
-      <div className="music-panel-controls">
-        {transport.present ? (
-          <>
-            {/* One button, and the mark on it says which half it is. The word
-                moved from the face into the accessible name when the face
-                became an icon: it is still the only place the pressed state is
-                said, because "Pause, pressed" leaves a listener working out
-                whether the music is running or stopped, which is the one thing
-                the name has already told them. */}
-            <button
-              aria-label={transport.playing ? t("music.pause") : t("music.play")}
-              className="icon-btn music-transport"
-              disabled={transportDisabled}
-              onClick={() => void send(transportToggleCommand(transport))}
-              title={transport.playing ? t("music.pause") : t("music.play")}
-              type="button"
-            >
-              {transport.playing ? <PauseIcon /> : <PlayIcon />}
-            </button>
-            {/* The skip names the entry it believes is playing. A panel one
-                message out of date therefore skips nothing rather than skipping
-                whatever moved up — which is what makes two members pressing it
-                together cost one Track. */}
-            <button
-              aria-label={t("music.skip")}
-              className="icon-btn music-transport"
-              disabled={transportDisabled}
-              onClick={() => {
-                // Narrowing, not a second guard: `disabled` has already ruled
-                // this out, and the command cannot carry a null entry.
-                if (transport.currentEntryId) void send({ kind: "skip", entryId: transport.currentEntryId });
-              }}
-              title={t("music.skip")}
-              type="button"
-            >
-              <SkipIcon />
-            </button>
-          </>
-        ) : null}
-        {/* The room's own notice, and the only thing left in it: the mute,
-            which is the one state the room cannot see for itself. Before the
-            control that sends the bot away, so that control keeps the same
-            place on the row whether or not an owner has muted anything. */}
-        {roomNotice ? <span className="music-room-notice muted small">{roomNotice}</span> : null}
-        {transport.present ? (
-          <button className="btn btn-ghost music-leave" type="button" disabled={busy} onClick={() => void send({ kind: "leave" })}>
-            <LeaveIcon />
-            <span>{t("music.leave")}</span>
-          </button>
-        ) : null}
-      </div>
+        </details>
       ) : null}
       {/* Last on the page, because it is the part that grows. The Queue grows
           when somebody adds; this grows on every press anyone in the room
@@ -382,8 +392,8 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
           for it. Not a live region either: the panel has one, and it belongs to
           the member waiting for an answer to their own press. */}
       {logRows.length > 0 ? (
-        <section className="music-log" aria-labelledby="musicLogTitle">
-          <p className="label" id="musicLogTitle">{t("music.log")}</p>
+        <details className="music-log">
+          <summary className="label" id="musicLogTitle">{t("music.log")}</summary>
           <ol className="music-log-list">
             {logRows.map((row) => (
               /* By id and not by what it says: two members pausing in turn
@@ -391,7 +401,7 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
               <li key={row.lineId}>{row.message}</li>
             ))}
           </ol>
-        </section>
+        </details>
       ) : null}
     </section>
   );

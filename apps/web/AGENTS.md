@@ -26,7 +26,8 @@ localized presentation, media UI, and client-side Socket.IO/WebRTC lifecycle.
 - `src/api.ts` is the typed HTTP boundary.
 - `src/socket.ts` is the typed Socket.IO client boundary.
 - `src/lib/i18n.ts` is the source of English and Turkish UI strings.
-- `src/styles.css` is the existing shared visual system.
+- `src/styles.css` owns layout mechanics and interaction geometry;
+  `src/visual-refresh.css` owns theme tokens and screen presentation.
 - `test` uses the Node test runner after TypeScript compilation. Some tests
   intentionally assert source or CSS structure where browser geometry is not
   available.
@@ -167,9 +168,11 @@ requirement.
   honoured by the bot process itself (ADR-0009).
 - The normal server switcher is navigation for owners and members. Server
   creation and deletion belong in the selected owner-server context.
-- Reserve the top-left channel-rail lockup for the Voxly mark and application
-  name. The active server name belongs in the adjacent server switcher; do not
-  repeat it as the rail brand subtitle.
+- Show the Voxly mark once in authenticated navigation: in the workspace rail
+  on desktop and the top bar on narrow screens. The channel rail places the server name beside a visible invite action.
+  Server switching uses letter avatars in the workspace rail; on phones, it
+  opens alongside the channel drawer with an explicit close control. The active server
+  name remains visible in the channel rail header.
 - The selected owner-server context also owns server renaming. Trim and enforce
   the server's 2–64 character contract, update local navigation from the HTTP
   acknowledgement, and apply scoped realtime name updates to the matching
@@ -393,9 +396,11 @@ requirement.
 - Watch is one action: if necessary, join or move to the target voice room with
   `microphoneEnabled: true`, subscribe to that user's screen, and focus it on
   the stage. When already in that room, do not rejoin.
-- Remote screen sources in the middle source rail reuse this same
+- Remote screen tiles reuse this same
   `pendingLiveWatch` path when the viewed room is not the active voice room.
-  The complete `visual-source-main` row is the action; do not add a separate
+  The complete tile is the action; clicking the selected camera or screen tile
+  clears the stage, and clicking another selects that source alone. Do not add eye
+  buttons or a separate
   `Watch` / `İzle` label or a second confirmation step.
 - When the middle screen source already belongs to the active voice room,
   subscribe and focus directly. Keep the existing local camera/source
@@ -414,8 +419,8 @@ requirement.
   immediately when disconnected, open the already-active room without a new
   join, and require one localized confirmation before moving from another
   voice room. Navigate only after the acknowledged join succeeds.
-- The call surface is the sole voice-room scroll owner. Keep stage, available
-  sources, participants, and music in normal flow in that order; do not add
+- The call surface is the sole voice-room scroll owner. Keep the selected stage, a unified participant/LIVE tile grid, and music
+  in normal flow in that order; do not add
   nested scrollbars, sticky sections, or absolute positioning.
 - Music comes **after** the participants, not before them. The panel used to
   precede them, when it was two controls and a status line; it now carries the
@@ -630,11 +635,11 @@ folded into a width: a touchscreen laptop is wide and cannot right-click.
 
 ## Theme and Contrast
 
-- The neutral dark foundation is Onyx `#0A0A09`; do not restore the former
-  brown base through tokens, surfaces, borders, or control states.
-- In explicit light mode the left channel rail is white with Onyx foreground.
-  In explicit or system dark mode it uses the Onyx background with the shared
-  off-white foreground.
+- The dark foundation is blue-black `#0B0D10`, with graphite panels and restrained
+  silver controls. Keep warm brown out of tokens, surfaces, borders, and states.
+- In explicit light mode the left channel rail is white with deep navy
+  foreground. In explicit or system dark mode it uses the slate rail background
+  with the shared off-white foreground.
 - Rail cards, fields, borders, muted copy, member rows, and skeletons use the
   dedicated rail tokens rather than assuming the rail is always dark. Preserve
   readable foreground/background contrast for text, placeholders, icons,
@@ -657,3 +662,10 @@ npm run build -w @voxly/web
 For styling or interaction changes, also inspect desktop, short-viewport, and
 narrow/coarse-pointer behavior when a browser is available. Structural source
 tests complement that check; they do not replace it for geometry-sensitive UI.
+
+- The focused stage video also toggles back to the participant grid on click;
+  fullscreen and screen-volume controls retain their own actions. Selected
+  screen thumbnails use a blurred preview with one central share icon. Participant
+  captions show mute/deafen only; the screen tile owns the share indicator.
+- The dock avatar menu owns Settings and Owner panel navigation. Do not duplicate
+  those actions beside the avatar; the workspace rail keeps its Settings shortcut.

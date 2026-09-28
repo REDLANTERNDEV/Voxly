@@ -1,4 +1,5 @@
 import type { PresenceUser,PublicUser,RoomSummary,VoiceModerationState,VoiceSnapshot } from "@voxly/shared";
+import { useState } from "react";
 import { initial,memberRoleLabel } from "../../app/presentation.js";
 import type { MemberAction,Translate } from "../../app/types.js";
 import { UserPlusIcon } from "../ui/Icons.js";
@@ -50,6 +51,7 @@ export function MemberPanel({
   actionMenu: SidebarActionMenuController;
   t: Translate;
 }) {
+  const [query, setQuery] = useState("");
   const roomByMemberId = new Map<string, RoomSummary>();
   for (const room of voiceRooms) {
     for (const member of voiceSnapshots[room.id]?.members ?? []) {
@@ -57,6 +59,9 @@ export function MemberPanel({
     }
   }
   const groupedMembers = groupDirectoryMembers(members, onlineUsers, currentServerPresence(currentUser, members));
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleOnline = normalizedQuery ? groupedMembers.online.filter((member) => member.nickname.toLocaleLowerCase().includes(normalizedQuery)) : groupedMembers.online;
+  const visibleOffline = normalizedQuery ? groupedMembers.offline.filter((member) => member.nickname.toLocaleLowerCase().includes(normalizedQuery)) : groupedMembers.offline;
   const renderMembers = (users: PresenceUser[], online: boolean) => users.map((user) => {
     const voiceRoom = roomByMemberId.get(user.userId);
     const voiceMember = voiceRoom ? voiceSnapshots[voiceRoom.id]?.members.find((member) => member.user.userId === user.userId) : undefined;
@@ -129,15 +134,24 @@ export function MemberPanel({
   });
   return (
     <aside className="member-panel">
+      <div className="member-panel-toolbar">
+        <strong>{t("common.members")}</strong>
+        <span>{countPeople(groupedMembers.online)} {t("common.online").toLocaleLowerCase()}</span>
+      </div>
+      <label className="member-panel-search">
+        <span className="sr-only">{t("member.search")}</span>
+        <input type="search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={t("member.search")} />
+      </label>
+      {normalizedQuery && visibleOnline.length === 0 && visibleOffline.length === 0 ? <p className="member-panel-no-results">{t("member.noResults")}</p> : null}
       <section className="member-section">
-        <div className="member-section-head"><span className="label">{t("common.online")}</span><span className="badge">{countPeople(groupedMembers.online)}</span></div>
-        {groupedMembers.online.length === 0 ? (
+        <div className="member-section-head"><span className="label">{t("common.online")}</span><span className="badge">{countPeople(visibleOnline)}</span></div>
+        {visibleOnline.length === 0 && !normalizedQuery ? (
           <p className="muted small">{t("room.presenceWaiting")}</p>
-        ) : renderMembers(groupedMembers.online, true)}
+        ) : renderMembers(visibleOnline, true)}
       </section>
-      {groupedMembers.offline.length > 0 ? <section className="member-section member-section-offline">
-        <div className="member-section-head"><span className="label">{t("common.offline")}</span><span className="badge">{countPeople(groupedMembers.offline)}</span></div>
-        {renderMembers(groupedMembers.offline, false)}
+      {visibleOffline.length > 0 ? <section className="member-section member-section-offline">
+        <div className="member-section-head"><span className="label">{t("common.offline")}</span><span className="badge">{countPeople(visibleOffline)}</span></div>
+        {renderMembers(visibleOffline, false)}
       </section> : null}
     </aside>
   );

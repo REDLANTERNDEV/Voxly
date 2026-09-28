@@ -3,13 +3,15 @@ import { useEffect,useRef,useState } from "react";
 import { serverPath } from "../../app/navigation.js";
 import { initial,presenceFromUser } from "../../app/presentation.js";
 import type { LiveWatchRequest,ShellActions,ShellModel,VoiceChromeModel } from "../../app/types.js";
-import { EyeIcon,VolumeIcon } from "../../components/ui/Icons.js";
-import { EmptyState,RoomHeader,VolumeControl } from "../../components/ui/Primitives.js";
+import { ScreenIcon } from "../../components/ui/Icons.js";
+import { EmptyState,RoomHeader } from "../../components/ui/Primitives.js";
 import { resolveRememberedRoom } from "../../lib/channelState.js";
 import { connectionStatusFor } from "../../lib/voiceNegotiation.js";
-import { replaceVisualTarget,toggleVisualTarget,visualTargetKey } from "../../lib/voiceResume.js";
+import { visualTargetKey } from "../../lib/voiceResume.js";
 import { participantsForViewedRoom,remoteStreamKey } from "../../lib/voiceStreams.js";
-import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
+import { StageMemberActions } from "../../components/shell/StageMemberActions.js";
+import { countPeople } from "../../lib/memberDirectory.js";
+import { stageTileSelection } from "./stageTileSelection.js";
 import { MusicPanel } from "./MusicPanel.js";
 import { RemoteVideo,VisualStage,VoiceStatusBadges,type StageSource } from "./VoicePresentation.js";
 
@@ -30,6 +32,8 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
   const [localStageKeys, setLocalStageKeys] = useState<string[]>([]);
   const [focusedSourceKey, setFocusedSourceKey] = useState<string | null>(null);
   const [stageStatus, setStageStatus] = useState("");
+  const [selectionPending, setSelectionPending] = useState(false);
+  const selectionPendingRef = useRef(false);
   const liveWatchAttemptRef = useRef<LiveWatchRequest | null>(null);
   const viewedRoomId = props.currentRoom?.id ?? (props.route.name === "voice" ? props.route.roomId : props.activeVoiceRoomId);
   const viewedSnapshot = viewedRoomId ? props.voiceSnapshots[viewedRoomId] : undefined;
@@ -40,7 +44,7 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
     props.activeVoiceRoomId,
     presenceFromUser(props.user, props.currentNickname)
   );
-  const connectedCount = participants.length;
+  const connectedCount = countPeople(participants);
   const streamByKey = new Map(props.remoteStreams.map((item) => [remoteStreamKey(item.userId, item.kind), item.stream]));
   for (const preview of props.localPreviews) {
     streamByKey.set(remoteStreamKey(props.user.id, preview.kind), preview.stream);
@@ -87,15 +91,16 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
     props.roomHistory[props.activeServerId]?.text
   );
 
-  const updateRemoteSelection = async (targets: VisualTarget[], focusKey: string) => {
+  const updateRemoteSelection = async (targets: VisualTarget[], focusKey: string | null) => {
     const response = await props.onSetVisualSubscriptions(targets);
     if (response.ok) {
       setFocusedSourceKey(focusKey);
       setStageStatus("");
-      return;
+      return true;
     }
     props.onRequestVoiceSnapshot(viewedRoomId ?? props.activeVoiceRoomId ?? "");
     setStageStatus(props.t("voice.sourceUnavailable"));
+    return false;
   };
 
   const watchSource = (source: StageSource) => {
@@ -113,23 +118,14 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
       });
       return;
     }
-    if (source.ownerIsLocal) {
-      setLocalStageKeys([source.key]);
-      setFocusedSourceKey(source.key);
-      return;
-    }
-    if (source.target) void updateRemoteSelection(replaceVisualTarget(props.visualTargets, source.target), source.key);
-  };
-
-  const toggleSource = (source: StageSource) => {
-    if (source.ownerIsLocal) {
-      setLocalStageKeys((current) => current.includes(source.key)
-        ? current.filter((key) => key !== source.key)
-        : [...current, source.key]);
-      setFocusedSourceKey(source.key);
-      return;
-    }
-    if (source.target) void updateRemoteSelection(toggleVisualTarget(props.visualTargets, source.target), source.key);
+    if (selectionPendingRef.current) return;
+    const selection = stageTileSelection(selectedKeys, source);
+    selectionPendingRef.current = true;
+    setSelectionPending(true);
+    void updateRemoteSelection(selection.targets, selection.focusKey)
+      .then((ok) => { if (ok) setLocalStageKeys(selection.localKeys); })
+      .catch(() => setStageStatus(props.t("voice.sourceUnavailable")))
+      .finally(() => { selectionPendingRef.current = false; setSelectionPending(false); });
   };
 
   useEffect(() => {
@@ -159,105 +155,63 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
       return;
     }
     if (!requestedLiveSource.target) return;
-    void updateRemoteSelection([requestedLiveSource.target], requestedLiveSource.key).finally(props.onLiveWatchHandled);
+    void updateRemoteSelection([requestedLiveSource.target], requestedLiveSource.key)
+      .then((ok) => { if (ok) setLocalStageKeys([]); })
+      .finally(props.onLiveWatchHandled);
   }, [pendingLiveWatch?.publisherUserId, props.activeVoiceRoomId, props.socketState, requestedLiveSource?.key, viewedRoomId]);
 
   return (
     <main className="main-panel" id="main-content">
         <RoomHeader
           title={props.currentRoom?.name ?? props.t("room.lobbyVoice")}
-          subtitle={props.t("room.pushToMute", { count: connectedCount })}
+          subtitle={props.t("common.connected", { count: connectedCount })}
+          kind="voice"
           actionLabel={targetTextRoom ? props.t("room.openChannel", { channel: targetTextRoom.name }) : undefined}
           onAction={targetTextRoom ? () => props.onNavigate(serverPath(props.activeServerId, "text", targetTextRoom.id)) : undefined}
         />
         {hasVoiceActivity ? (
           <section className="call-surface voice-control-room" aria-label={props.t("room.voiceRooms")}>
-            {stageSources.length > 0 ? (
-              <VisualStage
-                sources={stageSources}
-                focusedSource={focusedSource}
-                screenVolumes={props.screenVolumes}
-                outputVolume={props.audioLevels.output}
-                onFocus={setFocusedSourceKey}
-                onScreenVolumeChange={props.onScreenVolumeChange}
-                t={props.t}
-              />
-            ) : (
-              <section className="stage-empty" aria-live="polite">
-                <p className="label">{props.t("voice.stage")}</p>
-                <strong>{pendingLiveWatch ? props.t("voice.liveReady", { nickname: pendingLiveWatch.nickname }) : props.t("voice.chooseSource")}</strong>
-                <span>{pendingLiveWatch ? props.t("voice.liveReadyCopy") : props.t("voice.chooseSourceCopy")}</span>
-              </section>
-            )}
-
-            {visualSources.length > 0 ? (
-              <section className="visual-source-rail" aria-labelledby="sourceRailTitle">
-                <header className="compact-section-head">
-                  <div><p className="label" id="sourceRailTitle">{props.t("voice.sources")}</p><span>{props.t("voice.sourcesCopy")}</span></div>
-                  <span className="muted small">{visualSources.length}</span>
-                </header>
-                <ul className="visual-source-list">
-                  {visualSources.map((source) => {
-                    const selected = selectedKeys.has(source.key);
-                    return (
-                      <li className={`visual-source ${selected ? "is-selected" : ""}`} key={source.key}>
-                        <button className="visual-source-main" type="button" disabled={props.socketState !== "live"} onClick={() => watchSource(source)} aria-pressed={selected}>
-                          <span className="source-thumb" aria-hidden="true">
-                            {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span>{source.connectionStatus === "failed" ? props.t("voice.retry") : source.connectionStatus === "reconnecting" ? props.t("voice.reconnecting") : props.t("voice.connecting")}</span>}
-                          </span>
-                          <span className="source-copy"><strong>{source.ownerName}</strong><span>{source.kind === "screen" ? props.t("status.screenSharing") : props.t("status.cameraOn")}</span></span>
-                        </button>
-                        <button
-                          className={`icon-btn source-multi-toggle ${selected ? "is-active" : ""}`}
-                          type="button"
-                          disabled={props.socketState !== "live"}
-                          onClick={() => toggleSource(source)}
-                          aria-label={selected ? props.t("voice.removeFromStage", { nickname: source.ownerName }) : props.t("voice.addToStage", { nickname: source.ownerName })}
-                          aria-pressed={selected}
-                        >
-                          <EyeIcon />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            ) : null}
-
-            <section className="voice-participants" aria-labelledby="participantTitle">
-              <header className="compact-section-head"><div><p className="label" id="participantTitle">{props.t("common.members")}</p><span>{props.t("room.pushToMute", { count: connectedCount })}</span></div></header>
-              <ul className="participant-list">
-                {participants.map((participant) => {
-                  const media = mediaFor(participant.userId);
-                  const moderation = moderationByUser.get(participant.userId);
-                  const audioStream = participant.userId === props.user.id ? null : streamByKey.get(remoteStreamKey(participant.userId, "audio"));
-                  const isSpeaking = Boolean(media?.speaking && media.mic && !media.deafened && !moderation?.muted);
-                  return (
-                    <li className={`participant-row ${isSpeaking ? "is-speaking" : ""}`} key={participant.userId}>
+            {stageSources.length > 0 ? <VisualStage
+              sources={stageSources} focusedSource={focusedSource}
+              screenVolumes={props.screenVolumes} outputVolume={props.audioLevels.output}
+              onFocus={setFocusedSourceKey} onDismiss={watchSource} onScreenVolumeChange={props.onScreenVolumeChange} t={props.t}
+            /> : null}
+            <ul className="voice-tile-grid" aria-label={props.t("common.members")}>
+              {participants.map((participant) => {
+                const media = mediaFor(participant.userId);
+                const moderation = moderationByUser.get(participant.userId);
+                const isSpeaking = Boolean(media?.speaking && media.mic && !media.deafened && !moderation?.muted);
+                const camera = visualSources.find((source) => source.ownerId === participant.userId && source.kind === "camera");
+                return <li className={`voice-person-tile ${isSpeaking ? "is-speaking" : ""} ${camera && selectedKeys.has(camera.key) ? "is-selected" : ""}`} key={participant.userId}>
+                  <StageMemberActions member={participant} roomId={viewedRoomId ?? ""} moderation={moderation}>
+                    {camera ? <button className="voice-person-watch" type="button"
+                      disabled={props.socketState !== "live" || selectionPending}
+                      aria-pressed={selectedKeys.has(camera.key)}
+                      aria-label={props.t(selectedKeys.has(camera.key) ? "voice.removeFromStage" : "voice.addToStage", { nickname: participant.nickname })}
+                      onClick={() => watchSource(camera)}>
+                      {camera.stream ? <RemoteVideo stream={camera.stream} muted /> : <span className="call-avatar" aria-hidden="true">{initial(participant.nickname)}</span>}
+                      <span className="voice-tile-caption"><strong>{participant.nickname}</strong><VoiceStatusBadges media={media} moderation={moderation} t={props.t} showVisual={false} /></span>
+                    </button> : <>
                       <span className="call-avatar" aria-hidden="true">{initial(participant.nickname)}</span>
-                      <span className="participant-copy"><strong>{participant.nickname}</strong></span>
-                      {/* The end of the row holds what is true of them and the
-                          one thing you can do about it. Both stay out of the
-                          name's line, so a member muting themselves does not
-                          move anybody's nickname. */}
-                      <span className="participant-status">
-                        <VoiceStatusBadges media={media} moderation={moderation} t={props.t} />
-                        {audioStream ? (
-                          <details className="volume-popover">
-                            <summary aria-label={props.t("voice.memberVolume", { nickname: participant.nickname })}><VolumeIcon /></summary>
-                            <VolumeControl
-                              label={props.t("voice.memberVolume", { nickname: participant.nickname })}
-                              value={props.memberVolumes[participant.userId] ?? DEFAULT_VOLUME_PERCENT}
-                              onChange={(volume) => props.onMemberVolumeChange(participant.userId, volume)}
-                            />
-                          </details>
-                        ) : null}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
+                      <span className="voice-tile-caption"><strong>{participant.nickname}</strong><VoiceStatusBadges media={media} moderation={moderation} t={props.t} showVisual={false} /></span>
+                    </>}
+
+                  </StageMemberActions>
+                </li>;
+              })}
+              {visualSources.filter((source) => source.kind === "screen").map((source) => {
+                const selected = selectedKeys.has(source.key);
+                return <li className={`voice-stream-tile ${selected ? "is-selected" : ""}`} key={source.key}>
+                  <button className="voice-stream-watch" type="button" disabled={props.socketState !== "live" || selectionPending} onClick={() => watchSource(source)} aria-pressed={selected} aria-label={props.t(selected ? "voice.removeFromStage" : "voice.addToStage", { nickname: source.ownerName })}>
+                    {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span className="stream-avatar">{initial(source.ownerName)}</span>}
+                    {selected ? <span className="selected-stream-mark" aria-hidden="true"><ScreenIcon off={false} /></span> : null}
+                    <span className="tile-live">{props.t("common.live")}</span>
+                    <span className="voice-tile-caption"><strong>{source.ownerName}</strong><VoiceStatusBadges media={mediaFor(source.ownerId)} moderation={moderationByUser.get(source.ownerId)} t={props.t} showVisual={false} />{!selected ? <ScreenIcon off={false} /> : null}</span>
+                  </button>
+
+                </li>;
+              })}
+            </ul>
 
             {viewedRoomId && props.activeVoiceRoomId === viewedRoomId ? (
               <MusicPanel
@@ -273,7 +227,7 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
           </section>
         ) : (
           <section className="call-surface">
-            <EmptyState title={props.t("room.noActiveVoice")} copy={props.t("room.noActiveVoiceCopy")} />
+            <EmptyState title={props.t("room.noActiveVoice")} copy={props.t("room.noActiveVoiceCopy")} kind="voice" />
           </section>
         )}
     </main>

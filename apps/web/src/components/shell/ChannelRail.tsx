@@ -6,14 +6,13 @@ import { activeServerRole,canInviteToActiveServer,initial,voiceMembersForRoom } 
 import type { MemberAction,ShellActions,ShellModel,Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
 import { CameraIcon, GearIcon, HeadsetIcon, MicIcon, ScreenIcon } from "../../components/ui/Icons.js";
-import { BrandLockup,NavLink } from "../../components/ui/Navigation.js";
+import { NavLink } from "../../components/ui/Navigation.js";
 import { canOwnerModeratePerson,canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
 import { voiceChannelActivation } from "../../lib/voiceChannelActivation.js";
 import { sidebarVoiceStatusKeys,sidebarVoiceStatusLabelKeys } from "../../lib/voiceControls.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
 import { ContextMenu } from "../ContextMenu.js";
 import { LiveStreamPopover } from "../LiveStreamPopover.js";
-import { ServerSwitcher } from "../ServerSwitcher.js";
 import { InviteQuickAction } from "../../features/invites/InviteQuickAction.js";
 import { MemberActionMenu,memberActionMenuHeight,openSidebarMenuFromPointer,SidebarMenuTrigger,type SidebarActionMenuController } from "./SidebarMenus.js";
 import { ChannelOrganizer, type ChannelRoomActions } from "./ChannelOrganizer.js";
@@ -225,7 +224,7 @@ export function ChannelRail(props: ChannelRailProps) {
       });
     } : undefined}>
       <div className="rail-head">
-        <BrandLockup subtitle="" href={serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general")} onNavigate={props.onNavigate} />
+        <strong className="rail-server-name" title={activeServer?.name}>{activeServer?.name ?? "Voxly"}</strong>
         {canInvite ? <InviteQuickAction
           serverId={props.activeServerId}
           serverName={activeServer?.name ?? "Voxly"}
@@ -233,15 +232,6 @@ export function ChannelRail(props: ChannelRailProps) {
           t={props.t}
         /> : null}
       </div>
-      <ServerSwitcher
-        activeServerId={props.activeServerId}
-        servers={props.servers}
-        labels={{
-          switcher: props.t("server.switcher"),
-          server: props.t("server.label")
-        }}
-        onSelect={props.onSelectServer}
-      />
       <ChannelOrganizer
         serverId={props.activeServerId}
         categories={props.categories}

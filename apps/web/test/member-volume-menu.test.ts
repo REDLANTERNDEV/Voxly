@@ -56,7 +56,7 @@ describe("member volume menus", () => {
     assert.match(styles, /\.voice-status-icon\.is-danger \{\s*color: var\(--danger\);/);
     // And it stays out of the nickname's line.
     assert.doesNotMatch(app, /<span className="participant-copy">[^\n]*<VoiceStatusBadges/);
-    assert.match(app, /className="participant-status"[\s\S]{0,200}?<VoiceStatusBadges/);
+    assert.match(app, /className="voice-tile-caption"[\s\S]{0,200}?<VoiceStatusBadges/);
   });
 
   it("uses one explicit column contract for owner and member rows", () => {

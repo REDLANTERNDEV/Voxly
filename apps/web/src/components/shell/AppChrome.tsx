@@ -18,7 +18,10 @@ import { MemberPanel } from "./MemberPanel.js";
 import { SettingsDialog,type SettingsSection } from "./SettingsDialog.js";
 import type { SidebarActionMenuController } from "./SidebarMenus.js";
 import { VoiceDock } from "./VoiceDock.js";
+import { StageActionsContext } from "./StageMemberActions.js";
+import { WorkspaceRail } from "./WorkspaceRail.js";
 export function AppChrome(props: ShellModel & ShellActions & { children: ReactNode; mobileTitle: string }) {
+  const mobileRoomsRef = useRef<HTMLButtonElement | null>(null);
   const canModerate = activeServerRole(props) === "owner";
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("account");
@@ -115,7 +118,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
       <a className="skip-link" href="#main-content">{props.t("shell.skip")}</a>
       <div className={`drawer-scrim ${props.drawer ? "is-visible" : ""}`} onClick={() => props.onDrawerChange(null)} />
       <div className="mobile-topbar">
-        <button className="icon-btn" type="button" onClick={() => props.onDrawerChange(props.drawer === "channels" ? null : "channels")} aria-label={props.t("common.rooms")}>
+        <button ref={mobileRoomsRef} className="icon-btn" type="button" onClick={() => props.onDrawerChange(props.drawer === "channels" ? null : "channels")} aria-label={props.t("common.rooms")}>
           <MenuIcon />
           <span>{props.t("common.rooms")}</span>
         </button>
@@ -125,7 +128,18 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           <span>{props.t("common.users")}</span>
         </button>
       </div>
-      <div className={`app-shell drawer-${props.drawer ?? "none"}`}>
+      <div className={`app-shell ${props.route.name === "voice" ? "is-voice-stage" : ""} drawer-${props.drawer ?? "none"}`}>
+        <WorkspaceRail
+          activeServerId={props.activeServerId}
+          rooms={props.rooms}
+          roomHistory={props.roomHistory}
+          servers={props.servers}
+          t={props.t}
+          onNavigate={props.onNavigate}
+          onSelectServer={async (serverId) => { await props.onSelectServer(serverId); props.onDrawerChange(null); mobileRoomsRef.current?.focus(); }}
+          onCloseDrawer={() => { props.onDrawerChange(null); mobileRoomsRef.current?.focus(); }}
+          onOpenSettings={() => openSettings()}
+        />
         <ChannelRail
           onOpenSettings={() => openSettings()}
           onToggleControl={props.onToggleControl}
@@ -185,7 +199,19 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
             setPendingMemberAction({ user: member, action, roomId });
           }}
         />
-        {props.children}
+        <StageActionsContext.Provider value={{
+          activeServerId: props.activeServerId, servers: props.servers, user: props.user, rooms: props.rooms,
+          memberVolumes: props.memberVolumes, activeVoiceRoomId: props.activeVoiceRoomId, controls: props.controls,
+          micLockedByRoom: props.micLockedByRoom, voiceModeration: props.voiceModeration, socketState: props.socketState,
+          microphoneTestActive: props.microphoneTestActive, t: props.t,
+          onMemberVolumeChange: props.onMemberVolumeChange, onVoiceModeration: props.onVoiceModeration,
+          onUpdateMemberPermissions: props.onUpdateMemberPermissions, onMoveMember: props.onMoveMember,
+          onToggleControl: props.onToggleControl, actionMenu,
+          onRequestNickname: (member, returnFocus) => setNicknameTarget({ user: member, returnFocus }),
+          onRequestMemberAction: (member, action, roomId) => {
+            closeActionMenu(); setPendingMemberAction({ user: member, action, roomId });
+          }
+        }}>{props.children}</StageActionsContext.Provider>
         <MemberPanel
           selfVoice={props.activeVoiceRoomId ? {
             mic: props.controls.mic.on,
@@ -231,6 +257,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         currentRoom={props.currentRoom}
         microphoneTestActive={props.microphoneTestActive}
         route={props.route}
+        rooms={props.rooms}
         servers={props.servers}
         socketState={props.socketState}
         t={props.t}

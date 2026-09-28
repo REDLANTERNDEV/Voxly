@@ -4,7 +4,8 @@ import type { Translate } from "../../app/types.js";
 import { TurnstileWidget } from "./InviteScreen.js";
 import { formatLinkCodeInput, isCompleteLinkCode } from "../../lib/linkCodeInput.js";
 import { scannedLinkCode } from "../../lib/linkGuide.js";
-import { BrandLockup } from "../../components/ui/Navigation.js";
+import { AuthPageHeader } from "../../components/ui/Primitives.js";
+import type { LanguageCode } from "../../lib/i18n.js";
 
 /**
  * The arriving Device's half of linking: type the code, then wait to be let in.
@@ -14,8 +15,10 @@ import { BrandLockup } from "../../components/ui/Navigation.js";
  * approves on the Device that minted the code. Somebody who read the code off a
  * screen share reaches exactly this screen and gets no further (ADR-0014).
  */
-export function LinkDeviceScreen({ t, onLinked, turnstileSiteKey }: {
+export function LinkDeviceScreen({ language, t, onLanguageChange, onLinked, turnstileSiteKey }: {
+  language: LanguageCode;
   t: Translate;
+  onLanguageChange: (language: LanguageCode) => void;
   onLinked: () => void;
   /** The operator's challenge, when they configured one. */
   turnstileSiteKey: string | null;
@@ -76,7 +79,7 @@ export function LinkDeviceScreen({ t, onLinked, turnstileSiteKey }: {
 
   return (
     <main className="landing link-screen">
-      <BrandLockup subtitle="" />
+      <AuthPageHeader language={language} t={t} onLanguageChange={onLanguageChange} />
       {claimToken ? (
         <section className="link-panel">
           <strong>{t("link.waitingTitle")}</strong>

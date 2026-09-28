@@ -60,7 +60,9 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
     // refresh by hand before Voxly notices them. Reloading straight into the
     // app is what "I linked my phone and it just worked" requires.
     return renderSurface(<LinkDeviceScreen
+      language={language}
       t={t}
+      onLanguageChange={changeLanguage}
       turnstileSiteKey={turnstileSiteKey}
       onLinked={() => window.location.assign(resolveInitialRoute({ isAuthenticated: true, inviteToken: null }))}
     />);
@@ -69,10 +71,10 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
     // A full reload rather than a client navigation: recovery revoked every
     // other session, and the shell must be rebuilt around the new one rather
     // than carrying state that belonged to a session which no longer exists.
-    return renderSurface(<RecoverScreen t={t} turnstileSiteKey={turnstileSiteKey} onRecovered={() => window.location.assign(resolveInitialRoute({ isAuthenticated: true, inviteToken: null }))} />);
+    return renderSurface(<RecoverScreen language={language} t={t} onLanguageChange={changeLanguage} turnstileSiteKey={turnstileSiteKey} onRecovered={() => window.location.assign(resolveInitialRoute({ isAuthenticated: true, inviteToken: null }))} />);
   }
   if (route.name === "access-claim") {
-    return renderSurface(<AccessClaimScreen token={route.token} t={t} onNavigate={navigate} onClaimed={onAccessClaimed} />);
+    return renderSurface(<AccessClaimScreen token={route.token} language={language} t={t} onLanguageChange={changeLanguage} onNavigate={navigate} onClaimed={onAccessClaimed} />);
   }
   if (!user && route.name === "landing") return <LandingPage language={language} analytics={analytics} signedOutReason={signedOutReason} t={t} onNavigate={navigate} onLanguageChange={changeLanguage} />;
   if (!user && route.name === "invite" && !route.token) return <InviteRequiredScreen language={language} t={t} onNavigate={navigate} onLanguageChange={changeLanguage} />;

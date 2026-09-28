@@ -22,7 +22,7 @@ export function BrandLockup({ title = "Voxly", subtitle = "The Basement", href =
   );
 }
 
-export function NavLink({ href, className, label, onNavigate, onClick, children }: {
+export function NavLink({ href, className, label, current = false, onNavigate, onClick, children }: {
   href: string;
   className: string;
   /**
@@ -31,12 +31,13 @@ export function NavLink({ href, className, label, onNavigate, onClick, children 
    * cannot drift apart.
    */
   label?: string;
+  current?: boolean;
   onNavigate: (path: string) => void;
   onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
   children: ReactNode;
 }) {
   const navigateOnClick = linkHandler(href, onNavigate);
-  return <a className={className} href={href} aria-label={label} title={label} onClick={(event) => {
+  return <a className={className} href={href} aria-label={label} aria-current={current ? "page" : undefined} title={label} onClick={(event) => {
     onClick?.(event);
     navigateOnClick(event);
   }}>{children}</a>;

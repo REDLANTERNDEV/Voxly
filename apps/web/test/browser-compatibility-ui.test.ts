@@ -25,7 +25,7 @@ describe("browser compatibility gate", () => {
     const gate = readFileSync(gatePath, "utf8");
     assert.match(gate, /browser\.steamOverlayTitle/);
     assert.match(gate, /browser\.steamOverlayCopy/);
-    assert.match(gate, /<LanguageSwitch/);
+    assert.match(gate, /<AuthPageHeader[^>]*onLanguageChange=\{changeLanguage\}/);
     assert.doesNotMatch(gate, /onDismiss|onContinue|sessionStorage/);
   });
 });

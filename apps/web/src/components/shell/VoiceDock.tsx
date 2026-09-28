@@ -1,6 +1,6 @@
 import { downloadVoiceDiagnostics } from "../../lib/voiceDiagnostics.js";
 import { useState } from "react";
-import { activeServerRole,connectionCopy,connectionLabel,initial,voiceDockSilenced,voiceDockStatusLabel,voiceSignalPresentation } from "../../app/presentation.js";
+import { activeServerRole,initial,voiceSignalPresentation } from "../../app/presentation.js";
 import type { ShellActions,ShellModel,Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
 import { CameraIcon,GearIcon,HeadsetIcon,LeaveIcon,MicIcon,ScreenIcon,ShieldIcon } from "../../components/ui/Icons.js";
@@ -13,7 +13,7 @@ import { controlPresentation } from "../../lib/voiceControls.js";
 type VoiceDockProps = Pick<ShellModel,
   "activeServerId" | "activeVoiceRoomId" | "connectionHealth" | "controls" |
   "currentNickname" | "currentRoom" | "microphoneTestActive" | "route" |
-  "servers" | "socketState" | "t" | "user" | "voiceModeration" | "micLockedByRoom" |
+  "rooms" | "servers" | "socketState" | "t" | "user" | "voiceModeration" | "micLockedByRoom" |
   "voiceQuality"
 > & Pick<ShellActions,
   "onJoinVoice" | "onLeaveVoice" | "onLogout" | "onNavigate" | "onToggleControl"
@@ -22,7 +22,9 @@ type VoiceDockProps = Pick<ShellModel,
 export function VoiceDock(props: VoiceDockProps) {
   const canManageServer = activeServerRole(props) === "owner";
   const [confirmingLogout, setConfirmingLogout] = useState(false);
-  const roomName = props.activeVoiceRoomId ? props.t("room.lobbyVoice") : props.t("common.offline");
+  const roomName = props.activeVoiceRoomId
+    ? props.rooms.voice.find((room) => room.id === props.activeVoiceRoomId)?.name ?? props.t("room.lobbyVoice")
+    : props.t("common.offline");
   const canJoinCurrentVoice = !props.activeVoiceRoomId && props.route.name === "voice";
   const micControl = controlPresentation("mic", props.controls);
   const deafenControl = controlPresentation("deafen", props.controls);
@@ -32,11 +34,7 @@ export function VoiceDock(props: VoiceDockProps) {
     <footer className="voice-dock">
       <div className="dock-room">
         <ConnectionSignal health={props.connectionHealth} quality={props.voiceQuality} inCall={Boolean(props.activeVoiceRoomId)} t={props.t} />
-        {/* The sentence carries the same alarm as the button, because the two are
-            the same fact and a member scanning the dock may read either one
-            first. It is also the half that says *which* — a colour on a button
-            cannot distinguish a muted microphone from a deafened headset. */}
-        <span className="dock-status"><strong>{roomName}</strong><span className={`small ${props.activeVoiceRoomId && voiceDockSilenced(props.controls) ? "dock-status-silenced" : "muted"}`}>{props.activeVoiceRoomId ? voiceDockStatusLabel(props.controls, props.connectedCount, props.socketState, props.t) : connectionCopy(props.socketState, props.t)}</span></span>
+        <span className="dock-status"><strong>{roomName}</strong></span>
       </div>
       <div className="dock-controls">
         {canJoinCurrentVoice ? (
@@ -59,18 +57,14 @@ export function VoiceDock(props: VoiceDockProps) {
         ) : null}
       </div>
       <div className="dock-self">
-        {canManageServer ? (
-          <NavLink className="btn btn-ghost dock-owner" href={`/app/server/${encodeURIComponent(props.activeServerId)}/owner`} label={props.t("owner.panel")} onNavigate={props.onNavigate}><ShieldIcon /><span>{props.t("owner.panel")}</span></NavLink>
-        ) : null}
-        <button className="btn btn-ghost dock-settings" type="button" aria-label={props.t("settings.open")} title={props.t("settings.open")} onClick={props.onOpenSettings}>
-          <GearIcon />
-        </button>
         <details className="account-menu">
           <summary aria-label={props.t("shell.accountMenu", { nickname: props.currentNickname })}>
             <span className={`avatar ${props.user.role === "owner" ? "owner" : ""}`} title={props.currentNickname}>{initial(props.currentNickname)}</span>
           </summary>
           <div className="account-menu-panel">
             <strong>{props.currentNickname}</strong>
+            <button className="btn btn-ghost account-settings-link" type="button" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); props.onOpenSettings(); }}><GearIcon /><span>{props.t("settings.open")}</span></button>
+            {canManageServer ? <NavLink className="btn btn-ghost account-owner-link" href={`/app/server/${encodeURIComponent(props.activeServerId)}/owner`} label={props.t("owner.panel")} onNavigate={props.onNavigate}><ShieldIcon /><span>{props.t("owner.panel")}</span></NavLink> : null}
             <button className="btn btn-danger" type="button" onClick={() => setConfirmingLogout(true)}>{props.t("common.logout")}</button>
           </div>
         </details>
@@ -111,9 +105,11 @@ export function ReconnectOverlay({ health, t }: { health: ConnectionHealth; t: T
       : t("connection.serverUnreachable");
   return (
     <div className="reconnect-overlay" role="status" aria-live="assertive">
-      <img className="reconnect-logo" src="/brand/svg/voxly-mark-primary.svg" alt="" width="72" height="72" />
-      <strong>{t("connection.reconnecting")}</strong>
-      <span>{copy}</span>
+      <div className="reconnect-panel">
+        <img className="reconnect-logo" src="/brand/svg/voxly-mark-primary.svg" alt="" width="72" height="72" />
+        <strong>{t("connection.reconnecting")}</strong>
+        <span>{copy}</span>
+      </div>
     </div>
   );
 }

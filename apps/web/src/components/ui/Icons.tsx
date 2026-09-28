@@ -12,7 +12,7 @@ export function GearIcon() { return <svg className="ui-icon" viewBox="0 0 24 24"
 export function RefreshIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6" /><path d="M20 4v5h-5" /></svg>; }
 export function CloseIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12" /><path d="m18 6-12 12" /></svg>; }
 export function EditIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16-1 4 4-1L19 8l-3-3Z" /><path d="m14 7 3 3" /></svg>; }
-export function TrashIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12" /><path d="M9 7V5h6v2" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M8 7l1 12h6l1-12" /></svg>; }
+export function TrashIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 14h12l1-14M10 10v6M14 10v6" /></svg>; }
 export function LeaveIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8 4 12l4 4" /><path d="M4 12h11" /><path d="M14 5h5v14h-5" /></svg>; }
 export function MaximizeIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5" /><path d="M16 3h5v5" /><path d="M21 16v5h-5" /><path d="M3 16v5h5" /></svg>; }
 export function EyeIcon({ off = false }: { off?: boolean }) { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12s3-5 8.5-5 8.5 5 8.5 5-3 5-8.5 5-8.5-5-8.5-5Z" /><circle cx="12" cy="12" r="2.5" />{off ? <path d="M4 4l16 16" /> : null}</svg>; }
