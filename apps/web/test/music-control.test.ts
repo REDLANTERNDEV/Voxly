@@ -784,8 +784,8 @@ describe("the Queue on the page", () => {
   it("gives the Queue a role, so the heading labelling it is not dropped", () => {
     // `aria-labelledby` on a plain div names nothing: without a role there is
     // no region for the heading to be the name of.
-    assert.match(musicPanel, /<details className="music-queue">/);
-    assert.match(musicPanel, /<summary className="label" id="musicQueueTitle">\{t\("music\.queue"\)\}/);
+    assert.match(musicPanel, /<details className="music-queue" open=\{queueOpen\}/);
+    assert.match(musicPanel, /<summary className="label" id="musicQueueTitle"><span>\{t\("music\.queue"\)\}/);
   });
 
   it("gives every row its Requester and its length", () => {
@@ -840,7 +840,7 @@ describe("the Set log on the page", () => {
 
   it("gives the log a role, so the heading labelling it is not dropped", () => {
     assert.match(musicPanel, /<details className="music-log">/);
-    assert.match(musicPanel, /<summary className="label" id="musicLogTitle">\{t\("music\.log"\)\}<\/summary>/);
+    assert.match(musicPanel, /<summary className="label" id="musicLogTitle"><span>\{t\("music\.log"\)\}<\/span><ChevronIcon direction="down" \/><\/summary>/);
   });
 
   it("shows nothing at all until somebody has done something", () => {
@@ -942,7 +942,7 @@ describe("the control's placement", () => {
     // status and alert, so the colour carries the difference and the role
     // stays put.
     assert.doesNotMatch(musicPanel, /role=\{/);
-    assert.match(musicPanel, /className=\{`music-reply \$\{refusal \? "error-text" : "muted small"\}`\}/);
+    assert.match(musicPanel, /className=\{`music-reply \$\{refusal \? "error-text" : accepted && results.length === 0 \? "music-reply-announcement" : "muted small"\}`\}/);
   });
 
   it("separates what the room is told from what this member is told", () => {

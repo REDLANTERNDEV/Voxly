@@ -1,7 +1,7 @@
 import type { MusicControlAck, MusicQueueState, MusicSearchResult, VoiceMemberState } from "@voxly/shared";
 import { useEffect, useRef, useState } from "react";
 import type { Translate } from "../../app/types.js";
-import { CloseIcon, LeaveIcon, PauseIcon, PlayIcon, PlayingIcon, SkipIcon } from "../../components/ui/Icons.js";
+import { ChevronIcon, CloseIcon, LeaveIcon, PauseIcon, PlayIcon, PlayingIcon, SkipIcon } from "../../components/ui/Icons.js";
 import {
   isSendableInput,
   musicBotIn,
@@ -144,6 +144,7 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
   const busy = pending || !connected || !roomId;
   // Nothing queued is nothing to play, pause or skip. A control that is visible
   // and enabled and does nothing is indistinguishable from a broken one.
+  const [queueOpen, setQueueOpen] = useState(true);
   const transportDisabled = busy || !transport.currentEntryId;
   const restingKey = musicRestingKey(transport);
 
@@ -193,7 +194,7 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
         if (event.key === "Escape" && results.length > 0) dismissResults();
       }}
     >
-      <header className="compact-section-head">
+      <header className="compact-section-head music-accessible-heading">
         <div>
           <p className="label" id="musicPanelTitle">{t("music.title")}</p>
         </div>
@@ -203,8 +204,7 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
         <div className="music-now-playing">
           <span className="music-playing-label">{currentTrack ? t(transport.playing ? "music.nowPlaying" : "music.pausedTrack") : t("music.title")}</span>
           <strong>{currentTrack?.title ?? t("music.queueEmpty")}</strong>
-          <span className="muted small">{currentTrack ? t("music.requestedBy", { nickname: currentTrack.requester }) : t("music.widgetHint")}</span>
-          {currentTrack ? <span className="music-track-duration muted small">{currentTrack.length}</span> : null}
+          {currentTrack ? <span className="music-track-meta muted small"><span title={t("music.requestedBy", { nickname: currentTrack.requester })}>{currentTrack.requester}</span><span className="music-track-duration">{currentTrack.length}</span></span> : null}
         </div>
       {transport.present || roomNotice ? (
       <div className="music-panel-controls">
@@ -299,7 +299,7 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
           readers follow reliably. The colour is what changes, and it is the
           app's own colour for a failure rather than the muted grey this used
           to share with the room's status. */}
-      <p className={`music-reply ${refusal ? "error-text" : "muted small"}`} role="status" aria-live="polite">{reply}</p>
+      <p className={`music-reply ${refusal ? "error-text" : accepted && results.length === 0 ? "music-reply-announcement" : "muted small"}`} role="status" aria-live="polite">{reply}</p>
       {/* What a typed name might have meant. This member's list and nobody
           else's — it never reaches `music:queue`, and ADR-0007 says why. */}
       {resultRows.length > 0 ? (
@@ -340,8 +340,8 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
         </section>
       ) : null}
       {queue ? (
-        <details className="music-queue">
-          <summary className="label" id="musicQueueTitle">{t("music.queue")} · {rows.length}</summary>
+        <details className="music-queue" open={queueOpen} onToggle={(event) => setQueueOpen(event.currentTarget.open)}>
+          <summary className="label" id="musicQueueTitle"><span>{t("music.queue")} · {rows.length}</span><ChevronIcon direction="down" /></summary>
           {rows.length > 0 ? (
             <ol className="music-queue-list">
               {rows.map((row) => (
@@ -393,7 +393,7 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
           the member waiting for an answer to their own press. */}
       {logRows.length > 0 ? (
         <details className="music-log">
-          <summary className="label" id="musicLogTitle">{t("music.log")}</summary>
+          <summary className="label" id="musicLogTitle"><span>{t("music.log")}</span><ChevronIcon direction="down" /></summary>
           <ol className="music-log-list">
             {logRows.map((row) => (
               /* By id and not by what it says: two members pausing in turn

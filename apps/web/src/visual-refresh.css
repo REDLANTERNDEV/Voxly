@@ -1700,3 +1700,60 @@ select {
   .composer .textarea { min-height: 56px; padding: 16px 62px 16px 14px; }
   .composer-send { bottom: 6px; right: 6px; width: 44px; height: 44px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 }
+
+/* Keep quiet chat aligned with the bottom of the outer docks. */
+@media (min-width: 901px) {
+  body:has(.dock-controls:empty) .app-shell > .main-panel { height: calc(100% + var(--dock) + 24px); }
+}
+.workspace-servers { overflow-x: hidden; }
+.music-panel-controls .music-transport { color: var(--fg); background: var(--surface-2); border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; }
+.music-panel-controls .music-transport:first-child { color: var(--bg); background: var(--fg); border-color: var(--fg); }
+.music-panel-controls .music-transport .ui-icon, .music-player-head .music-leave .ui-icon { width: 24px; height: 24px; stroke-width: 2; }
+.music-panel-controls .music-transport:disabled { opacity: .45; }
+.music-queue > summary, .music-log > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border-radius: 8px; background: var(--surface-2); color: var(--fg-2); list-style: none; }
+.music-queue > summary::-webkit-details-marker, .music-log > summary::-webkit-details-marker { display: none; }
+.music-queue > summary:hover, .music-log > summary:hover { background: var(--selected-fill); }
+.music-queue > summary .ui-icon, .music-log > summary .ui-icon { width: 18px; height: 18px; transform: rotate(-90deg); }
+.music-queue[open] > summary .ui-icon, .music-log[open] > summary .ui-icon { transform: none; }
+.music-reply.music-reply-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; margin: -1px; padding: 0; border: 0; }
+.workspace-servers { padding-inline: 7px; }
+
+/* Music uses one shared inset, calm rows and transport-led feedback. */
+.music-accessible-heading { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); margin: -1px; padding: 0; }
+.music-panel { gap: 24px; }
+.music-now-playing { gap: 10px; }
+.music-track-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+.music-track-meta > :first-child { min-width: 0; overflow-wrap: anywhere; }
+.music-artwork { box-shadow: none; }
+.music-panel .music-panel-controls { border: 0; padding: 8px 0 0; gap: 24px; }
+.music-panel-link { border: 0; padding-top: 0; }
+.music-panel .music-results, .music-panel .music-queue, .music-panel .music-log { border: 0; padding: 0; margin: 0; min-width: 0; }
+.music-panel .music-reply { padding-inline: 0; }
+.music-result.is-closest, .music-queue-row.is-current { box-shadow: none; }
+.music-queue-row { grid-template-columns: 28px minmax(0, 1fr) auto auto; padding: 12px 8px; border: 0; background: transparent; gap: 10px; }
+.music-queue-row.is-current { background: var(--selected-fill); border: 0; }
+.music-queue-position { width: 28px; min-width: 0; height: 28px; padding: 0; border: 0; background: transparent; }
+.music-queue-copy { gap: 6px; }
+.music-queue-copy strong { line-height: 1.45; }
+.music-queue > summary, .music-log > summary { background: transparent; padding: 10px 0; font-size: 12px; text-transform: none; letter-spacing: 0; }
+.music-queue > summary:hover, .music-log > summary:hover { background: transparent; color: var(--fg); }
+.music-queue-list, .music-log-list { margin-top: 8px; }
+.music-log-list { padding: 0; gap: 12px; }
+@media (max-width: 560px) {
+  .music-panel { gap: 22px; padding: 18px; }
+  .music-player-head { column-gap: 16px; row-gap: 20px; }
+  .music-panel .music-panel-controls { gap: 22px; }
+  .music-queue-row { grid-template-columns: 24px minmax(0, 1fr) auto auto; gap: 8px; padding: 12px 6px; }
+  .music-queue-position { width: 24px; }
+}
+.music-panel { display: grid; grid-template-columns: minmax(0, 1fr); }
+.music-reply:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); margin: -1px; padding: 0; }
+
+:root { --chat-link: #1763c6; }
+:root[data-theme="dark"] { --chat-link: #80b7ff; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --chat-link: #80b7ff; }
+}
+.message-body a, .message-embed-head a { color: var(--chat-link); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.message-body a:hover, .message-embed-head a:hover { text-decoration-thickness: 2px; }
+.message-body a:focus-visible, .message-embed-head a:focus-visible { outline: 2px solid var(--chat-link); outline-offset: 3px; border-radius: 2px; }
