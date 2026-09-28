@@ -3254,10 +3254,29 @@ button.reply-quote:focus-visible .reply-quote-body {
 }
 
 .reconnect-logo {
-  animation: reconnect-logo-spin 1.6s linear infinite;
+  display: block;
 }
 
-@keyframes reconnect-logo-spin {
+.reconnect-indicator {
+  align-items: center;
+  display: grid;
+  height: 76px;
+  justify-items: center;
+  position: relative;
+  width: 76px;
+}
+
+.reconnect-spinner {
+  animation: reconnect-spinner-spin 0.9s linear infinite;
+  border: 6px solid color-mix(in oklab, var(--on-scene), transparent 78%);
+  border-right-color: var(--accent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  inset: 0;
+  position: absolute;
+}
+
+@keyframes reconnect-spinner-spin {
   to { transform: rotate(360deg); }
 }
 
@@ -5429,7 +5448,7 @@ button.reply-quote:focus-visible .reply-quote-body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reconnect-logo {
+  .reconnect-spinner {
     animation: none;
   }
 

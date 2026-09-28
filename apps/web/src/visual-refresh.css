@@ -1082,8 +1082,8 @@ select {
   gap: 10px;
   justify-items: center;
   max-width: 360px;
-  min-height: 250px;
-  padding: 30px;
+  min-height: 220px;
+  padding: 26px;
   text-align: center;
   width: 100%;
 }

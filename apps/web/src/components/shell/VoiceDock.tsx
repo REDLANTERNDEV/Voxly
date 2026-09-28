@@ -101,12 +101,15 @@ export function ReconnectOverlay({ health, t }: { health: ConnectionHealth; t: T
   const copy = health.reason === "browser_offline"
     ? t("connection.browserOffline")
     : health.reconnectAttempt > 0
-      ? t("connection.retryAttempt", { count: health.reconnectAttempt })
+      ? t("connection.reconnectingCopy")
       : t("connection.serverUnreachable");
   return (
     <div className="reconnect-overlay" role="status" aria-live="assertive">
       <div className="reconnect-panel">
-        <img className="reconnect-logo" src="/brand/svg/voxly-mark-primary.svg" alt="" width="72" height="72" />
+        <div className="reconnect-indicator" aria-hidden="true">
+          <span className="reconnect-spinner" />
+          <img className="reconnect-logo" src="/brand/svg/voxly-mark-primary.svg" alt="" width="48" height="48" />
+        </div>
         <strong>{t("connection.reconnecting")}</strong>
         <span>{copy}</span>
       </div>
