@@ -24,14 +24,11 @@ export function desktopMuteAllowed(state: {
 }
 
 export function createDesktopMuteReceiver(state: () => Parameters<typeof desktopMuteAllowed>[0], toggle: () => Promise<void>): () => void {
-  let pending = false;
   return () => {
-    if (pending || !desktopMuteAllowed(state())) return;
-    pending = true;
-    void (async () => {
-      try { await toggle(); }
-      finally { pending = false; }
-    })().catch(() => undefined);
+    if (!desktopMuteAllowed(state())) return;
+    // The local microphone changes before the server acknowledgement arrives.
+    // A second physical press must not be lost while that acknowledgement waits.
+    void toggle().catch(() => undefined);
   };
 }
 

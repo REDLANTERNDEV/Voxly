@@ -111,9 +111,11 @@ For the mouse shortcut check, open the installed desktop chooser, select
 **Record shortcut**, press Mouse 3, Mouse 4, or Mouse 5, and save the displayed binding.
 Join a call, focus a game, then press and hold the button: mute must change
 once, and the game must still receive the click. Release and press again to
-unmute. Repeat with Ctrl + Mouse 4, with Voxly hidden to the tray, after a
-restart, and after clearing the shortcut. Mouse side buttons that a mouse
-driver remaps to keyboard keys must be tested as those keyboard keys.
+unmute. Try ten quick presses and confirm the final microphone state matches
+the starting state; an eleventh press must invert it. Repeat with Ctrl + Mouse
+4, with Voxly hidden to the tray, after a restart, and after clearing the
+shortcut. Mouse side buttons remapped by a driver to keyboard keys must be
+tested as those keyboard keys.
 
 Permission tests should include direct `window.__TAURI_INTERNALS__.invoke(...)`
 attempts from remote developer tools against every generated custom command and

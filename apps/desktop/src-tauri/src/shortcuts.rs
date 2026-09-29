@@ -1,10 +1,46 @@
 use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 pub const CONTROL: u8 = 1;
 pub const ALT: u8 = 2;
 pub const SHIFT: u8 = 4;
 pub const SUPER: u8 = 8;
+
+#[derive(Default)]
+pub struct ShortcutLatch {
+    pressed: AtomicBool,
+    mouse_button: AtomicU8,
+}
+
+impl ShortcutLatch {
+    pub fn reset(&self) {
+        self.mouse_button.store(0, Ordering::Release);
+        self.pressed.store(false, Ordering::Release);
+    }
+
+    pub fn begin(&self) -> bool {
+        !self.pressed.swap(true, Ordering::AcqRel)
+    }
+
+    pub fn keyboard_released(&self) {
+        self.pressed.store(false, Ordering::Release);
+    }
+
+    pub fn mouse_pressed(&self, button: u8) {
+        self.mouse_button.store(button, Ordering::Release);
+    }
+
+    pub fn mouse_released(&self, button: u8) {
+        if self
+            .mouse_button
+            .compare_exchange(button, 0, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            self.pressed.store(false, Ordering::Release);
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct MouseBinding {
@@ -164,6 +200,24 @@ impl Registration {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mouse_release_clears_held_shortcut_without_registration_access() {
+        let latch = ShortcutLatch::default();
+        latch.mouse_pressed(5);
+        assert!(latch.begin());
+        latch.mouse_released(4);
+        assert!(
+            !latch.begin(),
+            "another mouse button cannot clear the held shortcut"
+        );
+        latch.mouse_released(5);
+        assert!(
+            latch.begin(),
+            "the matching release restores the next press"
+        );
+    }
+
     #[derive(Default)]
     struct FakeRegistry {
         active: Option<String>,

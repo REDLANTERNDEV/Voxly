@@ -21,28 +21,27 @@ describe("desktop microphone intent", () => {
     subscribeDesktopMute({ __VOXLY_DESKTOP_V1__: incompatible }, () => {})();
   });
 
-  it("reads current state on every activation and coalesces pending actions", async () => {
+  it("keeps a second quick press while the first server ack is pending", async () => {
     let state = { ...ready };
     let actions = 0;
-    let release: () => void = () => {};
+    const releases: Array<() => void> = [];
     const receive = createDesktopMuteReceiver(() => state, () => {
       actions += 1;
-      return new Promise<void>((resolve) => { release = resolve; });
+      return new Promise<void>((resolve) => { releases.push(resolve); });
     });
     receive(); receive();
     await Promise.resolve();
-    assert.equal(actions, 1);
-    release();
-    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(actions, 2, "each physical press must toggle without waiting for server replies");
+    releases.splice(0).forEach((release) => release());
     state = { ...ready, inVoice: false };
     receive();
     await Promise.resolve();
-    assert.equal(actions, 1);
+    assert.equal(actions, 2);
     state = { ...ready };
     receive();
     await Promise.resolve();
-    assert.equal(actions, 2);
-    release();
+    assert.equal(actions, 3);
+    releases.shift()?.();
   });
 
   it("unsubscribes the receiver when the voice integration is disposed", () => {

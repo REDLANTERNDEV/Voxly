@@ -9,7 +9,6 @@ mod shortcuts;
 use installations::{Installation, Language, Preferences};
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
@@ -18,7 +17,7 @@ struct Shell {
     inner: Mutex<Inner>,
     data: PathBuf,
     menu: TrayMenu,
-    shortcut_pressed: AtomicBool,
+    shortcut_latch: shortcuts::ShortcutLatch,
 }
 
 struct Inner {
@@ -168,7 +167,7 @@ async fn set_mute_shortcut(
     let mut inner = shell.inner.lock().await;
     let mut next = inner.preferences.clone();
     next.mute_shortcut = binding;
-    shell.shortcut_pressed.store(false, Ordering::Release);
+    shell.shortcut_latch.reset();
     let mut registration = inner.shortcut.clone();
     let saved = next.clone();
     let path = shell.data.join("installations.json");
@@ -202,7 +201,7 @@ fn handle_shortcut(
         return;
     };
     if event.state() == ShortcutState::Released {
-        shell.shortcut_pressed.store(false, Ordering::Release);
+        shell.shortcut_latch.keyboard_released();
         return;
     }
     // Never block the main thread while a command registers/unregisters there.
@@ -223,6 +222,12 @@ fn handle_mouse_shortcut(app: &tauri::AppHandle, event: mouse_hook::MouseEvent) 
     let Some(shell) = app.try_state::<Shell>() else {
         return;
     };
+    // Registration holds inner across a main-thread update. A mouse release
+    // must still unlock the next press even when that update owns inner.
+    if !event.pressed {
+        shell.shortcut_latch.mouse_released(event.button);
+        return;
+    }
     let Ok(inner) = shell.inner.try_lock() else {
         return;
     };
@@ -232,18 +237,15 @@ fn handle_mouse_shortcut(app: &tauri::AppHandle, event: mouse_hook::MouseEvent) 
     if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Mouse(ref registered)) if registered.button == event.button) {
         return;
     }
-    if !event.pressed {
-        shell.shortcut_pressed.store(false, Ordering::Release);
-        return;
-    }
     if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Mouse(ref registered)) if registered.modifiers == event.modifiers) {
         return;
     }
+    shell.shortcut_latch.mouse_pressed(event.button);
     dispatch_mute(app, &shell, &inner);
 }
 
 fn dispatch_mute(app: &tauri::AppHandle, shell: &Shell, inner: &Inner) {
-    if shell.shortcut_pressed.swap(true, Ordering::AcqRel) {
+    if !shell.shortcut_latch.begin() {
         return;
     }
     // Recording a combination in the local chooser must not mute the call.
@@ -594,7 +596,7 @@ fn main() {
                 }),
                 data,
                 menu: tray_menu,
-                shortcut_pressed: AtomicBool::new(false),
+                shortcut_latch: shortcuts::ShortcutLatch::default(),
             });
             let window =
                 tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
