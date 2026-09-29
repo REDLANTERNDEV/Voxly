@@ -1,12 +1,13 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { errorKey, translate, type Language, type TranslationKey } from "./i18n.js";
-import { createCaptureOwner, probeConstraints, screenConstraints, summarizeTracks, type ProbeKind } from "./media.js";
+import { createCaptureOwner, probeConstraints, screenConstraints, summarizeTracks, transitionWithMediaCleanup, type ProbeKind } from "./media.js";
 import "./styles.css";
+import { mountShortcutSettings, type ShortcutSnapshot } from "./shortcuts.js";
 
 interface Installation { id: string; origin: string }
-interface Snapshot {
-  preferences: { installations: Installation[]; language: Language; trayAcknowledged: boolean };
+interface Snapshot extends ShortcutSnapshot {
+  preferences: { installations: Installation[]; language: Language; trayAcknowledged: boolean; muteShortcut: string | null };
   active: Installation | null;
   platform: string;
   shellVersion: string;
@@ -31,6 +32,13 @@ const probeResults: { kind: ProbeKind; outcome: "captured" | "failed"; error?: s
 function t(key: TranslationKey) { return translate(language, key); }
 function status(key: TranslationKey) { element("status").textContent = t(key); }
 function probeStatus(key: TranslationKey) { element("probe-status").textContent = t(key); }
+
+const shortcutSettings = mountShortcutSettings({ t, save: async (binding) => {
+  await run(async () => {
+    try { state = await invoke<Snapshot>("set_mute_shortcut", { binding }); }
+    finally { state = await invoke<Snapshot>("shell_state"); }
+  });
+} });
 
 function renderTranslations() {
   document.documentElement.lang = language;
@@ -85,6 +93,7 @@ function renderInstallations() {
   element<HTMLButtonElement>("save").disabled = !native || busy || !state;
   element<HTMLButtonElement>("quit").disabled = !native || busy || !state;
   element<HTMLSelectElement>("language").disabled = native && (!state || busy);
+  shortcutSettings.render(state, native && state?.platform === "windows" && !busy);
 }
 
 async function confirmAction(quitting = false): Promise<boolean> {
@@ -117,7 +126,8 @@ async function connect(saved: Installation, reload = false) {
   if (changing && !await confirmAction()) return;
   await run(async () => {
     status("checking");
-    state = await invoke<Snapshot>("connect_installation", { id: saved.id, confirmLeave: Boolean(changing), reload });
+    const open = () => invoke<Snapshot>("connect_installation", { id: saved.id, confirmLeave: Boolean(changing), reload });
+    state = changing || !state?.active ? await transitionWithMediaCleanup(stopMedia, open) : await open();
     element("status").textContent = "";
   });
 }
@@ -143,7 +153,7 @@ element("language").addEventListener("change", (event) => {
 element("disconnect").addEventListener("click", () => {
   void (async () => {
     if (busy || !await confirmAction()) return;
-    await run(async () => { state = await invoke<Snapshot>("disconnect_installation", { confirmLeave: true }); });
+    await run(async () => { state = await transitionWithMediaCleanup(stopMedia, () => invoke<Snapshot>("disconnect_installation", { confirmLeave: true })); });
   })();
 });
 element("retry").addEventListener("click", () => { if (state?.active) void connect(state.active, true); });
@@ -170,6 +180,7 @@ function refreshReport() {
     api: {
       getUserMedia: typeof media?.getUserMedia === "function",
       getDisplayMedia: typeof media?.getDisplayMedia === "function",
+      restrictOwnAudio: (media?.getSupportedConstraints?.() as MediaTrackSupportedConstraints & { restrictOwnAudio?: boolean } | undefined)?.restrictOwnAudio === true,
       enumerateDevices: typeof media?.enumerateDevices === "function",
       audioContextSink: typeof context?.setSinkId === "function",
       mediaElementSink: typeof (HTMLMediaElement.prototype as HTMLMediaElement & { setSinkId?: unknown }).setSinkId === "function",

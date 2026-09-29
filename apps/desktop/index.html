@@ -28,6 +28,14 @@
         <p class="hint" data-i18n="connectionHint"></p>
         <p id="status" role="status" aria-live="polite"></p>
       </section>
+      <section aria-labelledby="shortcuts-heading">
+        <h2 id="shortcuts-heading" data-i18n="shortcuts">Global shortcut</h2>
+        <p id="shortcut-hint" class="hint" data-i18n="shortcutHint"></p>
+        <label for="mute-shortcut" data-i18n="muteShortcut">Mute / unmute microphone</label>
+        <input id="mute-shortcut" readonly aria-describedby="shortcut-hint shortcut-status" />
+        <div class="actions"><button id="record-shortcut" type="button" data-i18n="recordShortcut" disabled>Record shortcut</button><button id="save-shortcut" type="button" data-i18n="saveShortcut" disabled>Save shortcut</button><button id="clear-shortcut" type="button" data-i18n="clearShortcut" disabled>Clear shortcut</button></div>
+        <p id="shortcut-status" role="status" aria-live="polite"></p>
+      </section>
       <section aria-labelledby="media-heading">
         <h2 id="media-heading" data-i18n="media">Media checks</h2>
         <p class="hint" data-i18n="mediaHint"></p>

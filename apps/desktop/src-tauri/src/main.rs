@@ -2,10 +2,12 @@
 
 mod installations;
 mod platform;
+mod shortcuts;
 
 use installations::{Installation, Language, Preferences};
 use serde::Serialize;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
@@ -14,11 +16,13 @@ struct Shell {
     inner: Mutex<Inner>,
     data: PathBuf,
     menu: TrayMenu,
+    shortcut_pressed: AtomicBool,
 }
 
 struct Inner {
     preferences: Preferences,
     active: Option<Installation>,
+    shortcut: shortcuts::Registration,
 }
 
 struct TrayMenu {
@@ -34,6 +38,8 @@ struct ShellSnapshot {
     active: Option<Installation>,
     platform: &'static str,
     shell_version: &'static str,
+    registered_mute_shortcut: Option<String>,
+    shortcut_error: Option<&'static str>,
 }
 
 fn trusted_shell(window: &WebviewWindow) -> Result<(), &'static str> {
@@ -137,11 +143,100 @@ fn snapshot(inner: &Inner) -> ShellSnapshot {
         active: inner.active.clone(),
         platform: std::env::consts::OS,
         shell_version: env!("CARGO_PKG_VERSION"),
+        registered_mute_shortcut: inner.shortcut.active.clone(),
+        shortcut_error: inner.shortcut.error,
     }
 }
 
 fn persist(shell: &Shell, preferences: &Preferences) -> Result<(), &'static str> {
     installations::save(&shell.data.join("installations.json"), preferences)
+}
+
+#[tauri::command]
+async fn set_mute_shortcut(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    binding: Option<String>,
+) -> Result<ShellSnapshot, &'static str> {
+    trusted_shell(&window)?;
+    if !cfg!(target_os = "windows") {
+        return Err("unsupported_platform");
+    }
+    let mut inner = shell.inner.lock().await;
+    let mut next = inner.preferences.clone();
+    next.mute_shortcut = binding;
+    shell.shortcut_pressed.store(false, Ordering::Release);
+    let mut registration = inner.shortcut.clone();
+    let saved = next.clone();
+    let path = shell.data.join("installations.json");
+    let native_app = app.clone();
+    let (send, receive) = tokio::sync::oneshot::channel();
+    // The plugin locks its registry while dispatching to the main thread.
+    // Perform the entire change there to avoid competing hotkey callbacks.
+    app.run_on_main_thread(move || {
+        let result = registration.change(
+            saved.mute_shortcut.as_deref(),
+            &mut shortcuts::NativeRegistry(&native_app),
+            || installations::save(&path, &saved),
+        );
+        let _ = send.send((registration, result));
+    })
+    .map_err(|_| "shortcut_failed")?;
+    let (registration, result) = receive.await.map_err(|_| "shortcut_failed")?;
+    inner.shortcut = registration;
+    result?;
+    inner.preferences = next;
+    Ok(snapshot(&inner))
+}
+
+fn handle_shortcut(
+    app: &tauri::AppHandle,
+    shortcut: &tauri_plugin_global_shortcut::Shortcut,
+    event: tauri_plugin_global_shortcut::ShortcutEvent,
+) {
+    use tauri_plugin_global_shortcut::ShortcutState;
+    let Some(shell) = app.try_state::<Shell>() else {
+        return;
+    };
+    if event.state() == ShortcutState::Released {
+        shell.shortcut_pressed.store(false, Ordering::Release);
+        return;
+    }
+    // Never block the main thread while a command registers/unregisters there.
+    let Ok(inner) = shell.inner.try_lock() else {
+        return;
+    };
+    let Some(binding) = inner.shortcut.active.as_deref() else {
+        return;
+    };
+    if shortcuts::parse_binding(binding).as_ref() != Ok(shortcut) {
+        return;
+    }
+    if shell.shortcut_pressed.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    // Recording a combination in the local chooser must not mute the call.
+    if app
+        .get_webview_window("shell")
+        .is_some_and(|window| window.is_focused().unwrap_or(true))
+    {
+        return;
+    }
+    let Some(active) = &inner.active else {
+        return;
+    };
+    let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) else {
+        return;
+    };
+    let Ok(url) = remote.url() else {
+        return;
+    };
+    if !installations::same_origin(&active.origin, &url) {
+        return;
+    }
+    // Fixed action, never script supplied by the installation or settings.
+    let _ = remote.eval("window.__VOXLY_DESKTOP_V1__?.dispatchMute();");
 }
 
 #[tauri::command]
@@ -397,6 +492,11 @@ fn main() {
                 .open_js_links_on_click(false)
                 .build(),
         )
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(handle_shortcut)
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             shell_state,
             save_installation,
@@ -406,7 +506,8 @@ fn main() {
             open_installation_browser,
             set_language,
             acknowledge_tray,
-            quit_app
+            quit_app,
+            set_mute_shortcut
         ])
         .setup(|app| {
             let data = app.path().app_local_data_dir()?;
@@ -448,13 +549,22 @@ fn main() {
                     _ => {}
                 })
                 .build(app)?;
+            let mut shortcut = shortcuts::Registration::default();
+            if cfg!(target_os = "windows") {
+                shortcut.restore(
+                    preferences.mute_shortcut.as_deref(),
+                    &mut shortcuts::NativeRegistry(app.handle()),
+                );
+            }
             app.manage(Shell {
                 inner: Mutex::new(Inner {
                     preferences,
                     active: None,
+                    shortcut,
                 }),
                 data,
                 menu: tray_menu,
+                shortcut_pressed: AtomicBool::new(false),
             });
             let window =
                 tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?

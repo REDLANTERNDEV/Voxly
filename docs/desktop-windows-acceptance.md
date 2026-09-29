@@ -1,13 +1,33 @@
 # Windows 11 desktop feasibility acceptance
 
-**Current result: NOT RUN.** This checkout was developed on macOS. Neither
-Windows media behavior nor the installer has been manually exercised. Do not
-advertise full-feature desktop support from a build or a local browser probe.
+**Current result: INITIAL SMOKE TESTS REPORTED PASS.** The contributor reports
+bidirectional voice, screen sharing with computer audio, audio continuing after
+hiding to the tray, and permission-denial errors working. The complete Windows
+acceptance matrix and installer acceptance remain open; see the scope below.
 
 Use the [desktop guide](desktop.md) to build/install the test client, then record
 results here or in a private test record. Exclude cookies, Invite/access links,
 Link codes, private addresses, screen recordings, and browser-profile contents
 from artifacts shared publicly.
+
+## Contributor smoke report — 2026-09-29
+
+Windows 11 is the agreed target. The tested OS build, WebView2 version, commit,
+hardware, capture source type, browser peer, and hidden-call duration were not
+provided, so these reports establish initial feasibility rather than completing
+the broader acceptance cases.
+
+| Report | Recorded result | Remaining scope |
+| --- | --- | --- |
+| Voice audible correctly on both sides | Reported pass | Camera, effective track teardown, moderation, and other peer browsers |
+| Screen and computer audio sharing work | Reported pass | Monitor/window variants, games in different display modes, source loss, and output routing |
+| Audio continues after hiding to tray | Reported pass | 30-minute duration, silent/muted/deafened conditions, hidden reconnect, and sleep/resume |
+| Permission-denial errors work | Reported pass | Retry/reset, persistent denial, and Windows privacy settings |
+
+The contributor also requests easier game capture, describing the current
+picker as similar to Edge and Discord's game-sharing process as easier and
+smoother. Capture-selection UX, fullscreen compatibility, and video frame rate
+must be evaluated separately before choosing a native adapter or another shell.
 
 ## Test setup
 
@@ -27,20 +47,23 @@ unrelated tabs, extensions, and shared browser processes do not bias the result.
 
 ## Release-blocking media matrix
 
-Every row starts **not run**. Mark pass/fail with runtime version and evidence.
+Unreported cases remain **not run**. Mark complete pass/fail only with runtime
+version and evidence covering the whole case; a smoke report covers its stated
+subset.
 
 | Case | Evidence required | Result |
 | --- | --- | --- |
-| Microphone, camera | Local live tracks, correct remote presentation, audible/visible browser peer, effective stop state | not run |
-| Capture permissions | First consent, denial, persistent denial/reset, Windows privacy denial, recoverable retry | not run |
-| Screen capture | Monitor and application window; picker cancellation, source closure, stop/restart, source minimize | not run |
-| Computer audio | Monitor/window tested independently; returned live audio track **and audible browser-peer reception** | not run |
+| Microphone, camera | Local live tracks, correct remote presentation, audible/visible browser peer, effective stop state | Voice reported pass; camera/remaining cases not run |
+| Capture permissions | First consent, denial, persistent denial/reset, Windows privacy denial, recoverable retry | Denial errors reported pass; remaining cases not run |
+| Screen capture | Monitor and application window; picker cancellation, source closure, stop/restart, source minimize | Sharing reported pass; source variants/remaining cases not run |
+| Computer audio | Monitor/window tested independently; returned live audio track **and audible browser-peer reception** | Sharing reported pass; source variants/track evidence pending |
+| Call-audio exclusion | Sharing member hears the call, viewer hears game/content without their own voice returning through screen audio; test desktop and web sharers and record actual `restrictOwnAudio` setting | Optional request implemented; Windows audible test not run |
 | Output selection | System default, explicit output, device disappearance, ordinary media element and Web Audio boost | not run |
 | Voxly noise suppression | Actual worklet path, suppression on/off, background processing, no microphone reopening | not run |
 | Notification cues | Voice/message/connection cues with existing preference and deafen gates | not run |
 | Browser interoperability | Bidirectional voice, camera, screen and computer audio, concurrent peer joins | not run |
 | Owner moderation | Locked owner mute/deafen, no transmitted microphone audio when muted, no remote playback when deafened | not run |
-| Tray call continuity | Hide for 30+ minutes, verify bidirectional audio, cues, and live signaling without reopening | not run |
+| Tray call continuity | Hide for 30+ minutes, verify bidirectional audio, cues, and live signaling without reopening | Audio reported pass; duration/cues/signaling not provided |
 | Silent background conditions | Repeat hidden with self-mute, self-deafen, no incoming audio; restore and verify media | not run |
 | Background recovery | Lose/recover network while hidden; verify existing retry/backoff and media normalization | not run |
 | Minimize and lock | Minimize, Windows lock/unlock, competing fullscreen app, reconnect without duplicate media | not run |
@@ -73,6 +96,7 @@ all consequential cases inside the real remote interface.
 | External links | HTTP(S) new-window links open the default browser; native schemes and cross-origin top navigation refused | not run |
 | Native authority | Remote top frame and embedded content cannot invoke chooser/updater/opener/filesystem commands | not run |
 | Single instance | Second launch restores first instance, no second media runtime | not run |
+| Global mute shortcuts | Custom combination persists, one press toggles once with another app/game focused or tray hidden; conflicts reported and owner mute cannot be bypassed | Implemented; physical Windows test not run |
 | Device revocation | Existing Account & devices revocation signs desktop out and ends room access | not run |
 | Deployment update | Active voice/capture/media check delays reload; idle pending notice reloads only on explicit action | not run |
 | Update network failure | Current interface stays usable; polling retries without forced reload | not run |
@@ -176,4 +200,81 @@ copy to make this milestone appear green.
 Browser inspection verified the chooser's English/Turkish rendering and a
 390px-wide layout without horizontal overflow. Native IPC, WebView2 capture,
 Windows NSIS packaging, the PowerShell sampler, and interactive installer tests
-remain unrun here. Windows CI has been added but has not been dispatched.
+were not run in that macOS verification. The contributor smoke report above is
+subsequent evidence. The Windows workflow was added; its execution/result has
+not been supplied for this acceptance record.
+
+## Next Windows test: mute shortcut and call-audio exclusion
+
+Build the desktop client from `test/tauri-windows-11` with these changes and
+**deploy the updated web client to the installation too**. The native shell
+loads the installation's deployed interface; rebuilding the shell alone cannot
+add its web-side mute receiver or own-audio capture request. Leave voice and
+reload the installation window before starting the tests.
+
+On a Windows development machine with the prerequisites described above:
+
+```powershell
+npm install
+npm run desktop:build
+```
+
+1. In the tray menu open **Installations**, then **Global shortcut**. Record
+   and save a combination such as Ctrl+Alt+M. Join voice normally, focus
+   Notepad, and toggle mute/unmute. Have a peer verify silence and resumed
+   speech. Hold the combination: it must toggle once. Repeat hidden to tray,
+   then in your usual game; record its name and borderless/fullscreen mode.
+2. Change the combination and verify the old one stops working. Restart Voxly
+   and verify the new one persists. Clear it and verify it stops working.
+   Try a combination already registered by another app: the chooser must
+   report the conflict and retain the previous working binding. Recording in
+   the chooser must not toggle the call.
+3. Repeat while self-deafened, owner-muted, owner-deafened, and in an AFK room.
+   The shortcut must leave those locks intact. Outside voice, disconnected,
+   or after a receive-only join without microphone capture, it must do nothing
+   and must not show a microphone permission prompt.
+4. Wear headphones. Have a friend using the updated **web client** share a
+   monitor with computer audio while receiving your voice in the same call.
+   Verify that the friend still hears you, you hear their game/content, and
+   your voice does not return through their screen audio. Repeat with a
+   desktop sharer and application-window sharing when audio is offered.
+   Record Chrome/Edge/WebView2 versions and source type for each result.
+5. In Media checks, capture a screen with audio and copy the diagnostic report
+   while capture is running. `api.restrictOwnAudio` reports advertised support;
+   the audio track's `settings.restrictOwnAudio`, if returned, reports the
+   applied setting. Neither substitutes for the audible call test above.
+6. Start a chooser media probe, then confirm disconnect, switch, or retry.
+   Its capture indicator and preview must stop; cancelled confirmation must
+   retain capture. A failed replacement health check must preserve the
+   previous installation's remote call.
+
+Return pass/fail for each case, Windows build, runtime versions, game/display
+mode, keyboard layout, chosen shortcut, and the diagnostic report. For failures include the
+exact action sequence and whether the local microphone indicator and peer's
+heard audio disagree. Avoid posting credentials or raw session tokens.
+
+## Verification of this follow-up on macOS
+
+This validates source behavior and host packaging; Windows OS registration,
+background input, capture compatibility, and audible own-audio exclusion remain
+unverified until the tests above run on Windows.
+
+- `npm run typecheck`: passed across all workspaces.
+- `npm run build`: passed server/web/bot; existing web chunk-size warning.
+- `npm test`: shared 19/19 and server 392/392 passed, web 808/809 passed.
+  The root command stops at the pre-existing Turkish `connection.browserOffline`
+  assertion mismatch; it does not reach bot or desktop.
+- `npm run test -w @voxly/bot`: 277/277 passed separately with listener access.
+- `npm run test -w @voxly/desktop`: 13/13 passed.
+- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked`:
+  11/11 passed with loopback-listener access.
+- `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --all-targets -- -D warnings`:
+  passed.
+- `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check`:
+  passed.
+- `npm run bundle -w @voxly/desktop -- --bundles app -- --locked`:
+  macOS host bundle passed; this is not a Windows installer test.
+- Browser preview: English/Turkish and 390px layout checked without overflow;
+  recording/save/clear/cancel/focus behavior checked in a UI-only fixture,
+  which does not register OS shortcuts.
+- `git diff --check`: passed. Changes remain unstaged and uncommitted.

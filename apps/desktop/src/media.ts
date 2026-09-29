@@ -9,7 +9,7 @@ export interface ProbeTrack {
 }
 
 export function summarizeTracks(stream: Pick<MediaStream, "getTracks">): ProbeTrack[] {
-  const allowed = ["width", "height", "frameRate", "sampleRate", "channelCount", "echoCancellation", "noiseSuppression", "autoGainControl", "displaySurface"];
+  const allowed = ["width", "height", "frameRate", "sampleRate", "channelCount", "echoCancellation", "noiseSuppression", "autoGainControl", "displaySurface", "restrictOwnAudio"];
   return stream.getTracks().map((track) => {
     const raw = track.getSettings() as Record<string, unknown>;
     const settings: ProbeTrack["settings"] = {};
@@ -46,13 +46,20 @@ export function createCaptureOwner() {
   };
 }
 
+/** Call only after confirmation. End probes before a native transition awaits. */
+export async function transitionWithMediaCleanup<T>(stop: () => void, action: () => Promise<T>): Promise<T> {
+  stop();
+  return action();
+}
+
 export function probeConstraints(kind: Exclude<ProbeKind, "screen">): MediaStreamConstraints {
   return kind === "microphone"
     ? { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false }
     : { audio: false, video: { width: { ideal: 640, max: 640 }, height: { ideal: 360, max: 360 }, frameRate: { ideal: 24, max: 24 } } };
 }
 
+const screenAudio: MediaTrackConstraints & { restrictOwnAudio: boolean } = { restrictOwnAudio: true };
 export const screenConstraints: DisplayMediaStreamOptions = {
   video: { width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 30, max: 30 } },
-  audio: true
+  audio: screenAudio
 };

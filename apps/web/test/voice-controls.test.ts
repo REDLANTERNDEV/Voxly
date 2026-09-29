@@ -10,7 +10,7 @@ import {
   configureScreenTrack,
   createInitialMediaState,
   mediaConstraintsFor,
-  preferScreenSenderResolution,
+  preferScreenSenderFramerate,
   replaceMicrophoneTrack
 } from "../src/lib/voiceMedia.js";
 
@@ -171,11 +171,11 @@ describe("voice control view state", () => {
         height: { ideal: 720, max: 720 },
         frameRate: { ideal: 30, max: 30 }
       },
-      audio: true
+      audio: { restrictOwnAudio: true }
     });
   });
 
-  it("preserves screen detail while bandwidth ramps without affecting other tracks", async () => {
+  it("prioritizes screen motion under congestion without affecting other tracks", async () => {
     const screenTrack = { kind: "video", contentHint: "" } as MediaStreamTrack;
     const cameraTrack = { kind: "video", contentHint: "" } as MediaStreamTrack;
     let appliedPreference: string | undefined;
@@ -189,10 +189,10 @@ describe("voice control view state", () => {
 
     configureScreenTrack(screenTrack);
 
-    assert.equal(screenTrack.contentHint, "detail");
-    assert.equal(await preferScreenSenderResolution(sender, screenTrack), true);
-    assert.equal(appliedPreference, "maintain-resolution");
-    assert.equal(await preferScreenSenderResolution(sender, cameraTrack), false);
+    assert.equal(screenTrack.contentHint, "motion");
+    assert.equal(await preferScreenSenderFramerate(sender, screenTrack), true);
+    assert.equal(appliedPreference, "maintain-framerate");
+    assert.equal(await preferScreenSenderFramerate(sender, cameraTrack), false);
   });
 
   it("keeps screen sharing alive when sender preference is rejected", async () => {
@@ -205,7 +205,18 @@ describe("voice control view state", () => {
       }
     } as unknown as RTCRtpSender;
 
-    assert.equal(await preferScreenSenderResolution(sender, screenTrack), false);
+    assert.equal(await preferScreenSenderFramerate(sender, screenTrack), false);
+  });
+
+  it("keeps screen sharing alive when sender parameters are unavailable", async () => {
+    const screenTrack = { kind: "video", contentHint: "" } as MediaStreamTrack;
+    const sender = {
+      track: screenTrack,
+      getParameters: () => { throw new Error("unsupported"); },
+      setParameters: async () => { throw new Error("must not be called"); }
+    } as unknown as RTCRtpSender;
+
+    assert.equal(await preferScreenSenderFramerate(sender, screenTrack), false);
   });
 
   it("replaces only the previous microphone sender and leaves screen audio untouched", async () => {

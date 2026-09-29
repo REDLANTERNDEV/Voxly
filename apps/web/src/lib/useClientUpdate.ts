@@ -43,19 +43,21 @@ export function claimClientUpdateAttempt(storage: Pick<Storage, "getItem" | "set
  * never interrupt live media. Once deferred, keep the update explicit even
  * after the call ends instead of surprising the member on the next poll.
  */
-export function useClientUpdate(latestAtStartup: string | null, mediaBusy = false) {
+export function useClientUpdate(latestAtStartup: string | null, mediaBusy = false, operationPending: () => boolean = () => false) {
   const [pendingVersion, setPendingVersion] = useState<string | null>(null);
   const pendingRef = useRef<string | null>(null);
   const busyRef = useRef(mediaBusy);
   busyRef.current = mediaBusy;
+  const operationRef = useRef(operationPending);
+  operationRef.current = operationPending;
   const reloadWhenSafe = useCallback(() => {
-    if (busyRef.current || !pendingRef.current) return;
+    if (busyRef.current || operationRef.current() || !pendingRef.current) return;
     window.location.replace(clientUpdateUrl(window.location.href, pendingRef.current));
   }, []);
   useEffect(() => {
     const current = loadedClientVersion(document, window.location.href);
     const apply = (latest: string | null) => {
-      const disposition = clientUpdateDisposition(current, latest, busyRef.current, pendingRef.current !== null);
+      const disposition = clientUpdateDisposition(current, latest, busyRef.current || operationRef.current(), pendingRef.current !== null);
       if (disposition === "none" && current && latest === current) {
         // A deployment rollback can make an earlier pending version obsolete.
         pendingRef.current = null;

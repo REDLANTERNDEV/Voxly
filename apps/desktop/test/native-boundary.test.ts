@@ -12,7 +12,7 @@ describe("desktop native trust boundary", () => {
     assert.equal(capability.local, true);
     assert.equal(capability.remote, undefined);
     assert.equal(config.app.withGlobalTauri, false);
-    assert.ok(capability.permissions.every((permission: string) => !permission.includes("default") && !permission.includes("opener:") && !permission.includes("updater:") && !permission.includes("shell:")));
+    assert.ok(capability.permissions.every((permission: string) => !permission.includes("default") && !permission.includes("opener:") && !permission.includes("updater:") && !permission.includes("shell:") && !permission.includes("global-shortcut:")));
   });
 
   it("generates ACL permissions and checks the caller for every custom command", () => {
@@ -28,13 +28,16 @@ describe("desktop native trust boundary", () => {
     }
   });
 
-  it("does not enable a remote bridge before feasibility acceptance", () => {
+  it("keeps the voice intent bridge separate from native authority", () => {
     const source = readFileSync("src-tauri/src/platform.rs", "utf8");
     assert.match(source, /\.data_directory\(data\.join\("profiles"\)\.join\(&saved.id\)\)/);
     assert.match(source, /\.on_navigation/);
     assert.match(source, /same_origin/);
     assert.match(source, /NewWindowResponse::Deny/);
-    assert.doesNotMatch(source, /add_capability|initialization_script|eval\(/);
+    assert.doesNotMatch(source, /add_capability/);
+    assert.match(source, /initialization_script\(&bootstrap\)/);
+    const bootstrap = readFileSync("src-tauri/src/voice-bridge.js", "utf8");
+    assert.doesNotMatch(bootstrap, /invoke|ipc|postMessage|__TAURI__/);
     assert.match(readFileSync("src-tauri/src/main.rs", "utf8"), /open_js_links_on_click\(false\)/);
   });
 });

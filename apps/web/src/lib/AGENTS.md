@@ -31,6 +31,9 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   `VoiceMemberState`; do not report a join as complete on timeout or rejection.
 - Voice-join and visual-subscription requests use deterministic five-second
   timeouts and settle once even if a late ACK arrives.
+- Pending joins hold the deployment reload guard before capture or ACK awaits.
+  Cancellation invalidates the attempt; stale completions cannot release a
+  replacement's guard or publish newly acquired capture.
 - Receive-only joins must not request microphone permission. Intentional normal
   and LIVE joins may start mic-on only after a live enabled track is ready.
 - Keep voice-channel activation as a deterministic transition: disconnected
@@ -78,6 +81,10 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   live-track state and the stored microphone preference.
 
 ## Deafen and Microphone State
+
+- Desktop mute intent uses the existing microphone action only for a connected
+  call with a live microphone track. Preserve deafen, owner, and room locks;
+  shortcuts do not join voice or request microphone permission (ADR-0020).
 
 - Deafen immediately disables local microphone tracks and publishes
   `deafened: true`, `mic: false`, and `speaking: false`.
@@ -176,7 +183,8 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
 - Capture processing is fixed, not preference-driven: noise suppression, gain
   control, and echo cancellation are all requested on, as plain booleans so an
   unsupported device degrades instead of rejecting the capture. Never send an
-  `exact` form. Screen-share audio stays unspecified and untouched.
+  `exact` form. Screen audio uses its own capture policy below rather than
+  microphone noise suppression, gain control, or echo cancellation.
 - The browser constraint cannot carry the user's suppression preference. Chrome
   runs one processing module per capture, echo cancellation engages it, and
   `noiseSuppression: false` does not reliably disengage the suppressor inside
@@ -317,6 +325,12 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
 
 ## Screen Sharing
 
+- Request `restrictOwnAudio: true` as an optional screen-audio constraint to
+  exclude playback from the sharing Voxly document. Keep it non-exact so an
+  unsupported runtime can still capture. Treat exclusion as unverified until
+  returned track settings and an audible peer test establish the behavior;
+  receiver-side playback cannot reliably unmix call audio already captured by
+  another member. Preserve local call playback while sharing.
 - Capture screen video at an ideal and maximum 1280x720 and 30 FPS.
 - Set screen video `contentHint` to `motion` and apply
   `degradationPreference = "maintain-framerate"` only to the sender carrying

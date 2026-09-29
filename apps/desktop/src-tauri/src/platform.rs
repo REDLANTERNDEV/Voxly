@@ -16,6 +16,11 @@ pub fn open_installation(
     }
     let url = saved.origin.parse().map_err(|_| "invalid_address")?;
     let origin = saved.origin.clone();
+    let bootstrap = format!(
+        "{}({});",
+        include_str!("voice-bridge.js"),
+        serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?
+    );
     let opener_app = app.clone();
     let window = WebviewWindowBuilder::new(app, INSTALLATION_WINDOW, WebviewUrl::External(url))
         .title(format!("Voxly — {}", saved.origin))
@@ -23,7 +28,8 @@ pub fn open_installation(
         .min_inner_size(380.0, 520.0)
         .data_directory(data.join("profiles").join(&saved.id))
         .disable_drag_drop_handler()
-        // Remote pages receive NO capability and NO custom native API.
+        // Native-to-web mute intent only; remote pages still have no native ACL.
+        .initialization_script(&bootstrap)
         .on_navigation(move |url| crate::installations::same_origin(&origin, url))
         .on_new_window(move |url, _| {
             if crate::installations::browser_url(&url) {

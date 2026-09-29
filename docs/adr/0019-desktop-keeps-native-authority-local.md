@@ -85,3 +85,7 @@ a candidate until the acceptance record supports it.
 See the [platform review](../designs/2026-09-29-desktop-platform-review.md) for
 primary sources and the [implementation plan](../designs/2026-09-29-windows-desktop.md)
 for the remaining gates.
+
+[ADR-0020](0020-desktop-mute-intent-grants-no-native-authority.md) extends the
+initial no-injection milestone with one-way microphone intent. Remote native
+authority remains disabled; the future IPC requirements above still apply.

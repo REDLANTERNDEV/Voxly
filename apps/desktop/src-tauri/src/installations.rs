@@ -17,6 +17,8 @@ pub struct Preferences {
     pub installations: Vec<Installation>,
     pub language: Language,
     pub tray_acknowledged: bool,
+    #[serde(default)]
+    pub mute_shortcut: Option<String>,
 }
 
 #[derive(Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
@@ -86,6 +88,9 @@ pub fn load(path: &Path) -> Result<Preferences, &'static str> {
         return Err("storage_failed");
     }
     let preferences: Preferences = serde_json::from_slice(&bytes).map_err(|_| "storage_failed")?;
+    if let Some(binding) = &preferences.mute_shortcut {
+        crate::shortcuts::parse_binding(binding).map_err(|_| "storage_failed")?;
+    }
     if preferences.installations.len() > INSTALLATION_LIMIT {
         return Err("storage_failed");
     }
@@ -139,11 +144,13 @@ mod tests {
             installations: vec![installation("https://chat.example").unwrap()],
             language: Language::Tr,
             tray_acknowledged: true,
+            mute_shortcut: Some("Control+Shift+KeyM".into()),
         };
         save(&path, &preferences).unwrap();
         let loaded = load(&path).unwrap();
         assert_eq!(loaded.installations, preferences.installations);
         assert!(loaded.language == Language::Tr && loaded.tray_acknowledged);
+        assert_eq!(loaded.mute_shortcut, preferences.mute_shortcut);
         preferences
             .installations
             .push(installation("https://other.example").unwrap());
@@ -155,6 +162,14 @@ mod tests {
         fs::write(&path, b"invalid-json").unwrap();
         assert!(load(&path).is_err());
         assert_eq!(fs::read(&path).unwrap(), b"invalid-json");
+    }
+
+    #[test]
+    fn old_preferences_load_without_enabling_a_shortcut() {
+        let preferences: Preferences =
+            serde_json::from_str(r#"{"installations":[],"language":"en","trayAcknowledged":true}"#)
+                .unwrap();
+        assert!(preferences.mute_shortcut.is_none());
     }
 
     #[test]

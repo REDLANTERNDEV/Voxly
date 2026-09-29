@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createCaptureOwner, probeConstraints, summarizeTracks } from "../src/media.js";
+import { createCaptureOwner, probeConstraints, screenConstraints, summarizeTracks, transitionWithMediaCleanup } from "../src/media.js";
 import { english, turkish, errorKey } from "../src/i18n.js";
 
 function streamFixture() {
@@ -8,7 +8,7 @@ function streamFixture() {
   const track = {
     kind: "audio", readyState: "live", enabled: true, muted: false,
     label: "Private microphone name",
-    getSettings: () => ({ deviceId: "secret-device", groupId: "secret-group", sampleRate: 48000, echoCancellation: true }),
+    getSettings: () => ({ deviceId: "secret-device", groupId: "secret-group", sampleRate: 48000, echoCancellation: true, restrictOwnAudio: false }),
     stop: () => { stops += 1; }
   } as unknown as MediaStreamTrack;
   return { stream: { getTracks: () => [track] } as unknown as MediaStream, stops: () => stops };
@@ -42,16 +42,35 @@ describe("desktop feasibility probes", () => {
     assert.equal(next.stops(), 1);
   });
 
+  it("ends probes and late permission results before a confirmed transition", async () => {
+    const owner = createCaptureOwner();
+    const live = streamFixture();
+    const late = streamFixture();
+    const ticket = owner.begin();
+    owner.accept(ticket, live.stream);
+    await assert.rejects(transitionWithMediaCleanup(owner.stop, async () => {
+      assert.equal(live.stops(), 1);
+      assert.equal(owner.accept(ticket, late.stream), false);
+      throw new Error("installation unreachable");
+    }), /installation unreachable/);
+    assert.equal(late.stops(), 1);
+    assert.equal(owner.current(), null);
+  });
+
   it("excludes Device identifiers and capture labels from diagnostics", () => {
     assert.deepEqual(summarizeTracks(streamFixture().stream), [{
       kind: "audio", readyState: "live", enabled: true, muted: false,
-      settings: { sampleRate: 48000, echoCancellation: true }
+      settings: { sampleRate: 48000, echoCancellation: true, restrictOwnAudio: false }
     }]);
   });
 
   it("requests microphone processing without claiming it was applied", () => {
     assert.deepEqual(probeConstraints("microphone"), { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
     assert.equal(probeConstraints("camera").audio, false);
+  });
+
+  it("requests own-audio exclusion optionally without microphone processing", () => {
+    assert.deepEqual(screenConstraints.audio, { restrictOwnAudio: true });
   });
 
   it("provides matching Turkish keys and never renders native error internals", () => {

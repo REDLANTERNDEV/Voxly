@@ -22,9 +22,15 @@ Implemented for that experiment:
 - Deployment update deferral during active voice/capture/media checks.
 - A Windows CI test-installer build and a process-tree measurement script.
 
-Windows media acceptance has **not been measured**. Browser authorization,
-the versioned remote bridge, native notifications, global shortcuts, routing
-deep links, and signed shell updating remain subsequent milestones. No Windows
+Initial contributor smoke tests report working bidirectional voice, screen and
+computer audio, tray call audio, and permission-denial errors. The complete
+Windows acceptance matrix and resource measurements remain pending. The
+[game-capture review](2026-09-29-desktop-game-capture-review.md) separates the
+reported picker friction from game compatibility and motion quality.
+The local global mute preference and one-way intent bridge are now implemented;
+the installation must deploy the updated web client. Browser authorization,
+remote-to-native IPC, native notifications, global deafen, routing deep links,
+and signed shell updating remain subsequent milestones. No Windows
 or other-platform media parity is claimed by a successful compile.
 
 ## Corrections to the original plan
@@ -59,9 +65,27 @@ measured failures before choosing a framework replacement. Electron is the
 fallback candidate when a maintained Chromium desktop capture path materially
 reduces that burden; do not migrate speculatively.
 
-The absence of Windows hardware in a development environment leaves this gate
-open. CI runs Windows Server and can validate compilation/installer creation;
-it cannot certify Windows 11 interactive media or microphone hardware.
+The contributor's initial smoke report supports continuing the experiment but
+does not complete all media/source/background variants. The development host
+still cannot exercise Windows hardware. CI runs Windows Server and can validate
+compilation/installer creation; it cannot certify Windows 11 interactive media
+or microphone hardware.
+
+The desktop's defining requirements are now an easier game/window picker,
+capture that avoids repeating the call in screen audio, and configurable mute
+shortcuts that work with a game or another application focused. Global shortcuts
+fit either shell; native source selection and audio scope drive the capture
+comparison. Game-only audio and full-system audio excluding Voxly are distinct
+choices and need distinct labels and tests. A desktop viewer cannot remove its
+own voice reliably from an already mixed stream sent by a browser friend;
+own-audio exclusion belongs at that friend's capture endpoint too.
+
+For a game/window chooser owned by Voxly, compare Electron's documented desktop
+source enumeration/request handler before investing in native Windows capture
+and WebView2 media handoff. This comparison is an option, not a framework
+migration. A game picker, fullscreen capture compatibility, and delivered frame
+rate have separate acceptance criteria. Keep the working Tauri capture path
+while evaluating the concrete UX requirement.
 
 ## Milestone 2: shell and browser authorization
 
@@ -111,8 +135,31 @@ protocols inside installation content. Keep the existing Link code fallback.
 
 ## Milestone 3: native integration
 
-Register configurable global mute/deafen shortcuts locally. Surface registration
-conflicts; shortcuts dispatch existing web voice actions and obey owner locks.
+Implemented after the reported voice smoke tests: an opt-in, persistent global
+microphone mute toggle configured in the local chooser. The version-1 bridge
+is native to web only, grants no remote ACL, and requires the updated web client
+on the installation. It refuses inactive/disconnected/receive-only sessions and
+owner, room, or deafen locks. See [ADR-0020](../adr/0020-desktop-mute-intent-grants-no-native-authority.md).
+Windows registration, game focus, and tray behavior still need physical tests.
+Global deafen, notifications, and bidirectional media-state reporting remain
+future work.
+
+The reviewed lifecycle bugs are also repaired: pending joins hold the deployment
+reload guard synchronously through capture and acknowledgement, with generation
+checks on completion/cancellation. Confirmed connect/switch/retry/disconnect
+release local chooser probes and tones before awaiting native work; cancelling
+confirmation keeps them. This does not alter native health-check preservation
+of the old remote call when a replacement is unreachable.
+
+Register configurable global mute/deafen shortcuts locally. Provide local
+Settings to record, change, clear, and persist a key combination, with explicit
+registration-conflict feedback. Handle one press per activation and dispatch
+the existing voice action only to the current installation's validated bridge.
+An inactive/disconnected voice session does not join or open a microphone from
+a shortcut. Shortcuts obey owner locks and effective media state; the remote
+installation cannot register or replace OS key combinations. Verify the action
+with another application focused, while hidden to tray, and with representative
+borderless/fullscreen games; document any registration or OS/game limitation.
 Track effective media plus in-progress joins for switch/update confirmations;
 a missing or stale handshake requires conservative confirmation. Tray Quit
 ends tracks before exit. Keep native menus and first-use behavior bilingual.

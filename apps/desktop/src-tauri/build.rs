@@ -11,6 +11,7 @@ fn main() {
             "set_language",
             "acknowledge_tray",
             "quit_app",
+            "set_mute_shortcut",
         ]),
     ))
     .expect("could not build the desktop command permissions");
