@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Voxly desktop</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div><span class="brand">VOXLY</span><h1 data-i18n="title">Voxly desktop</h1><p data-i18n="subtitle">Your groups, on your own installation.</p></div>
+        <label><span data-i18n="language">Language</span><select id="language"><option value="en">English</option><option value="tr">Türkçe</option></select></label>
+      </header>
+      <p class="notice" data-i18n="experimental">Windows 11 feasibility build. Desktop media support is still being tested.</p>
+      <p id="browser-preview" class="notice" hidden data-i18n="preview">Browser preview: native controls require the desktop app.</p>
+      <section aria-labelledby="installations-heading">
+        <h2 id="installations-heading" data-i18n="installations">Installations</h2>
+        <form id="installation-form">
+          <label for="address" data-i18n="address">Installation address</label>
+          <div class="form-row"><input id="address" type="url" required autocomplete="url" placeholder="https://chat.example.com" aria-describedby="address-hint" maxlength="2048" /><button id="save" type="submit" data-i18n="save">Remember installation</button></div>
+          <p id="address-hint" class="hint" data-i18n="addressHint"></p>
+        </form>
+        <ul id="installation-list" aria-label="Installations"></ul>
+        <p id="empty" class="hint" data-i18n="empty">Add your installation address to get started.</p>
+        <p id="connection" role="status"></p>
+        <div class="actions"><button id="disconnect" type="button" data-i18n="disconnect" disabled>Disconnect</button><button id="retry" type="button" data-i18n="retry" disabled>Retry loading</button><button id="quit" type="button" data-i18n="quit">Quit</button></div>
+        <p class="hint" data-i18n="retryHint"></p>
+        <p class="hint" data-i18n="connectionHint"></p>
+        <p id="status" role="status" aria-live="polite"></p>
+      </section>
+      <section aria-labelledby="media-heading">
+        <h2 id="media-heading" data-i18n="media">Media checks</h2>
+        <p class="hint" data-i18n="mediaHint"></p>
+        <div class="actions"><button id="microphone" type="button" data-i18n="microphone">Check microphone</button><button id="camera" type="button" data-i18n="camera">Check camera</button><button id="screen" type="button" data-i18n="screen">Check screen and computer audio</button><button id="stop" type="button" data-i18n="stop">Stop capture</button></div>
+        <p class="hint" data-i18n="screenHint"></p>
+        <video id="preview" autoplay muted playsinline hidden></video>
+        <p id="probe-status" role="status" aria-live="polite"></p>
+        <div class="actions"><label for="output" data-i18n="output">Audio output</label><select id="output"><option value="" data-i18n="defaultOutput">System default</option></select><button id="devices" type="button" data-i18n="refreshDevices">Refresh output devices</button><button id="tone" type="button" data-i18n="tone">Play test sound</button></div>
+        <label for="report" class="report-label" data-i18n="report">Diagnostic report</label>
+        <p id="report-hint" class="hint" data-i18n="reportHint"></p>
+        <textarea id="report" rows="10" readonly spellcheck="false" aria-describedby="report-hint"></textarea>
+        <div class="actions"><button id="refresh-report" type="button" data-i18n="refreshReport">Refresh report</button><button id="copy-report" type="button" data-i18n="copyReport">Copy report</button></div>
+      </section>
+    </main>
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+      <h2 id="confirm-title" data-i18n="confirmationTitle"></h2><p id="confirm-body"></p>
+      <form method="dialog" class="actions"><button value="cancel" autofocus data-i18n="cancel">Cancel</button><button value="confirm" data-i18n="continue">Continue</button></form>
+    </dialog>
+    <dialog id="tray-dialog" aria-labelledby="tray-title" aria-describedby="tray-body">
+      <h2 id="tray-title" data-i18n="trayTitle"></h2><p id="tray-body" data-i18n="trayBody"></p>
+      <form method="dialog"><button value="confirm" autofocus data-i18n="understood">Got it</button></form>
+    </dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

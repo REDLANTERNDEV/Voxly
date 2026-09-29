@@ -1,0 +1,34 @@
+:root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #e8eef4; background: #0e141b; font-size: 15px; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { width: min(100%, 860px); padding: 36px 28px; margin: auto; }
+header { display: flex; justify-content: space-between; gap: 24px; align-items: start; margin-bottom: 28px; }
+header label { display: grid; gap: 8px; }
+.brand { color: #55d5c4; font-weight: 800; letter-spacing: .2em; font-size: 12px; }
+h1 { font-size: 30px; letter-spacing: -.035em; margin: 8px 0; }
+h2 { font-size: 20px; margin: 0 0 18px; }
+p { line-height: 1.6; }
+header p { margin: 0; color: #a6b5c6; }
+section { border-top: 1px solid #283543; padding: 28px 0; }
+.notice { color: #f3d299; border-left: 3px solid #e8b760; padding-left: 16px; }
+.hint { color: #a6b5c6; font-size: 13px; }
+.form-row, .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+input, select, textarea, button { font: inherit; border: 1px solid #374857; border-radius: 6px; min-height: 40px; padding: 9px 12px; color: inherit; background: #18232e; }
+input { flex: 1; min-width: 190px; }
+button { cursor: pointer; }
+button:hover { border-color: #55d5c4; }
+button:disabled { opacity: .5; cursor: default; }
+button[type=submit] { background: #55d5c4; color: #0e141b; font-weight: 650; }
+:focus-visible { outline: 3px solid #68c6ff; outline-offset: 3px; }
+ul { padding: 0; list-style: none; }
+li { padding: 14px 0; border-bottom: 1px solid #283543; }
+li strong { display: block; overflow-wrap: anywhere; }
+li button { font-size: 13px; }
+#status, #probe-status { min-height: 24px; color: #b9ddd6; overflow-wrap: anywhere; }
+video { width: 100%; max-height: 260px; background: #000; margin: 12px 0; object-fit: contain; }
+.report-label { display: block; margin-top: 24px; font-weight: 650; }
+textarea { width: 100%; resize: vertical; font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+dialog { color: inherit; background: #18232e; border: 1px solid #374857; border-radius: 10px; padding: 24px; max-width: min(480px, calc(100vw - 32px)); }
+dialog::backdrop { background: #000a; }
+[hidden] { display: none !important; }
+@media (max-width: 520px) { main { padding: 24px 16px; } header { gap: 12px; } h1 { font-size: 24px; } .form-row { align-items: stretch; } .form-row button { width: 100%; } }

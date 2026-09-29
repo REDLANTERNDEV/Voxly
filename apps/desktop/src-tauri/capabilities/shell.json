@@ -1,0 +1,13 @@
+{
+  "identifier": "local-shell",
+  "description": "Only the bundled installation chooser may manage the native shell.",
+  "local": true,
+  "windows": ["shell"],
+  "webviews": ["shell"],
+  "permissions": [
+    "allow-shell-state", "allow-save-installation", "allow-forget-installation",
+    "allow-connect-installation", "allow-disconnect-installation",
+    "allow-open-installation-browser", "allow-set-language", "allow-acknowledge-tray",
+    "allow-quit-app", "core:event:allow-listen", "core:event:allow-unlisten"
+  ]
+}

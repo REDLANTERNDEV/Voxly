@@ -12,6 +12,7 @@ COPY apps/web/package.json apps/web/package.json
 # workspace happened to hoist. Both runtime stages below install from here; what
 # separates them is which dist is copied out and which programs are added.
 COPY apps/bot/package.json apps/bot/package.json
+COPY apps/desktop/package.json apps/desktop/package.json
 COPY packages/shared/package.json packages/shared/package.json
 
 RUN npm ci

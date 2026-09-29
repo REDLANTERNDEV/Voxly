@@ -1,0 +1,64 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { createCaptureOwner, probeConstraints, summarizeTracks } from "../src/media.js";
+import { english, turkish, errorKey } from "../src/i18n.js";
+
+function streamFixture() {
+  let stops = 0;
+  const track = {
+    kind: "audio", readyState: "live", enabled: true, muted: false,
+    label: "Private microphone name",
+    getSettings: () => ({ deviceId: "secret-device", groupId: "secret-group", sampleRate: 48000, echoCancellation: true }),
+    stop: () => { stops += 1; }
+  } as unknown as MediaStreamTrack;
+  return { stream: { getTracks: () => [track] } as unknown as MediaStream, stops: () => stops };
+}
+
+describe("desktop feasibility probes", () => {
+  it("stops a capture that resolves after cancellation", () => {
+    const owner = createCaptureOwner();
+    const late = streamFixture();
+    const ticket = owner.begin();
+    owner.stop();
+    assert.equal(owner.accept(ticket, late.stream), false);
+    assert.equal(late.stops(), 1);
+    assert.equal(owner.current(), null);
+  });
+
+  it("releases the earlier probe and rejects its late completion", () => {
+    const owner = createCaptureOwner();
+    const first = streamFixture();
+    const late = streamFixture();
+    const next = streamFixture();
+    const ticket = owner.begin();
+    assert.equal(owner.accept(ticket, first.stream), true);
+    const replacement = owner.begin();
+    assert.equal(first.stops(), 1);
+    assert.equal(owner.accept(ticket, late.stream), false);
+    assert.equal(late.stops(), 1);
+    assert.equal(owner.accept(replacement, next.stream), true);
+    owner.stop();
+    owner.stop();
+    assert.equal(next.stops(), 1);
+  });
+
+  it("excludes Device identifiers and capture labels from diagnostics", () => {
+    assert.deepEqual(summarizeTracks(streamFixture().stream), [{
+      kind: "audio", readyState: "live", enabled: true, muted: false,
+      settings: { sampleRate: 48000, echoCancellation: true }
+    }]);
+  });
+
+  it("requests microphone processing without claiming it was applied", () => {
+    assert.deepEqual(probeConstraints("microphone"), { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+    assert.equal(probeConstraints("camera").audio, false);
+  });
+
+  it("provides matching Turkish keys and never renders native error internals", () => {
+    assert.deepEqual(Object.keys(turkish).sort(), Object.keys(english).sort());
+    assert.equal(errorKey("https_required"), "https_required");
+    assert.equal(errorKey("unexpected error containing a token"), "unknownError");
+    assert.equal(errorKey(new Error("private path")), "unknownError");
+    assert.equal(errorKey("toString"), "unknownError");
+  });
+});

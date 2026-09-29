@@ -1,0 +1,25 @@
+{
+  "name": "@voxly/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "dev:shell": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "bundle": "tauri build",
+    "tauri": "tauri",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/test/*.test.js\"",
+    "test:native": "cargo test --manifest-path src-tauri/Cargo.toml --locked"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.5",
+    "@types/node": "^24.6.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.0.0"
+  }
+}

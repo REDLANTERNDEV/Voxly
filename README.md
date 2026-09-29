@@ -42,6 +42,11 @@ For self-hosting:
 
 ## Local development
 
+The experimental Windows-first Tauri client has a separate
+[desktop development guide](docs/desktop.md) and
+[Windows acceptance procedure](docs/desktop-windows-acceptance.md). It does not
+change the requirements for self-hosting the application.
+
 ```sh
 npm install
 npm run build -w @voxly/server

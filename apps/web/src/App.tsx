@@ -22,6 +22,7 @@ import { requestMusicCommand } from "./lib/musicBot.js";
 import { useMusicQueue } from "./lib/useMusicQueue.js";
 import { defaultServerId } from "./lib/navigation.js";
 import { DEFAULT_VOLUME_PERCENT } from "./lib/voiceVolume.js";
+import { ClientUpdateBoundary } from "./components/ClientUpdateNotice.js";
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
   const [drawer, setDrawer] = useState<Drawer>(null);
@@ -272,8 +273,7 @@ export function App() {
     }
   } satisfies ShellModel & ShellActions : null;
   const textActions = route.name === "text" ? chat.actionsForRoom(route.roomId) : null;
-
-  return <AppRoutes
+  return <ClientUpdateBoundary latestVersion={session.appConfig.clientVersion} media={audio} t={t}><AppRoutes
     route={route}
     user={user}
     authState={session.authState}
@@ -295,5 +295,5 @@ export function App() {
     changeLanguage={changeLanguage}
     textRoomOutbox={route.name === "text" ? chat.outboxByRoom[route.roomId] ?? [] : []}
     textRoomActions={textActions}
-  />;
+  /></ClientUpdateBoundary>;
 }

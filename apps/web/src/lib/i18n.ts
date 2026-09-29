@@ -8,6 +8,9 @@ const supportedLanguages = new Set<LanguageCode>(["en", "tr"]);
 
 const translations = {
   en: {
+    "clientUpdate.ready": "A Voxly update is ready.",
+    "clientUpdate.afterCall": "A Voxly update is ready. End your call and media checks before reloading.",
+    "clientUpdate.reload": "Reload to update",
     "common.actions": "Actions",
     "common.active": "Active",
     "common.appearance": "Appearance",
@@ -722,6 +725,9 @@ const translations = {
     "system.loadingVoxly": "Loading Voxly"
   },
   tr: {
+    "clientUpdate.ready": "Bir Voxly güncellemesi hazır.",
+    "clientUpdate.afterCall": "Bir Voxly güncellemesi hazır. Yeniden yüklemeden önce aramanızı ve medya kontrollerini sonlandırın.",
+    "clientUpdate.reload": "Güncellemek için yeniden yükle",
     "common.actions": "İşlemler",
     "common.active": "Aktif",
     "common.appearance": "Görünüm",
