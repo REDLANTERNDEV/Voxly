@@ -20,6 +20,7 @@ type BoostGraph = {
 
 type ManagedAudioOutput = AudioOutput & {
   element: HTMLAudioElement;
+  readonly nativePlaybackBlocked: boolean;
   refreshBoost: (forceRebuild?: boolean) => void;
 };
 
@@ -34,6 +35,13 @@ let lastBlockedState = false;
 
 function resumeSharedContext() {
   void sharedContext?.resume().catch(() => undefined);
+}
+
+function resumeAudioOutputs() {
+  resumeSharedContext();
+  // A newly arrived peer can be blocked long after the voice join gesture.
+  // Call play synchronously inside this activation, before any await.
+  void retryBlockedAudioOutputs();
 }
 
 function refreshManagedBoosts() {
@@ -69,11 +77,12 @@ export function unlockSharedAudioOutput() {
 
 export function releaseUnusedSharedAudioOutput() {
   sharedContextHeld = false;
-  if (activeOutputs > 0 || !sharedContext) return false;
+  if (activeOutputs > 0) return false;
+  detachResumeListeners();
+  if (!sharedContext) return false;
   const context = sharedContext;
   sharedContext = null;
   context.removeEventListener?.("statechange", refreshManagedBoosts);
-  detachResumeListeners();
   void context.close().catch(() => undefined);
   return true;
 }
@@ -81,15 +90,15 @@ export function releaseUnusedSharedAudioOutput() {
 function attachResumeListeners() {
   if (listenersAttached) return;
   listenersAttached = true;
-  window.addEventListener("pointerdown", resumeSharedContext, { passive: true });
-  window.addEventListener("keydown", resumeSharedContext);
+  window.addEventListener("pointerdown", resumeAudioOutputs, { passive: true });
+  window.addEventListener("keydown", resumeAudioOutputs);
 }
 
 function detachResumeListeners() {
   if (!listenersAttached) return;
   listenersAttached = false;
-  window.removeEventListener("pointerdown", resumeSharedContext);
-  window.removeEventListener("keydown", resumeSharedContext);
+  window.removeEventListener("pointerdown", resumeAudioOutputs);
+  window.removeEventListener("keydown", resumeAudioOutputs);
 }
 
 export type AudioOutput = {
@@ -150,7 +159,8 @@ export function subscribeBlockedAudioOutputs(listener: (blocked: boolean) => voi
 }
 
 export async function retryBlockedAudioOutputs() {
-  const results = await Promise.all([...blockedOutputs].map((output) => output.retry()));
+  const outputs = [...managedOutputs].filter((output) => output.nativePlaybackBlocked);
+  const results = await Promise.all(outputs.map((output) => output.retry()));
   return results.every(Boolean) && blockedOutputs.size === 0;
 }
 
@@ -212,6 +222,11 @@ export function connectAudioOutput(
   let generation = 0;
   let boostGraph: BoostGraph | null = null;
   let hasPlayed = false;
+  let sinkApplied = false;
+  let playAttempt: Promise<boolean> | null = null;
+  let nativePlaybackBlocked = false;
+
+  const needsGraph = () => !state.muted && (state.volume > 100 || nativePlaybackBlocked);
 
   const applyDirectState = () => {
     const switched = element.srcObject !== stream;
@@ -227,46 +242,73 @@ export function connectAudioOutput(
     boostGraph = null;
   };
 
-  const attemptPlay = async () => {
-    try {
-      await element.play();
-      setOutputBlocked(output, false);
-      return { ok: true as const };
-    } catch (cause) {
-      setOutputBlocked(output, true);
-      return { ok: false as const, cause };
-    }
+  const attemptPlay = () => {
+    if (disposed) return Promise.resolve(false);
+    if (playAttempt) return playAttempt;
+    const attempt = (async () => {
+      try {
+        await element.play();
+        if (disposed) return false;
+        nativePlaybackBlocked = false;
+        setOutputBlocked(output, false);
+        return true;
+      } catch {
+        if (!disposed) {
+          nativePlaybackBlocked = true;
+          setOutputBlocked(output, !boostGraph);
+        }
+        return false;
+      }
+    })();
+    playAttempt = attempt;
+    void attempt.then(() => {
+      if (playAttempt === attempt) playAttempt = null;
+    });
+    return attempt;
   };
 
   const activateBoost = async (expectedGeneration: number) => {
-    const context = getContext();
+    // A new native sink may be denied long after voice join. Reuse the context
+    // unlocked by that join; creating another context cannot grant activation.
+    const context = nativePlaybackBlocked ? sharedContext : getContext();
     if (!context) return false;
+    if (nativePlaybackBlocked && context.state !== "running") {
+      disposeBoost();
+      applyDirectState();
+      setOutputBlocked(output, true);
+      return false;
+    }
     try {
       await context.resume();
-      if (context.state !== "running" || disposed || generation !== expectedGeneration || state.muted || state.volume <= 100) {
+      if (context.state !== "running" || disposed || generation !== expectedGeneration || !needsGraph()) {
         return false;
       }
-      if (!await applySharedAudioOutputToContext(context)) {
+      const routed = await applySharedAudioOutputToContext(context);
+      if (disposed || generation !== expectedGeneration || !needsGraph()) return false;
+      if (!routed) {
         disposeBoost();
         applyDirectState();
+        setOutputBlocked(output, nativePlaybackBlocked);
         return false;
       }
-      if (disposed || generation !== expectedGeneration || state.muted || state.volume <= 100) return false;
       if (!boostGraph) {
         const source = context.createMediaStreamSource(stream);
         const gain = context.createGain();
+        boostGraph = { source, gain };
         source.connect(gain);
         gain.connect(context.destination);
-        boostGraph = { source, gain };
       }
       applyBoostGain(context, boostGraph.gain.gain, state.volume);
       if (element.srcObject !== stream) element.srcObject = stream;
       element.volume = 1;
       element.muted = true;
+      setOutputBlocked(output, false);
       return true;
     } catch {
+      if (disposed || generation !== expectedGeneration) return false;
       disposeBoost();
       applyDirectState();
+      setOutputBlocked(output, nativePlaybackBlocked);
       return false;
     }
   };
@@ -282,13 +324,17 @@ export function connectAudioOutput(
   };
 
   const retry = async () => {
-    if (disposed) return false;
+    if (disposed || !sinkApplied) return false;
     resumeSharedContext();
     const played = await attemptPlay();
-    if (played.ok && !state.muted && state.volume > 100 && element.srcObject === stream) {
-      await activateBoost(generation);
+    if (disposed) return false;
+    if (needsGraph()) {
+      const routed = await activateBoost(generation);
+      return played || routed;
     }
-    return played.ok;
+    disposeBoost();
+    applyDirectState();
+    return played;
   };
 
   const onPlaying = () => {
@@ -303,13 +349,20 @@ export function connectAudioOutput(
     void retry();
   };
 
+  const onCanPlay = () => {
+    // ontrack can arrive before the bot's transport delivers any audio. A
+    // failed first play must not strand the mounted output until a rejoin.
+    if (!disposed && element.paused) void retry();
+  };
+
   const refreshBoost = (forceRebuild = false) => {
     if (disposed) return;
     generation += 1;
     const expectedGeneration = generation;
-    if (state.muted || state.volume <= 100 || sharedContext?.state !== "running") {
+    if (!needsGraph() || sharedContext?.state !== "running") {
       disposeBoost();
       applyDirectState();
+      setOutputBlocked(output, nativePlaybackBlocked);
       return;
     }
     if (boostGraph && !forceRebuild) {
@@ -317,6 +370,7 @@ export function connectAudioOutput(
       if (element.srcObject !== stream) element.srcObject = stream;
       element.volume = 1;
       element.muted = true;
+      setOutputBlocked(output, false);
       return;
     }
     disposeBoost();
@@ -326,6 +380,7 @@ export function connectAudioOutput(
 
   const output: ManagedAudioOutput = {
     element,
+    get nativePlaybackBlocked() { return nativePlaybackBlocked; },
     ready: Promise.resolve(),
     refreshBoost,
     setVolume(muted, volume) {
@@ -340,6 +395,7 @@ export function connectAudioOutput(
       generation += 1;
       element.removeEventListener("playing", onPlaying);
       element.removeEventListener("pause", onPause);
+      element.removeEventListener("canplay", onCanPlay);
       disposeBoost();
       managedOutputs.delete(output);
       setOutputBlocked(output, false);
@@ -352,14 +408,16 @@ export function connectAudioOutput(
 
   element.addEventListener("playing", onPlaying);
   element.addEventListener("pause", onPause);
+  element.addEventListener("canplay", onCanPlay);
   applyDirectState();
   activeOutputs += 1;
   managedOutputs.add(output);
   attachResumeListeners();
   output.ready = (async () => {
     await applyRememberedSink();
+    sinkApplied = true;
     const played = await attemptPlay();
-    if (played.ok && !state.muted && state.volume > 100) {
+    if (!disposed && needsGraph() && (played || nativePlaybackBlocked)) {
       await activateBoost(generation);
     }
   })();
@@ -370,9 +428,10 @@ export function connectAudioOutput(
 export function voiceOutputDiagnostics() {
   return {
     contextState: sharedContext?.state ?? null,
-    outputs: [...managedOutputs].map(({ element }) => ({
+    outputs: [...managedOutputs].map(({ element, nativePlaybackBlocked }) => ({
       paused: element.paused, muted: element.muted, volume: element.volume,
-      readyState: element.readyState, errorCode: element.error?.code ?? null
+      readyState: element.readyState, errorCode: element.error?.code ?? null,
+      nativePlaybackBlocked
     })),
     blockedCount: blockedOutputs.size
   };

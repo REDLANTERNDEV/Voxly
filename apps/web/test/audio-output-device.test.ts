@@ -7,6 +7,7 @@ import {
   selectSharedAudioOutputDevice,
   subscribeBlockedAudioOutputs,
   unlockSharedAudioOutput,
+  voiceOutputDiagnostics,
   type AudioOutput
 } from "../src/lib/audioOutput.js";
 
@@ -21,6 +22,7 @@ afterEach(async () => {
 });
 
 function installWindow(AudioContextClass?: new () => AudioContext) {
+  const events = new EventTarget();
   class FakeMediaElement {
     async setSinkId(_sinkId: string) {}
   }
@@ -29,10 +31,12 @@ function installWindow(AudioContextClass?: new () => AudioContext) {
     value: {
       AudioContext: AudioContextClass,
       HTMLMediaElement: FakeMediaElement,
-      addEventListener() {},
-      removeEventListener() {}
+      addEventListener: events.addEventListener.bind(events),
+      removeEventListener: events.removeEventListener.bind(events),
+      dispatchEvent: events.dispatchEvent.bind(events)
     }
   });
+  return events;
 }
 
 function createElement(options: {
@@ -84,7 +88,220 @@ function connect(element: HTMLAudioElement, stream: MediaStream, muted: boolean,
   return output;
 }
 
+function unlockedContext(options: { rejectSink?: boolean; supportsSink?: boolean } = {}) {
+  const sources: Array<{ stream: MediaStream; connected: boolean }> = [];
+  const gains: Array<{ value: number }> = [];
+  const sinks: string[] = [];
+  let context!: FakeAudioContext;
+  class FakeAudioContext extends EventTarget {
+    state: AudioContextState = "suspended";
+    currentTime = 0;
+    destination = {};
+    setSinkId = options.supportsSink === false ? undefined : async (sinkId: string) => {
+      sinks.push(sinkId);
+      if (options.rejectSink && sinkId) throw new Error("sink unavailable");
+    };
+    constructor() { super(); context = this; }
+    async resume() { this.state = "running"; }
+    async close() {}
+    createMediaStreamSource(stream: MediaStream) {
+      const source = { stream, connected: false };
+      sources.push(source);
+      return {
+        connect() { source.connected = true; },
+        disconnect() { source.connected = false; }
+      };
+    }
+    createGain() {
+      const gain = { value: 1 };
+      gains.push(gain);
+      return { gain, connect() {}, disconnect() {} };
+    }
+  }
+  const events = installWindow(FakeAudioContext as unknown as new () => AudioContext);
+  unlockSharedAudioOutput();
+  return { context, sources, gains, sinks, events };
+}
+
 describe("hybrid voice audio output", () => {
+  it("hears a late bot through the context unlocked an hour earlier when native playback is denied", async () => {
+    const routedStreams: MediaStream[] = [];
+    const gains: Array<{ value: number }> = [];
+    class FakeAudioContext {
+      static latest: FakeAudioContext;
+      state: AudioContextState = "suspended";
+      currentTime = 0;
+      destination = {};
+      constructor() { FakeAudioContext.latest = this; }
+      async resume() { this.state = "running"; }
+      async close() {}
+      createMediaStreamSource(stream: MediaStream) {
+        return { connect() { routedStreams.push(stream); }, disconnect() {} };
+      }
+      createGain() {
+        const gain = { value: 1 };
+        gains.push(gain);
+        return { gain, connect() {}, disconnect() {} };
+      }
+    }
+    // Each browser owns its own unlocked context; neither Listener should
+    // depend on a subsequent action from the member who summoned the bot.
+    for (let listener = 0; listener < 2; listener += 1) {
+      installWindow(FakeAudioContext as unknown as new () => AudioContext);
+      assert.equal(unlockSharedAudioOutput(), true);
+      const friend = createElement();
+      const friendOutput = connect(friend, { id: "friend" } as MediaStream, false, 100);
+      await friendOutput.ready;
+      FakeAudioContext.latest.currentTime = 60 * 60;
+      const botStream = { id: "late-bot" } as MediaStream;
+      const botElement = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+      const botOutput = connect(botElement, botStream, false, 50);
+      await botOutput.ready;
+
+      assert.equal(routedStreams.at(-1), botStream, "the bot must reach the already unlocked hardware output");
+      assert.equal(gains.at(-1)?.value, 0.5, "fallback must honor Listener volume");
+      assert.equal(botElement.srcObject, botStream);
+      assert.equal(botElement.muted, true, "only one output path may be audible");
+      assert.equal(friend.paused, false, "existing conversation must continue");
+      assert.equal(voiceOutputDiagnostics().blockedCount, 0);
+      botOutput.dispose();
+      friendOutput.dispose();
+      releaseUnusedSharedAudioOutput();
+    }
+  });
+
+  it("returns an audible fallback to native output after a user activation without doubling audio", async () => {
+    const h = unlockedContext();
+    let activated = false;
+    const element = createElement({ play: async () => {
+      if (!activated) throw { name: "NotAllowedError" };
+    } });
+    const stream = { id: "bot" } as MediaStream;
+    const output = connect(element, stream, false, 100);
+    await output.ready;
+    assert.equal(h.sources[0].connected, true);
+    assert.equal(element.muted, true);
+    assert.equal(voiceOutputDiagnostics().blockedCount, 0);
+
+    activated = true;
+    h.events.dispatchEvent(new Event("pointerdown"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(h.sources[0].connected, false);
+    assert.equal(element.paused, false);
+    assert.equal(element.muted, false);
+    assert.equal(element.srcObject, stream);
+  });
+
+  it("keeps fallback volume live across normal and boosted levels, and mutes both paths", async () => {
+    const h = unlockedContext();
+    const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+    const output = connect(element, { id: "bot" } as MediaStream, false, 100);
+    await output.ready;
+    for (const volume of [0, 50, 100, 150, 200]) {
+      output.setVolume(false, volume);
+      assert.equal(h.gains.at(-1)?.value, volume / 100);
+      assert.equal(element.muted, true);
+      assert.equal(h.sources.filter(source => source.connected).length, 1);
+    }
+    output.setVolume(true, 200);
+    assert.equal(h.sources.filter(source => source.connected).length, 0);
+    assert.equal(element.muted, true);
+    output.setVolume(false, 50);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(h.sources.filter(source => source.connected).length, 1);
+    assert.equal(h.gains.at(-1)?.value, 0.5);
+    assert.equal(element.muted, true);
+    output.dispose();
+    assert.equal(h.sources.filter(source => source.connected).length, 0);
+  });
+
+  for (const supportsSink of [true, false]) {
+    it(`keeps recovery available when the selected speaker cannot route fallback (sink API: ${supportsSink})`, async () => {
+      const h = unlockedContext({ rejectSink: true, supportsSink });
+      await selectSharedAudioOutputDevice("speaker-a");
+      const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+      const output = connect(element, { id: "bot" } as MediaStream, false, 100);
+      await output.ready;
+      assert.equal(h.sources.length, 0, "audio must never escape to the default speaker");
+      assert.equal(voiceOutputDiagnostics().blockedCount, 1);
+      assert.equal(await retryBlockedAudioOutputs(), false);
+    });
+  }
+
+  it("routes fallback to the selected speaker and rebuilds it when the speaker changes", async () => {
+    const h = unlockedContext();
+    await selectSharedAudioOutputDevice("speaker-a");
+    const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+    const output = connect(element, { id: "bot" } as MediaStream, false, 100);
+    await output.ready;
+    assert.equal(h.sinks.at(-1), "speaker-a");
+    assert.equal(h.sources[0].connected, true);
+    await selectSharedAudioOutputDevice("speaker-b");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(h.sinks.at(-1), "speaker-b");
+    assert.equal(h.sources[0].connected, false);
+    assert.equal(h.sources.filter(source => source.connected).length, 1);
+  });
+
+  it("reports blocking when an audible fallback context suspends, and restores it when resumed", async () => {
+    const h = unlockedContext();
+    const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+    const output = connect(element, { id: "bot" } as MediaStream, false, 100);
+    await output.ready;
+    h.context.state = "suspended";
+    h.context.dispatchEvent(new Event("statechange"));
+    assert.equal(h.sources.filter(source => source.connected).length, 0);
+    assert.equal(voiceOutputDiagnostics().blockedCount, 1);
+    h.context.state = "running";
+    h.context.dispatchEvent(new Event("statechange"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(h.sources.filter(source => source.connected).length, 1);
+    assert.equal(voiceOutputDiagnostics().blockedCount, 0);
+  });
+
+  it("does not create a context when native playback is denied without a voice join unlock", async () => {
+    let contexts = 0;
+    class FakeAudioContext {
+      constructor() { contexts += 1; }
+    }
+    installWindow(FakeAudioContext as unknown as new () => AudioContext);
+    const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+    const output = connect(element, { id: "bot" } as MediaStream, false, 100);
+    await output.ready;
+    assert.equal(contexts, 0);
+    assert.equal(voiceOutputDiagnostics().blockedCount, 1);
+  });
+
+  it("keeps recovery available instead of awaiting a suspended context without activation", async () => {
+    const h = unlockedContext();
+    h.context.state = "suspended";
+    let resumes = 0;
+    h.context.resume = () => { resumes += 1; return new Promise<void>(() => {}); };
+    const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+    const output = connect(element, { id: "bot" } as MediaStream, false, 100);
+    await output.ready;
+    assert.equal(resumes, 0, "fallback must not await a promise that requires another user activation");
+    assert.equal(h.sources.length, 0);
+    assert.equal(voiceOutputDiagnostics().blockedCount, 1);
+  });
+
+  it("does not revive a disposed output when fallback sink application finishes late", async () => {
+    const h = unlockedContext();
+    await selectSharedAudioOutputDevice("speaker-a");
+    let finishSink!: () => void;
+    h.context.setSinkId = () => new Promise<void>((resolve) => { finishSink = resolve; });
+    const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+    const output = connect(element, { id: "bot" } as MediaStream, false, 100);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(typeof finishSink, "function");
+    output.dispose();
+    finishSink();
+    await output.ready;
+    assert.equal(h.sources.length, 0);
+    assert.equal(element.srcObject, null);
+    assert.equal(voiceOutputDiagnostics().blockedCount, 0);
+  });
+
   it("plays the original stream directly through 100 percent", async () => {
     installWindow();
     const events: string[] = [];
@@ -393,6 +610,149 @@ describe("hybrid voice audio output", () => {
     assert.equal(await retryBlockedAudioOutputs(), true);
     assert.equal(attempts, 2);
     assert.equal(blockedStates.at(-1), false);
+    unsubscribe();
+  });
+
+  it("starts a late Music bot output when media becomes playable without rejoining", async () => {
+    installWindow();
+    let playable = false;
+    let attempts = 0;
+    const element = createElement({ play: async () => {
+      attempts += 1;
+      if (!playable) throw { name: "AbortError" };
+    } });
+    const stream = { id: "late-music-bot" } as MediaStream;
+    const output = connect(element, stream, false, 100);
+    await output.ready;
+    assert.equal(element.paused, true);
+
+    playable = true;
+    element.emit("canplay");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.equal(element.paused, false, "the Listener must hear the bot without a pause/resume or rejoin");
+    assert.equal(element.srcObject, stream);
+    assert.equal(attempts, 2);
+  });
+
+  for (const activation of ["pointerdown", "keydown"]) {
+    it(`retries a late blocked Music bot output on ${activation}`, async () => {
+      const events = installWindow();
+      let activated = false;
+      const element = createElement({ play: async () => {
+        if (!activated) throw { name: "NotAllowedError" };
+      } });
+      const output = connect(element, { id: "late-music-bot" } as MediaStream, false, 100);
+      await output.ready;
+      assert.equal(element.paused, true);
+
+      activated = true;
+      events.dispatchEvent(new Event(activation));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      assert.equal(element.paused, false, "a normal interaction must unlock the new output");
+    });
+  }
+
+  it("recovers multiple late outputs independently as each becomes playable", async () => {
+    installWindow();
+    let playable = false;
+    const elements = [createElement({ play: async () => {
+      if (!playable) throw { name: "AbortError" };
+    } }), createElement({ play: async () => {
+      if (!playable) throw { name: "AbortError" };
+    } })];
+    const outputs = elements.map((element) => connect(element, { id: "bot" } as MediaStream, false, 100));
+    await Promise.all(outputs.map((output) => output.ready));
+    playable = true;
+
+    elements[0].emit("canplay");
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(elements[0].paused, false);
+    assert.equal(elements[1].paused, true);
+    elements[1].emit("canplay");
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(elements[1].paused, false);
+  });
+
+  it("does not restart healthy audio on readiness events or user activation", async () => {
+    const events = installWindow();
+    let attempts = 0;
+    const element = createElement({ play: async () => { attempts += 1; } });
+    const output = connect(element, { id: "remote" } as MediaStream, false, 100);
+    await output.ready;
+    element.emit("canplay");
+    events.dispatchEvent(new Event("pointerdown"));
+    await Promise.resolve();
+    assert.equal(attempts, 1);
+  });
+
+  it("keeps readiness and activation retries single-flight", async () => {
+    const events = installWindow();
+    let attempts = 0;
+    let resolvePlay!: () => void;
+    const pendingPlay = new Promise<void>((resolve) => { resolvePlay = resolve; });
+    const element = createElement({ play: async () => {
+      attempts += 1;
+      if (attempts === 1) throw { name: "NotAllowedError" };
+      await pendingPlay;
+    } });
+    const output = connect(element, { id: "remote" } as MediaStream, false, 100);
+    await output.ready;
+    events.dispatchEvent(new Event("pointerdown"));
+    element.emit("canplay");
+    events.dispatchEvent(new Event("keydown"));
+    const retry = output.retry();
+    assert.equal(attempts, 2);
+    resolvePlay();
+    assert.equal(await retry, true);
+  });
+
+  it("waits for the selected speaker before a readiness retry can play", async () => {
+    installWindow();
+    await selectSharedAudioOutputDevice("speaker-late");
+    let applySink!: () => void;
+    const sinkPending = new Promise<void>((resolve) => { applySink = resolve; });
+    let attempts = 0;
+    const element = createElement({
+      setSinkId: () => sinkPending,
+      play: async () => { attempts += 1; }
+    });
+    const output = connect(element, { id: "remote" } as MediaStream, false, 100);
+    element.emit("canplay");
+    assert.equal(await output.retry(), false);
+    assert.equal(attempts, 0, "audio must not escape to the default speaker");
+    applySink();
+    await output.ready;
+    assert.equal(attempts, 1);
+  });
+
+  it("ignores a play rejection and readiness events after output disposal", async () => {
+    const events = installWindow();
+    let rejectPlay!: (cause: unknown) => void;
+    let attempts = 0;
+    const pendingPlay = new Promise<void>((_resolve, reject) => { rejectPlay = reject; });
+    const blockedStates: boolean[] = [];
+    const unsubscribe = subscribeBlockedAudioOutputs((blocked) => blockedStates.push(blocked));
+    const element = createElement({ play: () => { attempts += 1; return pendingPlay; } });
+    const output = connect(element, { id: "remote" } as MediaStream, false, 100);
+    // Allow sink application to finish and the first play to start.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(attempts, 1);
+    output.dispose();
+    rejectPlay({ name: "AbortError" });
+    await output.ready;
+    element.emit("canplay");
+    events.dispatchEvent(new Event("pointerdown"));
+    await Promise.resolve();
+    assert.equal(attempts, 1);
+    assert.equal(element.srcObject, null);
+    assert.equal(blockedStates.at(-1), false);
+    assert.equal(await retryBlockedAudioOutputs(), true);
     unsubscribe();
   });
 

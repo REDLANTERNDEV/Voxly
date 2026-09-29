@@ -238,22 +238,31 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   remote track in a `MediaStream` so it receives a consumer.
 - Each remote microphone or screen-audio stream owns one persistent hidden
   `HTMLAudioElement`, which remains attached to the original remote stream and
-  is the hardware playback sink for its lifetime.
+  is its native hardware playback sink whenever native playback succeeds.
 - From 0% through 100%, use native element volume. Above 100%, keep the native
   element playing and current but mute its hardware output only after a shared
   `AudioContext` successfully routes
   `MediaStreamAudioSourceNode -> GainNode -> AudioContext.destination`.
+- If native playback is rejected for a late remote stream, route it through
+  the existing running context unlocked at voice join, at the requested volume
+  including 0–100%. Keep the native element attached and muted while this
+  fallback is audible. Retry native playback on user activation and return to
+  native output through 100% once it succeeds. Report playback blocked only
+  when neither path works; an unavailable, suspended, or unroutable context
+  retains the native retry control. Apply deafen and publisher mute to both
+  paths, and never create a context to bypass a missing user activation.
 - Never attach a processed destination stream to the native element and never
-  play native and boosted output audibly at the same time. Returning to 100%
-  disconnects boost and immediately unmutes the live native path without
-  replacing `srcObject` or calling `play()` again.
+  play native and context output audibly at the same time. When native playback
+  has succeeded, returning to 100% disconnects boost and immediately unmutes
+  the live native path without replacing `srcObject` or calling `play()` again.
 - Volume is listener-owned, integer-clamped from 0% to 200%, and persisted per
   listener for users. Temporary screen-stream levels disappear with the stream.
 - The per-account general output level multiplies participant, screen-share,
   and microphone-test playback levels, with the effective result clamped back
   to 0–200% before reaching the existing native/boost output path.
 - A suspended context, setup failure, or unsupported/rejected non-default sink
-  must disconnect boost and leave native playback audible at 100%.
+  must disconnect the graph and restore native volume capped at 100%. If native
+  playback is also blocked, retain its user-activation retry.
 - Apply the selected speaker to active and future native elements and to the
   boost context when supported. Commit a remembered output selection only
   according to the existing successful/unsupported routing contract.
