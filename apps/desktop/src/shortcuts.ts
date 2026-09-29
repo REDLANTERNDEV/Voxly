@@ -12,8 +12,14 @@ export function bindingFromKey(event: Pick<KeyboardEvent, "code" | "ctrlKey" | "
   return [event.ctrlKey && "Control", event.altKey && "Alt", event.shiftKey && "Shift", event.metaKey && "Super", event.code].filter(Boolean).join("+");
 }
 
-export function bindingLabel(binding: string): string {
-  return binding.split("+").map((part) => part === "Control" ? "Ctrl" : part === "Super" ? "Win" : part.replace(/^(Key|Digit)/, "")).join(" + ");
+export function bindingFromMouse(event: Pick<MouseEvent, "button" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey">): string | null {
+  if (![1, 3, 4].includes(event.button)) return null;
+  const button = event.button === 1 ? 3 : event.button + 1;
+  return [event.ctrlKey && "Control", event.altKey && "Alt", event.shiftKey && "Shift", event.metaKey && "Super", `Mouse${button}`].filter(Boolean).join("+");
+}
+
+export function bindingLabel(binding: string, mouseName = "Mouse"): string {
+  return binding.split("+").map((part) => part === "Control" ? "Ctrl" : part === "Super" ? "Win" : part.replace(/^(Key|Digit)/, "").replace(/^Mouse([345])$/, `${mouseName} $1`)).join(" + ");
 }
 
 export function mountShortcutSettings({ t, save }: {
@@ -30,6 +36,7 @@ export function mountShortcutSettings({ t, save }: {
   let recording = false;
   let draft: string | undefined;
   let message: TranslationKey | null = null;
+  let suppressedMouseButton: number | null = null;
 
   const refresh = () => {
     record.disabled = !enabled;
@@ -37,7 +44,7 @@ export function mountShortcutSettings({ t, save }: {
     apply.disabled = !enabled || recording || draft === undefined;
     clear.disabled = !enabled || recording || !snapshot?.preferences.muteShortcut;
     const binding = draft ?? snapshot?.preferences.muteShortcut;
-    input.value = recording ? t("pressShortcut") : binding ? bindingLabel(binding) : t("shortcutNone");
+    input.value = recording ? t("pressShortcut") : binding ? bindingLabel(binding, t("mouseButton")) : t("shortcutNone");
     status.textContent = t(message ?? snapshot?.shortcutError ?? (snapshot?.registeredMuteShortcut ? "shortcutRegistered" : "shortcutDisabled"));
   };
   const cancelRecording = () => { recording = false; refresh(); };
@@ -67,6 +74,29 @@ export function mountShortcutSettings({ t, save }: {
     refresh();
     apply.focus();
   });
+  window.addEventListener("mousedown", (event) => {
+    if (suppressedMouseButton === event.button) suppressedMouseButton = null;
+    if (!recording) return;
+    const binding = bindingFromMouse(event);
+    if (!binding) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressedMouseButton = event.button;
+    draft = binding;
+    message = "shortcutReady";
+    recording = false;
+    refresh();
+    apply.focus();
+  }, true);
+  for (const type of ["mouseup", "auxclick"]) {
+    window.addEventListener(type, (event) => {
+      const mouse = event as MouseEvent;
+      if (mouse.button !== suppressedMouseButton) return;
+      mouse.preventDefault();
+      mouse.stopPropagation();
+      if (type === "auxclick") suppressedMouseButton = null;
+    }, true);
+  }
   input.addEventListener("blur", (event) => {
     if (event.relatedTarget !== record) cancelRecording();
   });

@@ -49,11 +49,24 @@ rejects an unreachable or invalid health response. A failed replacement health
 check leaves the existing installation window intact. If its interface later
 fails, use the tray's Installations action and Retry loading or another address.
 
-The installation interface provides the existing Invite and Link code paths.
-To Link the desktop Device, open Account & devices on a signed-in browser,
-generate a Link code, enter it in the desktop interface, and approve the matching
-confirmation number in the browser. The browser-authorization convenience flow
-is a later milestone; no session token is copied through the native shell.
+The installation interface provides Invite and Link code paths. On an updated
+installation, **Sign in with browser** appears on the desktop Link a device
+screen. Start it, open the verification address in your default browser, compare
+the number shown in both windows, and approve. The desktop window collects its
+session through its own webview; the approving browser remains signed in. The
+request expires after 90 seconds; leaving the desktop screen sends cancellation.
+The existing Link code path remains available: open Account & devices on a
+signed-in browser, generate a code, enter it in the desktop interface, and
+approve the matching confirmation number.
+
+For local development, start the server on port 3000 and Vite on port 5173.
+Set `VOXLY_PUBLIC_URL=http://127.0.0.1:5173` when starting the server **and**
+when creating the first owner, so the one-use owner link opens the web UI. The
+desktop installation address is also `http://127.0.0.1:5173`.
+If an owner was already created with a link to port 3000 and that link has
+expired, do not run `owner:create` again. With the same `DATABASE_PATH`, run
+`npm run owner:claim -w @voxly/server -- --base-url http://127.0.0.1:5173`
+and open its new one-use link.
 
 Close hides a window to the tray. Tray Show Voxly restores the installation;
 Installations restores the chooser. Retry, disconnect, switching addresses, and

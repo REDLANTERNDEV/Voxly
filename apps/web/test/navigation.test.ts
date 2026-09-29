@@ -24,6 +24,7 @@ describe("frontend navigation", () => {
     assert.deepEqual(parsePathRoute("/"), { name: "landing" });
     assert.deepEqual(parsePathRoute("/invite"), { name: "invite", token: "" });
     assert.deepEqual(parsePathRoute("/invite/VX-123"), { name: "invite", token: "VX-123" });
+    assert.deepEqual(parsePathRoute("/desktop/verify/1234"), { name: "desktop-verify", id: "1234" });
   });
 
   it("keeps server identity in new routes and maps legacy room links to the default server", () => {

@@ -6,6 +6,7 @@ import { formatLinkCodeInput, isCompleteLinkCode } from "../../lib/linkCodeInput
 import { scannedLinkCode } from "../../lib/linkGuide.js";
 import { AuthPageHeader } from "../../components/ui/Primitives.js";
 import type { LanguageCode } from "../../lib/i18n.js";
+import { DesktopBrowserSignIn } from "./DesktopBrowserSignIn.js";
 
 /**
  * The arriving Device's half of linking: type the code, then wait to be let in.
@@ -80,6 +81,7 @@ export function LinkDeviceScreen({ language, t, onLanguageChange, onLinked, turn
   return (
     <main className="landing link-screen">
       <AuthPageHeader language={language} t={t} onLanguageChange={onLanguageChange} />
+      {window.__VOXLY_DESKTOP_V1__?.version === 1 ? <DesktopBrowserSignIn t={t} onLinked={onLinked} /> : null}
       {claimToken ? (
         <section className="link-panel">
           <strong>{t("link.waitingTitle")}</strong>

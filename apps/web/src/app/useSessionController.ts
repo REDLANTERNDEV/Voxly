@@ -135,7 +135,7 @@ export function useSessionController(route: Route, navigate: (path: string) => v
         // difference (ADR-0015).
         setSignedOutReason(error.code === "session_reused" ? "reused" : "");
         setAuthState("ready");
-        if (!new Set(["landing", "invite", "owner-claim", "access-claim", "link-device", "recover"]).has(route.name)) {
+        if (!new Set(["landing", "invite", "owner-claim", "access-claim", "link-device", "desktop-verify", "recover"]).has(route.name)) {
           navigate(resolveInitialRoute({ isAuthenticated: false, inviteToken: getInviteTokenFromPath(window.location.pathname) || null }));
         }
       } else setAuthState("error");

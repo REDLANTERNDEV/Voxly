@@ -21,6 +21,7 @@ export type Route =
   | { name: "invite"; token: string }
   | { name: "owner-claim"; token: string }
   | { name: "link-device" }
+  | { name: "desktop-verify"; id: string }
   | { name: "recover" }
   | { name: "access-claim"; token: string }
   | { name: "text"; serverId: string; roomId: string }

@@ -5546,6 +5546,15 @@ button.reply-quote:focus-visible .reply-quote-body {
   min-width: 0;
 }
 
+.desktop-browser-sign-in {
+  gap: 10px;
+}
+
+.desktop-browser-address {
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 .device-link-action {
   justify-self: start;
 }

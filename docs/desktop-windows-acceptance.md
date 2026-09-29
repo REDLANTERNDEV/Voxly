@@ -29,6 +29,11 @@ picker as similar to Edge and Discord's game-sharing process as easier and
 smoother. Capture-selection UX, fullscreen compatibility, and video frame rate
 must be evaluated separately before choosing a native adapter or another shell.
 
+The contributor subsequently reported that the new global mute shortcut
+"works okay" on Windows. The focused key combination, focused application,
+tray state, conflict/restart behavior, and moderation states were not supplied,
+so this is an initial smoke result rather than completion of the shortcut row.
+
 ## Test setup
 
 Record:
@@ -96,10 +101,19 @@ all consequential cases inside the real remote interface.
 | External links | HTTP(S) new-window links open the default browser; native schemes and cross-origin top navigation refused | not run |
 | Native authority | Remote top frame and embedded content cannot invoke chooser/updater/opener/filesystem commands | not run |
 | Single instance | Second launch restores first instance, no second media runtime | not run |
-| Global mute shortcuts | Custom combination persists, one press toggles once with another app/game focused or tray hidden; conflicts reported and owner mute cannot be bypassed | Implemented; physical Windows test not run |
+| Global mute shortcuts | Keyboard and Mouse 3/4/5 combinations persist; one press toggles once with another app/game focused or tray hidden; keyboard conflicts reported and owner mute cannot be bypassed | Keyboard shortcut initial contributor pass; mouse support requires installed Windows test |
+| Browser sign-in | Signed-in browser approves the matching number; desktop profile gains its own session, browser remains signed in; refusal/expiry/cancellation/revocation stay safe | Implemented; installed Windows test not run |
 | Device revocation | Existing Account & devices revocation signs desktop out and ends room access | not run |
 | Deployment update | Active voice/capture/media check delays reload; idle pending notice reloads only on explicit action | not run |
 | Update network failure | Current interface stays usable; polling retries without forced reload | not run |
+
+For the mouse shortcut check, open the installed desktop chooser, select
+**Record shortcut**, press Mouse 3, Mouse 4, or Mouse 5, and save the displayed binding.
+Join a call, focus a game, then press and hold the button: mute must change
+once, and the game must still receive the click. Release and press again to
+unmute. Repeat with Ctrl + Mouse 4, with Voxly hidden to the tray, after a
+restart, and after clearing the shortcut. Mouse side buttons that a mouse
+driver remaps to keyboard keys must be tested as those keyboard keys.
 
 Permission tests should include direct `window.__TAURI_INTERNALS__.invoke(...)`
 attempts from remote developer tools against every generated custom command and
@@ -253,28 +267,34 @@ mode, keyboard layout, chosen shortcut, and the diagnostic report. For failures 
 exact action sequence and whether the local microphone indicator and peer's
 heard audio disagree. Avoid posting credentials or raw session tokens.
 
-## Verification of this follow-up on macOS
+## Next Windows test: browser sign-in
 
-This validates source behavior and host packaging; Windows OS registration,
-background input, capture compatibility, and audible own-audio exclusion remain
-unverified until the tests above run on Windows.
+Run an updated local or staging installation and desktop build. In a browser
+already signed in to that **same** installation, keep the browser session open.
+In the desktop installation's Link a device screen select **Sign in with
+browser**, then **Open in browser**. Compare the confirmation number in both
+windows, approve, and verify that the desktop joins the same Account without
+ending the browser session. It must not join voice on its own. Confirm both
+Devices appear in Account & devices and can be signed out independently.
 
-- `npm run typecheck`: passed across all workspaces.
-- `npm run build`: passed server/web/bot; existing web chunk-size warning.
-- `npm test`: shared 19/19 and server 392/392 passed, web 808/809 passed.
-  The root command stops at the pre-existing Turkish `connection.browserOffline`
-  assertion mismatch; it does not reach bot or desktop.
-- `npm run test -w @voxly/bot`: 277/277 passed separately with listener access.
-- `npm run test -w @voxly/desktop`: 13/13 passed.
-- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked`:
-  11/11 passed with loopback-listener access.
-- `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --all-targets -- -D warnings`:
-  passed.
-- `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check`:
-  passed.
-- `npm run bundle -w @voxly/desktop -- --bundles app -- --locked`:
-  macOS host bundle passed; this is not a Windows installer test.
-- Browser preview: English/Turkish and 390px layout checked without overflow;
-  recording/save/clear/cancel/focus behavior checked in a UI-only fixture,
-  which does not register OS shortcuts.
-- `git diff --check`: passed. Changes remain unstaged and uncommitted.
+Repeat with refusal, cancellation, and an expired 90-second request. A Link
+code must still work as a fallback. Also test that approval from an unrelated
+installation URL is refused, signing out the approving browser before desktop
+collection prevents sign-in, and restarting the desktop window loses an
+uncollected request. Record behavior and installation/runtime versions without
+sharing the request URL or session cookies.
+
+## Development verification on macOS
+
+The browser sign-in and owner-link changes type-checked across all workspaces.
+`npm test` passed all workspaces before the final authorization-row cleanup:
+shared 19/19, server 396/396, web 809/809, bot 277/277, and desktop 13/13.
+After that cleanup, the affected server suite passed 397/397 and the web suite
+passed 809/809. `npm run build` passed server, web, and bot; the web bundle still
+reports its existing chunk-size warning. The stale Turkish
+`connection.browserOffline` assertion was aligned with the existing copy.
+
+The previous desktop shortcut increment passed Rust tests (11/11), clippy,
+formatting, and a macOS host bundle. No native Rust code changed in the browser
+sign-in increment. An installed Windows browser-approval test and the remaining
+media cases above are still needed.

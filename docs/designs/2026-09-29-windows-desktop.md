@@ -28,9 +28,11 @@ Windows acceptance matrix and resource measurements remain pending. The
 [game-capture review](2026-09-29-desktop-game-capture-review.md) separates the
 reported picker friction from game compatibility and motion quality.
 The local global mute preference and one-way intent bridge are now implemented;
-the installation must deploy the updated web client. Browser authorization,
-remote-to-native IPC, native notifications, global deafen, routing deep links,
-and signed shell updating remain subsequent milestones. No Windows
+the installation must deploy the updated web client. Browser approval sign-in
+now runs within the installation-delivered interface and collects the session
+through the desktop webview, without adding remote-to-native IPC. Native
+notifications, global deafen, routing deep links, and signed shell updating
+remain subsequent milestones. No Windows
 or other-platform media parity is claimed by a successful compile.
 
 ## Corrections to the original plan
@@ -89,7 +91,7 @@ while evaluating the concrete UX requirement.
 
 ## Milestone 2: shell and browser authorization
 
-After media feasibility passes, add a versioned, finite native bridge. Grant a
+For any future remote-to-native feature, add a versioned, finite native bridge. Grant a
 runtime capability to the exact chosen origin and a unique remote window label.
 Tauri capabilities accumulate: never reuse that label for another origin after
 granting remote authority. Require exact origin and top frame in bootstrap
@@ -107,15 +109,15 @@ Voxly. Extend existing Device linking:
 1. The selected installation creates a 90-second request and returns a random
    high-entropy private collection secret plus a public request identifier and
    matching confirmation number. Store request secrets only as hashes.
-2. Desktop keeps the collection secret in memory, opens the installation's
-   verification route in the default browser, and displays the matching number.
+2. The desktop webview keeps the collection secret in memory, opens the
+   installation's verification route in the default browser, and displays the matching number.
    The route contains only the public identifier; it is not an authorization
    credential. Provide a copy-address fallback.
 3. A signed-in browser shows the Account nickname, installation, coarse
    requesting Device label, and matching number. Approval or refusal is explicit
    and tied to that existing authenticated Device.
-4. Desktop polls with bounded backoff and cancellation. Atomic collection mints
-   an ordinary session and sets its HttpOnly cookie in that installation's own
+4. The desktop webview polls with bounded backoff and cancellation. Atomic
+   collection mints an ordinary session and sets its HttpOnly cookie in that
    webview. Approval alone does not create a bearer token in a URL or pass it
    through a bridge. Expired/replayed/wrong-secret responses remain generic.
 5. Preserve the approving browser's session. Device revocation and Account

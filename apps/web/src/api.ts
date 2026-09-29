@@ -145,6 +145,41 @@ export async function collectDeviceLink(claimToken: string) {
   return apiPost<{ status: DeviceLinkOutcome; user?: PublicUser }>("/api/devices/links/collect", { claimToken });
 }
 
+export interface DesktopAuthorization {
+  id: string;
+  secret: string;
+  confirmation: string;
+  expiresInSeconds: number;
+}
+
+export async function createDesktopAuthorization() {
+  return apiPost<DesktopAuthorization>("/api/devices/desktop-authorizations");
+}
+
+export async function fetchDesktopAuthorization(id: string) {
+  return apiGet<{ confirmation: string; label: string; origin: string; expiresAt: string }>(
+    `/api/devices/desktop-authorizations/${encodeURIComponent(id)}`
+  );
+}
+
+export async function answerDesktopAuthorization(id: string, approve: boolean) {
+  return apiPost<{ ok: boolean }>(`/api/devices/desktop-authorizations/${encodeURIComponent(id)}/decision`, { approve });
+}
+
+export async function collectDesktopAuthorization(id: string, secret: string) {
+  return apiPost<{ status: DeviceLinkOutcome; user?: PublicUser }>(
+    `/api/devices/desktop-authorizations/${encodeURIComponent(id)}/collect`, { secret }
+  );
+}
+
+export async function cancelDesktopAuthorization(id: string, secret: string) {
+  return request<{ ok: boolean }>(`/api/devices/desktop-authorizations/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ secret }),
+    keepalive: true
+  });
+}
+
 /**
  * The Recovery code. `present` never carries the value — it is shown once when
  * it is created and nothing can read it back, which is what stops every session

@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod installations;
+#[cfg(target_os = "windows")]
+mod mouse_hook;
 mod platform;
 mod shortcuts;
 
@@ -210,9 +212,37 @@ fn handle_shortcut(
     let Some(binding) = inner.shortcut.active.as_deref() else {
         return;
     };
-    if shortcuts::parse_binding(binding).as_ref() != Ok(shortcut) {
+    if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Keyboard(ref registered)) if registered == shortcut) {
         return;
     }
+    dispatch_mute(app, &shell, &inner);
+}
+
+#[cfg(target_os = "windows")]
+fn handle_mouse_shortcut(app: &tauri::AppHandle, event: mouse_hook::MouseEvent) {
+    let Some(shell) = app.try_state::<Shell>() else {
+        return;
+    };
+    let Ok(inner) = shell.inner.try_lock() else {
+        return;
+    };
+    let Some(binding) = inner.shortcut.active.as_deref() else {
+        return;
+    };
+    if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Mouse(ref registered)) if registered.button == event.button) {
+        return;
+    }
+    if !event.pressed {
+        shell.shortcut_pressed.store(false, Ordering::Release);
+        return;
+    }
+    if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Mouse(ref registered)) if registered.modifiers == event.modifiers) {
+        return;
+    }
+    dispatch_mute(app, &shell, &inner);
+}
+
+fn dispatch_mute(app: &tauri::AppHandle, shell: &Shell, inner: &Inner) {
     if shell.shortcut_pressed.swap(true, Ordering::AcqRel) {
         return;
     }

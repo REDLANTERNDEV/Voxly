@@ -1,7 +1,23 @@
 use std::str::FromStr;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
-pub fn parse_binding(binding: &str) -> Result<Shortcut, &'static str> {
+pub const CONTROL: u8 = 1;
+pub const ALT: u8 = 2;
+pub const SHIFT: u8 = 4;
+pub const SUPER: u8 = 8;
+
+#[derive(Debug, PartialEq)]
+pub struct MouseBinding {
+    pub button: u8,
+    pub modifiers: u8,
+}
+
+pub enum Binding {
+    Keyboard(Shortcut),
+    Mouse(MouseBinding),
+}
+
+pub fn parse_binding(binding: &str) -> Result<Binding, &'static str> {
     if binding.len() > 80 || !binding.is_ascii() {
         return Err("shortcut_invalid");
     }
@@ -13,11 +29,13 @@ pub fn parse_binding(binding: &str) -> Result<Shortcut, &'static str> {
         .strip_prefix('F')
         .and_then(|value| value.parse::<u8>().ok())
         .is_some_and(|number| (1..=24).contains(&number) && key == format!("F{number}"));
-    if !(letter || digit || function) || (parts.len() == 1 && !function) {
+    let mouse = matches!(key, "Mouse3" | "Mouse4" | "Mouse5");
+    if !(letter || digit || function || mouse) || (parts.len() == 1 && !function && !mouse) {
         return Err("shortcut_invalid");
     }
     let modifiers = ["Control", "Alt", "Shift", "Super"];
     let mut previous = None;
+    let mut modifier_mask = 0;
     for part in &parts[..parts.len() - 1] {
         let index = modifiers
             .iter()
@@ -27,16 +45,29 @@ pub fn parse_binding(binding: &str) -> Result<Shortcut, &'static str> {
             return Err("shortcut_invalid");
         }
         previous = Some(index);
+        modifier_mask |= 1 << index;
     }
     // Shift alone is ordinary typing, even though the OS accepts it as a hotkey.
-    if !function
+    if !function && !mouse
         && !parts
             .iter()
             .any(|part| matches!(*part, "Control" | "Alt" | "Super"))
     {
         return Err("shortcut_invalid");
     }
-    Shortcut::from_str(binding).map_err(|_| "shortcut_invalid")
+    if mouse {
+        return Ok(Binding::Mouse(MouseBinding {
+            button: match key {
+                "Mouse3" => 3,
+                "Mouse4" => 4,
+                _ => 5,
+            },
+            modifiers: modifier_mask,
+        }));
+    }
+    Shortcut::from_str(binding)
+        .map(Binding::Keyboard)
+        .map_err(|_| "shortcut_invalid")
 }
 
 pub trait Registry {
@@ -47,16 +78,27 @@ pub trait Registry {
 pub struct NativeRegistry<'a>(pub &'a tauri::AppHandle);
 impl Registry for NativeRegistry<'_> {
     fn register(&mut self, binding: &str) -> Result<(), &'static str> {
-        self.0
-            .global_shortcut()
-            .register(parse_binding(binding)?)
-            .map_err(|_| "shortcut_unavailable")
+        match parse_binding(binding)? {
+            Binding::Keyboard(shortcut) => self.0
+                .global_shortcut()
+                .register(shortcut)
+                .map_err(|_| "shortcut_unavailable"),
+            Binding::Mouse(_) => {
+                #[cfg(target_os = "windows")]
+                { crate::mouse_hook::register(self.0) }
+                #[cfg(not(target_os = "windows"))]
+                { Err("shortcut_unavailable") }
+            }
+        }
     }
     fn clear(&mut self) -> Result<(), &'static str> {
         self.0
             .global_shortcut()
             .unregister_all()
-            .map_err(|_| "shortcut_failed")
+            .map_err(|_| "shortcut_failed")?;
+        #[cfg(target_os = "windows")]
+        crate::mouse_hook::clear()?;
+        Ok(())
     }
 }
 
@@ -147,6 +189,9 @@ mod tests {
             "Alt+Digit9",
             "F8",
             "Control+Alt+Shift+Super+F24",
+            "Mouse4",
+            "Mouse3",
+            "Control+Shift+Mouse5",
         ] {
             assert!(parse_binding(binding).is_ok(), "{binding}");
         }
@@ -161,9 +206,19 @@ mod tests {
             "F01",
             "Alt+é",
             "Control+KeyMM",
+            "Mouse1",
+            "Mouse6",
+            "Shift+Mouse4+KeyM",
         ] {
             assert!(parse_binding(binding).is_err(), "{binding}");
         }
+        assert_eq!(
+            match parse_binding("Control+Shift+Mouse5").unwrap() {
+                Binding::Mouse(mouse) => mouse,
+                Binding::Keyboard(_) => panic!("expected mouse binding"),
+            },
+            MouseBinding { button: 5, modifiers: CONTROL | SHIFT }
+        );
     }
     #[test]
     fn conflicts_and_storage_failure_restore_the_old_binding() {

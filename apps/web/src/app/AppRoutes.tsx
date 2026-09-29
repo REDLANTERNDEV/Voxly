@@ -7,6 +7,7 @@ import { InviteRequiredScreen,LandingPage } from "../features/auth/AuthScreens.j
 import { AccessClaimScreen,OwnerClaimScreen } from "../features/auth/ClaimScreens.js";
 import { InviteScreen } from "../features/auth/InviteScreen.js";
 import { LinkDeviceScreen } from "../features/auth/LinkDeviceScreen.js";
+import { DesktopBrowserApproval } from "../features/auth/DesktopBrowserSignIn.js";
 import { RecoverScreen } from "../features/auth/RecoverScreen.js";
 import { TextRoomScreen } from "../features/chat/TextRoomScreen.js";
 import { OwnerPanel } from "../features/owner/OwnerPanel.js";
@@ -66,6 +67,9 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
       turnstileSiteKey={turnstileSiteKey}
       onLinked={() => window.location.assign(resolveInitialRoute({ isAuthenticated: true, inviteToken: null }))}
     />);
+  }
+  if (route.name === "desktop-verify") {
+    return renderSurface(<DesktopBrowserApproval id={route.id} user={user} authState={authState} language={language} t={t} onLanguageChange={changeLanguage} />);
   }
   if (route.name === "recover") {
     // A full reload rather than a client navigation: recovery revoked every
