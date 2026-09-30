@@ -34,6 +34,71 @@ pub enum Delivery {
     Blocked,
 }
 
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(not(windows), allow(dead_code))]
+enum Stage {
+    CreateNotifier,
+    ReadSetting,
+    CreateXml,
+    LoadXml,
+    CreateToast,
+    SetTag,
+    SetGroup,
+    RegisterActivation,
+    RegisterDismissal,
+    RegisterFailure,
+    Show,
+    AsyncDelivery,
+}
+
+#[cfg(any(windows, test))]
+#[derive(Serialize)]
+struct Diagnostic {
+    stage: Stage,
+    hresult: String,
+}
+
+#[cfg(any(windows, test))]
+impl Diagnostic {
+    fn new(stage: Stage, hresult: i32) -> Self {
+        Self {
+            stage,
+            hresult: format!("0x{:08X}", hresult as u32),
+        }
+    }
+}
+
+#[cfg(any(windows, test))]
+fn write_diagnostic(path: &std::path::Path, diagnostic: &Diagnostic) {
+    // One bounded local snapshot, never routes, IDs, content or raw error messages.
+    // A diagnostic write failure must not affect notification fallback or calls.
+    static WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let Ok(_guard) = WRITE_LOCK.lock() else {
+        return;
+    };
+    if let Ok(json) = serde_json::to_vec(diagnostic) {
+        let _ = std::fs::write(path, json);
+    }
+}
+
+#[cfg(windows)]
+fn record_diagnostic(window: &WebviewWindow, diagnostic: &Diagnostic) {
+    use tauri::Manager;
+    let app = window.app_handle();
+    let shell = app.state::<crate::Shell>();
+    write_diagnostic(
+        &shell.data.join("native-notification-diagnostic.json"),
+        diagnostic,
+    );
+}
+
+#[cfg(windows)]
+fn checked<T>(stage: Stage, result: windows::core::Result<T>) -> Result<T, Diagnostic> {
+    result.map_err(|error| Diagnostic::new(stage, error.code().0))
+}
+
 pub fn valid_id(id: &str) -> bool {
     id.len() == 32
         && id
@@ -79,8 +144,13 @@ impl Notifications {
     pub fn show(&self, window: &WebviewWindow, request: Request) -> Delivery {
         #[cfg(windows)]
         {
-            self.show_windows(window, request)
-                .unwrap_or(Delivery::Fallback)
+            match self.show_windows(window, request) {
+                Ok(delivery) => delivery,
+                Err(diagnostic) => {
+                    record_diagnostic(window, &diagnostic);
+                    Delivery::Fallback
+                }
+            }
         }
         #[cfg(not(windows))]
         {
@@ -203,12 +273,15 @@ impl Notifications {
         &self,
         window: &WebviewWindow,
         request: Request,
-    ) -> windows::core::Result<Delivery> {
+    ) -> Result<Delivery, Diagnostic> {
         use tauri::Manager;
 
         let app_id = HSTRING::from(&window.app_handle().config().identifier);
-        let notifier = ToastNotificationManager::CreateToastNotifierWithId(&app_id)?;
-        if notifier.Setting()? != NotificationSetting::Enabled {
+        let notifier = checked(
+            Stage::CreateNotifier,
+            ToastNotificationManager::CreateToastNotifierWithId(&app_id),
+        )?;
+        if checked(Stage::ReadSetting, notifier.Setting())? != NotificationSetting::Enabled {
             return Ok(Delivery::Blocked);
         }
         let now = std::time::Instant::now();
@@ -223,11 +296,23 @@ impl Notifications {
             }
             last.insert(key, now);
         }
-        let document = XmlDocument::new()?;
-        document.LoadXml(&HSTRING::from(xml(&request)))?;
-        let toast = ToastNotification::CreateToastNotification(&document)?;
-        toast.SetTag(&HSTRING::from(&request.id[..16]))?;
-        toast.SetGroup(&HSTRING::from(window.label()))?;
+        let document = checked(Stage::CreateXml, XmlDocument::new())?;
+        checked(
+            Stage::LoadXml,
+            document.LoadXml(&HSTRING::from(xml(&request))),
+        )?;
+        let toast = checked(
+            Stage::CreateToast,
+            ToastNotification::CreateToastNotification(&document),
+        )?;
+        checked(
+            Stage::SetTag,
+            toast.SetTag(&HSTRING::from(&request.id[..16])),
+        )?;
+        checked(
+            Stage::SetGroup,
+            toast.SetGroup(&HSTRING::from(window.label())),
+        )?;
         let mut entry = Entry {
             toast: toast.clone(),
             notifier: notifier.clone(),
@@ -238,48 +323,63 @@ impl Notifications {
         };
         let target = window.clone();
         let id = request.id.clone();
-        entry.activated = Some(toast.Activated(&TypedEventHandler::<
-            ToastNotification,
-            IInspectable,
-        >::new(move |_, _| {
-            event(&target, &id, "click");
-            Ok(())
-        }))?);
+        entry.activated = Some(checked(
+            Stage::RegisterActivation,
+            toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(
+                move |_, _| {
+                    event(&target, &id, "click");
+                    Ok(())
+                },
+            )),
+        )?);
         let target = window.clone();
         let id = request.id.clone();
-        entry.dismissed = Some(toast.Dismissed(&TypedEventHandler::<
-            ToastNotification,
-            ToastDismissedEventArgs,
-        >::new(move |_, args| {
-            // A timed-out banner remains clickable in Windows notification history.
-            if let Some(args) = args.as_ref() {
-                if args.Reason()? != ToastDismissalReason::TimedOut {
-                    event(&target, &id, "close");
+        entry.dismissed = Some(checked(
+            Stage::RegisterDismissal,
+            toast.Dismissed(&TypedEventHandler::<
+                ToastNotification,
+                ToastDismissedEventArgs,
+            >::new(move |_, args| {
+                // A timed-out banner remains clickable in Windows notification history.
+                if let Some(args) = args.as_ref() {
+                    if args.Reason()? != ToastDismissalReason::TimedOut {
+                        event(&target, &id, "close");
+                    }
                 }
-            }
-            Ok(())
-        }))?);
+                Ok(())
+            })),
+        )?);
         let target = window.clone();
         let id = request.id.clone();
         let settings = notifier.clone();
-        entry.failed = Some(toast.Failed(&TypedEventHandler::<
-            ToastNotification,
-            ToastFailedEventArgs,
-        >::new(move |_, _| {
-            event(
-                &target,
-                &id,
-                if settings
-                    .Setting()
-                    .is_ok_and(|s| s == NotificationSetting::Enabled)
-                {
-                    "failed"
-                } else {
-                    "close"
-                },
-            );
-            Ok(())
-        }))?);
+        entry.failed = Some(checked(
+            Stage::RegisterFailure,
+            toast.Failed(
+                &TypedEventHandler::<ToastNotification, ToastFailedEventArgs>::new(
+                    move |_, args| {
+                        if let Some(code) = args.as_ref().and_then(|args| args.ErrorCode().ok()) {
+                            record_diagnostic(
+                                &target,
+                                &Diagnostic::new(Stage::AsyncDelivery, code.0),
+                            );
+                        }
+                        event(
+                            &target,
+                            &id,
+                            if settings
+                                .Setting()
+                                .is_ok_and(|s| s == NotificationSetting::Enabled)
+                            {
+                                "failed"
+                            } else {
+                                "close"
+                            },
+                        );
+                        Ok(())
+                    },
+                ),
+            ),
+        )?);
         let key = (window.label().to_owned(), request.id);
         let mut entries = self.entries.lock().unwrap();
         if entries.len() >= 16 || entries.contains_key(&key) {
@@ -290,7 +390,7 @@ impl Notifications {
             let entry = entries.remove(&key);
             drop(entries);
             drop(entry);
-            return Err(error);
+            return Err(Diagnostic::new(Stage::Show, error.code().0));
         }
         Ok(Delivery::Shown)
     }
@@ -299,6 +399,30 @@ impl Notifications {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn diagnostic_keeps_only_finite_stage_and_hresult_and_replaces_the_previous_failure() {
+        let path = std::env::temp_dir().join(format!(
+            "voxly-notification-diagnostic-{}.json",
+            std::process::id()
+        ));
+        let first = Diagnostic::new(Stage::CreateNotifier, 0x80040154_u32 as i32);
+        write_diagnostic(&path, &first);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap(),
+            serde_json::json!({"stage": "createNotifier", "hresult": "0x80040154"})
+        );
+        write_diagnostic(
+            &path,
+            &Diagnostic::new(Stage::AsyncDelivery, 0x80070005_u32 as i32),
+        );
+        let contents = std::fs::read(&path).unwrap();
+        assert!(contents.len() < 128);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&contents).unwrap(),
+            serde_json::json!({"stage": "asyncDelivery", "hresult": "0x80070005"})
+        );
+        std::fs::remove_file(path).unwrap();
+    }
     #[test]
     fn request_contract_is_finite_and_contains_no_content_or_routes() {
         let id = "a".repeat(32);
