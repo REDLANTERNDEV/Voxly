@@ -6,6 +6,8 @@ fn main() {
             "transition_state",
             "report_call_state",
             "activate_installation",
+            "reset_notification_permission",
+            "set_installation_theme",
             "save_installation",
             "forget_installation",
             "connect_installation",

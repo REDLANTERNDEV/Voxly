@@ -89,6 +89,15 @@ grants only finite reporting to the current exact origin and unique window
 generation. It carries no identities or native actions and persists no report.
 Shortcut and installation management and updater trust remain local.
 
+### Window appearance
+
+On Windows 11, the Installation title bar, text and border follow Voxly's
+light/dark/automatic theme instead of the Windows accent color. The welcome
+window matches its own dark surface. Standard minimize/maximize/close buttons
+remain native, and Windows high-contrast colors take precedence. Closing still
+hides Voxly and keeps active calls alive; Quit follows the existing confirmation.
+Windows 10 does not support these explicit DWM caption colors.
+
 ### Desktop notifications
 
 In the installation's **Settings → Audio**, enable **Desktop notifications**
@@ -106,8 +115,15 @@ cue player remains the only sound source. Repeated alerts of the same kind
 are coalesced. The Windows host grants WebView2 notification permission only
 for an explicitly initiated request from the active Installation's exact
 origin. WebView2 does not show the ordinary browser permission prompt by itself,
-so a fresh desktop shell is required for this host integration. Windows may not
-list Voxly under notification settings until it has posted its first toast.
+so a fresh desktop shell is required for this host integration.
+
+If permission was previously denied, use **Reset notification permission**
+in this section, then enable notifications again. The reset clears only the
+current Installation's saved Notification permission; login, microphone and
+camera permissions remain intact. If WebView2 still reports blocked, finish
+your call, Quit Voxly and reopen it before enabling again. Recovery does not
+require finding Voxly in Windows' notification app list. The updated desktop
+shell and updated web client are both required.
 Unsupported runtimes and denied Windows delivery remain recoverable without
 affecting calls or messages.
 
@@ -120,7 +136,8 @@ still pending acceptance; activation after Quit and external desktop links are
 not implemented. See [ADR-0024](adr/0024-desktop-alert-activation-only-reveals-its-window.md).
 
 Delivery uses WebView2's standard notification UI and browser permission,
-without a native plugin or remote native capability. See Microsoft's
+without a native notification plugin. A separate, finite native capability
+resets only the current Installation’s Notification permission. See Microsoft's
 [notification handling contract](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2notificationreceivedeventargs?view=webview2-1.0.3912.50).
 Installed Windows acceptance must establish permission, toast delivery,
 tray/lock behavior and foreground behavior; local builds do not establish

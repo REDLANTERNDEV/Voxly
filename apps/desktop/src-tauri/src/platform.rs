@@ -30,7 +30,7 @@ pub fn open_installation(
     let url = saved.origin.parse().map_err(|_| "invalid_address")?;
     let origin = saved.origin.clone();
     let bootstrap = format!(
-        "{}({}, {});\n{}({});\n{}({});\n{}({});",
+        "{}({}, {});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});",
         include_str!("voice-bridge.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
         serde_json::to_string(&microphone_mode).map_err(|_| "invalid_address")?,
@@ -39,6 +39,10 @@ pub fn open_installation(
         include_str!("navigation.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
         include_str!("activation.js"),
+        serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
+        include_str!("appearance.js"),
+        serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
+        include_str!("notifications.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?
     );
     let opener_app = app.clone();
@@ -50,7 +54,9 @@ pub fn open_installation(
             .remote(format!("{}/*", saved.origin))
             .webview(&label)
             .permission("allow-report-call-state")
-            .permission("allow-activate-installation"),
+            .permission("allow-activate-installation")
+            .permission("allow-reset-notification-permission")
+            .permission("allow-set-installation-theme"),
     )
     .map_err(|_| "window_failed")?;
     let navigation_app = app.clone();
@@ -122,4 +128,66 @@ pub fn open_installation(
         }
     });
     Ok(window)
+}
+
+pub async fn reset_notification_permission(
+    window: &WebviewWindow,
+    origin: String,
+) -> Result<(), &'static str> {
+    #[cfg(windows)]
+    {
+        use webview2_com::{
+            Microsoft::Web::WebView2::Win32::{
+                ICoreWebView2Profile4, ICoreWebView2_13, COREWEBVIEW2_PERMISSION_STATE_DEFAULT,
+            },
+            SetPermissionStateCompletedHandler,
+        };
+        use windows::core::{Interface, HSTRING, PWSTR};
+
+        let (send, receive) = tokio::sync::oneshot::channel();
+        window
+            .with_webview(move |webview| {
+                // Dropping the sender on any preflight/API error fails the request.
+                let _ = (|| -> Result<(), &'static str> {
+                    let core = unsafe { webview.controller().CoreWebView2() }
+                        .map_err(|_| "permission_failed")?;
+                    let mut source = PWSTR::null();
+                    unsafe { core.Source(&mut source) }.map_err(|_| "permission_failed")?;
+                    let source = take_pwstr(source);
+                    if !url::Url::parse(&source)
+                        .is_ok_and(|url| crate::installations::same_origin(&origin, &url))
+                    {
+                        return Err("forbidden");
+                    }
+                    let view: ICoreWebView2_13 = core.cast().map_err(|_| "unsupported_platform")?;
+                    let profile: ICoreWebView2Profile4 = unsafe { view.Profile() }
+                        .and_then(|profile| profile.cast())
+                        .map_err(|_| "unsupported_platform")?;
+                    let completion =
+                        SetPermissionStateCompletedHandler::create(Box::new(move |result| {
+                            let _ = send.send(result.map_err(|_| "permission_failed"));
+                            Ok(())
+                        }));
+                    unsafe {
+                        profile.SetPermissionState(
+                            COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS,
+                            &HSTRING::from(origin),
+                            COREWEBVIEW2_PERMISSION_STATE_DEFAULT,
+                            &completion,
+                        )
+                    }
+                    .map_err(|_| "permission_failed")
+                })();
+            })
+            .map_err(|_| "permission_failed")?;
+        tokio::time::timeout(std::time::Duration::from_secs(3), receive)
+            .await
+            .map_err(|_| "permission_failed")?
+            .map_err(|_| "permission_failed")?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (window, origin);
+        Err("unsupported_platform")
+    }
 }

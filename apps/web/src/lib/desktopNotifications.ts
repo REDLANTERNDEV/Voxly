@@ -18,9 +18,10 @@ export function desktopNotificationPath(target: DesktopNotificationTarget, roomS
   if (!serverId || !servers.some((server) => server.id === serverId)) return null;
   return `/app/server/${encodeURIComponent(serverId)}/${target.kind}/${encodeURIComponent(target.roomId)}`;
 }
+interface NotificationPermissionBridge { version: 1; resetPermission(): Promise<boolean> }
 interface ActivationBridge { version: 1; show(): Promise<boolean> }
 declare global {
-  interface Window { __VOXLY_DESKTOP_ACTIVATION_V1__?: ActivationBridge }
+  interface Window { __VOXLY_DESKTOP_ACTIVATION_V1__?: ActivationBridge; __VOXLY_DESKTOP_NOTIFICATIONS_V1__?: NotificationPermissionBridge }
 }
 export interface SystemNotificationApi {
   new(title: string, options: NotificationOptions): NotificationHandle;
@@ -31,6 +32,7 @@ export interface SystemNotificationApi {
 export interface DesktopNotificationRuntime {
   __VOXLY_DESKTOP_V1__?: DesktopVoiceBridge;
   __VOXLY_DESKTOP_ACTIVATION_V1__?: ActivationBridge;
+  __VOXLY_DESKTOP_NOTIFICATIONS_V1__?: NotificationPermissionBridge;
   Notification?: SystemNotificationApi;
 }
 
@@ -75,6 +77,12 @@ export async function requestDesktopNotificationPermission(runtime: DesktopNotif
   if (current !== "default") return current;
   try { return await runtime.Notification!.requestPermission(); }
   catch { return "unavailable"; }
+}
+
+export async function resetDesktopNotificationPermission(runtime: DesktopNotificationRuntime): Promise<boolean> {
+  if (runtime.__VOXLY_DESKTOP_V1__?.version !== 1 || runtime.__VOXLY_DESKTOP_NOTIFICATIONS_V1__?.version !== 1) return false;
+  try { return await runtime.__VOXLY_DESKTOP_NOTIFICATIONS_V1__.resetPermission(); }
+  catch { return false; }
 }
 
 /** Content and routes remain web-local; native activation only shows the current window. */

@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   createDesktopNotificationDelivery, desktopNotificationPermission, isDesktopNotificationKind,
-  readDesktopNotifications, requestDesktopNotificationPermission, writeDesktopNotifications,
+  readDesktopNotifications, requestDesktopNotificationPermission, resetDesktopNotificationPermission, writeDesktopNotifications,
   type DesktopNotificationRuntime, type SystemNotificationApi
 } from "../src/lib/desktopNotifications.js";
 import { desktopNotificationPath } from "../src/lib/desktopNotifications.js";
@@ -65,6 +65,18 @@ describe("desktop system notifications", () => {
     assert.equal(desktopNotificationPermission({ Notification: f.Api }), "unavailable");
     f.runtime.Notification = { permission: "granted", prototype: {} } as SystemNotificationApi;
     assert.equal(desktopNotificationPermission(f.runtime), "unavailable");
+  });
+
+  it("recovers denied permission without requesting or enabling notifications automatically", async () => {
+    const f = fixture();
+    f.Api.permission = "denied";
+    assert.equal(await resetDesktopNotificationPermission(f.runtime), false);
+    f.runtime.__VOXLY_DESKTOP_NOTIFICATIONS_V1__ = { version: 1, resetPermission: async () => { f.Api.permission = "default"; return true; } };
+    assert.equal(await resetDesktopNotificationPermission(f.runtime), true);
+    assert.equal(desktopNotificationPermission(f.runtime), "default");
+    assert.equal(f.requests(), 0);
+    f.runtime.__VOXLY_DESKTOP_NOTIFICATIONS_V1__.resetPermission = async () => { throw Error("native failure"); };
+    assert.equal(await resetDesktopNotificationPermission(f.runtime), false);
   });
 
   it("follows the master/category preferences, deafen, focus, and opt-in even after permission was granted", () => {

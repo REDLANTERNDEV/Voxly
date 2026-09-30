@@ -88,3 +88,14 @@ successful/failed handoff, offline startup and retry, changed/removed preferred
 Installation, disabled startup opening, live-call navigation, theme changes,
 permission denial and update/relaunch behavior. A build alone does not satisfy
 these scenarios; feasibility probes remain developer tooling until relocated.
+
+## Implemented recovery and frame appearance
+
+ADR-0025 implements Windows 11 caption/text/border colors following the Voxly
+theme, with native window buttons and high-contrast precedence. The welcome
+window uses its own dark palette. A denied Notification permission now has a
+finite reset control in Settings → Audio; it does not reload calls or clear
+login/media permissions. Both changes need an updated desktop build; the reset
+control also needs an updated web deployment. Installed Windows acceptance
+remains pending in `docs/desktop-windows-acceptance.md`. The broader settings
+organization and welcome/default-Installation redesign remain planned.

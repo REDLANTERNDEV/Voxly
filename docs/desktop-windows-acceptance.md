@@ -641,3 +641,20 @@ built the macOS debug executable. Native commands used the temporary stable
 toolchain documented above, and loopback fixture runs used authorized local
 listening. `git diff --check` passed. The existing web chunk-size warning remains.
 No dependency, signing key, updater endpoint or protocol registration was added.
+
+## Windows 11 permission recovery and chrome (pending)
+
+- Install the updated desktop build and deploy the updated web client. Start
+  with a profile whose Notification permission was previously denied. In
+  Settings → Audio, reset permission and enable notifications again. If the
+  current document caches denied state, finish the call, Quit/reopen, then
+  enable. Check that login and microphone/camera permissions were preserved.
+- Receive a message while minimized or tray-hidden; verify a silent banner,
+  notification-center entry and click restoration. Record Windows delivery
+  separately from WebView2 permission. Test Windows notification suppression.
+- With a contrasting Windows accent color, select Voxly Light/Dark/Auto.
+  Check caption/text/border colors, inactive windows, maximize/restore and
+  normal window buttons. Change OS light/dark with Auto selected. Toggle
+  Windows high contrast and check accessibility colors take precedence.
+- Check the welcome window matches its dark surface. Close during a call and
+  restore from the tray; confirm media remains connected.

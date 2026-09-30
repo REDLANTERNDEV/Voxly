@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod appearance;
 mod call_state;
 mod installations;
 #[cfg(target_os = "windows")]
@@ -543,6 +544,43 @@ async fn activate_installation(
 }
 
 #[tauri::command]
+async fn reset_notification_permission(
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+) -> Result<(), &'static str> {
+    let inner = shell.inner.lock().await;
+    let active = inner.active.as_ref().ok_or("forbidden")?;
+    if !report_caller_matches(
+        shell.voice_generation.load(Ordering::Acquire),
+        window.label(),
+        &active.origin,
+        &window.url().map_err(|_| "forbidden")?,
+    ) {
+        return Err("forbidden");
+    }
+    platform::reset_notification_permission(&window, active.origin.clone()).await
+}
+
+#[tauri::command]
+async fn set_installation_theme(
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    theme: appearance::WindowTheme,
+) -> Result<(), &'static str> {
+    let inner = shell.inner.lock().await;
+    let active = inner.active.as_ref().ok_or("forbidden")?;
+    if !report_caller_matches(
+        shell.voice_generation.load(Ordering::Acquire),
+        window.label(),
+        &active.origin,
+        &window.url().map_err(|_| "forbidden")?,
+    ) {
+        return Err("forbidden");
+    }
+    appearance::apply(&window, theme)
+}
+
+#[tauri::command]
 async fn transition_state(
     app: tauri::AppHandle,
     window: WebviewWindow,
@@ -912,6 +950,8 @@ fn main() {
         )
         .invoke_handler(tauri::generate_handler![
             activate_installation,
+            reset_notification_permission,
+            set_installation_theme,
             shell_state,
             transition_state,
             report_call_state,
@@ -1071,8 +1111,12 @@ fn main() {
                     .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
                     .on_download(|_, _| false)
                     .build()?;
+            let _ = appearance::apply(&window, appearance::WindowTheme::Welcome);
             let close_window = window.clone();
             window.on_window_event(move |event| {
+                if matches!(event, tauri::WindowEvent::Focused(true)) {
+                    let _ = appearance::apply(&close_window, appearance::WindowTheme::Welcome);
+                }
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     if close_window.hide().is_ok() {
                         api.prevent_close();
