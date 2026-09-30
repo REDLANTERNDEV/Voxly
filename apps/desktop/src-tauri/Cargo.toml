@@ -23,6 +23,8 @@ tokio = { version = "1", features = ["sync", "time"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_LibraryLoader", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "=0.61.3", features = ["Win32_Foundation"] }
+webview2-com = "=0.38.2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

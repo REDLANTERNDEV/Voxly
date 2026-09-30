@@ -103,8 +103,13 @@ deafen. Focused Voxly shows no system alert; the listener's own messages never
 notify. Alerts contain generic English/Turkish text, never message content,
 names, or room details. They request silent delivery so the existing Voxly
 cue player remains the only sound source. Repeated alerts of the same kind
-are coalesced. Unsupported runtimes and denied permissions remain recoverable
-without affecting calls or messages.
+are coalesced. The Windows host grants WebView2 notification permission only
+for an explicitly initiated request from the active Installation's exact
+origin. WebView2 does not show the ordinary browser permission prompt by itself,
+so a fresh desktop shell is required for this host integration. Windows may not
+list Voxly under notification settings until it has posted its first toast.
+Unsupported runtimes and denied Windows delivery remain recoverable without
+affecting calls or messages.
 
 Clicking an alert in a running desktop application now requests restoration of
 the current Installation window and opens its channel through ordinary Voxly
@@ -117,9 +122,9 @@ not implemented. See [ADR-0024](adr/0024-desktop-alert-activation-only-reveals-i
 Delivery uses WebView2's standard notification UI and browser permission,
 without a native plugin or remote native capability. See Microsoft's
 [notification handling contract](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2notificationreceivedeventargs?view=webview2-1.0.3912.50).
-Installed Windows acceptance must establish toast delivery, tray/lock behavior,
-and permission recovery; local tests do not establish installed OS integration.
-Notification click routing to a room and native activation remain later work.
+Installed Windows acceptance must establish permission, toast delivery,
+tray/lock behavior and foreground behavior; local builds do not establish
+installed OS integration.
 
 Windows stores chooser preferences under the application local-data directory
 for `app.voxly.desktop` (`%LOCALAPPDATA%\app.voxly.desktop` in a standard profile).
