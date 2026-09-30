@@ -204,6 +204,8 @@ impl Notifications {
         window: &WebviewWindow,
         request: Request,
     ) -> windows::core::Result<Delivery> {
+        use tauri::Manager;
+
         let app_id = HSTRING::from(&window.app_handle().config().identifier);
         let notifier = ToastNotificationManager::CreateToastNotifierWithId(&app_id)?;
         if notifier.Setting()? != NotificationSetting::Enabled {
