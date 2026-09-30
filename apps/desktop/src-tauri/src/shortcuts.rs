@@ -1,21 +1,23 @@
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
+#[cfg(any(test, target_os = "windows"))]
 pub const CONTROL: u8 = 1;
+#[cfg(any(test, target_os = "windows"))]
 pub const ALT: u8 = 2;
+#[cfg(any(test, target_os = "windows"))]
 pub const SHIFT: u8 = 4;
+#[cfg(any(test, target_os = "windows"))]
 pub const SUPER: u8 = 8;
 
 #[derive(Default)]
 pub struct ShortcutLatch {
     pressed: AtomicBool,
-    mouse_button: AtomicU8,
 }
 
 impl ShortcutLatch {
     pub fn reset(&self) {
-        self.mouse_button.store(0, Ordering::Release);
         self.pressed.store(false, Ordering::Release);
     }
 
@@ -26,26 +28,76 @@ impl ShortcutLatch {
     pub fn keyboard_released(&self) {
         self.pressed.store(false, Ordering::Release);
     }
-
-    pub fn mouse_pressed(&self, button: u8) {
-        self.mouse_button.store(button, Ordering::Release);
-    }
-
-    pub fn mouse_released(&self, button: u8) {
-        if self
-            .mouse_button
-            .compare_exchange(button, 0, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok()
-        {
-            self.pressed.store(false, Ordering::Release);
-        }
-    }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MouseBinding {
     pub button: u8,
     pub modifiers: u8,
+}
+
+#[cfg(any(test, target_os = "windows"))]
+#[derive(Default, Debug, PartialEq)]
+pub struct MouseDecision {
+    pub dispatch: bool,
+    pub suppress: bool,
+}
+
+#[cfg(any(test, target_os = "windows"))]
+pub struct MouseShortcutGate {
+    binding: MouseBinding,
+    held: bool,
+    suppressed: bool,
+}
+
+#[cfg(any(test, target_os = "windows"))]
+impl MouseShortcutGate {
+    pub fn new(binding: MouseBinding) -> Self {
+        Self {
+            binding,
+            held: false,
+            suppressed: false,
+        }
+    }
+
+    pub fn handle(
+        &mut self,
+        button: u8,
+        modifiers: u8,
+        pressed: bool,
+        installation_focused: bool,
+    ) -> MouseDecision {
+        if button != self.binding.button {
+            return MouseDecision::default();
+        }
+        if !pressed {
+            if !self.held {
+                return MouseDecision::default();
+            }
+            self.held = false;
+            let suppress = self.suppressed;
+            self.suppressed = false;
+            return MouseDecision {
+                dispatch: false,
+                suppress,
+            };
+        }
+        if self.held {
+            return MouseDecision {
+                dispatch: false,
+                suppress: self.suppressed,
+            };
+        }
+        if modifiers != self.binding.modifiers {
+            return MouseDecision::default();
+        }
+        self.held = true;
+        self.suppressed = installation_focused;
+        MouseDecision {
+            dispatch: true,
+            suppress: self.suppressed,
+        }
+    }
 }
 
 pub enum Binding {
@@ -84,7 +136,8 @@ pub fn parse_binding(binding: &str) -> Result<Binding, &'static str> {
         modifier_mask |= 1 << index;
     }
     // Shift alone is ordinary typing, even though the OS accepts it as a hotkey.
-    if !function && !mouse
+    if !function
+        && !mouse
         && !parts
             .iter()
             .any(|part| matches!(*part, "Control" | "Alt" | "Super"))
@@ -115,15 +168,21 @@ pub struct NativeRegistry<'a>(pub &'a tauri::AppHandle);
 impl Registry for NativeRegistry<'_> {
     fn register(&mut self, binding: &str) -> Result<(), &'static str> {
         match parse_binding(binding)? {
-            Binding::Keyboard(shortcut) => self.0
+            Binding::Keyboard(shortcut) => self
+                .0
                 .global_shortcut()
                 .register(shortcut)
                 .map_err(|_| "shortcut_unavailable"),
-            Binding::Mouse(_) => {
+            Binding::Mouse(mouse) => {
                 #[cfg(target_os = "windows")]
-                { crate::mouse_hook::register(self.0) }
+                {
+                    crate::mouse_hook::register(self.0, mouse)
+                }
                 #[cfg(not(target_os = "windows"))]
-                { Err("shortcut_unavailable") }
+                {
+                    let _ = mouse;
+                    Err("shortcut_unavailable")
+                }
             }
         }
     }
@@ -202,20 +261,67 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mouse_release_clears_held_shortcut_without_registration_access() {
-        let latch = ShortcutLatch::default();
-        latch.mouse_pressed(5);
-        assert!(latch.begin());
-        latch.mouse_released(4);
-        assert!(
-            !latch.begin(),
-            "another mouse button cannot clear the held shortcut"
+    fn mouse_press_cycles_dispatch_once_and_only_block_installation_navigation() {
+        let mut plain = MouseShortcutGate::new(MouseBinding {
+            button: 5,
+            modifiers: 0,
+        });
+        for _ in 0..20 {
+            assert_eq!(
+                plain.handle(5, 0, true, true),
+                MouseDecision {
+                    dispatch: true,
+                    suppress: true
+                }
+            );
+            assert_eq!(
+                plain.handle(5, 0, false, true),
+                MouseDecision {
+                    dispatch: false,
+                    suppress: true
+                }
+            );
+        }
+
+        let mut gate = MouseShortcutGate::new(MouseBinding {
+            button: 5,
+            modifiers: CONTROL,
+        });
+        let ignored = MouseDecision::default();
+        assert_eq!(gate.handle(5, 0, true, true), ignored);
+        assert_eq!(gate.handle(5, 0, false, true), ignored);
+        for _ in 0..20 {
+            assert_eq!(
+                gate.handle(5, CONTROL, true, true),
+                MouseDecision {
+                    dispatch: true,
+                    suppress: true
+                }
+            );
+            assert_eq!(
+                gate.handle(5, CONTROL, true, true),
+                MouseDecision {
+                    dispatch: false,
+                    suppress: true
+                }
+            );
+            assert_eq!(gate.handle(4, CONTROL, false, true), ignored);
+            assert_eq!(
+                gate.handle(5, 0, false, false),
+                MouseDecision {
+                    dispatch: false,
+                    suppress: true
+                }
+            );
+        }
+        assert_eq!(
+            gate.handle(5, CONTROL, true, false),
+            MouseDecision {
+                dispatch: true,
+                suppress: false
+            }
         );
-        latch.mouse_released(5);
-        assert!(
-            latch.begin(),
-            "the matching release restores the next press"
-        );
+        assert_eq!(gate.handle(5, 0, false, false), ignored);
     }
 
     #[derive(Default)]
@@ -271,7 +377,17 @@ mod tests {
                 Binding::Mouse(mouse) => mouse,
                 Binding::Keyboard(_) => panic!("expected mouse binding"),
             },
-            MouseBinding { button: 5, modifiers: CONTROL | SHIFT }
+            MouseBinding {
+                button: 5,
+                modifiers: CONTROL | SHIFT
+            }
+        );
+        assert_eq!(
+            match parse_binding("Control+Alt+Shift+Super+Mouse5").unwrap() {
+                Binding::Mouse(mouse) => mouse.modifiers,
+                Binding::Keyboard(_) => panic!("expected mouse binding"),
+            },
+            CONTROL | ALT | SHIFT | SUPER
         );
     }
     #[test]

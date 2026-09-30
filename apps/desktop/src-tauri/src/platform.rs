@@ -42,6 +42,11 @@ pub fn open_installation(
         .on_download(|_, _| false)
         .build()
         .map_err(|_| "window_failed")?;
+    #[cfg(target_os = "windows")]
+    if let Err(error) = crate::mouse_hook::set_installation_window(Some(&window)) {
+        let _ = window.destroy();
+        return Err(error);
+    }
     let close_window = window.clone();
     window.on_window_event(move |event| {
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {

@@ -116,6 +116,9 @@ the starting state; an eleventh press must invert it. Repeat with Ctrl + Mouse
 4, with Voxly hidden to the tray, after a restart, and after clearing the
 shortcut. Mouse side buttons remapped by a driver to keyboard keys must be
 tested as those keyboard keys.
+With the installation window focused, a bound Mouse 4/5 press must toggle
+without navigating Back or Forward. Outside Voxly, the click still reaches the
+focused application.
 
 Permission tests should include direct `window.__TAURI_INTERNALS__.invoke(...)`
 attempts from remote developer tools against every generated custom command and

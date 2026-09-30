@@ -211,43 +211,43 @@ fn handle_shortcut(
     let Some(binding) = inner.shortcut.active.as_deref() else {
         return;
     };
-    if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Keyboard(ref registered)) if registered == shortcut) {
+    if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Keyboard(ref registered)) if registered == shortcut)
+    {
         return;
     }
     dispatch_mute(app, &shell, &inner);
 }
 
 #[cfg(target_os = "windows")]
-fn handle_mouse_shortcut(app: &tauri::AppHandle, event: mouse_hook::MouseEvent) {
+async fn handle_mouse_shortcut(app: tauri::AppHandle, event: mouse_hook::MousePress) {
     let Some(shell) = app.try_state::<Shell>() else {
         return;
     };
-    // Registration holds inner across a main-thread update. A mouse release
-    // must still unlock the next press even when that update owns inner.
-    if !event.pressed {
-        shell.shortcut_latch.mouse_released(event.button);
-        return;
-    }
-    let Ok(inner) = shell.inner.try_lock() else {
-        return;
-    };
+    // A shortcut press must wait through an installation/settings command,
+    // rather than disappear when that command temporarily owns inner.
+    let inner = shell.inner.lock().await;
     let Some(binding) = inner.shortcut.active.as_deref() else {
         return;
     };
-    if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Mouse(ref registered)) if registered.button == event.button) {
+    if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Mouse(ref registered)) if registered.button == event.button)
+    {
         return;
     }
-    if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Mouse(ref registered)) if registered.modifiers == event.modifiers) {
+    if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Mouse(ref registered)) if registered.modifiers == event.modifiers)
+    {
         return;
     }
-    shell.shortcut_latch.mouse_pressed(event.button);
-    dispatch_mute(app, &shell, &inner);
+    deliver_mute(&app, &inner);
 }
 
 fn dispatch_mute(app: &tauri::AppHandle, shell: &Shell, inner: &Inner) {
     if !shell.shortcut_latch.begin() {
         return;
     }
+    deliver_mute(app, inner);
+}
+
+fn deliver_mute(app: &tauri::AppHandle, inner: &Inner) {
     // Recording a combination in the local chooser must not mute the call.
     if app
         .get_webview_window("shell")
@@ -389,6 +389,8 @@ async fn connect_installation(
     // Keep the old installation/call intact if the replacement is unreachable.
     check_health(&saved.origin).await?;
     if let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) {
+        #[cfg(target_os = "windows")]
+        mouse_hook::set_installation_window(None)?;
         remote.destroy().map_err(|_| "window_failed")?;
     }
     inner.active = None;
@@ -410,6 +412,8 @@ async fn disconnect_installation(
         return Err("confirmation_required");
     }
     if let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) {
+        #[cfg(target_os = "windows")]
+        mouse_hook::set_installation_window(None)?;
         // Destroying the webview ends its tracks, rather than hiding them.
         remote.destroy().map_err(|_| "window_failed")?;
     }
@@ -480,6 +484,8 @@ async fn quit_app(
         return Err("confirmation_required");
     }
     if let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) {
+        #[cfg(target_os = "windows")]
+        mouse_hook::set_installation_window(None)?;
         remote.destroy().map_err(|_| "window_failed")?;
     }
     app.exit(0);

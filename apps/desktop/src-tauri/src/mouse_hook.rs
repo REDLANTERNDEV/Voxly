@@ -1,25 +1,30 @@
 use std::cell::RefCell;
+use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::{mpsc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
-use tauri::AppHandle;
+use tauri::{AppHandle, WebviewWindow};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, DispatchMessageW, GetMessageW, PeekMessageW, PostThreadMessageW,
-    SetWindowsHookExW, UnhookWindowsHookEx, MSLLHOOKSTRUCT, MSG, PM_NOREMOVE, WH_MOUSE_LL, WM_QUIT,
-    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_XBUTTONDOWN, WM_XBUTTONUP,
+    CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW, PeekMessageW,
+    PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE,
+    WH_MOUSE_LL, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_QUIT, WM_XBUTTONDOWN, WM_XBUTTONUP,
 };
 
-use crate::shortcuts::{ALT, CONTROL, SHIFT, SUPER};
+use crate::shortcuts::{MouseBinding, MouseShortcutGate, ALT, CONTROL, SHIFT, SUPER};
 
 #[derive(Clone, Copy)]
-pub struct MouseEvent {
+pub struct MousePress {
     pub button: u8,
     pub modifiers: u8,
-    pub pressed: bool,
+}
+
+struct HookContext {
+    app: AppHandle,
+    gate: MouseShortcutGate,
 }
 
 struct HookThread {
@@ -28,8 +33,18 @@ struct HookThread {
 }
 
 static HOOK: OnceLock<Mutex<Option<HookThread>>> = OnceLock::new();
+static INSTALLATION_HWND: AtomicIsize = AtomicIsize::new(0);
 thread_local! {
-    static APP: RefCell<Option<AppHandle>> = const { RefCell::new(None) };
+    static CONTEXT: RefCell<Option<HookContext>> = const { RefCell::new(None) };
+}
+
+pub fn set_installation_window(window: Option<&WebviewWindow>) -> Result<(), &'static str> {
+    let hwnd = match window {
+        Some(window) => window.hwnd().map_err(|_| "window_failed")?.0 as isize,
+        None => 0,
+    };
+    INSTALLATION_HWND.store(hwnd, Ordering::Release);
+    Ok(())
 }
 
 fn modifier_down(key: u16) -> bool {
@@ -55,7 +70,12 @@ fn current_modifiers() -> u8 {
 }
 
 unsafe extern "system" fn mouse_proc(code: i32, wparam: usize, lparam: isize) -> isize {
-    if code == 0 && matches!(wparam as u32, WM_MBUTTONDOWN | WM_MBUTTONUP | WM_XBUTTONDOWN | WM_XBUTTONUP) {
+    if code == 0
+        && matches!(
+            wparam as u32,
+            WM_MBUTTONDOWN | WM_MBUTTONUP | WM_XBUTTONDOWN | WM_XBUTTONUP
+        )
+    {
         // Windows supplies MSLLHOOKSTRUCT only for HC_ACTION (code 0).
         let mouse = unsafe { &*(lparam as *const MSLLHOOKSTRUCT) };
         let button = match wparam as u32 {
@@ -67,27 +87,37 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: usize, lparam: isize) ->
             },
         };
         if let Some(button) = button {
-            let event = MouseEvent {
-                button,
-                modifiers: current_modifiers(),
-                pressed: matches!(wparam as u32, WM_MBUTTONDOWN | WM_XBUTTONDOWN),
-            };
-            APP.with(|slot| {
-                if let Some(app) = slot.borrow().as_ref() {
-                    let app = app.clone();
-                    let dispatch = app.clone();
-                    let _ = app.run_on_main_thread(move || {
-                        crate::handle_mouse_shortcut(&dispatch, event)
-                    });
-                }
+            let pressed = matches!(wparam as u32, WM_MBUTTONDOWN | WM_XBUTTONDOWN);
+            let modifiers = if pressed { current_modifiers() } else { 0 };
+            let installation_hwnd = INSTALLATION_HWND.load(Ordering::Acquire);
+            let installation_focused = installation_hwnd != 0
+                && unsafe { GetForegroundWindow() } as isize == installation_hwnd;
+            let (app, decision) = CONTEXT.with(|slot| {
+                let mut context = slot.borrow_mut();
+                let Some(context) = context.as_mut() else {
+                    return (None, Default::default());
+                };
+                let decision =
+                    context
+                        .gate
+                        .handle(button, modifiers, pressed, installation_focused);
+                (decision.dispatch.then(|| context.app.clone()), decision)
             });
+            if let Some(app) = app {
+                let event = MousePress { button, modifiers };
+                tauri::async_runtime::spawn(crate::handle_mouse_shortcut(app, event));
+            }
+            if decision.suppress {
+                // A bound side button must not navigate away from the active
+                // installation. Other windows, including games, receive it.
+                return 1;
+            }
         }
     }
-    // The physical click must still reach the game and every other hook.
     unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
 }
 
-pub fn register(app: &AppHandle) -> Result<(), &'static str> {
+pub fn register(app: &AppHandle, binding: MouseBinding) -> Result<(), &'static str> {
     let mut hook = HOOK
         .get_or_init(|| Mutex::new(None))
         .lock()
@@ -100,7 +130,12 @@ pub fn register(app: &AppHandle) -> Result<(), &'static str> {
     let join = thread::Builder::new()
         .name("voxly-mouse-shortcut".into())
         .spawn(move || {
-            APP.with(|slot| *slot.borrow_mut() = Some(app));
+            CONTEXT.with(|slot| {
+                *slot.borrow_mut() = Some(HookContext {
+                    app,
+                    gate: MouseShortcutGate::new(binding),
+                })
+            });
             // A message queue must exist before PostThreadMessageW may stop us.
             // MSG contains only Win32 handles, integers, and a POINT; zero is valid.
             let mut message: MSG = unsafe { std::mem::zeroed() };
@@ -127,7 +162,7 @@ pub fn register(app: &AppHandle) -> Result<(), &'static str> {
             unsafe {
                 UnhookWindowsHookEx(installed);
             }
-            APP.with(|slot| *slot.borrow_mut() = None);
+            CONTEXT.with(|slot| *slot.borrow_mut() = None);
         })
         .map_err(|_| "shortcut_unavailable")?;
     match receive.recv().map_err(|_| "shortcut_unavailable")? {
