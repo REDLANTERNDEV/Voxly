@@ -97,11 +97,16 @@ pub fn open_installation(
     #[cfg(windows)]
     {
         let notification_origin = saved.origin.clone();
+        let notification_window = window.clone();
         window
             .with_webview(move |webview| unsafe {
                 let Ok(core) = webview.controller().CoreWebView2() else {
                     return;
                 };
+                crate::native_notifications::suppress_focused_webview_notifications(
+                    &notification_window,
+                    &core,
+                );
                 let handler = PermissionRequestedEventHandler::create(Box::new(move |_, args| {
                     let Some(args) = args else { return Ok(()) };
                     let mut kind = Default::default();

@@ -35,6 +35,69 @@ pub enum Delivery {
 }
 
 #[cfg(any(windows, test))]
+fn background_delivery(focused: bool, send: impl FnOnce() -> Delivery) -> Delivery {
+    if focused {
+        Delivery::Blocked
+    } else {
+        send()
+    }
+}
+
+#[cfg(any(windows, test))]
+fn foreground_matches(owner: Option<usize>, foreground: usize, foreground_owner: usize) -> bool {
+    // An unavailable own handle cannot establish that delivery is in background.
+    owner.is_none_or(|owner| owner == foreground || owner == foreground_owner)
+}
+
+#[cfg(windows)]
+fn system_window_focused(owner: Option<usize>) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetForegroundWindow, GA_ROOTOWNER};
+    unsafe {
+        let foreground = GetForegroundWindow();
+        let root = if foreground.0.is_null() {
+            foreground
+        } else {
+            GetAncestor(foreground, GA_ROOTOWNER)
+        };
+        foreground_matches(owner, foreground.0 as usize, root.0 as usize)
+    }
+}
+
+#[cfg(windows)]
+fn window_focused(window: &WebviewWindow) -> bool {
+    system_window_focused(window.hwnd().ok().map(|hwnd| hwnd.0 as usize))
+}
+
+#[cfg(windows)]
+pub fn suppress_focused_webview_notifications(
+    window: &WebviewWindow,
+    core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2,
+) {
+    use webview2_com::{
+        Microsoft::Web::WebView2::Win32::ICoreWebView2_24, NotificationReceivedEventHandler,
+    };
+    use windows::core::Interface;
+
+    // Older runtimes retain the existing document gate and default background UI.
+    let Ok(view) = core.cast::<ICoreWebView2_24>() else {
+        return;
+    };
+    let owner = window.hwnd().ok().map(|hwnd| hwnd.0 as usize);
+    let handler = NotificationReceivedEventHandler::create(Box::new(move |_, args| {
+        if system_window_focused(owner) {
+            if let Some(args) = args {
+                // Only suppress this event. Background notifications keep WebView2's
+                // default delivery/click handling; no custom UI or fake ReportShown.
+                unsafe { args.SetHandled(true)? };
+            }
+        }
+        Ok(())
+    }));
+    let mut token = 0;
+    let _ = unsafe { view.add_NotificationReceived(&handler, &mut token) };
+}
+
+#[cfg(any(windows, test))]
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -144,13 +207,15 @@ impl Notifications {
     pub fn show(&self, window: &WebviewWindow, request: Request) -> Delivery {
         #[cfg(windows)]
         {
-            match self.show_windows(window, request) {
-                Ok(delivery) => delivery,
-                Err(diagnostic) => {
-                    record_diagnostic(window, &diagnostic);
-                    Delivery::Fallback
+            background_delivery(window_focused(window), || {
+                match self.show_windows(window, request) {
+                    Ok(delivery) => delivery,
+                    Err(diagnostic) => {
+                        record_diagnostic(window, &diagnostic);
+                        Delivery::Fallback
+                    }
                 }
-            }
+            })
         }
         #[cfg(not(windows))]
         {
@@ -263,6 +328,13 @@ fn event(window: &WebviewWindow, id: &str, event: &'static str) {
         ) {
             return;
         }
+        // A send failure queued in background must not become a Compatibility
+        // popup after the member has returned to the Installation window.
+        let event = if event == "failed" && window_focused(&window) {
+            "close"
+        } else {
+            event
+        };
         let detail = serde_json::json!({ "id": id, "event": event });
         let _ = window.eval(&format!("window.dispatchEvent(new CustomEvent('voxly:native-notification', {{detail:{detail}}}));"));
     });
@@ -380,6 +452,9 @@ impl Notifications {
                 ),
             ),
         )?);
+        if window_focused(window) {
+            return Ok(Delivery::Blocked);
+        }
         let key = (window.label().to_owned(), request.id);
         let mut entries = self.entries.lock().unwrap();
         if entries.len() >= 16 || entries.contains_key(&key) {
@@ -399,6 +474,30 @@ impl Notifications {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn focused_window_never_calls_the_sender_or_requests_fallback() {
+        let mut calls = 0;
+        let result = background_delivery(true, || {
+            calls += 1;
+            Delivery::Fallback
+        });
+        assert!(matches!(result, Delivery::Blocked));
+        assert_eq!(calls, 0);
+        let result = background_delivery(false, || {
+            calls += 1;
+            Delivery::Shown
+        });
+        assert!(matches!(result, Delivery::Shown));
+        assert_eq!(calls, 1);
+    }
+    #[test]
+    fn foreground_window_matching_includes_owned_dialogs_and_allows_other_apps() {
+        assert!(foreground_matches(Some(10), 10, 10));
+        assert!(foreground_matches(Some(10), 20, 10));
+        assert!(!foreground_matches(Some(10), 20, 20));
+        assert!(!foreground_matches(Some(10), 0, 0));
+        assert!(foreground_matches(None, 20, 20));
+    }
     #[test]
     fn diagnostic_keeps_only_finite_stage_and_hresult_and_replaces_the_previous_failure() {
         let path = std::env::temp_dir().join(format!(
