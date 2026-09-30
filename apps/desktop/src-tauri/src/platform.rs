@@ -18,10 +18,12 @@ pub fn open_installation(
     let url = saved.origin.parse().map_err(|_| "invalid_address")?;
     let origin = saved.origin.clone();
     let bootstrap = format!(
-        "{}({}, {});",
+        "{}({}, {});\n{}({});",
         include_str!("voice-bridge.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
-        serde_json::to_string(&microphone_mode).map_err(|_| "invalid_address")?
+        serde_json::to_string(&microphone_mode).map_err(|_| "invalid_address")?,
+        include_str!("navigation.js"),
+        serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?
     );
     let opener_app = app.clone();
     let window = WebviewWindowBuilder::new(app, INSTALLATION_WINDOW, WebviewUrl::External(url))

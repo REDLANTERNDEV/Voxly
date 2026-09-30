@@ -309,8 +309,11 @@ async fn set_microphone_mode(
         return Err("shortcut_required");
     }
     let mut next = inner.preferences.clone();
-    next.microphone_mode = mode;
+    next.set_microphone_mode(mode);
     persist(&shell, &next)?;
+    shell
+        .push_to_talk_release_delay_ms
+        .store(next.push_to_talk_release_delay_ms, Ordering::Release);
     inner.preferences = next;
     deliver_microphone_mode(&app, &inner);
     Ok(snapshot(&inner))

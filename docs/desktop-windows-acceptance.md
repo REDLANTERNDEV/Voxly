@@ -405,8 +405,19 @@ result with a peer; local helper tests do not establish Windows release timing.
 
 ### Push-to-talk release delay
 
-Default/off must remain 0 ms. Enable the chooser control and verify its 200 ms
-initial value, then test 100, 500, and 2000 ms. Continue speaking after release:
+Navigation regression: while connected to voice room B, visit text rooms and
+the stages of other voice rooms, then repeatedly traverse Mouse 4/5 and
+Alt+Left/Right past both page-history boundaries. The viewed page must change
+within that history, while room B, its microphone/capture and peer audio remain
+connected. Viewing a previous voice stage must never join it. Repeat with
+Mouse 4/5 bound and unbound, quick releases, held shortcuts, and after sign-in.
+After Back then a new page selection, Forward must not restore the discarded
+pages. No blank/startup document should appear at either boundary.
+
+Select Push to talk with the saved delay off and verify it automatically enables
+200 ms. Verify a saved nonzero delay survives switching modes. Turn delay off
+while using Push to talk and verify it stays off until another mode is selected
+and Push to talk is selected again. Test 100, 500, and 2000 ms. Continue speaking after release:
 a browser peer should hear only the selected tail, with the sidebar, dock and
 stage showing mute once it expires. Re-press before expiry and verify continuous
 transmission until the new release deadline. Repeat with game focus, tray

@@ -125,19 +125,23 @@ Recording in the chooser performs no voice action.
 
 Mouse side buttons retain Back/Forward navigation in the installation window,
 including when bound to a voice shortcut. Moving through Voxly's route history
-keeps the active voice session running. A bound press also performs its voice
+uses document-local page history: Back/Forward changes the viewed page without
+joining, switching, or leaving voice. At either end, further clicks do nothing;
+the initial authenticated page replaces the startup landing entry. A bound press also performs its voice
 action. The chooser consumes clicks only while recording a shortcut.
 
 For **Push to talk** or **Push to mute**, first record and save that action's
 shortcut, then select it under **Microphone mode**. Push to talk transmits only
-while held; release closes microphone publication immediately by default. Push to mute suppresses
+while held; selecting this mode enables a 200 ms release delay when no delay is configured. Push to mute suppresses
 publication while held and restores it on release if the microphone was enabled.
 The microphone button still enables/disables your microphone independently:
 self mute, deafen, owner mute, and an AFK room take precedence. The monitor
 branch is independent, and holding a shortcut never requests microphone access.
 Both modes use existing live capture, including after a device replacement.
 
-In the chooser, **Enable push-to-talk release delay** starts at 200 ms. Adjust
+In the chooser, selecting Push to talk automatically enables release delay at
+200 ms when the saved delay is off; an existing nonzero delay is preserved.
+You can turn it off again while using Push to talk. Adjust
 the **Release delay** slider from 0–2000 ms; its readout shows milliseconds and
 the value survives restart. Off or 0 ms cuts transmission on release. An enabled
 delay keeps an already transmitting microphone open briefly after release.

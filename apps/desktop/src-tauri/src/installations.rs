@@ -41,6 +41,16 @@ pub enum MicrophoneMode {
 }
 
 impl Preferences {
+    pub fn set_microphone_mode(&mut self, mode: MicrophoneMode) {
+        if mode == MicrophoneMode::PushToTalk
+            && self.microphone_mode != mode
+            && self.push_to_talk_release_delay_ms == 0
+        {
+            self.push_to_talk_release_delay_ms = 200;
+        }
+        self.microphone_mode = mode;
+    }
+
     pub fn binding(&self, action: crate::shortcuts::Action) -> Option<&str> {
         use crate::shortcuts::Action;
         match action {
@@ -167,6 +177,23 @@ pub fn save(path: &Path, preferences: &Preferences) -> Result<(), &'static str> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selecting_push_to_talk_enables_release_delay() {
+        let mut preferences = Preferences::default();
+        preferences.set_microphone_mode(MicrophoneMode::PushToTalk);
+        assert_eq!(preferences.push_to_talk_release_delay_ms, 200);
+        preferences.push_to_talk_release_delay_ms = 500;
+        preferences.set_microphone_mode(MicrophoneMode::OpenMic);
+        preferences.set_microphone_mode(MicrophoneMode::PushToTalk);
+        assert_eq!(preferences.push_to_talk_release_delay_ms, 500);
+        preferences.push_to_talk_release_delay_ms = 0;
+        preferences.set_microphone_mode(MicrophoneMode::PushToTalk);
+        assert_eq!(preferences.push_to_talk_release_delay_ms, 0);
+        preferences.set_microphone_mode(MicrophoneMode::PushToMute);
+        preferences.set_microphone_mode(MicrophoneMode::PushToTalk);
+        assert_eq!(preferences.push_to_talk_release_delay_ms, 200);
+    }
 
     struct TestDirectory(std::path::PathBuf);
     impl TestDirectory {

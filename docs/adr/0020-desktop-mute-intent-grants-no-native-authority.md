@@ -61,7 +61,9 @@ verifying idle silence before relying on a hold mode. No installation receives
 shortcut registration authority or a native command.
 
 An optional 0–2000 ms Push to talk release delay extends only an existing talk
-grant. The chooser owns its saved duration (default 0), and a native Tokio
+grant. The chooser owns its saved duration: entering Push to talk enables 200 ms
+when the saved duration is zero, preserves an existing nonzero duration, and
+allows disabling delay while the mode remains selected. A native Tokio
 deadline emits a fixed release-expired intent without relying on background
 web timers or the settings lock. The bridge reports physical hold separately
 from the release tail; a tail cannot open capture or establish a fresh grant.
