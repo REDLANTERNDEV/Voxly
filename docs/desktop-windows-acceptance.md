@@ -166,9 +166,12 @@ the starting state; an eleventh press must invert it. Repeat with Ctrl + Mouse
 4, with Voxly hidden to the tray, after a restart, and after clearing the
 shortcut. Mouse side buttons remapped by a driver to keyboard keys must be
 tested as those keyboard keys.
-With the installation window focused, a bound Mouse 4/5 press must toggle
-without navigating Back or Forward. Outside Voxly, the click still reaches the
-focused application.
+With the installation window focused, a bound Mouse 4/5 press must toggle and
+retain normal Back/Forward navigation. Build history by visiting several Voxly
+text and voice routes. Traverse it in both directions while a browser peer
+checks continuous audio; the connected voice room must not change just because
+the viewed route changes. Outside Voxly, the click still reaches the focused
+application. Recording a shortcut in the chooser still consumes its click.
 
 Permission tests should include direct `window.__TAURI_INTERNALS__.invoke(...)`
 attempts from remote developer tools against every generated custom command and
@@ -353,7 +356,8 @@ game, then test hidden to tray:
 2. Hold each shortcut: one action per press. Press both keys independently,
    release one, and confirm that release does not unlock repeats of the other.
    Repeat with mute on Mouse 4 and deafen on Mouse 5; the focused game still
-   receives clicks, and focused Voxly does not navigate Back/Forward.
+   receives clicks, and focused Voxly navigates Back/Forward while keeping the
+   same voice session connected.
 3. Change, clear, and restart with both bindings. The unaffected binding keeps
    working. An identical combination is refused for the second action; an OS
    keyboard conflict retains that action's old combination.
@@ -398,6 +402,49 @@ mute** in the local chooser, then select **Microphone mode**:
 Record Windows/WebView2 versions, shell/installation revisions, mode, bindings,
 keyboard layout, focus/tray/game state, and pass/fail. Validate the audible
 result with a peer; local helper tests do not establish Windows release timing.
+
+### Push-to-talk release delay
+
+Default/off must remain 0 ms. Enable the chooser control and verify its 200 ms
+initial value, then test 100, 500, and 2000 ms. Continue speaking after release:
+a browser peer should hear only the selected tail, with the sidebar, dock and
+stage showing mute once it expires. Re-press before expiry and verify continuous
+transmission until the new release deadline. Repeat with game focus, tray
+hidden, and a pending health check. Self mute/deafen, owner mute, AFK locks,
+room/device/reconnect transitions, mode changes, binding changes/clear, and
+disabling the delay must not reopen a cancelled tail. Verify persistence and
+the English/Turkish labels, keyboard slider operation, and ms readout. Push to
+mute still restores immediately. Older web clients must retain immediate
+release, with no publication enabled by the optional tail state.
+
+## Desktop notification acceptance (pending Windows validation)
+
+Use the installed Windows build with the updated installation web client.
+Record Windows/WebView2 versions and both revisions. API availability and local
+tests do not establish OS toast integration.
+
+1. In Settings → Audio, verify Desktop notifications defaults off. Enable it
+   and deny permission: messages and calls still work and settings explain the
+   denial. Change site/system permission, retry, and verify recovery. A runtime
+   without silent notification support must show the unavailable state.
+2. Allow permission, enable alerts, and focus a different application. Receive
+   a peer's message: one generic localized alert appears with no message text,
+   nickname, Server or room details. Focused Voxly and the listener's own
+   messages produce none. Bursts coalesce rather than stack identical alerts.
+3. In the connected voice room, check peer arrivals/departures, screen-share
+   start/stop, and connection interruption/recovery. A first room snapshot or
+   an observed room must not replay roster alerts.
+4. Disable each category and the master notification switch. Check self and
+   owner deafen; alerts must follow the same gating as existing cues. Verify
+   exactly one sound through the selected Voxly output; the OS toast is silent.
+5. Repeat while tray-hidden, locked/unlocked, and with Windows notification
+   policy or Focus assist blocking alerts. Check the app's identity and toast
+   history on an installed build. Record notification-click behavior; room
+   routing and native activation are not implemented in this delivery step.
+6. Restart and switch Accounts/installations: opt-in remains local to that
+   Account/profile. Disable the option and verify future alerts stop even when
+   OS permission remains granted. Repeat the text and permission states in
+   English and Turkish.
 
 ## Development verification on macOS
 

@@ -9,7 +9,7 @@ mod shortcuts;
 use installations::{Installation, Language, Preferences};
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
 use tauri::{Emitter, Manager, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
@@ -22,6 +22,7 @@ struct Shell {
     shortcut_events: tokio::sync::mpsc::UnboundedSender<VoiceEvent>,
     voice_generation: AtomicU64,
     voice_target: std::sync::RwLock<Option<Installation>>,
+    push_to_talk_release_delay_ms: AtomicU16,
 }
 
 struct Inner {
@@ -30,10 +31,35 @@ struct Inner {
     shortcuts: [shortcuts::Registration; 4],
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct VoiceEvent {
     action: shortcuts::Action,
     pressed: bool,
     generation: u64,
+    allow_release_delay: bool,
+}
+
+#[derive(Debug, PartialEq)]
+enum VoiceDelivery {
+    Input(VoiceEvent),
+    TalkReleaseExpired(u64),
+}
+
+async fn next_voice_delivery(
+    events: &mut tokio::sync::mpsc::UnboundedReceiver<VoiceEvent>,
+    release: &mut Option<(tokio::time::Instant, u64)>,
+) -> Option<VoiceDelivery> {
+    if let Some((deadline, generation)) = *release {
+        match tokio::time::timeout_at(deadline, events.recv()).await {
+            Ok(event) => event.map(VoiceDelivery::Input),
+            Err(_) => {
+                *release = None;
+                Some(VoiceDelivery::TalkReleaseExpired(generation))
+            }
+        }
+    } else {
+        events.recv().await.map(VoiceDelivery::Input)
+    }
 }
 
 struct TrayMenu {
@@ -85,6 +111,49 @@ fn shell_navigation(url: &url::Url) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_talk_release_deadline_expires_without_waiting_for_web_timers() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let (_send, mut events) = tokio::sync::mpsc::unbounded_channel();
+            let mut release = Some((tokio::time::Instant::now(), 7));
+            assert_eq!(
+                next_voice_delivery(&mut events, &mut release).await,
+                Some(VoiceDelivery::TalkReleaseExpired(7))
+            );
+            assert!(release.is_none());
+        });
+    }
+
+    #[test]
+    fn new_shortcut_input_interrupts_a_pending_native_release_deadline() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let (send, mut events) = tokio::sync::mpsc::unbounded_channel();
+            let event = VoiceEvent {
+                action: shortcuts::Action::PushToTalk,
+                pressed: true,
+                generation: 9,
+                allow_release_delay: true,
+            };
+            send.send(event).unwrap();
+            let mut release = Some((
+                tokio::time::Instant::now() + std::time::Duration::from_secs(60),
+                9,
+            ));
+            assert_eq!(
+                next_voice_delivery(&mut events, &mut release).await,
+                Some(VoiceDelivery::Input(event))
+            );
+        });
+    }
 
     #[test]
     fn local_shell_cannot_navigate_to_remote_content() {
@@ -247,6 +316,34 @@ async fn set_microphone_mode(
     Ok(snapshot(&inner))
 }
 
+#[tauri::command]
+async fn set_push_to_talk_release_delay(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    delay_ms: u16,
+) -> Result<ShellSnapshot, &'static str> {
+    trusted_shell(&window)?;
+    if !cfg!(target_os = "windows") {
+        return Err("unsupported_platform");
+    }
+    if delay_ms > 2000 {
+        return Err("invalid_release_delay");
+    }
+    let mut inner = shell.inner.lock().await;
+    let mut next = inner.preferences.clone();
+    next.push_to_talk_release_delay_ms = delay_ms;
+    persist(&shell, &next)?;
+    inner.preferences = next;
+    shell
+        .push_to_talk_release_delay_ms
+        .store(delay_ms, Ordering::Release);
+    if let Some(target) = inner.active.as_ref() {
+        expire_talk_release(&app, target);
+    }
+    Ok(snapshot(&inner))
+}
+
 async fn set_shortcut(
     app: tauri::AppHandle,
     shell: tauri::State<'_, Shell>,
@@ -285,7 +382,7 @@ async fn set_shortcut(
     shell.shortcut_latches[action.index()].bind(registration.active.as_deref());
     inner.shortcuts[action.index()] = registration;
     // A changed/cleared binding must end its hold even if no key-up follows.
-    queue_voice_action(&app, action, false);
+    queue_voice_event(&app, action, false, false);
     result?;
     inner.preferences = next;
     Ok(snapshot(&inner))
@@ -315,11 +412,21 @@ fn handle_shortcut(
 }
 
 fn queue_voice_action(app: &tauri::AppHandle, action: shortcuts::Action, pressed: bool) {
+    queue_voice_event(app, action, pressed, true);
+}
+
+fn queue_voice_event(
+    app: &tauri::AppHandle,
+    action: shortcuts::Action,
+    pressed: bool,
+    allow_release_delay: bool,
+) {
     if let Some(shell) = app.try_state::<Shell>() {
         let _ = shell.shortcut_events.send(VoiceEvent {
             action,
             pressed,
             generation: shell.voice_generation.load(Ordering::Acquire),
+            allow_release_delay,
         });
     }
 }
@@ -345,6 +452,7 @@ fn deliver_voice_action(
     target: &Installation,
     action: shortcuts::Action,
     pressed: bool,
+    release_delay_ms: u16,
 ) {
     // Releases must reach the call even when settings have since taken focus.
     if pressed
@@ -364,15 +472,15 @@ fn deliver_voice_action(
         return;
     }
     // Fixed actions and booleans, never script supplied by the installation.
+    let talk_release =
+        format!("window.__VOXLY_DESKTOP_V1__?.dispatchPushToTalk?.(false, {release_delay_ms});");
     let script = match (action, pressed) {
         (shortcuts::Action::Mute, true) => "window.__VOXLY_DESKTOP_V1__?.dispatchMute();",
         (shortcuts::Action::Deafen, true) => "window.__VOXLY_DESKTOP_V1__?.dispatchDeafen?.();",
         (shortcuts::Action::PushToTalk, true) => {
             "window.__VOXLY_DESKTOP_V1__?.dispatchPushToTalk?.(true);"
         }
-        (shortcuts::Action::PushToTalk, false) => {
-            "window.__VOXLY_DESKTOP_V1__?.dispatchPushToTalk?.(false);"
-        }
+        (shortcuts::Action::PushToTalk, false) => &talk_release,
         (shortcuts::Action::PushToMute, true) => {
             "window.__VOXLY_DESKTOP_V1__?.dispatchPushToMute?.(true);"
         }
@@ -382,6 +490,17 @@ fn deliver_voice_action(
         _ => return,
     };
     let _ = remote.eval(script);
+}
+
+fn expire_talk_release(app: &tauri::AppHandle, target: &Installation) {
+    if let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) {
+        if remote
+            .url()
+            .is_ok_and(|url| installations::same_origin(&target.origin, &url))
+        {
+            let _ = remote.eval("window.__VOXLY_DESKTOP_V1__?.dispatchPushToTalkRelease?.();");
+        }
+    }
 }
 
 #[tauri::command]
@@ -502,8 +621,6 @@ async fn connect_installation(
     // Keep the old installation/call intact if the replacement is unreachable.
     check_health(&saved.origin).await?;
     if let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) {
-        #[cfg(target_os = "windows")]
-        mouse_hook::set_installation_window(None)?;
         remote.destroy().map_err(|_| "window_failed")?;
     }
     shell.voice_generation.fetch_add(1, Ordering::AcqRel);
@@ -527,8 +644,6 @@ async fn disconnect_installation(
         return Err("confirmation_required");
     }
     if let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) {
-        #[cfg(target_os = "windows")]
-        mouse_hook::set_installation_window(None)?;
         // Destroying the webview ends its tracks, rather than hiding them.
         remote.destroy().map_err(|_| "window_failed")?;
     }
@@ -601,8 +716,6 @@ async fn quit_app(
         return Err("confirmation_required");
     }
     if let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) {
-        #[cfg(target_os = "windows")]
-        mouse_hook::set_installation_window(None)?;
         remote.destroy().map_err(|_| "window_failed")?;
     }
     app.exit(0);
@@ -666,7 +779,8 @@ fn main() {
             set_deafen_shortcut,
             set_push_to_talk_shortcut,
             set_push_to_mute_shortcut,
-            set_microphone_mode
+            set_microphone_mode,
+            set_push_to_talk_release_delay
         ])
         .setup(|app| {
             let data = app.path().app_local_data_dir()?;
@@ -725,6 +839,7 @@ fn main() {
             }
             let (shortcut_events, mut events) =
                 tokio::sync::mpsc::unbounded_channel::<VoiceEvent>();
+            let release_delay_ms = preferences.push_to_talk_release_delay_ms;
             app.manage(Shell {
                 inner: Mutex::new(Inner {
                     preferences,
@@ -737,10 +852,12 @@ fn main() {
                 shortcut_events,
                 voice_generation: AtomicU64::new(0),
                 voice_target: std::sync::RwLock::new(None),
+                push_to_talk_release_delay_ms: AtomicU16::new(release_delay_ms),
             });
             let event_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                while let Some(event) = events.recv().await {
+                let mut release = None;
+                while let Some(delivery) = next_voice_delivery(&mut events, &mut release).await {
                     let shell = event_app.state::<Shell>();
                     // Settings and health checks may own inner for seconds.
                     // Release delivery must never wait on that async lock.
@@ -749,9 +866,52 @@ fn main() {
                         .read()
                         .ok()
                         .and_then(|target| target.clone());
-                    if event.generation == shell.voice_generation.load(Ordering::Acquire) {
-                        if let Some(target) = target {
-                            deliver_voice_action(&event_app, &target, event.action, event.pressed);
+                    let generation = match &delivery {
+                        VoiceDelivery::Input(event) => event.generation,
+                        VoiceDelivery::TalkReleaseExpired(generation) => *generation,
+                    };
+                    if generation != shell.voice_generation.load(Ordering::Acquire) {
+                        continue;
+                    }
+                    let Some(target) = target else {
+                        continue;
+                    };
+                    match delivery {
+                        VoiceDelivery::TalkReleaseExpired(_) => {
+                            expire_talk_release(&event_app, &target)
+                        }
+                        VoiceDelivery::Input(event) => {
+                            let mut delay_ms = 0;
+                            if event.action == shortcuts::Action::PushToTalk {
+                                // A fresh press replaces any pending cutoff. Binding resets bypass delay.
+                                release = None;
+                                if !event.pressed && event.allow_release_delay {
+                                    delay_ms =
+                                        shell.push_to_talk_release_delay_ms.load(Ordering::Acquire);
+                                }
+                            } else if event.pressed
+                                && matches!(
+                                    event.action,
+                                    shortcuts::Action::Mute | shortcuts::Action::Deafen
+                                )
+                                && release.take().is_some()
+                            {
+                                expire_talk_release(&event_app, &target);
+                            }
+                            deliver_voice_action(
+                                &event_app,
+                                &target,
+                                event.action,
+                                event.pressed,
+                                delay_ms,
+                            );
+                            if delay_ms > 0 {
+                                release = Some((
+                                    tokio::time::Instant::now()
+                                        + std::time::Duration::from_millis(delay_ms.into()),
+                                    event.generation,
+                                ));
+                            }
                         }
                     }
                 }

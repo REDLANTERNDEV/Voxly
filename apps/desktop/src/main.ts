@@ -7,7 +7,7 @@ import { mountShortcutSettings, type ShortcutSnapshot } from "./shortcuts.js";
 
 interface Installation { id: string; origin: string }
 interface Snapshot extends ShortcutSnapshot {
-  preferences: { installations: Installation[]; language: Language; trayAcknowledged: boolean; muteShortcut: string | null; deafenShortcut: string | null; pushToTalkShortcut: string | null; pushToMuteShortcut: string | null; microphoneMode: "openMic" | "pushToTalk" | "pushToMute" };
+  preferences: { installations: Installation[]; language: Language; trayAcknowledged: boolean; muteShortcut: string | null; deafenShortcut: string | null; pushToTalkShortcut: string | null; pushToMuteShortcut: string | null; microphoneMode: "openMic" | "pushToTalk" | "pushToMute"; pushToTalkReleaseDelayMs: number };
   active: Installation | null;
   platform: string;
   shellVersion: string;
@@ -47,6 +47,17 @@ element<HTMLSelectElement>("microphone-mode").addEventListener("change", () => {
   const mode = element<HTMLSelectElement>("microphone-mode").value;
   void run(async () => { state = await invoke<Snapshot>("set_microphone_mode", { mode }); });
 });
+const releaseDelay = element<HTMLInputElement>("push-to-talk-release-delay");
+const releaseDelayEnabled = element<HTMLInputElement>("push-to-talk-delay-enabled");
+releaseDelay.addEventListener("input", () => {
+  element("push-to-talk-delay-value").textContent = `${releaseDelay.value} ms`;
+  releaseDelay.setAttribute("aria-valuetext", `${releaseDelay.value} ms`);
+});
+function saveReleaseDelay(delayMs: number) {
+  void run(async () => { state = await invoke<Snapshot>("set_push_to_talk_release_delay", { delayMs }); });
+}
+releaseDelay.addEventListener("change", () => saveReleaseDelay(Number(releaseDelay.value)));
+releaseDelayEnabled.addEventListener("change", () => saveReleaseDelay(releaseDelayEnabled.checked ? 200 : 0));
 
 function renderTranslations() {
   document.documentElement.lang = language;
@@ -105,6 +116,14 @@ function renderInstallations() {
   for (const settings of shortcutSettings) settings.render(state, shortcutsAvailable);
   element<HTMLSelectElement>("microphone-mode").disabled = !shortcutsAvailable;
   element<HTMLSelectElement>("microphone-mode").value = state?.preferences.microphoneMode ?? "openMic";
+  const delayMs = state?.preferences.pushToTalkReleaseDelayMs ?? 0;
+  const delayAvailable = shortcutsAvailable && state?.preferences.microphoneMode === "pushToTalk";
+  releaseDelayEnabled.disabled = !delayAvailable;
+  releaseDelayEnabled.checked = delayMs > 0;
+  releaseDelay.disabled = !delayAvailable || delayMs === 0;
+  releaseDelay.value = String(delayMs);
+  releaseDelay.setAttribute("aria-valuetext", `${delayMs} ms`);
+  element("push-to-talk-delay-value").textContent = `${delayMs} ms`;
 }
 
 async function confirmAction(quitting = false): Promise<boolean> {

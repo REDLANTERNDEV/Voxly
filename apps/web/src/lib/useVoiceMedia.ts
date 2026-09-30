@@ -892,6 +892,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   // Reached when the capture is gone and no replacement is coming: the device
   // was unplugged, or a reopen failed after the previous capture was released.
   const handleMicrophoneLost = useCallback((message: VoiceErrorKey) => {
+    desktopMicrophone.resetHolds();
+    desktopMicrophoneTransitionRef.current += 1;
     speakingRef.current = false;
     stopStream("mic");
     microphoneEnabledRef.current = false;

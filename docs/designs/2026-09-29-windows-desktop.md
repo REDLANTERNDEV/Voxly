@@ -30,8 +30,10 @@ reported picker friction from game compatibility and motion quality.
 The local global mute/deafen preferences and one-way intent bridge are now implemented;
 the installation must deploy the updated web client. Browser approval sign-in
 now runs within the installation-delivered interface and collects the session
-through the desktop webview, without adding remote-to-native IPC. Native
-notifications, routing deep links, and signed shell updating
+through the desktop webview, without adding remote-to-native IPC. Background
+notifications now use WebView2's standard delivery and permission path, with
+installed Windows acceptance pending. Native notification activation, routing
+deep links, and signed shell updating
 remain subsequent milestones. No Windows
 or other-platform media parity is claimed by a successful compile.
 
@@ -179,6 +181,16 @@ Add native notifications with existing preference and mute/deafen rules. Test
 an **installed** Windows build; development identity is not sufficient. Avoid
 duplicating native and in-page sounds or leaking message content on the lock
 screen by default. Ask for permission through the normal OS surface.
+
+The first delivery step now uses the standard WebView2 Notification API, with
+an opt-in control in installation Audio settings and a per-Account preference.
+Only background message, peer roster, screen-share, and connection events
+produce generic localized alerts; master/category preferences and self/owner
+deafen apply. System notifications are silent, with existing web cues retaining
+sound ownership. No remote capability or native IPC was added. Installed
+Windows toast/tray/lock/permission acceptance and notification activation are
+still pending; the portable tests cover gating, privacy, permission failures,
+coalescing, and storage isolation.
 
 Retain deployment update polling, coalesce latest versions, and leave a pending
 update explicit once a call ends. Test calls, screen/camera capture, active

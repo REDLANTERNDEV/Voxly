@@ -1,17 +1,16 @@
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::{mpsc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
-use tauri::{AppHandle, WebviewWindow};
+use tauri::AppHandle;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW, PeekMessageW,
-    PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE,
-    WH_MOUSE_LL, WM_APP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_QUIT, WM_XBUTTONDOWN, WM_XBUTTONUP,
+    CallNextHookEx, DispatchMessageW, GetMessageW, PeekMessageW, PostThreadMessageW,
+    SetWindowsHookExW, UnhookWindowsHookEx, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE, WH_MOUSE_LL, WM_APP,
+    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_QUIT, WM_XBUTTONDOWN, WM_XBUTTONUP,
 };
 
 use crate::shortcuts::{Action, MouseBinding, MouseShortcutGates, ALT, CONTROL, SHIFT, SUPER};
@@ -37,18 +36,8 @@ struct HookThread {
 }
 
 static HOOK: OnceLock<Mutex<Option<HookThread>>> = OnceLock::new();
-static INSTALLATION_HWND: AtomicIsize = AtomicIsize::new(0);
 thread_local! {
     static CONTEXT: RefCell<Option<HookContext>> = const { RefCell::new(None) };
-}
-
-pub fn set_installation_window(window: Option<&WebviewWindow>) -> Result<(), &'static str> {
-    let hwnd = match window {
-        Some(window) => window.hwnd().map_err(|_| "window_failed")?.0 as isize,
-        None => 0,
-    };
-    INSTALLATION_HWND.store(hwnd, Ordering::Release);
-    Ok(())
 }
 
 fn modifier_down(key: u16) -> bool {
@@ -93,28 +82,18 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: usize, lparam: isize) ->
         if let Some(button) = button {
             let pressed = matches!(wparam as u32, WM_MBUTTONDOWN | WM_XBUTTONDOWN);
             let modifiers = if pressed { current_modifiers() } else { 0 };
-            let installation_hwnd = INSTALLATION_HWND.load(Ordering::Acquire);
-            let installation_focused = installation_hwnd != 0
-                && unsafe { GetForegroundWindow() } as isize == installation_hwnd;
-            let (app, action, suppress) = CONTEXT.with(|slot| {
+            let (app, action) = CONTEXT.with(|slot| {
                 let mut context = slot.borrow_mut();
                 let Some(context) = context.as_mut() else {
-                    return (None, None, false);
+                    return (None, None);
                 };
-                let (dispatch, suppress) =
-                    context
-                        .gates
-                        .handle(button, modifiers, pressed, installation_focused);
-                (dispatch.map(|_| context.app.clone()), dispatch, suppress)
+                let dispatch = context.gates.handle(button, modifiers, pressed);
+                (dispatch.map(|_| context.app.clone()), dispatch)
             });
             if let (Some(app), Some((action, pressed))) = (app, action) {
                 crate::queue_voice_action(&app, action, pressed);
             }
-            if suppress {
-                // A bound side button must not navigate away from the active
-                // installation. Other windows, including games, receive it.
-                return 1;
-            }
+            // Observe shortcuts without consuming normal browser/game input.
         }
     }
     unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }

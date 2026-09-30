@@ -16,6 +16,7 @@ fn main() {
             "set_push_to_talk_shortcut",
             "set_push_to_mute_shortcut",
             "set_microphone_mode",
+            "set_push_to_talk_release_delay",
         ]),
     ))
     .expect("could not build the desktop command permissions");

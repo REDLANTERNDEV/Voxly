@@ -6,14 +6,15 @@ import { bindingFromKey, bindingFromMouse, bindingLabel, mountShortcutSettings }
 
 const key = { code: "KeyM", ctrlKey: true, altKey: false, shiftKey: false, metaKey: false, repeat: false };
 const source = readFileSync("src-tauri/src/voice-bridge.js", "utf8");
-interface MicrophoneState { mode: "openMic" | "pushToTalk" | "pushToMute"; talkHeld: boolean; muteHeld: boolean }
+interface MicrophoneState { mode: "openMic" | "pushToTalk" | "pushToMute"; talkHeld: boolean; muteHeld: boolean; talkReleasing: boolean }
 interface Bridge {
   version: number; dispatchMute(): void; subscribeMute(handler: () => void): () => void;
   dispatchDeafen(): void; subscribeDeafen(handler: () => void): () => void;
   getMicrophoneState(): MicrophoneState;
   subscribeMicrophone(handler: (state: MicrophoneState) => void): () => void;
   dispatchMicrophoneMode(mode: MicrophoneState["mode"]): void;
-  dispatchPushToTalk(pressed: boolean): void; dispatchPushToMute(pressed: boolean): void;
+  dispatchPushToTalk(pressed: boolean, delayMs?: number): void; dispatchPushToMute(pressed: boolean): void;
+  dispatchPushToTalkRelease(): void;
 }
 function boot(origin = "https://chat.example", topFrame = true) {
   const window: { top?: unknown; location: { origin: string }; __VOXLY_DESKTOP_V1__?: Bridge } = { location: { origin } };
@@ -23,6 +24,13 @@ function boot(origin = "https://chat.example", topFrame = true) {
 }
 
 describe("desktop shortcut registration and bridge", () => {
+  it("observes native side-button shortcuts without consuming browser Back/Forward", () => {
+    const hook = readFileSync("src-tauri/src/mouse_hook.rs", "utf8");
+    const callback = hook.slice(hook.indexOf('unsafe extern "system" fn mouse_proc'), hook.indexOf("fn update("));
+    assert.match(callback, /queue_voice_action/);
+    assert.match(callback, /CallNextHookEx/);
+    assert.doesNotMatch(callback, /return 1|suppress|GetForegroundWindow/);
+  });
   it("records physical key combinations and avoids ordinary typing and repeat", () => {
     assert.equal(bindingFromKey(key), "Control+KeyM");
     assert.equal(bindingLabel("Control+Alt+KeyM"), "Ctrl + Alt + M");
@@ -139,7 +147,36 @@ describe("desktop shortcut registration and bridge", () => {
     window.location.origin = "https://chat.example";
     second(); bridge.dispatchMute();
     assert.equal(calls, 1);
-    assert.deepEqual(Object.keys(bridge).sort(), ["dispatchDeafen", "dispatchMicrophoneMode", "dispatchMute", "dispatchPushToMute", "dispatchPushToTalk", "getMicrophoneState", "subscribeDeafen", "subscribeMicrophone", "subscribeMute", "version"]);
+    assert.deepEqual(Object.keys(bridge).sort(), ["dispatchDeafen", "dispatchMicrophoneMode", "dispatchMute", "dispatchPushToMute", "dispatchPushToTalk", "dispatchPushToTalkRelease", "getMicrophoneState", "subscribeDeafen", "subscribeMicrophone", "subscribeMute", "version"]);
+  });
+
+  it("extends a physical release only until native expiry and cancels it on re-press, mode change, or binding reset", () => {
+    const window = boot(); const bridge = window.__VOXLY_DESKTOP_V1__!;
+    bridge.dispatchMicrophoneMode("pushToTalk");
+    bridge.dispatchPushToTalk(false, 200);
+    assert.equal(bridge.getMicrophoneState().talkReleasing, false, "a release without a press grants nothing");
+    bridge.dispatchPushToTalk(true);
+    bridge.dispatchPushToTalk(false, 200);
+    assert.equal(bridge.getMicrophoneState().talkHeld, false);
+    assert.equal(bridge.getMicrophoneState().talkReleasing, true);
+    bridge.dispatchPushToTalkRelease();
+    assert.equal(bridge.getMicrophoneState().talkReleasing, false);
+    bridge.dispatchPushToTalk(true);
+    bridge.dispatchPushToTalk(false, 200);
+    bridge.dispatchPushToTalk(true);
+    bridge.dispatchPushToTalkRelease();
+    assert.equal(bridge.getMicrophoneState().talkHeld, true, "expiry never cuts a new physical hold");
+    bridge.dispatchPushToTalk(false, 0);
+    assert.equal(bridge.getMicrophoneState().talkReleasing, false);
+    bridge.dispatchPushToTalk(true);
+    for (const value of [-1, 2001, NaN, 1.5]) bridge.dispatchPushToTalk(false, value);
+    assert.equal(bridge.getMicrophoneState().talkHeld, true, "invalid delay cannot change state");
+    bridge.dispatchPushToTalk(false, 2000);
+    bridge.dispatchMicrophoneMode("pushToMute");
+    assert.equal(bridge.getMicrophoneState().talkReleasing, false);
+    window.location.origin = "https://evil.example";
+    bridge.dispatchPushToTalk(true);
+    assert.equal(bridge.getMicrophoneState().talkHeld, false);
   });
 
   it("delivers hold state, releases, and saved modes without replaying toggle actions", () => {

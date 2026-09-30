@@ -38,6 +38,13 @@
           <option value="pushToMute" data-i18n="pushToMute">Push to mute</option>
         </select>
         <p id="microphone-mode-hint" class="hint" data-i18n="microphoneModeHint"></p>
+        <label class="release-delay-toggle"><input id="push-to-talk-delay-enabled" type="checkbox" disabled /> <span data-i18n="pushToTalkDelayEnabled">Enable push-to-talk release delay</span></label>
+        <label for="push-to-talk-release-delay" data-i18n="pushToTalkReleaseDelay">Release delay</label>
+        <div class="actions">
+          <input id="push-to-talk-release-delay" type="range" min="0" max="2000" step="10" value="0" aria-describedby="push-to-talk-delay-hint" disabled />
+          <output id="push-to-talk-delay-value" for="push-to-talk-release-delay">0 ms</output>
+        </div>
+        <p id="push-to-talk-delay-hint" class="hint" data-i18n="pushToTalkDelayHint"></p>
         <div role="group" aria-labelledby="mute-shortcut-label">
         <label id="mute-shortcut-label" for="mute-shortcut" data-i18n="muteShortcut">Mute / unmute microphone</label>
         <input id="mute-shortcut" readonly aria-describedby="shortcut-hint shortcut-status" />

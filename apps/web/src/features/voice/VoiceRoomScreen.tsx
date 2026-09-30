@@ -53,7 +53,7 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
   const moderationByUser = new Map(snapshotMembers.map((member) => [member.user.userId, member.moderation]));
   const mediaFor = (userId: string) => userId === props.user.id
     ? {
-        mic: props.controls.mic.on,
+        mic: props.controls.mic.on && (mediaByUser.get(userId)?.mic ?? true),
         camera: props.controls.camera.on,
         screen: props.controls.screenShare.on,
         deafened: props.controls.deafen.on,

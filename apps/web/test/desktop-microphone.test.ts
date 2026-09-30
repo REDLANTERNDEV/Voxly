@@ -3,6 +3,38 @@ import { describe, it } from "node:test";
 import { DesktopMicrophoneGate } from "../src/lib/desktopMicrophone.js";
 
 describe("desktop microphone hold modes", () => {
+  it("keeps a granted talk tail audible until native expiry and never grants one from idle", () => {
+    const gate = new DesktopMicrophoneGate("pushToTalk");
+    const track = { enabled: false, readyState: "live" as const };
+    const state = { mode: "pushToTalk" as const, talkHeld: false, muteHeld: false, talkReleasing: true };
+    gate.apply([track], true);
+    gate.update(state, true);
+    assert.equal(track.enabled, false);
+    gate.update({ ...state, talkHeld: true, talkReleasing: false }, true);
+    assert.equal(track.enabled, true);
+    gate.update(state, true);
+    assert.equal(track.enabled, true);
+    gate.update({ ...state, talkReleasing: false }, true);
+    assert.equal(track.enabled, false);
+  });
+
+  it("cancels delayed talk on mute/locks/leave and never restores a cancelled tail", () => {
+    for (const cancel of ["lock", "suspend", "reset"] as const) {
+      const gate = new DesktopMicrophoneGate("pushToTalk");
+      const track = { enabled: false, readyState: "live" as const };
+      const state = { mode: "pushToTalk" as const, talkHeld: false, muteHeld: false, talkReleasing: true };
+      gate.apply([track], true);
+      gate.update({ ...state, talkHeld: true, talkReleasing: false }, true);
+      gate.update(state, true);
+      if (cancel === "lock") gate.update(state, false);
+      else if (cancel === "suspend") gate.suspend();
+      else { gate.resetHolds(); gate.apply([track], true); }
+      assert.equal(track.enabled, false);
+      gate.update(state, true);
+      gate.apply([track], true);
+      assert.equal(track.enabled, false, "a cancelled tail cannot become a fresh press");
+    }
+  });
   it("cuts push-to-talk immediately on release without waiting for an acknowledgement", () => {
     const gate = new DesktopMicrophoneGate("pushToTalk");
     const track = { enabled: true, readyState: "live" as MediaStreamTrackState };

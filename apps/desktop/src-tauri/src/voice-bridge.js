@@ -1,7 +1,7 @@
 ((origin, mode = "openMic") => {
   if (window !== window.top || window.location.origin !== origin) return;
   const receivers = { mute: null, deafen: null, microphone: null };
-  const microphone = { mode, talkHeld: false, muteHeld: false };
+  const microphone = { mode, talkHeld: false, muteHeld: false, talkReleasing: false };
   const microphoneState = () => ({ ...microphone });
   const notifyMicrophone = () => dispatch("microphone", microphoneState());
   const subscribe = (action, handler) => {
@@ -41,12 +41,20 @@
         microphone.mode = next;
         microphone.talkHeld = false;
         microphone.muteHeld = false;
+        microphone.talkReleasing = false;
         notifyMicrophone();
       },
-      dispatchPushToTalk(pressed) {
+      dispatchPushToTalk(pressed, releaseDelayMs = 0) {
         if (window !== window.top || window.location.origin !== origin) return;
         if (typeof pressed !== "boolean") return;
+        if (!Number.isInteger(releaseDelayMs) || releaseDelayMs < 0 || releaseDelayMs > 2000) return;
+        microphone.talkReleasing = !pressed && microphone.talkHeld && releaseDelayMs > 0;
         microphone.talkHeld = pressed;
+        notifyMicrophone();
+      },
+      dispatchPushToTalkRelease() {
+        if (window !== window.top || window.location.origin !== origin) return;
+        microphone.talkReleasing = false;
         notifyMicrophone();
       },
       dispatchPushToMute(pressed) {

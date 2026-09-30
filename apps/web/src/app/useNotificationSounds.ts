@@ -23,6 +23,7 @@ import {
   type VoiceScreenRosterState
 } from "../lib/notificationSounds.js";
 import type { VoiceControls } from "../lib/voiceControls.js";
+import { createDesktopNotificationDelivery, isDesktopNotificationKind, readDesktopNotifications } from "../lib/desktopNotifications.js";
 
 interface VoiceControlSample {
   roomId: string | null;
@@ -54,6 +55,7 @@ export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, 
   const voiceRoomRef = useRef<string | null>(null);
   const controlSampleRef = useRef<VoiceControlSample | null>(null);
   const interruptedRef = useRef(connectionInterrupted);
+  const desktopDeliveryRef = useRef<ReturnType<typeof createDesktopNotificationDelivery> | null>(null);
   preferencesRef.current = preferences;
   deafenedRef.current = deafened;
 
@@ -78,9 +80,16 @@ export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, 
 
   const play = useCallback((key: NotificationSoundKey) => {
     if (!notificationSoundAllowed(key, preferencesRef.current, { deafened: deafenedRef.current })) return false;
+    if (user && isDesktopNotificationKind(key)) {
+      desktopDeliveryRef.current ??= createDesktopNotificationDelivery(window);
+      desktopDeliveryRef.current(key, {
+        userId: user.id, enabled: readDesktopNotifications(user.id), focused: windowFocused(),
+        deafened: deafenedRef.current, preferences: preferencesRef.current
+      });
+    }
     playerRef.current ??= createNotificationSoundPlayer();
     return playerRef.current.play(key, preferencesRef.current.volume);
-  }, []);
+  }, [user?.id]);
 
   const changeNotificationSounds = useCallback((patch: Partial<NotificationSoundPreferences>) => {
     setPreferences((current) => {

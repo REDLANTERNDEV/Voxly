@@ -251,6 +251,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         activeVoiceRoomId={props.activeVoiceRoomId}
         connectionHealth={props.connectionHealth}
         voiceQuality={props.voiceQuality}
+        voiceSnapshots={props.voiceSnapshots}
         onOpenSettings={() => openSettings()}
         controls={props.controls}
         currentNickname={props.currentNickname}

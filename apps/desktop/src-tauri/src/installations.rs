@@ -27,6 +27,8 @@ pub struct Preferences {
     pub push_to_mute_shortcut: Option<String>,
     #[serde(default)]
     pub microphone_mode: MicrophoneMode,
+    #[serde(default)]
+    pub push_to_talk_release_delay_ms: u16,
 }
 
 #[derive(Clone, Copy, Default, Serialize, Deserialize, PartialEq, Debug)]
@@ -60,6 +62,9 @@ impl Preferences {
     }
 
     pub fn validate_shortcuts(&self) -> Result<(), &'static str> {
+        if self.push_to_talk_release_delay_ms > 2000 {
+            return Err("invalid_release_delay");
+        }
         let bindings = crate::shortcuts::Action::ALL.map(|action| self.binding(action));
         for binding in bindings.into_iter().flatten() {
             crate::shortcuts::parse_binding(binding)?;
@@ -196,6 +201,7 @@ mod tests {
             push_to_talk_shortcut: Some("Mouse4".into()),
             push_to_mute_shortcut: Some("Mouse5".into()),
             microphone_mode: MicrophoneMode::PushToTalk,
+            push_to_talk_release_delay_ms: 200,
         };
         save(&path, &preferences).unwrap();
         let loaded = load(&path).unwrap();
@@ -212,6 +218,7 @@ mod tests {
             preferences.push_to_mute_shortcut
         );
         assert_eq!(loaded.microphone_mode, preferences.microphone_mode);
+        assert_eq!(loaded.push_to_talk_release_delay_ms, 200);
         preferences
             .installations
             .push(installation("https://other.example").unwrap());
@@ -243,6 +250,26 @@ mod tests {
         assert!(preferences.push_to_talk_shortcut.is_none());
         assert!(preferences.push_to_mute_shortcut.is_none());
         assert_eq!(preferences.microphone_mode, MicrophoneMode::OpenMic);
+        assert_eq!(preferences.push_to_talk_release_delay_ms, 0);
+    }
+
+    #[test]
+    fn release_delay_is_bounded_to_two_seconds() {
+        for delay in [0, 200, 2000] {
+            let preferences = Preferences {
+                push_to_talk_release_delay_ms: delay,
+                ..Preferences::default()
+            };
+            assert!(preferences.validate_shortcuts().is_ok());
+        }
+        let preferences = Preferences {
+            push_to_talk_release_delay_ms: 2001,
+            ..Preferences::default()
+        };
+        assert_eq!(
+            preferences.validate_shortcuts(),
+            Err("invalid_release_delay")
+        );
     }
 
     #[test]

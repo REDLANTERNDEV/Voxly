@@ -8,6 +8,7 @@ import { GearIcon, HeadsetIcon, ShieldIcon, UsersIcon } from "../ui/Icons.js";
 import type { TranslationKey } from "../../lib/i18n.js";
 import { ExternalPreviewSettings } from "../ExternalPreviewSettings.js";
 import { AccountDeletionSettings } from "../AccountDeletionSettings.js";
+import { DesktopNotificationSettings } from "../DesktopNotificationSettings.js";
 
 /**
  * Settings, in a window over the room rather than stacked down the channel rail.
@@ -86,6 +87,7 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
               </>
             ) : null}
             {section === "audio" ? (
+              <>
               <AudioDeviceSettings
                 inline
                 inputs={props.audioDevices.inputs}
@@ -150,6 +152,8 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
                 onNotificationSoundsChange={props.onNotificationSoundsChange}
                 onToggleMicrophoneTest={props.onToggleMicrophoneTest}
               />
+              <DesktopNotificationSettings key={props.user.id} userId={props.user.id} t={props.t} />
+              </>
             ) : null}
             {section === "appearance" ? (
               <PreferencesCard

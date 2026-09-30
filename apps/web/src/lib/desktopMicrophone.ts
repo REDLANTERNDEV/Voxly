@@ -3,13 +3,15 @@ export interface DesktopMicrophoneState {
   mode: DesktopMicrophoneMode;
   talkHeld: boolean;
   muteHeld: boolean;
+  talkReleasing?: boolean;
 }
 
 export function validDesktopMicrophoneState(value: unknown): value is DesktopMicrophoneState {
   if (!value || typeof value !== "object") return false;
   const state = value as DesktopMicrophoneState;
   return ["openMic", "pushToTalk", "pushToMute"].includes(state.mode)
-    && typeof state.talkHeld === "boolean" && typeof state.muteHeld === "boolean";
+    && typeof state.talkHeld === "boolean" && typeof state.muteHeld === "boolean"
+    && (state.talkReleasing === undefined || typeof state.talkReleasing === "boolean");
 }
 
 /** A publication gate, separate from self mute and microphone capture. */
@@ -19,6 +21,7 @@ export class DesktopMicrophoneGate {
   private muteHeld = false;
   private observedTalkHeld = false;
   private blockedTalk = false;
+  private talkTailAllowed = false;
   private tracks = new Map<Pick<MediaStreamTrack, "enabled" | "readyState">, boolean>();
 
   constructor(mode: DesktopMicrophoneMode = "openMic") { this.mode = mode; }
@@ -31,6 +34,9 @@ export class DesktopMicrophoneGate {
     if (!state.talkHeld) this.blockedTalk = false;
     else if (!allowed) this.blockedTalk = true;
     this.observedTalkHeld = state.talkHeld;
+    // A release tail can extend an existing grant, never create a new one.
+    this.talkTailAllowed = state.talkReleasing === true && allowed && !this.blockedTalk
+      && (this.talkHeld || this.talkTailAllowed);
     this.talkHeld = state.talkHeld && allowed && !this.blockedTalk;
     this.muteHeld = state.muteHeld;
     for (const [track, requested] of this.tracks) {
@@ -42,11 +48,12 @@ export class DesktopMicrophoneGate {
   resetHolds() {
     this.blockedTalk = this.observedTalkHeld;
     this.talkHeld = false;
+    this.talkTailAllowed = false;
     // Carry a mute across a room/device transition until its physical release.
   }
 
   allows() {
-    if (this.mode === "pushToTalk") return this.talkHeld;
+    if (this.mode === "pushToTalk") return this.talkHeld || this.talkTailAllowed;
     if (this.mode === "pushToMute") return !this.muteHeld;
     return true;
   }
@@ -62,6 +69,7 @@ export class DesktopMicrophoneGate {
   }
 
   suspend() {
+    this.resetHolds();
     for (const track of this.tracks.keys()) track.enabled = false;
   }
 

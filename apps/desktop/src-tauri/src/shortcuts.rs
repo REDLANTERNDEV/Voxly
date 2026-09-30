@@ -77,14 +77,12 @@ pub struct MouseBinding {
 pub struct MouseDecision {
     pub dispatch: bool,
     pub released: bool,
-    pub suppress: bool,
 }
 
 #[cfg(any(test, target_os = "windows"))]
 pub struct MouseShortcutGate {
     binding: MouseBinding,
     held: bool,
-    suppressed: bool,
 }
 
 #[cfg(any(test, target_os = "windows"))]
@@ -93,17 +91,10 @@ impl MouseShortcutGate {
         Self {
             binding,
             held: false,
-            suppressed: false,
         }
     }
 
-    pub fn handle(
-        &mut self,
-        button: u8,
-        modifiers: u8,
-        pressed: bool,
-        installation_focused: bool,
-    ) -> MouseDecision {
+    pub fn handle(&mut self, button: u8, modifiers: u8, pressed: bool) -> MouseDecision {
         if button != self.binding.button {
             return MouseDecision::default();
         }
@@ -112,30 +103,24 @@ impl MouseShortcutGate {
                 return MouseDecision::default();
             }
             self.held = false;
-            let suppress = self.suppressed;
-            self.suppressed = false;
             return MouseDecision {
                 dispatch: false,
                 released: true,
-                suppress,
             };
         }
         if self.held {
             return MouseDecision {
                 dispatch: false,
                 released: false,
-                suppress: self.suppressed,
             };
         }
         if modifiers != self.binding.modifiers {
             return MouseDecision::default();
         }
         self.held = true;
-        self.suppressed = installation_focused;
         MouseDecision {
             dispatch: true,
             released: false,
-            suppress: self.suppressed,
         }
     }
 }
@@ -155,38 +140,25 @@ impl MouseShortcutGates {
         }
     }
 
-    pub fn handle(
-        &mut self,
-        button: u8,
-        modifiers: u8,
-        pressed: bool,
-        focused: bool,
-    ) -> (Option<(Action, bool)>, bool) {
+    pub fn handle(&mut self, button: u8, modifiers: u8, pressed: bool) -> Option<(Action, bool)> {
         if pressed
             && self
                 .gates
                 .iter()
                 .any(|(_, gate)| gate.binding.button == button && gate.held)
         {
-            return (
-                None,
-                self.gates
-                    .iter()
-                    .any(|(_, gate)| gate.binding.button == button && gate.suppressed),
-            );
+            return None;
         }
         let mut dispatch = None;
-        let mut suppress = false;
         for (action, gate) in &mut self.gates {
-            let decision = gate.handle(button, modifiers, pressed, focused);
+            let decision = gate.handle(button, modifiers, pressed);
             if decision.dispatch {
                 dispatch = Some((*action, true));
             } else if decision.released {
                 dispatch = Some((*action, false));
             }
-            suppress |= decision.suppress;
         }
-        (dispatch, suppress)
+        dispatch
     }
 }
 
@@ -402,23 +374,14 @@ mod tests {
             }),
         );
         assert_eq!(
-            gates.handle(4, CONTROL, true, false),
-            (Some((Action::PushToTalk, true)), false)
+            gates.handle(4, CONTROL, true),
+            Some((Action::PushToTalk, true))
         );
-        assert_eq!(
-            gates.handle(5, 0, true, false),
-            (Some((Action::PushToMute, true)), false)
-        );
-        assert_eq!(gates.handle(4, 0, true, false), (None, false));
-        assert_eq!(
-            gates.handle(4, 0, false, true),
-            (Some((Action::PushToTalk, false)), false)
-        );
-        assert_eq!(
-            gates.handle(5, 0, false, false),
-            (Some((Action::PushToMute, false)), false)
-        );
-        assert_eq!(gates.handle(5, 0, false, false), (None, false));
+        assert_eq!(gates.handle(5, 0, true), Some((Action::PushToMute, true)));
+        assert_eq!(gates.handle(4, 0, true), None);
+        assert_eq!(gates.handle(4, 0, false), Some((Action::PushToTalk, false)));
+        assert_eq!(gates.handle(5, 0, false), Some((Action::PushToMute, false)));
+        assert_eq!(gates.handle(5, 0, false), None);
         assert_eq!(
             distinct_shortcuts([
                 Some("Control+KeyM"),
@@ -465,25 +428,16 @@ mod tests {
                 modifiers: 0,
             }),
         );
-        assert_eq!(
-            gates.handle(4, 0, true, true),
-            (Some((Action::Mute, true)), true)
-        );
-        assert_eq!(
-            gates.handle(5, 0, true, false),
-            (Some((Action::Deafen, true)), false)
-        );
+        assert_eq!(gates.handle(4, 0, true), Some((Action::Mute, true)));
+        assert_eq!(gates.handle(5, 0, true), Some((Action::Deafen, true)));
         gates.set(Action::Deafen, None);
         assert_eq!(
-            gates.handle(4, 0, true, true),
-            (None, true),
+            gates.handle(4, 0, true),
+            None,
             "clearing deafen preserves held mute"
         );
-        assert_eq!(
-            gates.handle(4, 0, false, false),
-            (Some((Action::Mute, false)), true)
-        );
-        assert_eq!(gates.handle(5, 0, false, false), (None, false));
+        assert_eq!(gates.handle(4, 0, false), Some((Action::Mute, false)));
+        assert_eq!(gates.handle(5, 0, false), None);
         gates.set(
             Action::Deafen,
             Some(MouseBinding {
@@ -491,23 +445,14 @@ mod tests {
                 modifiers: CONTROL,
             }),
         );
+        assert_eq!(gates.handle(4, CONTROL, true), Some((Action::Deafen, true)));
         assert_eq!(
-            gates.handle(4, CONTROL, true, true),
-            (Some((Action::Deafen, true)), true)
-        );
-        assert_eq!(
-            gates.handle(4, 0, true, true),
-            (None, true),
+            gates.handle(4, 0, true),
+            None,
             "changing modifiers while held cannot fire the other action"
         );
-        assert_eq!(
-            gates.handle(4, 0, false, true),
-            (Some((Action::Deafen, false)), true)
-        );
-        assert_eq!(
-            gates.handle(4, 0, true, false),
-            (Some((Action::Mute, true)), false)
-        );
+        assert_eq!(gates.handle(4, 0, false), Some((Action::Deafen, false)));
+        assert_eq!(gates.handle(4, 0, true), Some((Action::Mute, true)));
     }
 
     #[test]
@@ -525,26 +470,24 @@ mod tests {
     }
 
     #[test]
-    fn mouse_press_cycles_dispatch_once_and_only_block_installation_navigation() {
+    fn mouse_press_cycles_dispatch_once_and_preserve_installation_navigation() {
         let mut plain = MouseShortcutGate::new(MouseBinding {
             button: 5,
             modifiers: 0,
         });
         for _ in 0..20 {
             assert_eq!(
-                plain.handle(5, 0, true, true),
+                plain.handle(5, 0, true),
                 MouseDecision {
                     dispatch: true,
-                    released: false,
-                    suppress: true
+                    released: false
                 }
             );
             assert_eq!(
-                plain.handle(5, 0, false, true),
+                plain.handle(5, 0, false),
                 MouseDecision {
                     dispatch: false,
-                    released: true,
-                    suppress: true
+                    released: true
                 }
             );
         }
@@ -554,49 +497,44 @@ mod tests {
             modifiers: CONTROL,
         });
         let ignored = MouseDecision::default();
-        assert_eq!(gate.handle(5, 0, true, true), ignored);
-        assert_eq!(gate.handle(5, 0, false, true), ignored);
+        assert_eq!(gate.handle(5, 0, true), ignored);
+        assert_eq!(gate.handle(5, 0, false), ignored);
         for _ in 0..20 {
             assert_eq!(
-                gate.handle(5, CONTROL, true, true),
+                gate.handle(5, CONTROL, true),
                 MouseDecision {
                     dispatch: true,
-                    released: false,
-                    suppress: true
+                    released: false
                 }
             );
             assert_eq!(
-                gate.handle(5, CONTROL, true, true),
+                gate.handle(5, CONTROL, true),
                 MouseDecision {
                     dispatch: false,
-                    released: false,
-                    suppress: true
+                    released: false
                 }
             );
-            assert_eq!(gate.handle(4, CONTROL, false, true), ignored);
+            assert_eq!(gate.handle(4, CONTROL, false), ignored);
             assert_eq!(
-                gate.handle(5, 0, false, false),
+                gate.handle(5, 0, false),
                 MouseDecision {
                     dispatch: false,
-                    released: true,
-                    suppress: true
+                    released: true
                 }
             );
         }
         assert_eq!(
-            gate.handle(5, CONTROL, true, false),
+            gate.handle(5, CONTROL, true),
             MouseDecision {
                 dispatch: true,
-                released: false,
-                suppress: false
+                released: false
             }
         );
         assert_eq!(
-            gate.handle(5, 0, false, false),
+            gate.handle(5, 0, false),
             MouseDecision {
                 dispatch: false,
-                released: true,
-                suppress: false
+                released: true
             }
         );
     }

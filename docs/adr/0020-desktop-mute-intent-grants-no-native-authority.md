@@ -59,3 +59,14 @@ Old shells default to Open mic; old web clients ignore these optional methods.
 The chooser and operator documentation require updating the installation and
 verifying idle silence before relying on a hold mode. No installation receives
 shortcut registration authority or a native command.
+
+An optional 0–2000 ms Push to talk release delay extends only an existing talk
+grant. The chooser owns its saved duration (default 0), and a native Tokio
+deadline emits a fixed release-expired intent without relying on background
+web timers or the settings lock. The bridge reports physical hold separately
+from the release tail; a tail cannot open capture or establish a fresh grant.
+Re-pressing replaces the pending deadline. Manual mute/deafen, locks, room and
+connection transitions, mode changes, and binding resets invalidate the tail;
+an obsolete installation generation never receives the expiry. Old web clients
+ignore the optional tail state and keep immediate-release behavior. Native
+authority remains limited to the bundled chooser.

@@ -27,9 +27,9 @@ describe("dock self-silenced state", () => {
     const mic = dock().match(/onToggleControl\("mic"\)[\s\S]{0,80}/)?.[0] ?? "";
     const deafen = dock().match(/onToggleControl\("deafen"\)[\s\S]{0,80}/)?.[0] ?? "";
 
-    assert.match(dock(), /silenced=\{!props\.controls\.mic\.on\}/);
+    assert.match(dock(), /silenced=\{!micOn\}/);
     assert.match(dock(), /silenced=\{props\.controls\.deafen\.on\}/);
-    assert.match(mic, /MicIcon off=\{!props\.controls\.mic\.on\}/);
+    assert.match(mic, /MicIcon off=\{!micOn\}/);
     assert.match(deafen, /HeadsetIcon off=\{props\.controls\.deafen\.on\}/);
   });
 

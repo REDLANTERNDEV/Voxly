@@ -100,6 +100,16 @@ describe("voice snapshot reconciliation", () => {
     }
   });
 
+  it("handles Back/Forward as route changes without leaving or remounting voice", () => {
+    const app = readFileSync("src/App.tsx", "utf8");
+    const pop = app.match(/const handlePop = \(\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
+    assert.match(pop, /parseRoute\(window.location.pathname\)/);
+    assert.match(pop, /setRoute\(nextRoute\)/);
+    assert.doesNotMatch(pop, /leave|reload|location\.(?:assign|replace)|joinVoice/);
+    assert.match(app, /window.addEventListener\("popstate", handlePop\)/);
+    assert.doesNotMatch(app, /<AuthenticatedAppSurface[^>]*key=/);
+  });
+
   it("keeps the native remote audio element mounted as the only hardware sink", () => {
     const source = readAppSource();
     const remoteAudio = source.match(/function RemoteAudio[\s\S]*?\n}\n\nfunction GlobalVoiceAudio/)?.[0] ?? "";

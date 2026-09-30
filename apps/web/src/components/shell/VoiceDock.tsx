@@ -14,7 +14,7 @@ type VoiceDockProps = Pick<ShellModel,
   "activeServerId" | "activeVoiceRoomId" | "connectionHealth" | "controls" |
   "currentNickname" | "currentRoom" | "microphoneTestActive" | "route" |
   "rooms" | "servers" | "socketState" | "t" | "user" | "voiceModeration" | "micLockedByRoom" |
-  "voiceQuality"
+  "voiceQuality" | "voiceSnapshots"
 > & Pick<ShellActions,
   "onJoinVoice" | "onLeaveVoice" | "onLogout" | "onNavigate" | "onToggleControl"
 > & { connectedCount: number; onOpenSettings: () => void };
@@ -27,6 +27,11 @@ export function VoiceDock(props: VoiceDockProps) {
     : props.t("common.offline");
   const canJoinCurrentVoice = !props.activeVoiceRoomId && props.route.name === "voice";
   const micControl = controlPresentation("mic", props.controls);
+  const selfMedia = props.activeVoiceRoomId
+    ? props.voiceSnapshots[props.activeVoiceRoomId]?.members.find((member) => member.user.userId === props.user.id)?.media
+    : undefined;
+  // Hold modes close publication without changing the button's manual-mute action.
+  const micOn = props.controls.mic.on && (selfMedia?.mic ?? true);
   const deafenControl = controlPresentation("deafen", props.controls);
   const cameraControl = controlPresentation("camera", props.controls);
   const screenControl = controlPresentation("screenShare", props.controls);
@@ -46,7 +51,7 @@ export function VoiceDock(props: VoiceDockProps) {
               ? <ControlButton label={props.t("room.afkMuted")} active tone="danger" enabled={false} onClick={() => undefined}><MicIcon off /></ControlButton>
               : props.voiceModeration.muted
               ? <ControlButton label={props.t("member.ownerMuted")} active tone="danger" enabled={false} onClick={() => undefined}><MicIcon off /></ControlButton>
-              : <ControlButton label={props.t(`common.${micControl.action}` as TranslationKey)} active={props.controls.mic.on} silenced={!props.controls.mic.on} tone={micControl.tone} enabled={props.controls.mic.enabled && props.socketState === "live"} onClick={() => props.onToggleControl("mic")}><MicIcon off={!props.controls.mic.on} /></ControlButton>}
+              : <ControlButton label={props.t(`common.${micControl.action}` as TranslationKey)} active={props.controls.mic.on} silenced={!micOn} tone={micControl.tone} enabled={props.controls.mic.enabled && props.socketState === "live"} onClick={() => props.onToggleControl("mic")}><MicIcon off={!micOn} /></ControlButton>}
             {props.voiceModeration.deafened
               ? <ControlButton label={props.t("member.ownerDeafened")} active tone="danger" enabled={false} onClick={() => undefined}><HeadsetIcon off /></ControlButton>
               : <ControlButton label={props.t(`common.${deafenControl.action}` as TranslationKey)} active={props.controls.deafen.on} silenced={props.controls.deafen.on} tone={deafenControl.tone} enabled={props.controls.deafen.enabled && !props.microphoneTestActive && props.socketState === "live"} onClick={() => props.onToggleControl("deafen")}><HeadsetIcon off={props.controls.deafen.on} /></ControlButton>}

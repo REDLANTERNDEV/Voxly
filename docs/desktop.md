@@ -74,6 +74,30 @@ Quit warn that media will end. Until a bridge is available, that confirmation is
 conservative even when there is no active call. Quit closes the webview and all
 capture; hiding keeps it alive and is subject to Windows acceptance testing.
 
+### Desktop notifications
+
+In the installation's **Settings → Audio**, enable **Desktop notifications**
+to request notification permission through WebView2. This is off by default
+and saved separately for each Account in the installation profile. Ordinary
+browser settings do not show this desktop control.
+
+Background alerts cover new messages, peer arrivals/departures, screen-share
+changes in the connected voice room, and connection interruption/recovery.
+They follow the existing notification master/category switches and self/owner
+deafen. Focused Voxly shows no system alert; the listener's own messages never
+notify. Alerts contain generic English/Turkish text, never message content,
+names, or room details. They request silent delivery so the existing Voxly
+cue player remains the only sound source. Repeated alerts of the same kind
+are coalesced. Unsupported runtimes and denied permissions remain recoverable
+without affecting calls or messages.
+
+Delivery uses WebView2's standard notification UI and browser permission,
+without a native plugin or remote native capability. See Microsoft's
+[notification handling contract](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2notificationreceivedeventargs?view=webview2-1.0.3912.50).
+Installed Windows acceptance must establish toast delivery, tray/lock behavior,
+and permission recovery; local tests do not establish installed OS integration.
+Notification click routing to a room and native activation remain later work.
+
 Windows stores chooser preferences under the application local-data directory
 for `app.voxly.desktop` (`%LOCALAPPDATA%\app.voxly.desktop` in a standard profile).
 Each canonical origin has a separate `profiles/<sha256-of-origin>` browser data
@@ -99,14 +123,29 @@ microphone capture for a receive-only listener, and preserves owner/room locks.
 Microphone monitoring also blocks the deafen shortcut until its isolation ends.
 Recording in the chooser performs no voice action.
 
+Mouse side buttons retain Back/Forward navigation in the installation window,
+including when bound to a voice shortcut. Moving through Voxly's route history
+keeps the active voice session running. A bound press also performs its voice
+action. The chooser consumes clicks only while recording a shortcut.
+
 For **Push to talk** or **Push to mute**, first record and save that action's
 shortcut, then select it under **Microphone mode**. Push to talk transmits only
-while held; release closes microphone publication. Push to mute suppresses
+while held; release closes microphone publication immediately by default. Push to mute suppresses
 publication while held and restores it on release if the microphone was enabled.
 The microphone button still enables/disables your microphone independently:
 self mute, deafen, owner mute, and an AFK room take precedence. The monitor
 branch is independent, and holding a shortcut never requests microphone access.
 Both modes use existing live capture, including after a device replacement.
+
+In the chooser, **Enable push-to-talk release delay** starts at 200 ms. Adjust
+the **Release delay** slider from 0–2000 ms; its readout shows milliseconds and
+the value survives restart. Off or 0 ms cuts transmission on release. An enabled
+delay keeps an already transmitting microphone open briefly after release.
+Re-pressing cancels the pending cutoff. The timer runs in the native desktop
+process; self mute/deafen, owner mute, room locks, leaving/disconnecting, mode
+changes, and shortcut rebinding still end the grant immediately. Push to mute
+release remains immediate. Both the rebuilt shell and updated web client are
+required; an older client without release-tail support cuts on release.
 
 Open mic is the default for existing preferences. The selected mode and both
 hold shortcuts survive restart. They require **both a rebuilt Windows app and
