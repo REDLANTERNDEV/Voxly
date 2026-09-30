@@ -16,7 +16,7 @@ Implemented for that experiment:
 - Canonical HTTPS installation origins; loopback HTTP for development.
 - Windows browser data directories isolated per origin, including scheme/port.
 - One remote installation window, local recovery controls, native tray, and
-  explicit disconnect/retry/switch/quit confirmation.
+  call-aware disconnect/retry/switch/quit confirmation with conservative fallback.
 - Default-browser opening for external HTTP(S) links requested in a new window.
 - Existing browser-session authentication and the existing Link code fallback.
 - Deployment update deferral during active voice/capture/media checks.
@@ -32,9 +32,9 @@ the installation must deploy the updated web client. Browser approval sign-in
 now runs within the installation-delivered interface and collects the session
 through the desktop webview, without adding remote-to-native IPC. Background
 notifications now use WebView2's standard delivery and permission path, with
-installed Windows acceptance pending. Native notification activation, routing
-deep links, and signed shell updating
-remain subsequent milestones. No Windows
+installed Windows acceptance pending. Running notification activation and
+channel routing are implemented through ADR-0024. External routing-only deep
+links and signed shell updating remain subsequent milestones. No Windows
 or other-platform media parity is claimed by a successful compile.
 
 ## Corrections to the original plan
@@ -43,7 +43,7 @@ or other-platform media parity is claimed by a successful compile.
 | --- | --- |
 | WebView2 implies complete Chromium media parity | Verify actual returned tracks and audible playback at a browser peer; computer audio is a blocking gate. |
 | Hidden windows preserve every voice feature | Tauri's portable background-throttling option is unavailable on Windows. Measure hidden, silent, muted, deafened, and reconnecting calls. |
-| Remote capability configuration alone protects custom commands | Generate custom-command ACLs in `build.rs`, check calling window/origin in Rust, and keep remote content without a capability in the experiment. |
+| Remote capability configuration alone protects custom commands | Generate custom-command ACLs in `build.rs`, check calling window/origin in Rust, and keep remote grants finite and validate the active exact origin/window generation. |
 | Browser profiles are portable across platforms | Use Windows data directories behind an adapter. Implement and validate each other platform's storage and media behavior before enabling it. |
 | Browser approval plus native HTTP collection signs in the webview | Collection must set the cookie inside the selected installation's own webview store; a Rust HTTP client's cookie jar does not accomplish this. |
 | Updates install now and restart later | On Windows, Tauri updater installation exits the application. Confirm and end media before installation, not only before a later restart. |
@@ -148,8 +148,10 @@ Windows registration, game focus, and tray behavior still need physical tests.
 Global deafen now uses the same one-way boundary, with independent local
 registration and the existing deafen/restoration controls. Receive-only calls
 are supported; owner deafen and microphone monitoring block the shortcut.
-Installed Windows deafen acceptance remains pending. Notifications and
-bidirectional media-state reporting remain future work.
+Installed Windows deafen acceptance remains pending. Notifications use the
+standard WebView2 API as described below. Call-state reporting now uses a
+separate finite bridge described in ADR-0022; installed transport and teardown
+acceptance remains pending.
 
 Push to talk and Push to mute now have independent saved shortcuts and a local
 Microphone mode selector. Their fixed press/release intents gate existing
@@ -173,9 +175,18 @@ a shortcut. Shortcuts obey owner locks and effective media state; the remote
 installation cannot register or replace OS key combinations. Verify the action
 with another application focused, while hidden to tray, and with representative
 borderless/fullscreen games; document any registration or OS/game limitation.
-Track effective media plus in-progress joins for switch/update confirmations;
-a missing or stale handshake requires conservative confirmation. Tray Quit
-ends tracks before exit. Keep native menus and first-use behavior bilingual.
+Disconnect, switch, retry and Quit now query effective media, retained capture,
+voice membership, pending joins/capture work and microphone tests on demand.
+The separate version-1 bridge grants only `report_call_state` to a unique
+remote generation at its exact origin; shortcut intent remains one-way.
+Native code accepts one finite reply per outstanding request and rechecks
+following health checks. Missing, unsupported or late reports require
+conservative confirmation. Muted and receive-only calls still require consent.
+Cancelling retains capture; confirmed termination destroys the webview before
+exit. See [ADR-0022](../adr/0022-desktop-call-reports-grant-no-actions.md).
+Updater implementation remains a later milestone and must reuse this policy
+before update installation exits the app. Keep menus and first-use behavior
+bilingual.
 
 Add native notifications with existing preference and mute/deafen rules. Test
 an **installed** Windows build; development identity is not sufficient. Avoid
@@ -187,16 +198,28 @@ an opt-in control in installation Audio settings and a per-Account preference.
 Only background message, peer roster, screen-share, and connection events
 produce generic localized alerts; master/category preferences and self/owner
 deafen apply. System notifications are silent, with existing web cues retaining
-sound ownership. No remote capability or native IPC was added. Installed
-Windows toast/tray/lock/permission acceptance and notification activation are
-still pending; the portable tests cover gating, privacy, permission failures,
-coalescing, and storage isolation.
+sound ownership. Initial delivery added no remote capability or native IPC.
+Click handling now requests a parameterless show/unminimize/focus operation
+from the validated current window, then uses in-document channel navigation.
+Account changes and replaced/disposed alerts invalidate handlers; channel
+targets remain web-local and voice is never joined from an alert. The separate
+finite grant is described in ADR-0024. Installed Windows toast/tray/lock/focus
+acceptance remains pending; portable tests cover gating, privacy, permission
+failures, coalescing, storage isolation and activation lifecycle. External
+protocol registration and cold-start routing-only deep links remain pending.
 
 Retain deployment update polling, coalesce latest versions, and leave a pending
 update explicit once a call ends. Test calls, screen/camera capture, active
 microphone checks, reconnects, joins, and update failures.
 
 ## Milestone 4: signed release and shell updates
+
+Before production distribution, satisfy the
+[production experience requirements](2026-09-30-desktop-product-experience.md):
+connection-focused welcome, preferred authenticated Installation/startup choice,
+simple failure recovery, Audio/Shortcuts/Notifications placement, Voxly-themed
+window chrome and verified relaunch freshness. The test chooser is not the final
+onboarding surface. ADR-0023 preserves native authority when moving settings.
 
 Use per-user NSIS installers and Evergreen WebView2. Pin the Rust toolchain and
 commit npm/Cargo lockfiles. Record build provenance and artifact checksums;

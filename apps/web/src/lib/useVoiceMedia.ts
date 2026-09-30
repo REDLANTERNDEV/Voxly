@@ -13,6 +13,7 @@ import type {
 import type { VoxlySocket } from "../socket.js";
 import type { VoiceErrorKey } from "./i18n.js";
 import { createInitialVoiceControls, toggleVoiceControl, type VoiceControlKey, type VoiceControls } from "./voiceControls.js";
+import { createPendingCaptures, desktopCallState } from "./desktopCallState.js";
 import { DesktopMicrophoneGate } from "./desktopMicrophone.js";
 import { createDesktopMuteReceiver, readDesktopMicrophoneState, subscribeDesktopMicrophone, subscribeDesktopMute } from "./desktopVoice.js";
 import { createPendingMediaOperation } from "./pendingMediaOperation.js";
@@ -110,6 +111,7 @@ interface PeerRemovalOptions {
 export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, microphoneDeviceId = "", microphoneVolume = 100, noiseSuppression = DEFAULT_NOISE_SUPPRESSION, afkRoomIds = [] }: UseVoiceMediaInput) {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [joinPending, setJoinPending] = useState(false);
+  const [pendingCaptures] = useState(createPendingCaptures);
   const [pendingJoin] = useState(() => createPendingMediaOperation(setJoinPending));
   const [controls, setControls] = useState<VoiceControls>(() => createInitialVoiceControls());
   const [voiceModeration, setVoiceModeration] = useState<VoiceModerationState>({ muted: false, deafened: false });
@@ -1013,7 +1015,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       setError("voiceError.socketDisconnected");
       return false;
     }
-    return pendingJoin.run(async () => {
+    return pendingJoin.run(() => pendingCaptures.run(async () => {
       setError("");
       const previousControls = controlsRef.current;
       const previousMic = localStreamsRef.current.mic;
@@ -1033,7 +1035,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       if (microphoneEnabled) {
         if (!mic) {
           try {
-            const rawStream = await openMicrophoneCapture({ deviceId: microphoneDeviceIdRef.current });
+            const rawStream = await pendingCaptures.run(() => openMicrophoneCapture({ deviceId: microphoneDeviceIdRef.current }));
             acquiredInput = prepareMicrophoneInput(rawStream);
             mic = acquiredInput.voiceStream;
           } catch {
@@ -1119,8 +1121,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         persistVoiceResume([]);
       }
       return true;
-    });
-  }, [activateMicrophoneInput, applyVoiceSnapshot, persistVoiceResume, prepareMicrophoneInput, setVisualSubscriptions, socket, stopStream, user, pendingJoin]);
+    }));
+  }, [activateMicrophoneInput, applyVoiceSnapshot, persistVoiceResume, prepareMicrophoneInput, setVisualSubscriptions, socket, stopStream, user, pendingJoin, pendingCaptures]);
 
   useEffect(() => {
     const previousStream = localStreamsRef.current.mic;
@@ -1135,7 +1137,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     // Switching device holds both captures at once, which keeps a live track
     // published across the swap and leaves the previous capture to fall back to
     // if the new one never opens.
-    void openMicrophoneCapture({ deviceId: microphoneDeviceId })
+    void pendingCaptures.run(() => openMicrophoneCapture({ deviceId: microphoneDeviceId })
       .then((rawStream) => {
         const nextInput = prepareMicrophoneInput(rawStream);
         const nextTrack = nextInput.voiceStream.getAudioTracks()[0];
@@ -1174,7 +1176,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
           nextInput.dispose();
           setError("voiceError.microphoneReopen");
         });
-      })
+        return microphoneSwitchQueueRef.current;
+      }))
       .catch(() => {
         if (cancelled || requestId !== microphoneSwitchRef.current) return;
         setError("voiceError.microphoneReopen");
@@ -1246,7 +1249,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (!stream) {
       setError("");
       try {
-        const rawStream = await openMicrophoneCapture({ deviceId: microphoneDeviceIdRef.current });
+        const rawStream = await pendingCaptures.run(() => openMicrophoneCapture({ deviceId: microphoneDeviceIdRef.current }));
         const input = prepareMicrophoneInput(rawStream);
         stream = input.voiceStream;
         activateMicrophoneInput(input, true);
@@ -1399,7 +1402,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     }
     setError("");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia(mediaConstraintsFor("camera"));
+      const stream = await pendingCaptures.run(() => navigator.mediaDevices.getUserMedia(mediaConstraintsFor("camera")));
       localStreamsRef.current.camera = stream;
       const ack = await emitMediaState({ camera: true });
       if (!ack.ok) {
@@ -1426,7 +1429,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     }
     setError("");
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia(mediaConstraintsFor("screen"));
+      const stream = await pendingCaptures.run(() => navigator.mediaDevices.getDisplayMedia(mediaConstraintsFor("screen")));
       const screenTrack = stream.getVideoTracks()[0];
       if (screenTrack) configureScreenTrack(screenTrack);
       localStreamsRef.current.screen = stream;
@@ -1781,7 +1784,20 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     }
   }, [leave, user]);
 
+  const getDesktopCallState = useCallback(() => {
+    const report = desktopCallState({
+      inVoice: Boolean(roomRef.current),
+      streams: localStreamsRef.current,
+      pendingJoin: pendingJoin.isPending(),
+      pendingCapture: pendingCaptures.isPending()
+    });
+    const media = effectiveVoiceMediaState(controlsRef.current, localStreamsRef.current);
+    return { ...report, microphone: media.mic, camera: media.camera, screen: media.screen,
+      computerAudio: media.screen && report.computerAudio };
+  }, [pendingJoin, pendingCaptures]);
+
   return {
+    getDesktopCallState,
     activeRoomId,
     joinPending,
     isJoinPending: pendingJoin.isPending,

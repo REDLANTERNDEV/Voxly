@@ -1,7 +1,8 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { errorKey, translate, type Language, type TranslationKey } from "./i18n.js";
-import { createCaptureOwner, probeConstraints, screenConstraints, summarizeTracks, transitionWithMediaCleanup, type ProbeKind } from "./media.js";
+import { createCaptureOwner, probeConstraints, screenConstraints, summarizeTracks, type ProbeKind } from "./media.js";
+import { performTransition, type CallState } from "./transitions.js";
 import "./styles.css";
 import { mountShortcutSettings, type ShortcutSnapshot } from "./shortcuts.js";
 
@@ -112,6 +113,7 @@ function renderInstallations() {
   element<HTMLButtonElement>("save").disabled = !native || busy || !state;
   element<HTMLButtonElement>("quit").disabled = !native || busy || !state;
   element<HTMLSelectElement>("language").disabled = native && (!state || busy);
+  for (const id of ["microphone", "camera", "screen", "tone"]) element<HTMLButtonElement>(id).disabled = busy;
   const shortcutsAvailable = native && state?.platform === "windows" && !busy;
   for (const settings of shortcutSettings) settings.render(state, shortcutsAvailable);
   element<HTMLSelectElement>("microphone-mode").disabled = !shortcutsAvailable;
@@ -126,12 +128,27 @@ function renderInstallations() {
   element("push-to-talk-delay-value").textContent = `${delayMs} ms`;
 }
 
-async function confirmAction(quitting = false): Promise<boolean> {
+function localMediaActive(): boolean {
+  return captures.isPending() || Boolean(captures.current()) || Boolean(toneContext && toneContext.state !== "closed");
+}
+
+async function confirmAction(quitting = false, report: CallState | null = null): Promise<boolean> {
   if (confirmPending) return false;
   confirmPending = true;
   const dialog = element<HTMLDialogElement>("confirm-dialog");
   const opener = document.activeElement as HTMLElement | null;
-  element("confirm-body").textContent = t(quitting ? "quitConfirmationBody" : "confirmationBody");
+  const details: TranslationKey[] = [];
+  if (state?.active && !report) details.push("callStateUnknown");
+  if (report?.inVoice) details.push("callStateVoice");
+  if (report?.microphone) details.push("callStateMicrophone");
+  if (report?.camera) details.push("callStateCamera");
+  if (report?.screen) details.push("callStateScreen");
+  if (report?.computerAudio) details.push("callStateComputerAudio");
+  if (report?.capture && !report.microphone && !report.camera && !report.screen) details.push("callStateCapture");
+  if (report?.pendingJoin || report?.pendingCapture) details.push("callStatePending");
+  if (report?.microphoneTest) details.push("callStateTest");
+  if (localMediaActive()) details.push("callStateLocalMedia");
+  element("confirm-body").textContent = [t(quitting ? "quitConfirmationBody" : "confirmationBody"), ...details.map(t)].join(" ");
   element("confirm-title").textContent = t(quitting ? "quit" : "confirmationTitle");
   dialog.returnValue = "cancel";
   dialog.showModal();
@@ -144,20 +161,39 @@ async function confirmAction(quitting = false): Promise<boolean> {
 
 async function run(action: () => Promise<void>) {
   if (!native || busy || !state) return;
+  const opener = document.activeElement as HTMLElement | null;
+  const focusKey = opener?.dataset.focusKey;
   busy = true;
   renderInstallations();
   try { await action(); } catch (error: unknown) { status(errorKey(error)); }
-  finally { busy = false; renderInstallations(); }
+  finally {
+    busy = false;
+    renderInstallations();
+    const target = focusKey
+      ? [...element("installation-list").querySelectorAll<HTMLButtonElement>("button")].find((button) => button.dataset.focusKey === focusKey)
+      : opener;
+    (target?.isConnected ? target : element("address"))?.focus();
+  }
+}
+
+async function transition<T>(action: (confirmed: boolean) => Promise<T>, quitting = false): Promise<T | undefined> {
+  return performTransition({
+    active: Boolean(state?.active),
+    report: () => invoke<CallState | null>("transition_state"),
+    localMedia: localMediaActive,
+    confirm: (report) => confirmAction(quitting, report),
+    stop: stopMedia,
+    action
+  });
 }
 
 async function connect(saved: Installation, reload = false) {
-  if (busy) return;
-  const changing = state?.active && (state.active.id !== saved.id || reload);
-  if (changing && !await confirmAction()) return;
   await run(async () => {
+    const changing = state?.active && (state.active.id !== saved.id || reload);
     status("checking");
-    const open = () => invoke<Snapshot>("connect_installation", { id: saved.id, confirmLeave: Boolean(changing), reload });
-    state = changing || !state?.active ? await transitionWithMediaCleanup(stopMedia, open) : await open();
+    const open = (confirmed: boolean) => invoke<Snapshot>("connect_installation", { id: saved.id, confirmLeave: confirmed, reload });
+    const next = changing || !state?.active ? await transition(open) : await open(false);
+    if (next) state = next;
     element("status").textContent = "";
   });
 }
@@ -181,18 +217,16 @@ element("language").addEventListener("change", (event) => {
   });
 });
 element("disconnect").addEventListener("click", () => {
-  void (async () => {
-    if (busy || !await confirmAction()) return;
-    await run(async () => { state = await transitionWithMediaCleanup(stopMedia, () => invoke<Snapshot>("disconnect_installation", { confirmLeave: true })); });
-  })();
+  void run(async () => {
+    const next = await transition((confirmed) => invoke<Snapshot>("disconnect_installation", { confirmLeave: confirmed }));
+    if (next) state = next;
+  });
 });
 element("retry").addEventListener("click", () => { if (state?.active) void connect(state.active, true); });
 
 async function quit() {
-  if (busy || !await confirmAction(true)) return;
   await run(async () => {
-    stopMedia();
-    await invoke("quit_app", { confirmLeave: true });
+    await transition((confirmed) => invoke("quit_app", { confirmLeave: confirmed }), true);
   });
 }
 element("quit").addEventListener("click", () => void quit());
@@ -233,6 +267,7 @@ function stopMedia() {
 }
 
 async function probe(kind: ProbeKind) {
+  if (busy) return;
   const ticket = captures.begin();
   const video = element<HTMLVideoElement>("preview");
   video.srcObject = null;
@@ -254,6 +289,7 @@ async function probe(kind: ProbeKind) {
     probeResults.push({ kind, outcome: "captured", audioTracks: stream.getAudioTracks().length, videoTracks: stream.getVideoTracks().length });
     probeStatus(kind === "screen" && !stream.getAudioTracks().length ? "screenNoAudio" : "probeStarted");
   } catch (error: unknown) {
+    captures.finish(ticket);
     if (!captures.isCurrent(ticket)) return;
     probeResults.push({ kind, outcome: "failed", error: error instanceof DOMException ? error.name : "Error" });
     probeStatus("probeFailed");
@@ -282,6 +318,7 @@ element("devices").addEventListener("click", () => {
 });
 
 element("tone").addEventListener("click", () => {
+  if (busy) return;
   void (async () => {
     const generation = ++toneGeneration;
     if (toneContext) void toneContext.close().catch(() => undefined);

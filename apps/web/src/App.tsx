@@ -87,8 +87,7 @@ export function App() {
   const realtime = useRealtimeSync({
     user: session.user,
     route,
-    activeVoiceRoomRef,
-    leaveVoiceRef,
+    activeVoiceRoomRef, leaveVoiceRef,
     moveVoiceRef,
     forceLeaveNoticeRef,
     checkStillSignedInRef,
@@ -123,7 +122,8 @@ export function App() {
     afkRoomIds: workspace.afkRoomIds,
     activeVoiceRoomRef,
     leaveVoiceRef,
-    activeTextRoomIdRef: chat.activeTextRoomIdRef
+    activeTextRoomIdRef: chat.activeTextRoomIdRef,
+    onNotificationActivate: workspace.openNotificationTarget
   });
   const musicQueues = useMusicQueue(realtime.socket);
   const localVoiceSpeaking = Boolean(

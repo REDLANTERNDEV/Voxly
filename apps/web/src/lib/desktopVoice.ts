@@ -1,6 +1,6 @@
 import { validDesktopMicrophoneState, type DesktopMicrophoneState } from "./desktopMicrophone.js";
 
-/** Native sends fixed intents. Installation JavaScript gets no native IPC. */
+/** Native sends fixed voice intents. This object exposes no native IPC. */
 export interface DesktopVoiceBridge {
   version: 1;
   subscribeMute(handler: () => void): () => void;

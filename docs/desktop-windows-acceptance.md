@@ -174,9 +174,18 @@ the viewed route changes. Outside Voxly, the click still reaches the focused
 application. Recording a shortcut in the chooser still consumes its click.
 
 Permission tests should include direct `window.__TAURI_INTERNALS__.invoke(...)`
-attempts from remote developer tools against every generated custom command and
-opener/event APIs. Inspect failure without copying any session data. A hidden
+attempts from remote developer tools against every generated custom command
+except the request-bound `report_call_state` and parameterless
+`activate_installation` grants, and against opener/event
+APIs. State reports without an outstanding request, with wrong versions or
+extra/missing fields, and from prior window generations must also be refused. Inspect failure without copying any session data. A hidden
 button is not evidence of an IPC authorization boundary.
+
+`activate_installation` may only show, unminimize and request focus for the
+calling active exact-origin generation. It takes no destination or action
+payload. Check that old windows, other origins and the local chooser cannot use
+that remote grant. The connected Installation can request its own focus without
+a genuine toast click; that finite permission is intentional (ADR-0024).
 
 ## Resource measurements
 
@@ -521,3 +530,114 @@ Native checks passed on the macOS host:
 Windows-only hook compilation, physical key/button release, WebView2 background
 timing, and audible peer tests remain pending in the cases above. Existing
 macOS host checks do not establish installed Windows acceptance.
+
+## Call-aware shell transition acceptance (pending Windows validation)
+
+Rebuild/install the Windows shell and deploy the updated installation web
+client. Record both revisions and Windows/WebView2 versions. Run Disconnect,
+Retry loading, switching to another saved installation, and tray Quit:
+
+1. In a fresh idle installation with no media checks, the transition should
+   complete without a confirmation. With an old installation web client, a
+   missing state provider, a thrown provider, or a stalled renderer, a
+   conservative localized prompt must appear instead. No report older than
+   the current request may authorize termination.
+2. Repeat in voice with the microphone on, manually muted, idle Push to talk,
+   self/owner deafened and receive-only. Each call must prompt even without
+   effective microphone publication. Test camera, screen and computer audio,
+   and retained disabled capture. Confirm the described state with a peer.
+3. Start a delayed voice join, microphone/camera permission request, screen
+   picker, microphone-device replacement, or microphone test (including its
+   deafen acknowledgement). A pending operation must prompt before termination.
+   Cancel the prompt and verify the call, picker and capture remain usable.
+4. Start chooser probes or a pending chooser permission request and test Quit
+   with no installation open. Cancel retains them; confirmation ends capture
+   and rejects any late result. Test probes alongside an installation too.
+5. Confirm every transition with active media: the old capture indicator and
+   peer audio must end. Retry/switch must not join a call in the new window.
+   Switch to an unreachable installation and verify the old call survives.
+6. Delay the replacement health response while starting voice in the old idle
+   installation. Native code must recheck and require consent. Navigate/reload
+   while a report is pending; missing or stale replies must require consent.
+7. Check the ACL cases above from remote developer tools, including origin
+   lookalikes and old window generations. Only finite replies to outstanding
+   native requests may be accepted. Reports must never trigger shell actions.
+8. Repeat the dialogs in English/Turkish and at a narrow/short window size,
+   including Escape/cancel, keyboard focus and tray Quit. Recheck Mouse4/5
+   route-only navigation, PTT/PTM and automatic 200 ms PTT defaults.
+
+macOS compilation and VM/helper tests do not complete these Windows cases.
+No updater endpoint, signing key or new update authority is introduced.
+
+### Call-aware transition development checks, 2026-09-30
+
+macOS development verification for ADR-0022:
+
+- `npm run typecheck`: passed across all workspaces.
+- `npm test`: passed shared 19/19, server 397/397, web 834/834, bot 277/277,
+  desktop 34/34. After the final cancellation/timeout/probe regressions and
+  focus refinement, the affected suites were rerun with
+  `npm run test -w @voxly/web` (835/835) and
+  `npm run test -w @voxly/desktop` (37/37).
+- `npm run build` and `npm run build -w @voxly/desktop`: passed; the existing
+  web chunk-size warning remains. The final chooser refinement also passed
+  `npm run typecheck -w @voxly/desktop` and its build/test commands.
+  The final effective-state integration passed
+  `npm run typecheck -w @voxly/web` and `npm run build -w @voxly/web`.
+- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline`:
+  25/25, including request expiry/replay and exact-origin/window-generation
+  caller checks.
+- `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline --all-targets -- -D warnings`:
+  passed.
+- `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check`: passed.
+- `npm run bundle -w @voxly/desktop -- --no-bundle --debug -- --locked --offline`:
+  macOS host executable; no Windows installer.
+- Browser fixture using simulated native state: English and Turkish dialogs,
+  Escape/cancel and restored Disconnect focus, default viewport and 390×520
+  layout with no horizontal overflow. The fixture opened no media and was
+  removed after inspection. It does not exercise real IPC or Windows capture.
+- `git diff --check`: passed.
+
+Native commands used the temporary stable toolchain environment documented in
+this record. Initial root/native fixture runs could not bind loopback in the
+sandbox (`EPERM`); authorized local-listen reruns passed. No new dependencies,
+server configuration, updater trust or deployment was added. Pre-existing
+working-tree changes remain unstaged. The Windows acceptance cases above are
+pending; these checks do not certify WebView2 background delivery or teardown.
+
+### Notification activation acceptance, 2026-09-30
+
+Requires the rebuilt desktop shell and updated Installation web deployment.
+All installed Windows cases below remain **not run** on this macOS host.
+
+1. Opt in to desktop alerts, hide Voxly to tray, receive a message and click its
+   banner. Repeat from Notification Center and with Voxly minimized. The current
+   window must appear and its channel open without a full-document reload.
+2. Keep a voice call active while opening a text alert or a peer/screen alert.
+   A peer verifies uninterrupted audio and unchanged voice membership. Opening
+   a different viewed voice channel must never join/move/leave the active call.
+3. Repeat with another app or fullscreen game focused, and after lock/unlock.
+   Record foreground behavior; do not hide an OS focus refusal with repeated
+   focus requests or always-on-top behavior.
+4. Replace an alert, sign out/change Account, navigate/reload, disconnect or
+   switch Installation, then attempt old alert activation. It must not navigate
+   or reveal a replacement Installation. A denied/failed activation stays inert.
+5. Recheck permission denial, default-off preference, English/Turkish generic
+   copy, master/category/deafen gates and silent OS delivery. OS content contains
+   no member, channel or message content; existing web cues own audio.
+6. Exercise the finite ACL exception described above and confirm installation,
+   shortcut, browser-opening and updater commands remain inaccessible remotely.
+7. Quit fully. Page-created alerts do not promise cold-launch activation.
+   Registered external desktop links remain a separate pending integration.
+
+Development verification: `npm test` passed shared 19/19, server 397/397, web
+839/839, bot 277/277 and desktop 40/40. `npm run typecheck`, `npm run build`,
+`npm run build -w @voxly/desktop`, and final affected web typecheck/build passed.
+Native `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline`
+passed 25/25; `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline --all-targets -- -D warnings`
+and `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check` passed.
+`npm run bundle -w @voxly/desktop -- --no-bundle --debug -- --locked --offline`
+built the macOS debug executable. Native commands used the temporary stable
+toolchain documented above, and loopback fixture runs used authorized local
+listening. `git diff --check` passed. The existing web chunk-size warning remains.
+No dependency, signing key, updater endpoint or protocol registration was added.

@@ -2,6 +2,7 @@ import type { PublicUser } from "@voxly/shared";
 import { useCallback,useEffect,useRef,useState } from "react";
 import { DEFAULT_AUDIO_LEVELS,readAudioLevels,writeAudioLevels,type AudioLevels } from "../lib/audioLevels.js";
 import { subscribeBlockedAudioOutputs } from "../lib/audioOutput.js";
+import { subscribeDesktopCallState } from "../lib/desktopCallState.js";
 import { createDesktopDeafenReceiver,subscribeDesktopDeafen } from "../lib/desktopVoice.js";
 import { claimMicrophoneTestDeafen,shouldRestoreMicrophoneTestDeafen,type MicrophoneTestDeafenLease } from "../lib/microphoneTestIsolation.js";
 import { browserSupportsNoiseSuppression,DEFAULT_NOISE_SUPPRESSION,readNoiseSuppression,writeNoiseSuppression } from "../lib/noiseSuppression.js";
@@ -14,8 +15,9 @@ import { clampVolumePercent,pruneVolumes,readUserVolumes,setVolume,writeUserVolu
 import type { VoxlySocket } from "../socket.js";
 import type { LiveWatchRequest } from "./types.js";
 import { useNotificationSounds } from "./useNotificationSounds.js";
+import type { DesktopNotificationTarget } from "../lib/desktopNotifications.js";
 
-export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRoomIds, activeVoiceRoomRef, leaveVoiceRef, activeTextRoomIdRef }: {
+export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRoomIds, activeVoiceRoomRef, leaveVoiceRef, activeTextRoomIdRef, onNotificationActivate }: {
   socket: VoxlySocket | null;
   user: PublicUser | null;
   iceServers: RTCIceServer[];
@@ -24,6 +26,7 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
   activeVoiceRoomRef: React.RefObject<string | null>;
   leaveVoiceRef: React.RefObject<() => void>;
   activeTextRoomIdRef: React.RefObject<string | null>;
+  onNotificationActivate(target: DesktopNotificationTarget): void;
 }) {
   const audioDevices = useAudioDevices({ userId: user?.id });
   const [audioLevels, setAudioLevels] = useState<AudioLevels>(DEFAULT_AUDIO_LEVELS);
@@ -59,11 +62,16 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
     controls: voice.controls,
     deafened: voice.controls.deafen.on || voice.voiceModeration.deafened,
     connectionInterrupted: connectionHealth.overlayVisible,
-    activeTextRoomIdRef
+    activeTextRoomIdRef,
+    onNotificationActivate
   });
   const microphoneTest = useMicrophoneTest(audioDevices.selectedInputId, audioLevels.input, voice.microphoneMonitorStream, noiseSuppression);
   const microphoneTestDeafenRef = useRef<MicrophoneTestDeafenLease | null>(null);
   const microphoneTestStartingRef = useRef(false);
+  useEffect(() => subscribeDesktopCallState(window, () => ({
+    ...voice.getDesktopCallState(),
+    microphoneTest: microphoneTest.isBusy() || microphoneTestStartingRef.current || Boolean(microphoneTestDeafenRef.current)
+  })), [voice.getDesktopCallState, microphoneTest.isBusy]);
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
   const [screenVolumes, setScreenVolumes] = useState<Record<string, number>>({});
   const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);

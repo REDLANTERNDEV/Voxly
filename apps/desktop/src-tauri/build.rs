@@ -3,6 +3,9 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "shell_state",
+            "transition_state",
+            "report_call_state",
+            "activate_installation",
             "save_installation",
             "forget_installation",
             "connect_installation",

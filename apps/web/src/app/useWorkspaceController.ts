@@ -10,6 +10,7 @@ import type { ServerSummary } from "../types.js";
 import { serverPath } from "./navigation.js";
 import { includeCurrentPresence,presenceFromUser,upsertPresence } from "./presentation.js";
 import type { Route } from "./types.js";
+import { desktopNotificationPath, type DesktopNotificationTarget } from "../lib/desktopNotifications.js";
 
 export function useWorkspaceController({ user, route, navigate, roomHistory, roomServerIdsRef, routeRef }: {
   user: PublicUser | null;
@@ -247,6 +248,10 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
   };
 
   return {
+    openNotificationTarget: (target: DesktopNotificationTarget) => {
+      const path = desktopNotificationPath(target, roomServerIdsRef.current, servers);
+      if (user && path) navigate(path);
+    },
     servers, rooms, categories: categories.filter((category) => category.serverId === activeServerId), uncategorizedPosition, serverListReady, activeServerId, onlineUsers, serverMembers, activeRooms, currentRoom, roomGroups, voiceRoomIds, afkRoomIds,
     afkTimeoutsByServerRef,
     afkRoomIdsByServerRef,

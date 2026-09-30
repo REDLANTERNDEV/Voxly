@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod call_state;
 mod installations;
 #[cfg(target_os = "windows")]
 mod mouse_hook;
@@ -16,6 +17,7 @@ use tokio::sync::Mutex;
 
 struct Shell {
     inner: Mutex<Inner>,
+    reports: call_state::Reports,
     data: PathBuf,
     menu: TrayMenu,
     shortcut_latches: [shortcuts::ShortcutLatch; 4],
@@ -169,6 +171,31 @@ mod tests {
             "http://127.0.0.1:3000/",
         ] {
             assert!(!shell_navigation(&url.parse().unwrap()), "{url}");
+        }
+    }
+
+    #[test]
+    fn reports_only_accept_the_active_window_generation_and_exact_origin() {
+        let origin = "https://chat.example";
+        assert!(report_caller_matches(
+            2,
+            "installation-2",
+            origin,
+            &"https://chat.example/app/".parse().unwrap()
+        ));
+        for (label, url) in [
+            ("shell", "https://chat.example/app/"),
+            ("installation-1", "https://chat.example/app/"),
+            ("installation-2", "https://chat.example.evil/app/"),
+            ("installation-2", "https://chat.example:444/app/"),
+            ("installation-2", "http://chat.example/app/"),
+        ] {
+            assert!(!report_caller_matches(
+                2,
+                label,
+                origin,
+                &url.parse().unwrap()
+            ));
         }
     }
 
@@ -434,9 +461,121 @@ fn queue_voice_event(
     }
 }
 
+fn remote_window(app: &tauri::AppHandle) -> Option<WebviewWindow> {
+    let shell = app.try_state::<Shell>()?;
+    app.get_webview_window(&platform::installation_label(
+        shell.voice_generation.load(Ordering::Acquire),
+    ))
+}
+
+async fn query_call_state(app: &tauri::AppHandle, shell: &Shell) -> Option<call_state::CallState> {
+    let remote = remote_window(app)?;
+    let target = shell.voice_target.read().ok()?.clone()?;
+    if !installations::same_origin(&target.origin, &remote.url().ok()?) {
+        return None;
+    }
+    let generation = shell.voice_generation.load(Ordering::Acquire);
+    let (request, revision, reply) = shell.reports.request(generation);
+    if remote
+        .eval(format!(
+            "window.__VOXLY_DESKTOP_STATE_V1__?.request({request});"
+        ))
+        .is_err()
+    {
+        shell.reports.invalidate();
+        return None;
+    }
+    let report = tokio::time::timeout(std::time::Duration::from_millis(750), reply)
+        .await
+        .ok()
+        .and_then(Result::ok);
+    if shell.reports.finish(revision) {
+        report
+    } else {
+        None
+    }
+}
+
+fn report_caller_matches(generation: u64, label: &str, origin: &str, url: &url::Url) -> bool {
+    label == platform::installation_label(generation) && installations::same_origin(origin, url)
+}
+
+#[tauri::command]
+async fn report_call_state(
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    request: u32,
+    report: call_state::CallState,
+) -> Result<(), &'static str> {
+    let generation = shell.voice_generation.load(Ordering::Acquire);
+    let target = shell.voice_target.read().map_err(|_| "forbidden")?;
+    let active = target.as_ref().ok_or("forbidden")?;
+    if !report_caller_matches(
+        generation,
+        window.label(),
+        &active.origin,
+        &window.url().map_err(|_| "forbidden")?,
+    ) {
+        return Err("forbidden");
+    }
+    shell.reports.receive(generation, request, report)
+}
+
+#[tauri::command]
+async fn activate_installation(
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+) -> Result<(), &'static str> {
+    // Serialize against replacement; an old toast cannot focus a new installation.
+    let inner = shell.inner.lock().await;
+    let active = inner.active.as_ref().ok_or("forbidden")?;
+    if !report_caller_matches(
+        shell.voice_generation.load(Ordering::Acquire),
+        window.label(),
+        &active.origin,
+        &window.url().map_err(|_| "forbidden")?,
+    ) {
+        return Err("forbidden");
+    }
+    window.show().map_err(|_| "window_failed")?;
+    window.unminimize().map_err(|_| "window_failed")?;
+    window.set_focus().map_err(|_| "window_failed")
+}
+
+#[tauri::command]
+async fn transition_state(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+) -> Result<Option<call_state::CallState>, &'static str> {
+    trusted_shell(&window)?;
+    let inner = shell.inner.lock().await;
+    if inner.active.is_none() {
+        return Ok(None);
+    }
+    Ok(query_call_state(&app, &shell).await)
+}
+
+async fn require_confirmation(
+    app: &tauri::AppHandle,
+    shell: &Shell,
+    inner: &Inner,
+    confirmed: bool,
+) -> Result<(), &'static str> {
+    if inner.active.is_some()
+        && !confirmed
+        && query_call_state(app, shell)
+            .await
+            .is_none_or(|state| state.needs_confirmation())
+    {
+        return Err("confirmation_required");
+    }
+    Ok(())
+}
+
 fn active_remote(app: &tauri::AppHandle, inner: &Inner) -> Option<WebviewWindow> {
     let active = inner.active.as_ref()?;
-    let remote = app.get_webview_window(platform::INSTALLATION_WINDOW)?;
+    let remote = remote_window(app)?;
     let url = remote.url().ok()?;
     installations::same_origin(&active.origin, &url).then_some(remote)
 }
@@ -465,7 +604,7 @@ fn deliver_voice_action(
     {
         return;
     }
-    let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) else {
+    let Some(remote) = remote_window(app) else {
         return;
     };
     let Ok(url) = remote.url() else {
@@ -496,7 +635,7 @@ fn deliver_voice_action(
 }
 
 fn expire_talk_release(app: &tauri::AppHandle, target: &Installation) {
-    if let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) {
+    if let Some(remote) = remote_window(app) {
         if remote
             .url()
             .is_ok_and(|url| installations::same_origin(&target.origin, &url))
@@ -612,23 +751,29 @@ async fn connect_installation(
             .as_ref()
             .is_some_and(|active| active.id == saved.id)
     {
-        if let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) {
+        if let Some(remote) = remote_window(&app) {
             remote.show().map_err(|_| "window_failed")?;
             remote.set_focus().map_err(|_| "window_failed")?;
             return Ok(snapshot(&inner));
         }
     }
-    if inner.active.is_some() && !confirm_leave {
-        return Err("confirmation_required");
-    }
     // Keep the old installation/call intact if the replacement is unreachable.
     check_health(&saved.origin).await?;
-    if let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) {
+    require_confirmation(&app, &shell, &inner, confirm_leave).await?;
+    if let Some(remote) = remote_window(&app) {
         remote.destroy().map_err(|_| "window_failed")?;
     }
-    shell.voice_generation.fetch_add(1, Ordering::AcqRel);
+    let generation = shell.voice_generation.fetch_add(1, Ordering::AcqRel) + 1;
+    shell.reports.invalidate();
+    *shell.voice_target.write().map_err(|_| "window_failed")? = None;
     inner.active = None;
-    platform::open_installation(&app, &saved, &shell.data, inner.preferences.microphone_mode)?;
+    platform::open_installation(
+        &app,
+        &saved,
+        &shell.data,
+        inner.preferences.microphone_mode,
+        generation,
+    )?;
     *shell.voice_target.write().map_err(|_| "window_failed")? = Some(saved.clone());
     inner.active = Some(saved);
     Ok(snapshot(&inner))
@@ -643,14 +788,13 @@ async fn disconnect_installation(
 ) -> Result<ShellSnapshot, &'static str> {
     trusted_shell(&window)?;
     let mut inner = shell.inner.lock().await;
-    if inner.active.is_some() && !confirm_leave {
-        return Err("confirmation_required");
-    }
-    if let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) {
+    require_confirmation(&app, &shell, &inner, confirm_leave).await?;
+    if let Some(remote) = remote_window(&app) {
         // Destroying the webview ends its tracks, rather than hiding them.
         remote.destroy().map_err(|_| "window_failed")?;
     }
     shell.voice_generation.fetch_add(1, Ordering::AcqRel);
+    shell.reports.invalidate();
     *shell.voice_target.write().map_err(|_| "window_failed")? = None;
     inner.active = None;
     Ok(snapshot(&inner))
@@ -715,10 +859,8 @@ async fn quit_app(
 ) -> Result<(), &'static str> {
     trusted_shell(&window)?;
     let inner = shell.inner.lock().await;
-    if inner.active.is_some() && !confirm_leave {
-        return Err("confirmation_required");
-    }
-    if let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) {
+    require_confirmation(&app, &shell, &inner, confirm_leave).await?;
+    if let Some(remote) = remote_window(&app) {
         remote.destroy().map_err(|_| "window_failed")?;
     }
     app.exit(0);
@@ -733,7 +875,7 @@ fn show_shell(app: &tauri::AppHandle) {
 }
 
 fn show_current(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window(platform::INSTALLATION_WINDOW) {
+    if let Some(window) = remote_window(app) {
         let _ = window.show();
         let _ = window.set_focus();
     } else {
@@ -769,7 +911,10 @@ fn main() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
+            activate_installation,
             shell_state,
+            transition_state,
+            report_call_state,
             save_installation,
             forget_installation,
             connect_installation,
@@ -844,6 +989,7 @@ fn main() {
                 tokio::sync::mpsc::unbounded_channel::<VoiceEvent>();
             let release_delay_ms = preferences.push_to_talk_release_delay_ms;
             app.manage(Shell {
+                reports: call_state::Reports::default(),
                 inner: Mutex::new(Inner {
                     preferences,
                     active: None,

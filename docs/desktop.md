@@ -70,9 +70,24 @@ and open its new one-use link.
 
 Close hides a window to the tray. Tray Show Voxly restores the installation;
 Installations restores the chooser. Retry, disconnect, switching addresses, and
-Quit warn that media will end. Until a bridge is available, that confirmation is
-conservative even when there is no active call. Quit closes the webview and all
-capture; hiding keeps it alive and is subject to Windows acceptance testing.
+Quit request fresh media state from the updated installation. They ask for
+confirmation when you are in voice (including muted or receive-only calls),
+have retained capture, are testing a microphone, or have a pending join or
+media request. The English/Turkish prompt describes the active work. Chooser
+media checks and pending capture requests also require confirmation. A fresh
+idle report skips the prompt; an older client, unavailable report, navigation
+or a reply later than 750 ms requires conservative confirmation. Native code
+rechecks after replacement health checks, so a join started during the check
+cannot rely on an earlier idle report. Cancelling keeps capture; confirming
+ends chooser checks before native work. Failed replacement health checks keep
+the old installation and call. Quit destroys the webview before exit; hiding
+keeps it alive and is subject to Windows acceptance testing.
+
+Rebuild the Windows shell and deploy the updated web client for this flow.
+The separate [state bridge](adr/0022-desktop-call-reports-grant-no-actions.md)
+grants only finite reporting to the current exact origin and unique window
+generation. It carries no identities or native actions and persists no report.
+Shortcut and installation management and updater trust remain local.
 
 ### Desktop notifications
 
@@ -90,6 +105,14 @@ names, or room details. They request silent delivery so the existing Voxly
 cue player remains the only sound source. Repeated alerts of the same kind
 are coalesced. Unsupported runtimes and denied permissions remain recoverable
 without affecting calls or messages.
+
+Clicking an alert in a running desktop application now requests restoration of
+the current Installation window and opens its channel through ordinary Voxly
+navigation. This does not join or switch voice. Old Account/Installation alerts
+cannot activate a replacement session. Channel targets stay out of OS alert
+content and native storage. Installed Windows tray/minimize/focus behavior is
+still pending acceptance; activation after Quit and external desktop links are
+not implemented. See [ADR-0024](adr/0024-desktop-alert-activation-only-reveals-its-window.md).
 
 Delivery uses WebView2's standard notification UI and browser permission,
 without a native plugin or remote native capability. See Microsoft's

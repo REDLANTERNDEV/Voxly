@@ -89,3 +89,12 @@ for the remaining gates.
 [ADR-0020](0020-desktop-mute-intent-grants-no-native-authority.md) extends the
 initial no-injection milestone with one-way microphone intent. Remote native
 authority remains disabled; the future IPC requirements above still apply.
+
+[ADR-0022](0022-desktop-call-reports-grant-no-actions.md) extends this boundary
+with one finite, request-bound call-state reporting command scoped to the
+active exact origin and a unique remote generation. Other native authority
+remains local.
+
+[ADR-0024](0024-desktop-alert-activation-only-reveals-its-window.md) permits one
+separate parameterless action to reveal the current Installation window.
+Notification routing remains in its authenticated web document.

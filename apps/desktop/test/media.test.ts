@@ -57,6 +57,21 @@ describe("desktop feasibility probes", () => {
     assert.equal(owner.current(), null);
   });
 
+  it("tracks pending chooser probes without letting an old failure clear a replacement", () => {
+    const owner = createCaptureOwner();
+    const old = owner.begin();
+    const replacement = owner.begin();
+    owner.finish(old);
+    assert.equal(owner.isPending(), true);
+    owner.accept(replacement, streamFixture().stream);
+    assert.equal(owner.isPending(), false);
+    const failed = owner.begin();
+    owner.finish(failed);
+    assert.equal(owner.isPending(), false);
+    owner.begin(); owner.stop();
+    assert.equal(owner.isPending(), false);
+  });
+
   it("excludes Device identifiers and capture labels from diagnostics", () => {
     assert.deepEqual(summarizeTracks(streamFixture().stream), [{
       kind: "audio", readyState: "live", enabled: true, muted: false,

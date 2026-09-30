@@ -23,7 +23,7 @@ import {
   type VoiceScreenRosterState
 } from "../lib/notificationSounds.js";
 import type { VoiceControls } from "../lib/voiceControls.js";
-import { createDesktopNotificationDelivery, isDesktopNotificationKind, readDesktopNotifications } from "../lib/desktopNotifications.js";
+import { createDesktopNotificationDelivery, isDesktopNotificationKind, readDesktopNotifications, type DesktopNotificationTarget } from "../lib/desktopNotifications.js";
 
 interface VoiceControlSample {
   roomId: string | null;
@@ -37,7 +37,7 @@ function windowFocused() {
   return typeof document.hasFocus === "function" ? document.hasFocus() : true;
 }
 
-export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, controls, deafened, connectionInterrupted, activeTextRoomIdRef }: {
+export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, controls, deafened, connectionInterrupted, activeTextRoomIdRef, onNotificationActivate }: {
   user: PublicUser | null;
   activeVoiceRoomId: string | null;
   voiceSnapshot: VoiceSnapshot | undefined;
@@ -45,6 +45,7 @@ export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, 
   deafened: boolean;
   connectionInterrupted: boolean;
   activeTextRoomIdRef: React.RefObject<string | null>;
+  onNotificationActivate(target: DesktopNotificationTarget): void;
 }) {
   const [preferences, setPreferences] = useState<NotificationSoundPreferences>(DEFAULT_NOTIFICATION_SOUNDS);
   const playerRef = useRef<NotificationSoundPlayer | null>(null);
@@ -56,11 +57,17 @@ export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, 
   const controlSampleRef = useRef<VoiceControlSample | null>(null);
   const interruptedRef = useRef(connectionInterrupted);
   const desktopDeliveryRef = useRef<ReturnType<typeof createDesktopNotificationDelivery> | null>(null);
+  const activationRef = useRef({ userId: user?.id, activate: onNotificationActivate });
+  activationRef.current = { userId: user?.id, activate: onNotificationActivate };
   preferencesRef.current = preferences;
   deafenedRef.current = deafened;
 
   useEffect(() => {
     setPreferences(user ? readNotificationSounds(user.id) : { ...DEFAULT_NOTIFICATION_SOUNDS });
+    return () => {
+      desktopDeliveryRef.current?.dispose();
+      desktopDeliveryRef.current = null;
+    };
   }, [user?.id]);
 
   // Warm the cues as soon as there is a session rather than on the first one
@@ -78,18 +85,21 @@ export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, 
     playerRef.current = null;
   }, []);
 
-  const play = useCallback((key: NotificationSoundKey) => {
+  const play = useCallback((key: NotificationSoundKey, target?: DesktopNotificationTarget) => {
     if (!notificationSoundAllowed(key, preferencesRef.current, { deafened: deafenedRef.current })) return false;
     if (user && isDesktopNotificationKind(key)) {
       desktopDeliveryRef.current ??= createDesktopNotificationDelivery(window);
       desktopDeliveryRef.current(key, {
         userId: user.id, enabled: readDesktopNotifications(user.id), focused: windowFocused(),
-        deafened: deafenedRef.current, preferences: preferencesRef.current
+        deafened: deafenedRef.current, preferences: preferencesRef.current,
+        target: target ?? (activeVoiceRoomId ? { roomId: activeVoiceRoomId, kind: "voice" } : undefined),
+        isCurrent: () => activationRef.current.userId === user.id,
+        activate: (destination) => activationRef.current.activate(destination)
       });
     }
     playerRef.current ??= createNotificationSoundPlayer();
     return playerRef.current.play(key, preferencesRef.current.volume);
-  }, [user?.id]);
+  }, [user?.id, activeVoiceRoomId]);
 
   const changeNotificationSounds = useCallback((patch: Partial<NotificationSoundPreferences>) => {
     setPreferences((current) => {
@@ -158,7 +168,7 @@ export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, 
       activeTextRoomId: activeTextRoomIdRef.current,
       windowFocused: windowFocused()
     });
-    return allowed ? play("message") : false;
+    return allowed ? play("message", { roomId: message.roomId, kind: "text" }) : false;
   }, [activeTextRoomIdRef, play, user?.id]);
 
   return { notificationSounds: preferences, changeNotificationSounds, notifyMessage };

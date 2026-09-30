@@ -72,3 +72,7 @@ connection transitions, mode changes, and binding resets invalidate the tail;
 an obsolete installation generation never receives the expiry. Old web clients
 ignore the optional tail state and keep immediate-release behavior. Native
 authority remains limited to the bundled chooser.
+
+[ADR-0022](0022-desktop-call-reports-grant-no-actions.md) adds a separate finite
+call-state reporting bridge. The voice intent object above remains one-way;
+remote state reports cannot invoke native actions or register shortcuts.

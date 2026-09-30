@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPendingCaptures } from "./desktopCallState.js";
 import { recordErrorOccurrence, type ErrorOccurrence } from "./errorOccurrences.js";
 import { createMicrophoneInput, type MicrophoneInput } from "./microphoneInput.js";
 import { DEFAULT_NOISE_SUPPRESSION, microphoneCaptureChange, openMicrophoneCapture } from "./noiseSuppression.js";
@@ -11,6 +12,8 @@ export function useMicrophoneTest(
   sharedMonitorStream: MediaStream | null = null,
   noiseSuppression = DEFAULT_NOISE_SUPPRESSION
 ) {
+  const [pendingCaptures] = useState(createPendingCaptures);
+  const monitorStreamRef = useRef<MediaStream | null>(null);
   const [active, setActive] = useState(false);
   const [monitorStream, setMonitorStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<MicrophoneTestError>(null);
@@ -27,6 +30,7 @@ export function useMicrophoneTest(
     generationRef.current += 1;
     inputRef.current?.dispose();
     inputRef.current = null;
+    monitorStreamRef.current = null;
     setMonitorStream(null);
     setActive(false);
   }, []);
@@ -36,11 +40,13 @@ export function useMicrophoneTest(
     const generation = ++generationRef.current;
     const previous = inputRef.current;
     inputRef.current = null;
+    monitorStreamRef.current = null;
     setMonitorStream(null);
     setActive(false);
     setError(null);
     if (sharedStreamRef.current) {
       previous?.dispose();
+      monitorStreamRef.current = sharedStreamRef.current;
       setMonitorStream(sharedStreamRef.current);
       setActive(true);
       return true;
@@ -49,10 +55,10 @@ export function useMicrophoneTest(
     try {
       // The running capture is released first so the reopen is served by a new
       // pipeline rather than the one already attached to the device.
-      rawStream = await openMicrophoneCapture(
+      rawStream = await pendingCaptures.run(() => openMicrophoneCapture(
         { deviceId: deviceIdRef.current },
         { release: () => previous?.dispose() }
-      );
+      ));
       const input = createMicrophoneInput(rawStream, volumeRef.current, {
         noiseSuppression: noiseSuppressionRef.current
       });
@@ -61,6 +67,7 @@ export function useMicrophoneTest(
         return false;
       }
       inputRef.current = input;
+      monitorStreamRef.current = input.monitorStream;
       setMonitorStream(input.monitorStream);
       setActive(true);
       return true;
@@ -104,6 +111,7 @@ export function useMicrophoneTest(
       generationRef.current += 1;
       inputRef.current?.dispose();
       inputRef.current = null;
+      monitorStreamRef.current = sharedMonitorStream;
       setMonitorStream(sharedMonitorStream);
       setError(null);
     } else if (previousSharedStream) {
@@ -117,7 +125,11 @@ export function useMicrophoneTest(
     };
   }, []);
 
+  const isBusy = useCallback(() => pendingCaptures.isPending()
+    || (monitorStreamRef.current?.getTracks().some((track) => track.readyState === "live") ?? false), [pendingCaptures]);
+
   return {
+    isBusy,
     active,
     error,
     errorOccurrences: errorOccurrence?.count ?? 0,

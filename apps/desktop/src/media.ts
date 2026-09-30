@@ -24,20 +24,25 @@ export function summarizeTracks(stream: Pick<MediaStream, "getTracks">): ProbeTr
 /** Releases a capture that resolves after Stop, another probe, or disposal. */
 export function createCaptureOwner() {
   let generation = 0;
+  let pending = false;
   let current: MediaStream | null = null;
   const stop = () => {
     generation += 1;
+    pending = false;
     current?.getTracks().forEach((track) => track.stop());
     current = null;
   };
   return {
     stop,
-    begin() { stop(); return generation; },
+    begin() { stop(); pending = true; return generation; },
+    isPending: () => pending,
+    finish(ticket: number) { if (ticket === generation) pending = false; },
     accept(ticket: number, stream: MediaStream) {
       if (ticket !== generation) {
         stream.getTracks().forEach((track) => track.stop());
         return false;
       }
+      pending = false;
       current = stream;
       return true;
     },

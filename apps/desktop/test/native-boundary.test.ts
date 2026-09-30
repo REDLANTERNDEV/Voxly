@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 describe("desktop native trust boundary", () => {
-  it("gives only the local shell a capability and no plugin-wide permissions", () => {
+  it("keeps bundled capabilities local and denies plugin-wide permissions", () => {
     const config = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
     const capability = JSON.parse(readFileSync("src-tauri/capabilities/shell.json", "utf8"));
     assert.deepEqual(config.app.security.capabilities, ["local-shell"]);
@@ -19,8 +19,14 @@ describe("desktop native trust boundary", () => {
     const native = readFileSync("src-tauri/src/main.rs", "utf8");
     const build = readFileSync("src-tauri/build.rs", "utf8");
     assert.match(build, /AppManifest::new\(\)\.commands/);
-    const commands = [...native.matchAll(/#\[tauri::command\]\s*async fn (\w+)\([\s\S]*?\{\s*trusted_shell\(&window\)\?;/g)].map((match) => match[1]);
-    assert.equal(commands.length, (native.match(/#\[tauri::command\]/g) ?? []).length);
+    const commands = [...native.matchAll(/#\[tauri::command\]\s*async fn (\w+)\((?:(?!#\[tauri::command\])[\s\S])*?\{\s*trusted_shell\(&window\)\?;/g)].map((match) => match[1]);
+    assert.equal(commands.length + 2, (native.match(/#\[tauri::command\]/g) ?? []).length);
+    assert.match(native, /async fn report_call_state/);
+    assert.match(native, /report_caller_matches\(/);
+    assert.match(native, /same_origin\(origin, url\)/);
+    assert.match(native, /shell.reports.receive\(generation, request, report\)/);
+    assert.match(native, /async fn activate_installation/);
+    assert.match(native, /window\.unminimize\(\)/);
     const capability = JSON.parse(readFileSync("src-tauri/capabilities/shell.json", "utf8"));
     for (const command of commands) {
       assert.ok(build.includes(`"${command}"`));
@@ -34,7 +40,14 @@ describe("desktop native trust boundary", () => {
     assert.match(source, /\.on_navigation/);
     assert.match(source, /same_origin/);
     assert.match(source, /NewWindowResponse::Deny/);
-    assert.doesNotMatch(source, /add_capability/);
+    assert.match(source, /add_capability/);
+    assert.match(source, /\.local\(false\)/);
+    assert.match(source, /\.remote\(format!/);
+    assert.match(source, /\.webview\(&label\)/);
+    assert.match(source, /\.permission\("allow-report-call-state"\)/);
+    assert.match(source, /\.permission\("allow-activate-installation"\)/);
+    assert.match(source, /installation_label\(generation\)/);
+    assert.doesNotMatch(source, /permission\(".*(?:updater|opener|shortcut|filesystem)/);
     assert.match(source, /initialization_script\(&bootstrap\)/);
     const bootstrap = readFileSync("src-tauri/src/voice-bridge.js", "utf8");
     assert.doesNotMatch(bootstrap, /invoke|ipc|postMessage|__TAURI__/);
