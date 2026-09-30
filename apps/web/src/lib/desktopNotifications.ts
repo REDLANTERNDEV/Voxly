@@ -18,10 +18,18 @@ export function desktopNotificationPath(target: DesktopNotificationTarget, roomS
   if (!serverId || !servers.some((server) => server.id === serverId)) return null;
   return `/app/server/${encodeURIComponent(serverId)}/${target.kind}/${encodeURIComponent(target.roomId)}`;
 }
+export interface NativeNotificationHandle extends NotificationHandle {
+  delivery: Promise<"shown" | "fallback" | "blocked">;
+  onfailure: (() => void) | null;
+}
+export interface NativeNotificationBridge {
+  version: 1;
+  create(kind: DesktopNotificationKind, language: LanguageCode): NativeNotificationHandle;
+}
 interface NotificationPermissionBridge { version: 1; resetPermission(): Promise<boolean> }
 interface ActivationBridge { version: 1; show(): Promise<boolean> }
 declare global {
-  interface Window { __VOXLY_DESKTOP_ACTIVATION_V1__?: ActivationBridge; __VOXLY_DESKTOP_NOTIFICATIONS_V1__?: NotificationPermissionBridge }
+  interface Window { __VOXLY_DESKTOP_TOASTS_V1__?: NativeNotificationBridge; __VOXLY_DESKTOP_ACTIVATION_V1__?: ActivationBridge; __VOXLY_DESKTOP_NOTIFICATIONS_V1__?: NotificationPermissionBridge }
 }
 export interface SystemNotificationApi {
   new(title: string, options: NotificationOptions): NotificationHandle;
@@ -33,6 +41,7 @@ export interface DesktopNotificationRuntime {
   __VOXLY_DESKTOP_V1__?: DesktopVoiceBridge;
   __VOXLY_DESKTOP_ACTIVATION_V1__?: ActivationBridge;
   __VOXLY_DESKTOP_NOTIFICATIONS_V1__?: NotificationPermissionBridge;
+  __VOXLY_DESKTOP_TOASTS_V1__?: NativeNotificationBridge;
   Notification?: SystemNotificationApi;
 }
 
@@ -62,6 +71,19 @@ export function writeDesktopNotifications(userId: string, enabled: boolean, stor
   try {
     if (!storage) return false;
     storage.setItem(storageKey(userId), String(enabled));
+    return true;
+  } catch { return false; }
+}
+
+export type DesktopNotificationDelivery = "native" | "webview";
+export function readDesktopNotificationDelivery(userId: string, storage = browserStorage()): DesktopNotificationDelivery {
+  try { return storage?.getItem(`voxly:desktop-notification-delivery:v1:${userId}`) === "webview" ? "webview" : "native"; }
+  catch { return "native"; }
+}
+export function writeDesktopNotificationDelivery(userId: string, delivery: DesktopNotificationDelivery, storage = browserStorage()): boolean {
+  try {
+    if (!storage) return false;
+    storage.setItem(`voxly:desktop-notification-delivery:v1:${userId}`, delivery);
     return true;
   } catch { return false; }
 }
@@ -109,10 +131,40 @@ export function createDesktopNotificationDelivery(runtime: DesktopNotificationRu
     const time = now();
     if (time - (last.get(key) ?? -Infinity) < 1_000) return false;
     try {
-      const handle = new runtime.Notification!("Voxly", {
-        body: translate(context.language ?? readLanguageChoice(), labels[kind]),
-        tag: `voxly:${kind}`, silent: true
-      });
+      const language = context.language ?? readLanguageChoice();
+      const options = { body: translate(language, labels[kind]), tag: `voxly:${kind}`, silent: true };
+      const native = runtime.__VOXLY_DESKTOP_TOASTS_V1__;
+      let handle: NotificationHandle;
+      if (native?.version === 1 && readDesktopNotificationDelivery(context.userId) === "native") {
+        let source: NativeNotificationHandle | undefined;
+        try { source = native.create(kind, language); } catch { /* Preserve WebView2 fallback. */ }
+        if (source) {
+          const nativeHandle = source;
+          let fallback: NotificationHandle | undefined;
+          let closed = false;
+          handle = {
+            onclick: null, onclose: null,
+            close() { closed = true; nativeHandle.close(); if (fallback) retire(fallback); }
+          };
+          const alive = () => !closed && !disposed && handles.get(key) === handle && context.isCurrent?.() !== false;
+          const useFallback = () => {
+            if (!alive() || fallback) return;
+            nativeHandle.close();
+            try {
+              fallback = new runtime.Notification!("Voxly", options);
+              fallback.onclick = (event) => { if (alive()) handle.onclick?.(event); };
+              fallback.onclose = (event) => handle.onclose?.(event);
+            } catch { handle.onclose?.(new Event("close")); }
+          };
+          nativeHandle.onclick = (event) => { if (alive()) handle.onclick?.(event); };
+          nativeHandle.onclose = (event) => { nativeHandle.close(); handle.onclose?.(event); };
+          nativeHandle.onfailure = useFallback;
+          void nativeHandle.delivery.then((result) => {
+            if (result === "fallback") useFallback();
+            else if (result === "blocked" && alive()) { nativeHandle.close(); handle.onclose?.(new Event("close")); }
+          }).catch(useFallback);
+        } else handle = new runtime.Notification!("Voxly", options);
+      } else handle = new runtime.Notification!("Voxly", options);
       const previous = handles.get(key);
       if (previous) retire(previous);
       handles.set(key, handle);

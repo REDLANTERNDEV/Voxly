@@ -8,6 +8,8 @@ fn main() {
             "activate_installation",
             "reset_notification_permission",
             "set_installation_theme",
+            "show_desktop_notification",
+            "close_desktop_notification",
             "save_installation",
             "forget_installation",
             "connect_installation",

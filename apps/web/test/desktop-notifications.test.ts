@@ -5,8 +5,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   createDesktopNotificationDelivery, desktopNotificationPermission, isDesktopNotificationKind,
-  readDesktopNotifications, requestDesktopNotificationPermission, resetDesktopNotificationPermission, writeDesktopNotifications,
-  type DesktopNotificationRuntime, type SystemNotificationApi
+  readDesktopNotifications, readDesktopNotificationDelivery, writeDesktopNotificationDelivery, requestDesktopNotificationPermission, resetDesktopNotificationPermission, writeDesktopNotifications,
+  type DesktopNotificationRuntime, type SystemNotificationApi, type NativeNotificationHandle
 } from "../src/lib/desktopNotifications.js";
 import { desktopNotificationPath } from "../src/lib/desktopNotifications.js";
 import { DEFAULT_NOTIFICATION_SOUNDS } from "../src/lib/notificationSounds.js";
@@ -192,4 +192,95 @@ describe("desktop system notifications", () => {
     assert.equal(desktopNotificationPath(target, { "room/1": "server/1" }, [{ id: "server/1" }]), "/app/server/server%2F1/voice/room%2F1");
     assert.equal(desktopNotificationPath({ roomId: "constructor", kind: "text" }, {}, [{ id: "server" }]), null);
   });
+});
+
+
+describe("native Windows notification delivery with WebView2 fallback", () => {
+  function nativeFixture(delivery: Promise<"shown" | "fallback" | "blocked">) {
+    const f = fixture();
+    f.Api.permission = "granted";
+    let closed = false;
+    const handle: NativeNotificationHandle = { delivery, onclick: null, onclose: null, onfailure: null, close: () => { closed = true; } };
+    f.runtime.__VOXLY_DESKTOP_TOASTS_V1__ = { version: 1, create: () => handle };
+    return { ...f, handle, closed: () => closed };
+  }
+  it("prefers native delivery without a duplicate web alert and preserves channel activation", async () => {
+    const f = nativeFixture(Promise.resolve("shown"));
+    const destinations: string[] = [];
+    f.runtime.__VOXLY_DESKTOP_ACTIVATION_V1__ = { version: 1, show: async () => true };
+    const send = createDesktopNotificationDelivery(f.runtime);
+    assert.equal(send("message", { ...context, target: { roomId: "text", kind: "text" }, isCurrent: () => true, activate: (target) => destinations.push(target.roomId) }), true);
+    await Promise.resolve();
+    assert.equal(f.delivered.length, 0);
+    f.handle.onclick?.(new Event("click")); await Promise.resolve();
+    assert.deepEqual(destinations, ["text"]);
+    assert.equal(f.closed(), true);
+  });
+  it("falls back exactly once on send/lifecycle failure, but respects Windows suppression", async () => {
+    const f = nativeFixture(Promise.resolve("fallback"));
+    createDesktopNotificationDelivery(f.runtime)("message", context);
+    await Promise.resolve();
+    assert.equal(f.delivered.length, 1);
+    f.handle.onfailure?.();
+    assert.equal(f.delivered.length, 1);
+    const blocked = nativeFixture(Promise.resolve("blocked"));
+    createDesktopNotificationDelivery(blocked.runtime)("message", context);
+    await Promise.resolve();
+    assert.equal(blocked.delivered.length, 0);
+    assert.equal(blocked.closed(), true);
+    const late = nativeFixture(Promise.resolve("shown"));
+    createDesktopNotificationDelivery(late.runtime)("message", context);
+    await Promise.resolve(); late.handle.onfailure?.(); late.handle.onfailure?.();
+    assert.equal(late.delivered.length, 1);
+  });
+  it("does not deliver fallback after disposal or an account change", async () => {
+    for (const dispose of [true, false]) {
+      let resolve!: (value: "fallback") => void;
+      const f = nativeFixture(new Promise((r) => { resolve = r; }));
+      let current = true;
+      const send = createDesktopNotificationDelivery(f.runtime);
+      send("message", { ...context, isCurrent: () => current });
+      if (dispose) send.dispose(); else current = false;
+      resolve("fallback"); await Promise.resolve();
+      assert.equal(f.delivered.length, 0);
+    }
+  });
+});
+
+
+it("keeps native Windows generic copy equivalent to web copy in both languages", () => {
+  const native = readFileSync("../desktop/src-tauri/src/native_notifications.rs", "utf8");
+  for (const language of ["en", "tr"] as const) {
+    for (const key of ["message", "peerJoined", "peerLeft", "screenStarted", "screenStopped", "connectionLost", "connectionRestored"] as const) {
+      assert.ok(native.includes(JSON.stringify(translate(language, `desktopNotifications.${key}`))));
+    }
+  }
+});
+
+
+it("stores the native/compatibility delivery choice independently per account", () => {
+  const values = new Map<string, string>();
+  const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
+  assert.equal(readDesktopNotificationDelivery("a", storage), "native");
+  assert.equal(writeDesktopNotificationDelivery("a", "webview", storage), true);
+  assert.equal(readDesktopNotificationDelivery("a", storage), "webview");
+  assert.equal(readDesktopNotificationDelivery("b", storage), "native");
+  assert.equal(writeDesktopNotificationDelivery("a", "native", { getItem: () => null, setItem: () => { throw Error(); } }), false);
+});
+
+
+it("uses WebView2 directly when the account selects compatibility delivery", () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: () => "webview" } });
+  try {
+    const f = fixture(); f.Api.permission = "granted";
+    let nativeCalls = 0;
+    f.runtime.__VOXLY_DESKTOP_TOASTS_V1__ = { version: 1, create: () => { nativeCalls++; throw Error(); } };
+    createDesktopNotificationDelivery(f.runtime)("message", context);
+    assert.equal(f.delivered.length, 1);
+    assert.equal(nativeCalls, 0);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "localStorage", previous);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  }
 });

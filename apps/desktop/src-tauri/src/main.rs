@@ -5,6 +5,7 @@ mod call_state;
 mod installations;
 #[cfg(target_os = "windows")]
 mod mouse_hook;
+mod native_notifications;
 mod platform;
 mod shortcuts;
 
@@ -581,6 +582,57 @@ async fn set_installation_theme(
 }
 
 #[tauri::command]
+async fn show_desktop_notification(
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    request: native_notifications::Request,
+) -> Result<native_notifications::Delivery, &'static str> {
+    let inner = shell.inner.lock().await;
+    let active = inner.active.as_ref().ok_or("forbidden")?;
+    if !report_caller_matches(
+        shell.voice_generation.load(Ordering::Acquire),
+        window.label(),
+        &active.origin,
+        &window.url().map_err(|_| "forbidden")?,
+    ) {
+        return Err("forbidden");
+    }
+    if !native_notifications::valid_id(&request.id) {
+        return Err("invalid_notification");
+    }
+    Ok(window
+        .app_handle()
+        .state::<native_notifications::Notifications>()
+        .show(&window, request))
+}
+
+#[tauri::command]
+async fn close_desktop_notification(
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    id: String,
+) -> Result<(), &'static str> {
+    let inner = shell.inner.lock().await;
+    let active = inner.active.as_ref().ok_or("forbidden")?;
+    if !report_caller_matches(
+        shell.voice_generation.load(Ordering::Acquire),
+        window.label(),
+        &active.origin,
+        &window.url().map_err(|_| "forbidden")?,
+    ) {
+        return Err("forbidden");
+    }
+    if !native_notifications::valid_id(&id) {
+        return Err("invalid_notification");
+    }
+    window
+        .app_handle()
+        .state::<native_notifications::Notifications>()
+        .close(window.label(), &id);
+    Ok(())
+}
+
+#[tauri::command]
 async fn transition_state(
     app: tauri::AppHandle,
     window: WebviewWindow,
@@ -899,6 +951,8 @@ async fn quit_app(
     let inner = shell.inner.lock().await;
     require_confirmation(&app, &shell, &inner, confirm_leave).await?;
     if let Some(remote) = remote_window(&app) {
+        app.state::<native_notifications::Notifications>()
+            .clear(remote.label());
         remote.destroy().map_err(|_| "window_failed")?;
     }
     app.exit(0);
@@ -952,6 +1006,8 @@ fn main() {
             activate_installation,
             reset_notification_permission,
             set_installation_theme,
+            show_desktop_notification,
+            close_desktop_notification,
             shell_state,
             transition_state,
             report_call_state,
@@ -1028,6 +1084,7 @@ fn main() {
             let (shortcut_events, mut events) =
                 tokio::sync::mpsc::unbounded_channel::<VoiceEvent>();
             let release_delay_ms = preferences.push_to_talk_release_delay_ms;
+            app.manage(native_notifications::Notifications::default());
             app.manage(Shell {
                 reports: call_state::Reports::default(),
                 inner: Mutex::new(Inner {

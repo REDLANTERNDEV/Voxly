@@ -105,6 +105,15 @@ to request notification permission through WebView2. This is off by default
 and saved separately for each Account in the installation profile. Ordinary
 browser settings do not show this desktop control.
 
+Updated desktop builds default to **Windows notifications**, sent through
+Windows' toast API under the installed `app.voxly.desktop` identity. In this
+section, **Delivery → Compatibility (WebView2)** keeps the previous WebView2
+notification UI. The choice is saved separately per Account. Native send/API
+failures fall back to WebView2, while Windows-disabled notifications remain
+suppressed. Do Not Disturb remains Windows-controlled. Use an installed NSIS
+build with its Start-menu shortcut; development builds do not establish the
+installed notification identity.
+
 Background alerts cover new messages, peer arrivals/departures, screen-share
 changes in the connected voice room, and connection interruption/recovery.
 They follow the existing notification master/category switches and self/owner
@@ -135,9 +144,13 @@ content and native storage. Installed Windows tray/minimize/focus behavior is
 still pending acceptance; activation after Quit and external desktop links are
 not implemented. See [ADR-0024](adr/0024-desktop-alert-activation-only-reveals-its-window.md).
 
-Delivery uses WebView2's standard notification UI and browser permission,
-without a native notification plugin. A separate, finite native capability
-resets only the current Installation’s Notification permission. See Microsoft's
+Delivery prefers native Windows toasts without a notification plugin; only a
+finite category, language and temporary handle ID enter native state. Native
+code owns the generic copy and silent XML. Routes and Account identity stay
+web-local. WebView2 permission remains the explicit enabling gate and supports
+compatibility delivery. Separate finite commands reset Notification permission
+and close the current window's own toast handles. See
+[ADR-0026](adr/0026-desktop-native-alerts-keep-webview-fallback.md). See Microsoft's
 [notification handling contract](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2notificationreceivedeventargs?view=webview2-1.0.3912.50).
 Installed Windows acceptance must establish permission, toast delivery,
 tray/lock behavior and foreground behavior; local builds do not establish

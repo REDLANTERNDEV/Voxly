@@ -20,12 +20,12 @@ describe("desktop native trust boundary", () => {
     const build = readFileSync("src-tauri/build.rs", "utf8");
     assert.match(build, /AppManifest::new\(\)\.commands/);
     const commands = [...native.matchAll(/#\[tauri::command\]\s*async fn (\w+)\((?:(?!#\[tauri::command\])[\s\S])*?\{\s*trusted_shell\(&window\)\?;/g)].map((match) => match[1]);
-    assert.equal(commands.length + 4, (native.match(/#\[tauri::command\]/g) ?? []).length);
+    assert.equal(commands.length + 6, (native.match(/#\[tauri::command\]/g) ?? []).length);
     assert.match(native, /async fn report_call_state/);
     assert.match(native, /report_caller_matches\(/);
     assert.match(native, /same_origin\(origin, url\)/);
     assert.match(native, /shell.reports.receive\(generation, request, report\)/);
-    for (const name of ["reset_notification_permission", "set_installation_theme"]) {
+    for (const name of ["reset_notification_permission", "set_installation_theme", "show_desktop_notification", "close_desktop_notification"]) {
       const body = native.slice(native.indexOf(`async fn ${name}`)).split("#[tauri::command]")[0];
       assert.match(body, /report_caller_matches/);
       assert.ok(build.includes(`"${name}"`));

@@ -1,12 +1,14 @@
 import { useId, useState } from "react";
 import type { Translate } from "../app/types.js";
 import {
-  desktopNotificationPermission, readDesktopNotifications,
+  desktopNotificationPermission, readDesktopNotifications, readDesktopNotificationDelivery, writeDesktopNotificationDelivery,
+  type DesktopNotificationDelivery,
   requestDesktopNotificationPermission, resetDesktopNotificationPermission, writeDesktopNotifications
 } from "../lib/desktopNotifications.js";
 
 export function DesktopNotificationSettings({ userId, t }: { userId: string; t: Translate }) {
   const labelId = useId();
+  const [delivery, setDelivery] = useState(() => readDesktopNotificationDelivery(userId));
   const [enabled, setEnabled] = useState(() => readDesktopNotifications(userId));
   const [permission, setPermission] = useState(() => desktopNotificationPermission(typeof window === "undefined" ? {} : window));
   const [pending, setPending] = useState(false);
@@ -57,6 +59,19 @@ export function DesktopNotificationSettings({ userId, t }: { userId: string; t: 
         disabled={pending || (!enabled && permission === "unavailable")}
         onClick={() => { void toggle(); }}><span aria-hidden="true" /></button>
     </div>
+    {window.__VOXLY_DESKTOP_TOASTS_V1__?.version === 1 && <label className="audio-toggle-control">
+      <span>{t("desktopNotifications.delivery")}</span>
+      <select value={delivery} disabled={pending} onChange={(event) => {
+        const next = event.target.value as DesktopNotificationDelivery;
+        const saved = writeDesktopNotificationDelivery(userId, next);
+        setFailed(!saved);
+        setReset("idle");
+        if (saved) setDelivery(next);
+      }}>
+        <option value="native">{t("desktopNotifications.windowsDelivery")}</option>
+        <option value="webview">{t("desktopNotifications.compatibilityDelivery")}</option>
+      </select>
+    </label>}
     {permission === "denied" && window.__VOXLY_DESKTOP_NOTIFICATIONS_V1__?.version === 1 &&
       <button type="button" className="btn" disabled={pending} onClick={() => { void recover(); }}>{t("desktopNotifications.reset")}</button>}
     <p className="muted small" role="status">{t(reset === "done" ? "desktopNotifications.resetDone" : reset === "failed" ? "desktopNotifications.resetFailed" : failed ? "desktopNotifications.saveFailed"

@@ -30,7 +30,7 @@ pub fn open_installation(
     let url = saved.origin.parse().map_err(|_| "invalid_address")?;
     let origin = saved.origin.clone();
     let bootstrap = format!(
-        "{}({}, {});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});",
+        "{}({}, {});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});",
         include_str!("voice-bridge.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
         serde_json::to_string(&microphone_mode).map_err(|_| "invalid_address")?,
@@ -41,6 +41,8 @@ pub fn open_installation(
         include_str!("activation.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
         include_str!("appearance.js"),
+        serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
+        include_str!("native-notifications.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
         include_str!("notifications.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?
@@ -56,7 +58,9 @@ pub fn open_installation(
             .permission("allow-report-call-state")
             .permission("allow-activate-installation")
             .permission("allow-reset-notification-permission")
-            .permission("allow-set-installation-theme"),
+            .permission("allow-set-installation-theme")
+            .permission("allow-show-desktop-notification")
+            .permission("allow-close-desktop-notification"),
     )
     .map_err(|_| "window_failed")?;
     let navigation_app = app.clone();
@@ -69,6 +73,11 @@ pub fn open_installation(
         // Voice intent stays one-way; the separate state bridge can only report.
         .initialization_script(&bootstrap)
         .on_navigation(move |url| {
+            if let Some(alerts) =
+                navigation_app.try_state::<crate::native_notifications::Notifications>()
+            {
+                alerts.clear(&installation_label(generation));
+            }
             if let Some(shell) = navigation_app.try_state::<crate::Shell>() {
                 shell.reports.invalidate();
             }
@@ -120,6 +129,12 @@ pub fn open_installation(
     }
     let close_window = window.clone();
     window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Destroyed) {
+            close_window
+                .app_handle()
+                .state::<crate::native_notifications::Notifications>()
+                .clear(close_window.label());
+        }
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
             // Keep the webview and all peer connections alive when hidden.
             if close_window.hide().is_ok() {

@@ -658,3 +658,28 @@ No dependency, signing key, updater endpoint or protocol registration was added.
   Windows high contrast and check accessibility colors take precedence.
 - Check the welcome window matches its dark surface. Close during a call and
   restore from the tray; confirm media remains connected.
+
+## Native Windows notification delivery (pending installed acceptance)
+
+1. Install the new NSIS build with a Start-menu shortcut and deploy the new web
+   client. Enable Desktop notifications in Settings → Audio and leave Delivery
+   set to Windows notifications. Trigger a message while Voxly is minimized or
+   tray-hidden. Confirm Voxly identity, Windows banner, no extra WebView2 popup,
+   silent delivery and notification-center history. After the banner times out,
+   click its history entry; confirm current channel navigation without joining
+   or switching voice. Record banner and history activation independently.
+2. Verify native category/deafen/focus/master gates and English/Turkish generic
+   copy. Check repeated alerts replace the old category and remain silent.
+3. Select Compatibility (WebView2); check the previous delivery path and click
+   behavior. Reopen Settings and verify the per-Account choice persists.
+4. Disable Voxly notifications in Windows; verify no fallback bypasses the OS
+   setting. With Do Not Disturb, verify Windows controls banner suppression.
+5. Sign out/switch Account, navigate/retry/switch Installation, or Quit during
+   pending delivery. Verify old alerts are retired, old clicks cannot act on
+   the new session, and media stays connected when only hiding the window.
+6. Simulate native API/send failure and check one WebView2 fallback. A native
+   `Show` return is not proof of delivery, history retention or click dispatch;
+   these require the installed test. Full Windows compilation also remains a
+   release gate. A Windows-target probe checked the actual WinRT API module
+   with minimal Tauri interface stubs; full cross-check on macOS was blocked
+   by missing `x86_64-w64-mingw32-gcc` for the existing ring dependency.
