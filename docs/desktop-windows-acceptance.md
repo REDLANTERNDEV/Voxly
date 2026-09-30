@@ -34,6 +34,55 @@ The contributor subsequently reported that the new global mute shortcut
 tray state, conflict/restart behavior, and moderation states were not supplied,
 so this is an initial smoke result rather than completion of the shortcut row.
 
+## Mouse shortcut follow-up — 2026-09-30
+
+The contributor now reports shortcuts are generally successful and requests
+continuing the desktop plan. The shallow-press cause remains unresolved; this
+is not completion of the full installed shortcut matrix.
+The contributor reports intermittent failures
+with Mouse 4/5, including Ctrl combinations, while Ctrl+N worked for 25 presses.
+The press-latch change in `71d5af61` did not resolve the reported failure.
+Commit `5cb04ed8` moves mouse press/release gating to the hook thread, waits
+through the settings lock for accepted presses, and suppresses bound clicks
+when the installation window is foreground. Its portable gate test verifies
+those rules; it does not reproduce the physical Windows failure.
+
+The latest report distinguishes "half" presses followed by release, which fail,
+from full long presses followed by release and a one-second wait, which work.
+The contributor clarified that these are quick, shallow presses on a Logitech
+Superlight 1. The saved binding, focus, tested build, navigation behavior, and
+number of microphone transitions per failed press must still be confirmed.
+This report does not establish whether a press is missing or extra transitions
+occur.
+
+On the rebuilt `5cb04ed8` app, test Mouse 5 alone with Voxly focused. Check every
+transition during 20 presses, then verify a 21st press inverts the starting
+state; final parity alone can hide two missed presses or extra toggles. Compare
+quick clicks one second apart, full holds one second apart, and rapid full
+clicks to separate press duration from the interval. Record any Back/Forward
+navigation. If failure persists, capture native press/release and web-intent
+delivery evidence before applying another timing or latch change.
+
+For an independent input check, open
+[`mouse-input-check.html`](../apps/desktop/scripts/mouse-input-check.html) in a
+browser on the same Windows PC. Keep that browser focused and compare 10 shallow
+presses with 10 full clicks, one second apart; reset between runs and copy each
+report. This requires no shell rebuild or web deployment. It records middle/side
+button events, modifiers, and relative timing only, with no network traffic.
+It distinguishes event counts/timing delivered to that browser, not the complete
+native-to-web mute path. Missing browser events alone cannot identify the failing
+hardware, driver, hook, or browser stage.
+
+One supplied browser report contains 16 complete Mouse 4 down/up pairs and 10
+complete Mouse 5 pairs, no modifiers, no repeated-down or unmatched-up events,
+and no button held at the end. Mouse 4 hold durations range from 23.1 to 129.8
+ms, with some releases followed by another press after 50.7–126 ms. Mouse 5
+holds range from 196.6 to 268 ms. The contributor describes 10 clicks, but which
+button(s) that physical count covers and which sequence used shallow presses
+still need confirmation. Extra complete click pairs would be different from a
+missing release; this browser trace alone does not locate their source or
+reproduce the Voxly native-to-web failure.
+
 ## Test setup
 
 Record:
@@ -102,6 +151,7 @@ all consequential cases inside the real remote interface.
 | Native authority | Remote top frame and embedded content cannot invoke chooser/updater/opener/filesystem commands | not run |
 | Single instance | Second launch restores first instance, no second media runtime | not run |
 | Global mute shortcuts | Keyboard and Mouse 3/4/5 combinations persist; one press toggles once with another app/game focused or tray hidden; keyboard conflicts reported and owner mute cannot be bypassed | Keyboard shortcut initial contributor pass; mouse support requires installed Windows test |
+| Global deafen shortcut | Separate binding persists; toggles existing self-deafen with game focus or tray hiding; preserves owner locks, microphone-test isolation, receive-only and microphone restoration rules | Implemented; installed Windows test not run |
 | Browser sign-in | Signed-in browser approves the matching number; desktop profile gains its own session, browser remains signed in; refusal/expiry/cancellation/revocation stay safe | Implemented; installed Windows test not run |
 | Device revocation | Existing Account & devices revocation signs desktop out and ends room access | not run |
 | Deployment update | Active voice/capture/media check delays reload; idle pending notice reloads only on explicit action | not run |
@@ -289,6 +339,66 @@ collection prevents sign-in, and restarting the desktop window loses an
 uncollected request. Record behavior and installation/runtime versions without
 sharing the request URL or session cookies.
 
+## Next Windows test: global deafen
+
+Rebuild the native app and deploy the updated web client to the installation.
+In **Global shortcuts**, save different mute/deafen combinations (for example
+Ctrl+Alt+M and Ctrl+Alt+D). Join voice with a browser peer, focus Notepad or a
+game, then test hidden to tray:
+
+1. Deafen disables your microphone and participant voices. Undeafen restores
+   the microphone only if it was on before deafen and its track is still live.
+   A previously muted microphone remains muted. Screen audio keeps its own
+   subscription/volume behavior.
+2. Hold each shortcut: one action per press. Press both keys independently,
+   release one, and confirm that release does not unlock repeats of the other.
+   Repeat with mute on Mouse 4 and deafen on Mouse 5; the focused game still
+   receives clicks, and focused Voxly does not navigate Back/Forward.
+3. Change, clear, and restart with both bindings. The unaffected binding keeps
+   working. An identical combination is refused for the second action; an OS
+   keyboard conflict retains that action's old combination.
+4. Outside voice or disconnected, deafen does nothing. In a receive-only call,
+   deafen/undeafen changes playback without microphone permission. Owner deafen
+   remains locked. Owner mute and the AFK room cannot regain microphone audio
+   through undeafen. During microphone monitoring, including startup, the
+   shortcut must not cancel its temporary deafen state.
+
+Record shell commit, installation version, Windows/WebView2 versions, chosen
+bindings, focus/tray state, and pass/fail. Local helper/host tests do not complete
+these Windows cases.
+
+## Next Windows test: Push to talk and Push to mute
+
+Rebuild the Windows app and deploy the updated web client first. With a browser
+peer listening, record distinct shortcuts for **Push to talk** and **Push to
+mute** in the local chooser, then select **Microphone mode**:
+
+1. Select Push to talk and join with the microphone enabled. Before the first
+   press, the peer must hear silence. Hold the shortcut and speak: the peer
+   hears you only while held. Release while continuing to speak: sound stops.
+   Repeat quick press/release, repeated key-down, Mouse 4/5, game focus, and
+   hidden-to-tray cases. Observe the peer's microphone/speaking state too.
+2. Select Push to mute. Speech is audible with the microphone enabled; holding
+   the shortcut suppresses it, and release restores it. Repeat while manually
+   muted: release must keep it muted. Mute/deafen toggle bindings still work
+   independently, and recording in the chooser does not send a hold grant.
+3. While holding Push to talk, focus the chooser, release, and verify silence.
+   Change or clear the held binding and verify it ends. A duplicate binding or
+   OS registration conflict must retain the previous combination. Restart and
+   verify both bindings/mode persist; an unavailable Push to talk binding must
+   leave the updated client silent. Select Open mic to return to normal input.
+4. Release during a microphone-device change, slow installation health check,
+   or delayed server acknowledgement. Neither the old nor replacement track
+   may continue sending. Repeat deafen/undeafen, owner mute/unmute, AFK moves,
+   receive-only joins, room changes, disconnect/reconnect, and microphone tests.
+   Holds never request permission or bypass locks. A held talk grant cannot
+   resume after deafen, owner mute, or a room/reconnect transition without a
+   new physical press; held mute remains suppressed until release.
+
+Record Windows/WebView2 versions, shell/installation revisions, mode, bindings,
+keyboard layout, focus/tray/game state, and pass/fail. Validate the audible
+result with a peer; local helper tests do not establish Windows release timing.
+
 ## Development verification on macOS
 
 The browser sign-in and owner-link changes type-checked across all workspaces.
@@ -303,3 +413,53 @@ The previous desktop shortcut increment passed Rust tests (11/11), clippy,
 formatting, and a macOS host bundle. No native Rust code changed in the browser
 sign-in increment. An installed Windows browser-approval test and the remaining
 media cases above are still needed.
+
+### Global deafen increment, 2026-09-30
+
+The following development checks passed on macOS:
+
+- `npm run typecheck` across all workspaces.
+- `npm test`: shared 19/19, server 397/397, web 811/811, bot 277/277,
+  and desktop 18/18. After adding the final independent deafen chooser
+  regression, `npm test -w @voxly/desktop` passed 19/19.
+- `npm run build` and `npm run build -w @voxly/desktop`. The web build retains
+  its existing chunk-size warning.
+- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline`:
+  15/15, including separate keyboard/mouse holds and legacy preferences.
+- `cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline`.
+- `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline --all-targets -- -D warnings`.
+- `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check`.
+- `npm run bundle -w @voxly/desktop -- --no-bundle --debug -- --locked`:
+  macOS host executable built; no installer produced.
+- English and Turkish chooser preview at a 390-pixel width, and
+  `git diff --check`.
+
+Loopback server/fixture checks needed sandbox local-listen permission; the
+authorized reruns passed. These checks did not compile the Windows-only hook
+or exercise Windows/WebView2, a game, or physical mouse input. The global
+deafen cases above remain pending on a rebuilt Windows app connected to the
+updated installation web client.
+
+### Push to talk / Push to mute increment, 2026-09-30
+
+`npm run typecheck` and `npm test` passed across all workspaces: shared 19/19,
+server 397/397, web 817/817, bot 277/277, desktop 20/20. The affected web and
+desktop suites were rerun after the final hold-gate/bridge refinements.
+`npm run build`, `npm run build -w @voxly/web`, and
+`npm run build -w @voxly/desktop` passed; the existing web chunk-size warning
+remains. The English and Turkish chooser preview shows the three modes and
+four independent action groups.
+
+Native checks passed on the macOS host:
+
+- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline`:
+  16/16, with local-listen permission for the loopback health fixture.
+- `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline --all-targets -- -D warnings`.
+- `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check`.
+- `npm run bundle -w @voxly/desktop -- --no-bundle --debug -- --locked`:
+  host executable built without an installer.
+- `git diff --check`.
+
+Windows-only hook compilation, physical key/button release, WebView2 background
+timing, and audible peer tests remain pending in the cases above. Existing
+macOS host checks do not establish installed Windows acceptance.

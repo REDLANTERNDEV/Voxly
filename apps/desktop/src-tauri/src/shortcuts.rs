@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 #[cfg(any(test, target_os = "windows"))]
@@ -11,9 +11,31 @@ pub const SHIFT: u8 = 4;
 #[cfg(any(test, target_os = "windows"))]
 pub const SUPER: u8 = 8;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Action {
+    Mute,
+    Deafen,
+    PushToTalk,
+    PushToMute,
+}
+
+impl Action {
+    pub const ALL: [Self; 4] = [Self::Mute, Self::Deafen, Self::PushToTalk, Self::PushToMute];
+
+    pub fn index(self) -> usize {
+        match self {
+            Self::Mute => 0,
+            Self::Deafen => 1,
+            Self::PushToTalk => 2,
+            Self::PushToMute => 3,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct ShortcutLatch {
     pressed: AtomicBool,
+    key_id: AtomicU32,
 }
 
 impl ShortcutLatch {
@@ -25,8 +47,22 @@ impl ShortcutLatch {
         !self.pressed.swap(true, Ordering::AcqRel)
     }
 
-    pub fn keyboard_released(&self) {
-        self.pressed.store(false, Ordering::Release);
+    pub fn bind(&self, binding: Option<&str>) {
+        self.reset();
+        let id = match binding.and_then(|value| parse_binding(value).ok()) {
+            Some(Binding::Keyboard(key)) => key.id(),
+            _ => 0,
+        };
+        self.key_id.store(id, Ordering::Release);
+    }
+
+    pub fn keyboard_pressed(&self, shortcut: &Shortcut) -> bool {
+        self.key_id.load(Ordering::Acquire) == shortcut.id() && self.begin()
+    }
+
+    pub fn keyboard_released(&self, shortcut: &Shortcut) -> bool {
+        self.key_id.load(Ordering::Acquire) == shortcut.id()
+            && self.pressed.swap(false, Ordering::AcqRel)
     }
 }
 
@@ -40,6 +76,7 @@ pub struct MouseBinding {
 #[derive(Default, Debug, PartialEq)]
 pub struct MouseDecision {
     pub dispatch: bool,
+    pub released: bool,
     pub suppress: bool,
 }
 
@@ -79,12 +116,14 @@ impl MouseShortcutGate {
             self.suppressed = false;
             return MouseDecision {
                 dispatch: false,
+                released: true,
                 suppress,
             };
         }
         if self.held {
             return MouseDecision {
                 dispatch: false,
+                released: false,
                 suppress: self.suppressed,
             };
         }
@@ -95,11 +134,63 @@ impl MouseShortcutGate {
         self.suppressed = installation_focused;
         MouseDecision {
             dispatch: true,
+            released: false,
             suppress: self.suppressed,
         }
     }
 }
 
+#[cfg(any(test, target_os = "windows"))]
+#[derive(Default)]
+pub struct MouseShortcutGates {
+    gates: Vec<(Action, MouseShortcutGate)>,
+}
+
+#[cfg(any(test, target_os = "windows"))]
+impl MouseShortcutGates {
+    pub fn set(&mut self, action: Action, binding: Option<MouseBinding>) {
+        self.gates.retain(|(registered, _)| *registered != action);
+        if let Some(binding) = binding {
+            self.gates.push((action, MouseShortcutGate::new(binding)));
+        }
+    }
+
+    pub fn handle(
+        &mut self,
+        button: u8,
+        modifiers: u8,
+        pressed: bool,
+        focused: bool,
+    ) -> (Option<(Action, bool)>, bool) {
+        if pressed
+            && self
+                .gates
+                .iter()
+                .any(|(_, gate)| gate.binding.button == button && gate.held)
+        {
+            return (
+                None,
+                self.gates
+                    .iter()
+                    .any(|(_, gate)| gate.binding.button == button && gate.suppressed),
+            );
+        }
+        let mut dispatch = None;
+        let mut suppress = false;
+        for (action, gate) in &mut self.gates {
+            let decision = gate.handle(button, modifiers, pressed, focused);
+            if decision.dispatch {
+                dispatch = Some((*action, true));
+            } else if decision.released {
+                dispatch = Some((*action, false));
+            }
+            suppress |= decision.suppress;
+        }
+        (dispatch, suppress)
+    }
+}
+
+#[derive(PartialEq)]
 pub enum Binding {
     Keyboard(Shortcut),
     Mouse(MouseBinding),
@@ -164,37 +255,70 @@ pub trait Registry {
     fn clear(&mut self) -> Result<(), &'static str>;
 }
 
-pub struct NativeRegistry<'a>(pub &'a tauri::AppHandle);
+pub struct NativeRegistry<'a> {
+    pub app: &'a tauri::AppHandle,
+    pub action: Action,
+    pub current: Option<String>,
+}
 impl Registry for NativeRegistry<'_> {
     fn register(&mut self, binding: &str) -> Result<(), &'static str> {
-        match parse_binding(binding)? {
+        let result = match parse_binding(binding)? {
             Binding::Keyboard(shortcut) => self
-                .0
+                .app
                 .global_shortcut()
                 .register(shortcut)
                 .map_err(|_| "shortcut_unavailable"),
             Binding::Mouse(mouse) => {
                 #[cfg(target_os = "windows")]
                 {
-                    crate::mouse_hook::register(self.0, mouse)
+                    crate::mouse_hook::register(self.app, self.action, mouse)
                 }
                 #[cfg(not(target_os = "windows"))]
                 {
-                    let _ = mouse;
+                    let _ = (mouse, self.action);
                     Err("shortcut_unavailable")
                 }
             }
-        }
-    }
-    fn clear(&mut self) -> Result<(), &'static str> {
-        self.0
-            .global_shortcut()
-            .unregister_all()
-            .map_err(|_| "shortcut_failed")?;
-        #[cfg(target_os = "windows")]
-        crate::mouse_hook::clear()?;
+        };
+        result?;
+        self.current = Some(binding.into());
         Ok(())
     }
+    fn clear(&mut self) -> Result<(), &'static str> {
+        if let Some(binding) = self.current.as_deref() {
+            match parse_binding(binding)? {
+                Binding::Keyboard(shortcut) => self
+                    .app
+                    .global_shortcut()
+                    .unregister(shortcut)
+                    .map_err(|_| "shortcut_failed")?,
+                Binding::Mouse(_) => {
+                    #[cfg(target_os = "windows")]
+                    crate::mouse_hook::clear(self.action)?;
+                }
+            }
+        }
+        self.current = None;
+        Ok(())
+    }
+}
+
+pub fn distinct_bindings(first: Option<&str>, second: Option<&str>) -> Result<(), &'static str> {
+    if let (Some(first), Some(second)) = (first, second) {
+        if parse_binding(first)? == parse_binding(second)? {
+            return Err("shortcut_duplicate");
+        }
+    }
+    Ok(())
+}
+
+pub fn distinct_shortcuts(bindings: [Option<&str>; 4]) -> Result<(), &'static str> {
+    for (index, first) in bindings.iter().enumerate() {
+        for second in &bindings[index + 1..] {
+            distinct_bindings(*first, *second)?;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Default)]
@@ -261,6 +385,146 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hold_actions_report_release_after_modifiers_change_and_reject_duplicate_bindings() {
+        let mut gates = MouseShortcutGates::default();
+        gates.set(
+            Action::PushToTalk,
+            Some(MouseBinding {
+                button: 4,
+                modifiers: CONTROL,
+            }),
+        );
+        gates.set(
+            Action::PushToMute,
+            Some(MouseBinding {
+                button: 5,
+                modifiers: 0,
+            }),
+        );
+        assert_eq!(
+            gates.handle(4, CONTROL, true, false),
+            (Some((Action::PushToTalk, true)), false)
+        );
+        assert_eq!(
+            gates.handle(5, 0, true, false),
+            (Some((Action::PushToMute, true)), false)
+        );
+        assert_eq!(gates.handle(4, 0, true, false), (None, false));
+        assert_eq!(
+            gates.handle(4, 0, false, true),
+            (Some((Action::PushToTalk, false)), false)
+        );
+        assert_eq!(
+            gates.handle(5, 0, false, false),
+            (Some((Action::PushToMute, false)), false)
+        );
+        assert_eq!(gates.handle(5, 0, false, false), (None, false));
+        assert_eq!(
+            distinct_shortcuts([
+                Some("Control+KeyM"),
+                Some("Mouse5"),
+                Some("Mouse4"),
+                Some("Mouse5")
+            ]),
+            Err("shortcut_duplicate")
+        );
+    }
+
+    #[test]
+    fn keyboard_releases_and_binding_changes_do_not_unlock_the_other_action() {
+        let mute = ShortcutLatch::default();
+        let deafen = ShortcutLatch::default();
+        mute.bind(Some("Control+KeyM"));
+        deafen.bind(Some("Control+KeyD"));
+        assert!(mute.begin());
+        assert!(deafen.begin());
+        let key = Shortcut::from_str("Control+KeyM").unwrap();
+        mute.keyboard_released(&key);
+        deafen.keyboard_released(&key);
+        assert!(mute.begin());
+        assert!(!deafen.begin(), "the deafen key remains held");
+        deafen.bind(Some("Control+KeyN"));
+        assert!(deafen.begin());
+        assert!(!mute.begin(), "changing deafen cannot reset held mute");
+    }
+
+    #[test]
+    fn two_mouse_actions_keep_separate_holds_and_registration_lifetimes() {
+        let mut gates = MouseShortcutGates::default();
+        gates.set(
+            Action::Mute,
+            Some(MouseBinding {
+                button: 4,
+                modifiers: 0,
+            }),
+        );
+        gates.set(
+            Action::Deafen,
+            Some(MouseBinding {
+                button: 5,
+                modifiers: 0,
+            }),
+        );
+        assert_eq!(
+            gates.handle(4, 0, true, true),
+            (Some((Action::Mute, true)), true)
+        );
+        assert_eq!(
+            gates.handle(5, 0, true, false),
+            (Some((Action::Deafen, true)), false)
+        );
+        gates.set(Action::Deafen, None);
+        assert_eq!(
+            gates.handle(4, 0, true, true),
+            (None, true),
+            "clearing deafen preserves held mute"
+        );
+        assert_eq!(
+            gates.handle(4, 0, false, false),
+            (Some((Action::Mute, false)), true)
+        );
+        assert_eq!(gates.handle(5, 0, false, false), (None, false));
+        gates.set(
+            Action::Deafen,
+            Some(MouseBinding {
+                button: 4,
+                modifiers: CONTROL,
+            }),
+        );
+        assert_eq!(
+            gates.handle(4, CONTROL, true, true),
+            (Some((Action::Deafen, true)), true)
+        );
+        assert_eq!(
+            gates.handle(4, 0, true, true),
+            (None, true),
+            "changing modifiers while held cannot fire the other action"
+        );
+        assert_eq!(
+            gates.handle(4, 0, false, true),
+            (Some((Action::Deafen, false)), true)
+        );
+        assert_eq!(
+            gates.handle(4, 0, true, false),
+            (Some((Action::Mute, true)), false)
+        );
+    }
+
+    #[test]
+    fn mute_and_deafen_cannot_share_the_same_binding() {
+        assert_eq!(
+            distinct_bindings(Some("Mouse5"), Some("Mouse5")),
+            Err("shortcut_duplicate")
+        );
+        assert_eq!(
+            distinct_bindings(Some("Control+KeyM"), Some("Control+KeyM")),
+            Err("shortcut_duplicate")
+        );
+        assert!(distinct_bindings(Some("Mouse5"), Some("Control+Mouse5")).is_ok());
+        assert!(distinct_bindings(Some("Control+KeyM"), None).is_ok());
+    }
+
+    #[test]
     fn mouse_press_cycles_dispatch_once_and_only_block_installation_navigation() {
         let mut plain = MouseShortcutGate::new(MouseBinding {
             button: 5,
@@ -271,6 +535,7 @@ mod tests {
                 plain.handle(5, 0, true, true),
                 MouseDecision {
                     dispatch: true,
+                    released: false,
                     suppress: true
                 }
             );
@@ -278,6 +543,7 @@ mod tests {
                 plain.handle(5, 0, false, true),
                 MouseDecision {
                     dispatch: false,
+                    released: true,
                     suppress: true
                 }
             );
@@ -295,6 +561,7 @@ mod tests {
                 gate.handle(5, CONTROL, true, true),
                 MouseDecision {
                     dispatch: true,
+                    released: false,
                     suppress: true
                 }
             );
@@ -302,6 +569,7 @@ mod tests {
                 gate.handle(5, CONTROL, true, true),
                 MouseDecision {
                     dispatch: false,
+                    released: false,
                     suppress: true
                 }
             );
@@ -310,6 +578,7 @@ mod tests {
                 gate.handle(5, 0, false, false),
                 MouseDecision {
                     dispatch: false,
+                    released: true,
                     suppress: true
                 }
             );
@@ -318,10 +587,18 @@ mod tests {
             gate.handle(5, CONTROL, true, false),
             MouseDecision {
                 dispatch: true,
+                released: false,
                 suppress: false
             }
         );
-        assert_eq!(gate.handle(5, 0, false, false), ignored);
+        assert_eq!(
+            gate.handle(5, 0, false, false),
+            MouseDecision {
+                dispatch: false,
+                released: true,
+                suppress: false
+            }
+        );
     }
 
     #[derive(Default)]

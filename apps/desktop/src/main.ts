@@ -7,7 +7,7 @@ import { mountShortcutSettings, type ShortcutSnapshot } from "./shortcuts.js";
 
 interface Installation { id: string; origin: string }
 interface Snapshot extends ShortcutSnapshot {
-  preferences: { installations: Installation[]; language: Language; trayAcknowledged: boolean; muteShortcut: string | null };
+  preferences: { installations: Installation[]; language: Language; trayAcknowledged: boolean; muteShortcut: string | null; deafenShortcut: string | null; pushToTalkShortcut: string | null; pushToMuteShortcut: string | null; microphoneMode: "openMic" | "pushToTalk" | "pushToMute" };
   active: Installation | null;
   platform: string;
   shellVersion: string;
@@ -33,12 +33,20 @@ function t(key: TranslationKey) { return translate(language, key); }
 function status(key: TranslationKey) { element("status").textContent = t(key); }
 function probeStatus(key: TranslationKey) { element("probe-status").textContent = t(key); }
 
-const shortcutSettings = mountShortcutSettings({ t, save: async (binding) => {
+const shortcutSettings = ([
+  ["mute", "set_mute_shortcut"], ["deafen", "set_deafen_shortcut"],
+  ["push-to-talk", "set_push_to_talk_shortcut"], ["push-to-mute", "set_push_to_mute_shortcut"]
+] as const).map(([action, command]) => mountShortcutSettings({ t, action, save: async (binding) => {
   await run(async () => {
-    try { state = await invoke<Snapshot>("set_mute_shortcut", { binding }); }
+    try { state = await invoke<Snapshot>(command, { binding }); }
     finally { state = await invoke<Snapshot>("shell_state"); }
   });
-} });
+} }));
+
+element<HTMLSelectElement>("microphone-mode").addEventListener("change", () => {
+  const mode = element<HTMLSelectElement>("microphone-mode").value;
+  void run(async () => { state = await invoke<Snapshot>("set_microphone_mode", { mode }); });
+});
 
 function renderTranslations() {
   document.documentElement.lang = language;
@@ -93,7 +101,10 @@ function renderInstallations() {
   element<HTMLButtonElement>("save").disabled = !native || busy || !state;
   element<HTMLButtonElement>("quit").disabled = !native || busy || !state;
   element<HTMLSelectElement>("language").disabled = native && (!state || busy);
-  shortcutSettings.render(state, native && state?.platform === "windows" && !busy);
+  const shortcutsAvailable = native && state?.platform === "windows" && !busy;
+  for (const settings of shortcutSettings) settings.render(state, shortcutsAvailable);
+  element<HTMLSelectElement>("microphone-mode").disabled = !shortcutsAvailable;
+  element<HTMLSelectElement>("microphone-mode").value = state?.preferences.microphoneMode ?? "openMic";
 }
 
 async function confirmAction(quitting = false): Promise<boolean> {

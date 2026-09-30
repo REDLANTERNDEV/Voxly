@@ -11,25 +11,29 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW, PeekMessageW,
     PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE,
-    WH_MOUSE_LL, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_QUIT, WM_XBUTTONDOWN, WM_XBUTTONUP,
+    WH_MOUSE_LL, WM_APP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_QUIT, WM_XBUTTONDOWN, WM_XBUTTONUP,
 };
 
-use crate::shortcuts::{MouseBinding, MouseShortcutGate, ALT, CONTROL, SHIFT, SUPER};
-
-#[derive(Clone, Copy)]
-pub struct MousePress {
-    pub button: u8,
-    pub modifiers: u8,
-}
+use crate::shortcuts::{Action, MouseBinding, MouseShortcutGates, ALT, CONTROL, SHIFT, SUPER};
 
 struct HookContext {
     app: AppHandle,
-    gate: MouseShortcutGate,
+    gates: MouseShortcutGates,
 }
+
+struct HookUpdate {
+    action: Action,
+    binding: Option<MouseBinding>,
+    done: mpsc::SyncSender<()>,
+}
+
+const UPDATE_BINDING: u32 = WM_APP + 1;
 
 struct HookThread {
     id: u32,
     join: JoinHandle<()>,
+    updates: mpsc::Sender<HookUpdate>,
+    bindings: [Option<MouseBinding>; 4],
 }
 
 static HOOK: OnceLock<Mutex<Option<HookThread>>> = OnceLock::new();
@@ -92,22 +96,21 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: usize, lparam: isize) ->
             let installation_hwnd = INSTALLATION_HWND.load(Ordering::Acquire);
             let installation_focused = installation_hwnd != 0
                 && unsafe { GetForegroundWindow() } as isize == installation_hwnd;
-            let (app, decision) = CONTEXT.with(|slot| {
+            let (app, action, suppress) = CONTEXT.with(|slot| {
                 let mut context = slot.borrow_mut();
                 let Some(context) = context.as_mut() else {
-                    return (None, Default::default());
+                    return (None, None, false);
                 };
-                let decision =
+                let (dispatch, suppress) =
                     context
-                        .gate
+                        .gates
                         .handle(button, modifiers, pressed, installation_focused);
-                (decision.dispatch.then(|| context.app.clone()), decision)
+                (dispatch.map(|_| context.app.clone()), dispatch, suppress)
             });
-            if let Some(app) = app {
-                let event = MousePress { button, modifiers };
-                tauri::async_runtime::spawn(crate::handle_mouse_shortcut(app, event));
+            if let (Some(app), Some((action, pressed))) = (app, action) {
+                crate::queue_voice_action(&app, action, pressed);
             }
-            if decision.suppress {
+            if suppress {
                 // A bound side button must not navigate away from the active
                 // installation. Other windows, including games, receive it.
                 return 1;
@@ -117,24 +120,50 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: usize, lparam: isize) ->
     unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
 }
 
-pub fn register(app: &AppHandle, binding: MouseBinding) -> Result<(), &'static str> {
+fn update(
+    running: &mut HookThread,
+    action: Action,
+    binding: Option<MouseBinding>,
+) -> Result<(), &'static str> {
+    let (done, finished) = mpsc::sync_channel(1);
+    running
+        .updates
+        .send(HookUpdate {
+            action,
+            binding,
+            done,
+        })
+        .map_err(|_| "shortcut_failed")?;
+    if unsafe { PostThreadMessageW(running.id, UPDATE_BINDING, 0, 0) } == 0 {
+        return Err("shortcut_failed");
+    }
+    finished.recv().map_err(|_| "shortcut_failed")?;
+    running.bindings[action.index()] = binding;
+    Ok(())
+}
+
+pub fn register(
+    app: &AppHandle,
+    action: Action,
+    binding: MouseBinding,
+) -> Result<(), &'static str> {
     let mut hook = HOOK
         .get_or_init(|| Mutex::new(None))
         .lock()
         .map_err(|_| "shortcut_failed")?;
-    if hook.is_some() {
-        return Ok(());
+    if let Some(running) = hook.as_mut() {
+        return update(running, action, Some(binding));
     }
     let (send, receive) = mpsc::sync_channel(1);
+    let (updates, pending) = mpsc::channel::<HookUpdate>();
     let app = app.clone();
     let join = thread::Builder::new()
         .name("voxly-mouse-shortcut".into())
         .spawn(move || {
             CONTEXT.with(|slot| {
-                *slot.borrow_mut() = Some(HookContext {
-                    app,
-                    gate: MouseShortcutGate::new(binding),
-                })
+                let mut gates = MouseShortcutGates::default();
+                gates.set(action, Some(binding));
+                *slot.borrow_mut() = Some(HookContext { app, gates })
             });
             // A message queue must exist before PostThreadMessageW may stop us.
             // MSG contains only Win32 handles, integers, and a POINT; zero is valid.
@@ -155,6 +184,17 @@ pub fn register(app: &AppHandle, binding: MouseBinding) -> Result<(), &'static s
             }
             let _ = send.send(Ok(id));
             while unsafe { GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) } > 0 {
+                if message.message == UPDATE_BINDING {
+                    while let Ok(update) = pending.try_recv() {
+                        CONTEXT.with(|slot| {
+                            if let Some(context) = slot.borrow_mut().as_mut() {
+                                context.gates.set(update.action, update.binding);
+                            }
+                        });
+                        let _ = update.done.send(());
+                    }
+                    continue;
+                }
                 unsafe {
                     DispatchMessageW(&message);
                 }
@@ -167,7 +207,14 @@ pub fn register(app: &AppHandle, binding: MouseBinding) -> Result<(), &'static s
         .map_err(|_| "shortcut_unavailable")?;
     match receive.recv().map_err(|_| "shortcut_unavailable")? {
         Ok(id) => {
-            *hook = Some(HookThread { id, join });
+            let mut bindings = [None; 4];
+            bindings[action.index()] = Some(binding);
+            *hook = Some(HookThread {
+                id,
+                join,
+                updates,
+                bindings,
+            });
             Ok(())
         }
         Err(error) => {
@@ -177,14 +224,25 @@ pub fn register(app: &AppHandle, binding: MouseBinding) -> Result<(), &'static s
     }
 }
 
-pub fn clear() -> Result<(), &'static str> {
+pub fn clear(action: Action) -> Result<(), &'static str> {
     let mut hook = HOOK
         .get_or_init(|| Mutex::new(None))
         .lock()
         .map_err(|_| "shortcut_failed")?;
-    let Some(running) = hook.as_ref() else {
+    let Some(running) = hook.as_mut() else {
         return Ok(());
     };
+    if running.bindings[action.index()].is_none() {
+        return Ok(());
+    }
+    if running
+        .bindings
+        .iter()
+        .enumerate()
+        .any(|(index, binding)| index != action.index() && binding.is_some())
+    {
+        return update(running, action, None);
+    }
     if unsafe { PostThreadMessageW(running.id, WM_QUIT, 0, 0) } == 0 {
         return Err("shortcut_failed");
     }

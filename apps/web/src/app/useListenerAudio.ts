@@ -2,6 +2,7 @@ import type { PublicUser } from "@voxly/shared";
 import { useCallback,useEffect,useRef,useState } from "react";
 import { DEFAULT_AUDIO_LEVELS,readAudioLevels,writeAudioLevels,type AudioLevels } from "../lib/audioLevels.js";
 import { subscribeBlockedAudioOutputs } from "../lib/audioOutput.js";
+import { createDesktopDeafenReceiver,subscribeDesktopDeafen } from "../lib/desktopVoice.js";
 import { claimMicrophoneTestDeafen,shouldRestoreMicrophoneTestDeafen,type MicrophoneTestDeafenLease } from "../lib/microphoneTestIsolation.js";
 import { browserSupportsNoiseSuppression,DEFAULT_NOISE_SUPPRESSION,readNoiseSuppression,writeNoiseSuppression } from "../lib/noiseSuppression.js";
 import { useAudioDevices } from "../lib/useAudioDevices.js";
@@ -62,6 +63,7 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
   });
   const microphoneTest = useMicrophoneTest(audioDevices.selectedInputId, audioLevels.input, voice.microphoneMonitorStream, noiseSuppression);
   const microphoneTestDeafenRef = useRef<MicrophoneTestDeafenLease | null>(null);
+  const microphoneTestStartingRef = useRef(false);
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
   const [screenVolumes, setScreenVolumes] = useState<Record<string, number>>({});
   const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
@@ -112,19 +114,28 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
   const stopMicrophoneTest = useCallback(async () => {
     microphoneTest.stop();
     const lease = microphoneTestDeafenRef.current;
-    microphoneTestDeafenRef.current = null;
     if (shouldRestoreMicrophoneTestDeafen(lease, voice.activeRoomId)) await voice.setDeafened(false);
+    if (microphoneTestDeafenRef.current === lease) microphoneTestDeafenRef.current = null;
   }, [microphoneTest.stop, voice.activeRoomId, voice.setDeafened]);
 
   const startMicrophoneTest = useCallback(async () => {
-    if (!(await isolateMicrophoneTest())) return;
-    if (!(await microphoneTest.start())) await stopMicrophoneTest();
+    microphoneTestStartingRef.current = true;
+    try {
+      if (!(await isolateMicrophoneTest())) return;
+      if (!(await microphoneTest.start())) await stopMicrophoneTest();
+    } finally { microphoneTestStartingRef.current = false; }
   }, [isolateMicrophoneTest, microphoneTest.start, stopMicrophoneTest]);
 
   const toggleMicrophoneTest = useCallback(async () => {
     if (microphoneTest.active) await stopMicrophoneTest();
     else await startMicrophoneTest();
   }, [microphoneTest.active, startMicrophoneTest, stopMicrophoneTest]);
+
+  useEffect(() => subscribeDesktopDeafen(window, createDesktopDeafenReceiver(() => ({
+    inVoice: Boolean(voice.activeRoomId), connected: Boolean(socket?.connected),
+    ownerDeafened: voice.voiceModeration.deafened,
+    microphoneTest: microphoneTest.active || microphoneTestStartingRef.current || Boolean(microphoneTestDeafenRef.current)
+  }), voice.toggleDeafen)), [socket, voice.activeRoomId, voice.voiceModeration.deafened, voice.toggleDeafen, microphoneTest.active]);
 
   useEffect(() => {
     if (!microphoneTest.active) return;

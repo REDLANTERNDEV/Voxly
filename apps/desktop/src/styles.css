@@ -25,8 +25,8 @@ li { padding: 14px 0; border-bottom: 1px solid #283543; }
 li strong { display: block; overflow-wrap: anywhere; }
 li button { font-size: 13px; }
 #status, #probe-status { min-height: 24px; color: #b9ddd6; overflow-wrap: anywhere; }
-#mute-shortcut { display: block; width: 100%; margin-top: 10px; }
-#shortcut-status { min-height: 24px; overflow-wrap: anywhere; }
+#mute-shortcut, #deafen-shortcut, #push-to-talk-shortcut, #push-to-mute-shortcut { display: block; width: 100%; margin-top: 10px; }
+#shortcut-status, #deafen-shortcut-status, #push-to-talk-shortcut-status, #push-to-mute-shortcut-status { min-height: 24px; overflow-wrap: anywhere; }
 video { width: 100%; max-height: 260px; background: #000; margin: 12px 0; object-fit: contain; }
 .report-label { display: block; margin-top: 24px; font-weight: 650; }
 textarea { width: 100%; resize: vertical; font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }

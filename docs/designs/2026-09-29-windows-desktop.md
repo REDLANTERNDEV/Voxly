@@ -27,11 +27,11 @@ computer audio, tray call audio, and permission-denial errors. The complete
 Windows acceptance matrix and resource measurements remain pending. The
 [game-capture review](2026-09-29-desktop-game-capture-review.md) separates the
 reported picker friction from game compatibility and motion quality.
-The local global mute preference and one-way intent bridge are now implemented;
+The local global mute/deafen preferences and one-way intent bridge are now implemented;
 the installation must deploy the updated web client. Browser approval sign-in
 now runs within the installation-delivered interface and collects the session
 through the desktop webview, without adding remote-to-native IPC. Native
-notifications, global deafen, routing deep links, and signed shell updating
+notifications, routing deep links, and signed shell updating
 remain subsequent milestones. No Windows
 or other-platform media parity is claimed by a successful compile.
 
@@ -143,8 +143,17 @@ is native to web only, grants no remote ACL, and requires the updated web client
 on the installation. It refuses inactive/disconnected/receive-only sessions and
 owner, room, or deafen locks. See [ADR-0020](../adr/0020-desktop-mute-intent-grants-no-native-authority.md).
 Windows registration, game focus, and tray behavior still need physical tests.
-Global deafen, notifications, and bidirectional media-state reporting remain
-future work.
+Global deafen now uses the same one-way boundary, with independent local
+registration and the existing deafen/restoration controls. Receive-only calls
+are supported; owner deafen and microphone monitoring block the shortcut.
+Installed Windows deafen acceptance remains pending. Notifications and
+bidirectional media-state reporting remain future work.
+
+Push to talk and Push to mute now have independent saved shortcuts and a local
+Microphone mode selector. Their fixed press/release intents gate existing
+microphone publication without capture or native authority. Windows acceptance
+must verify idle silence, hold/release, tray/game focus, and device/reconnect
+races on a rebuilt shell connected to the updated web client.
 
 The reviewed lifecycle bugs are also repaired: pending joins hold the deployment
 reload guard synchronously through capture and acknowledgement, with generation

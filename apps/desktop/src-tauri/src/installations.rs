@@ -19,6 +19,53 @@ pub struct Preferences {
     pub tray_acknowledged: bool,
     #[serde(default)]
     pub mute_shortcut: Option<String>,
+    #[serde(default)]
+    pub deafen_shortcut: Option<String>,
+    #[serde(default)]
+    pub push_to_talk_shortcut: Option<String>,
+    #[serde(default)]
+    pub push_to_mute_shortcut: Option<String>,
+    #[serde(default)]
+    pub microphone_mode: MicrophoneMode,
+}
+
+#[derive(Clone, Copy, Default, Serialize, Deserialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum MicrophoneMode {
+    #[default]
+    OpenMic,
+    PushToTalk,
+    PushToMute,
+}
+
+impl Preferences {
+    pub fn binding(&self, action: crate::shortcuts::Action) -> Option<&str> {
+        use crate::shortcuts::Action;
+        match action {
+            Action::Mute => self.mute_shortcut.as_deref(),
+            Action::Deafen => self.deafen_shortcut.as_deref(),
+            Action::PushToTalk => self.push_to_talk_shortcut.as_deref(),
+            Action::PushToMute => self.push_to_mute_shortcut.as_deref(),
+        }
+    }
+
+    pub fn set_binding(&mut self, action: crate::shortcuts::Action, binding: Option<String>) {
+        use crate::shortcuts::Action;
+        match action {
+            Action::Mute => self.mute_shortcut = binding,
+            Action::Deafen => self.deafen_shortcut = binding,
+            Action::PushToTalk => self.push_to_talk_shortcut = binding,
+            Action::PushToMute => self.push_to_mute_shortcut = binding,
+        }
+    }
+
+    pub fn validate_shortcuts(&self) -> Result<(), &'static str> {
+        let bindings = crate::shortcuts::Action::ALL.map(|action| self.binding(action));
+        for binding in bindings.into_iter().flatten() {
+            crate::shortcuts::parse_binding(binding)?;
+        }
+        crate::shortcuts::distinct_shortcuts(bindings)
+    }
 }
 
 #[derive(Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
@@ -88,9 +135,9 @@ pub fn load(path: &Path) -> Result<Preferences, &'static str> {
         return Err("storage_failed");
     }
     let preferences: Preferences = serde_json::from_slice(&bytes).map_err(|_| "storage_failed")?;
-    if let Some(binding) = &preferences.mute_shortcut {
-        crate::shortcuts::parse_binding(binding).map_err(|_| "storage_failed")?;
-    }
+    preferences
+        .validate_shortcuts()
+        .map_err(|_| "storage_failed")?;
     if preferences.installations.len() > INSTALLATION_LIMIT {
         return Err("storage_failed");
     }
@@ -145,12 +192,26 @@ mod tests {
             language: Language::Tr,
             tray_acknowledged: true,
             mute_shortcut: Some("Control+Shift+KeyM".into()),
+            deafen_shortcut: Some("Control+Shift+KeyD".into()),
+            push_to_talk_shortcut: Some("Mouse4".into()),
+            push_to_mute_shortcut: Some("Mouse5".into()),
+            microphone_mode: MicrophoneMode::PushToTalk,
         };
         save(&path, &preferences).unwrap();
         let loaded = load(&path).unwrap();
         assert_eq!(loaded.installations, preferences.installations);
         assert!(loaded.language == Language::Tr && loaded.tray_acknowledged);
         assert_eq!(loaded.mute_shortcut, preferences.mute_shortcut);
+        assert_eq!(loaded.deafen_shortcut, preferences.deafen_shortcut);
+        assert_eq!(
+            loaded.push_to_talk_shortcut,
+            preferences.push_to_talk_shortcut
+        );
+        assert_eq!(
+            loaded.push_to_mute_shortcut,
+            preferences.push_to_mute_shortcut
+        );
+        assert_eq!(loaded.microphone_mode, preferences.microphone_mode);
         preferences
             .installations
             .push(installation("https://other.example").unwrap());
@@ -170,6 +231,18 @@ mod tests {
             serde_json::from_str(r#"{"installations":[],"language":"en","trayAcknowledged":true}"#)
                 .unwrap();
         assert!(preferences.mute_shortcut.is_none());
+        assert!(preferences.deafen_shortcut.is_none());
+        assert!(preferences.push_to_talk_shortcut.is_none());
+        assert!(preferences.push_to_mute_shortcut.is_none());
+        assert_eq!(preferences.microphone_mode, MicrophoneMode::OpenMic);
+        let preferences: Preferences = serde_json::from_str(
+            r#"{"installations":[],"language":"en","trayAcknowledged":true,"muteShortcut":"Mouse5"}"#
+        ).unwrap();
+        assert_eq!(preferences.mute_shortcut.as_deref(), Some("Mouse5"));
+        assert!(preferences.deafen_shortcut.is_none());
+        assert!(preferences.push_to_talk_shortcut.is_none());
+        assert!(preferences.push_to_mute_shortcut.is_none());
+        assert_eq!(preferences.microphone_mode, MicrophoneMode::OpenMic);
     }
 
     #[test]

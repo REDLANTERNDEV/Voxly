@@ -29,12 +29,39 @@
         <p id="status" role="status" aria-live="polite"></p>
       </section>
       <section aria-labelledby="shortcuts-heading">
-        <h2 id="shortcuts-heading" data-i18n="shortcuts">Global shortcut</h2>
+        <h2 id="shortcuts-heading" data-i18n="shortcuts">Global shortcuts</h2>
         <p id="shortcut-hint" class="hint" data-i18n="shortcutHint"></p>
-        <label for="mute-shortcut" data-i18n="muteShortcut">Mute / unmute microphone</label>
+        <label for="microphone-mode" data-i18n="microphoneMode">Microphone mode</label>
+        <select id="microphone-mode" aria-describedby="microphone-mode-hint" disabled>
+          <option value="openMic" data-i18n="openMic">Open mic</option>
+          <option value="pushToTalk" data-i18n="pushToTalk">Push to talk</option>
+          <option value="pushToMute" data-i18n="pushToMute">Push to mute</option>
+        </select>
+        <p id="microphone-mode-hint" class="hint" data-i18n="microphoneModeHint"></p>
+        <div role="group" aria-labelledby="mute-shortcut-label">
+        <label id="mute-shortcut-label" for="mute-shortcut" data-i18n="muteShortcut">Mute / unmute microphone</label>
         <input id="mute-shortcut" readonly aria-describedby="shortcut-hint shortcut-status" />
         <div class="actions"><button id="record-shortcut" type="button" data-i18n="recordShortcut" disabled>Record shortcut</button><button id="save-shortcut" type="button" data-i18n="saveShortcut" disabled>Save shortcut</button><button id="clear-shortcut" type="button" data-i18n="clearShortcut" disabled>Clear shortcut</button></div>
         <p id="shortcut-status" role="status" aria-live="polite"></p>
+        </div>
+        <div role="group" aria-labelledby="deafen-shortcut-label">
+        <label id="deafen-shortcut-label" for="deafen-shortcut" data-i18n="deafenShortcut">Deafen / undeafen</label>
+        <input id="deafen-shortcut" readonly aria-describedby="shortcut-hint deafen-shortcut-status" />
+        <div class="actions"><button id="record-deafen-shortcut" type="button" data-i18n="recordShortcut" disabled>Record shortcut</button><button id="save-deafen-shortcut" type="button" data-i18n="saveShortcut" disabled>Save shortcut</button><button id="clear-deafen-shortcut" type="button" data-i18n="clearShortcut" disabled>Clear shortcut</button></div>
+        <p id="deafen-shortcut-status" role="status" aria-live="polite"></p>
+        </div>
+        <div role="group" aria-labelledby="push-to-talk-shortcut-label">
+          <label id="push-to-talk-shortcut-label" for="push-to-talk-shortcut" data-i18n="pushToTalk"></label>
+          <input id="push-to-talk-shortcut" readonly aria-describedby="microphone-mode-hint push-to-talk-shortcut-status" />
+          <div class="actions"><button id="record-push-to-talk-shortcut" type="button" data-i18n="recordShortcut" disabled></button><button id="save-push-to-talk-shortcut" type="button" data-i18n="saveShortcut" disabled></button><button id="clear-push-to-talk-shortcut" type="button" data-i18n="clearShortcut" disabled></button></div>
+          <p id="push-to-talk-shortcut-status" role="status" aria-live="polite"></p>
+        </div>
+        <div role="group" aria-labelledby="push-to-mute-shortcut-label">
+          <label id="push-to-mute-shortcut-label" for="push-to-mute-shortcut" data-i18n="pushToMute"></label>
+          <input id="push-to-mute-shortcut" readonly aria-describedby="microphone-mode-hint push-to-mute-shortcut-status" />
+          <div class="actions"><button id="record-push-to-mute-shortcut" type="button" data-i18n="recordShortcut" disabled></button><button id="save-push-to-mute-shortcut" type="button" data-i18n="saveShortcut" disabled></button><button id="clear-push-to-mute-shortcut" type="button" data-i18n="clearShortcut" disabled></button></div>
+          <p id="push-to-mute-shortcut-status" role="status" aria-live="polite"></p>
+        </div>
       </section>
       <section aria-labelledby="media-heading">
         <h2 id="media-heading" data-i18n="media">Media checks</h2>

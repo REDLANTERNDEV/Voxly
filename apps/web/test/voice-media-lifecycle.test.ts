@@ -140,7 +140,9 @@ describe("voice snapshot reconciliation", () => {
   it("closes stale media peers when signaling disconnects", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
 
-    assert.match(source, /const onDisconnect = \(\) => \{[\s\S]{0,900}closePeers\(\)/);
+    const disconnect = source.match(/const onDisconnect = \(\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
+    assert.match(disconnect, /closePeers\(\)/);
+    assert.match(disconnect, /desktopMicrophone\.suspend\(\)/);
   });
 
   it("cancels failed-peer recovery after an authoritative member leave", () => {
@@ -214,7 +216,7 @@ describe("voice snapshot reconciliation", () => {
     assert.match(source, /const deafenTransitionRef = useRef\(0\)/);
     assert.match(setDeafened, /microphoneOnBeforeDeafenRef\.current = moderationRef\.current\.muted[\s\S]*?microphoneOnBeforeModerationMuteRef\.current[\s\S]*?: controlsRef\.current\.mic\.on/);
     assert.match(setDeafened, /const restoreMicrophoneOn = !moderationRef\.current\.muted[\s\S]*?&& microphoneOnBeforeDeafenRef\.current/);
-    assert.match(setDeafened, /track\.enabled = restoreMicrophoneOn && track\.readyState === "live"/);
+    assert.match(setDeafened, /desktopMicrophone\.apply\(\[track\], restoreMicrophoneOn && track\.readyState === "live"\)/);
     assert.match(setDeafened, /restoreMicrophoneOn/);
     assert.match(setDeafened, /effectiveVoiceMediaState\(nextControls, localStreamsRef\.current\)/);
     assert.match(setDeafened, /const response = await emitMediaState/);
@@ -269,7 +271,7 @@ describe("voice snapshot reconciliation", () => {
     assert.doesNotMatch(effect[1] ?? "", /\bnoiseSuppression\b/, "the preference no longer drives a re-capture");
     assert.match(effect[0] ?? "", /openMicrophoneCapture\(\{ deviceId: microphoneDeviceId \}\)/);
     // The replacement track must inherit mute, deafen, and owner-mute state.
-    assert.match(effect[0] ?? "", /nextTrack\.enabled = controlsRef\.current\.mic\.on && !controlsRef\.current\.deafen\.on/);
+    assert.match(effect[0] ?? "", /desktopMicrophone\.apply\(\[nextTrack\], controlsRef\.current\.mic\.on && !controlsRef\.current\.deafen\.on/);
     assert.match(effect[0] ?? "", /replaceMicrophoneTrack\(peersRef\.current\.values\(\), nextTrack, previousTrack\)/);
     // An unchanged capture must not reopen the device on unrelated churn.
     assert.match(effect[0] ?? "", /if \(change === "none"\) return/);

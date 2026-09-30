@@ -84,6 +84,45 @@ it out. Do not share or commit browser data directories.
 
 ## Verify and package
 
+### Global voice shortcuts
+
+In the local chooser's **Global shortcuts** section, record and save separate
+mute and deafen combinations. Both accept keyboard shortcuts or Mouse 3/4/5
+with optional modifiers. Changing or clearing one keeps the other registered;
+the same combination cannot serve both actions. Preferences survive restart,
+and registration conflicts retain the previous working binding.
+
+Shortcuts act only in an existing connected voice room. Deafen silences the
+microphone and participant voices; subscribed screen audio keeps its own volume.
+Undeafen uses the existing microphone preference and live track, never creates a
+microphone capture for a receive-only listener, and preserves owner/room locks.
+Microphone monitoring also blocks the deafen shortcut until its isolation ends.
+Recording in the chooser performs no voice action.
+
+For **Push to talk** or **Push to mute**, first record and save that action's
+shortcut, then select it under **Microphone mode**. Push to talk transmits only
+while held; release closes microphone publication. Push to mute suppresses
+publication while held and restores it on release if the microphone was enabled.
+The microphone button still enables/disables your microphone independently:
+self mute, deafen, owner mute, and an AFK room take precedence. The monitor
+branch is independent, and holding a shortcut never requests microphone access.
+Both modes use existing live capture, including after a device replacement.
+
+Open mic is the default for existing preferences. The selected mode and both
+hold shortcuts survive restart. They require **both a rebuilt Windows app and
+the updated installation web client**. An older web client ignores the new
+mode and continues its existing microphone behavior; verify idle silence with
+a browser peer before relying on Push to talk. If a Push to talk binding cannot
+register after restart, its updated web client stays silent until you fix the
+binding or select Open mic. See the Windows acceptance cases below.
+
+Rebuild the Windows desktop app **and deploy the updated installation web
+client** for deafen. An older shell/web client can keep mute working without
+supporting the new optional deafen methods. Installed Windows validation is
+still required; see the acceptance record below.
+
+### Build commands
+
 ```sh
 npm run typecheck
 npm test

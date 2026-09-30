@@ -12,6 +12,10 @@ fn main() {
             "acknowledge_tray",
             "quit_app",
             "set_mute_shortcut",
+            "set_deafen_shortcut",
+            "set_push_to_talk_shortcut",
+            "set_push_to_mute_shortcut",
+            "set_microphone_mode",
         ]),
     ))
     .expect("could not build the desktop command permissions");

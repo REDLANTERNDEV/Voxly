@@ -9,6 +9,7 @@ mod shortcuts;
 use installations::{Installation, Language, Preferences};
 use serde::Serialize;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{Emitter, Manager, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
@@ -17,13 +18,22 @@ struct Shell {
     inner: Mutex<Inner>,
     data: PathBuf,
     menu: TrayMenu,
-    shortcut_latch: shortcuts::ShortcutLatch,
+    shortcut_latches: [shortcuts::ShortcutLatch; 4],
+    shortcut_events: tokio::sync::mpsc::UnboundedSender<VoiceEvent>,
+    voice_generation: AtomicU64,
+    voice_target: std::sync::RwLock<Option<Installation>>,
 }
 
 struct Inner {
     preferences: Preferences,
     active: Option<Installation>,
-    shortcut: shortcuts::Registration,
+    shortcuts: [shortcuts::Registration; 4],
+}
+
+struct VoiceEvent {
+    action: shortcuts::Action,
+    pressed: bool,
+    generation: u64,
 }
 
 struct TrayMenu {
@@ -41,6 +51,12 @@ struct ShellSnapshot {
     shell_version: &'static str,
     registered_mute_shortcut: Option<String>,
     shortcut_error: Option<&'static str>,
+    registered_deafen_shortcut: Option<String>,
+    deafen_shortcut_error: Option<&'static str>,
+    registered_push_to_talk_shortcut: Option<String>,
+    push_to_talk_shortcut_error: Option<&'static str>,
+    registered_push_to_mute_shortcut: Option<String>,
+    push_to_mute_shortcut_error: Option<&'static str>,
 }
 
 fn trusted_shell(window: &WebviewWindow) -> Result<(), &'static str> {
@@ -144,8 +160,14 @@ fn snapshot(inner: &Inner) -> ShellSnapshot {
         active: inner.active.clone(),
         platform: std::env::consts::OS,
         shell_version: env!("CARGO_PKG_VERSION"),
-        registered_mute_shortcut: inner.shortcut.active.clone(),
-        shortcut_error: inner.shortcut.error,
+        registered_mute_shortcut: inner.shortcuts[0].active.clone(),
+        shortcut_error: inner.shortcuts[0].error,
+        registered_deafen_shortcut: inner.shortcuts[1].active.clone(),
+        deafen_shortcut_error: inner.shortcuts[1].error,
+        registered_push_to_talk_shortcut: inner.shortcuts[2].active.clone(),
+        push_to_talk_shortcut_error: inner.shortcuts[2].error,
+        registered_push_to_mute_shortcut: inner.shortcuts[3].active.clone(),
+        push_to_mute_shortcut_error: inner.shortcuts[3].error,
     }
 }
 
@@ -161,14 +183,85 @@ async fn set_mute_shortcut(
     binding: Option<String>,
 ) -> Result<ShellSnapshot, &'static str> {
     trusted_shell(&window)?;
+    set_shortcut(app, shell, binding, shortcuts::Action::Mute).await
+}
+
+#[tauri::command]
+async fn set_deafen_shortcut(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    binding: Option<String>,
+) -> Result<ShellSnapshot, &'static str> {
+    trusted_shell(&window)?;
+    set_shortcut(app, shell, binding, shortcuts::Action::Deafen).await
+}
+
+#[tauri::command]
+async fn set_push_to_talk_shortcut(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    binding: Option<String>,
+) -> Result<ShellSnapshot, &'static str> {
+    trusted_shell(&window)?;
+    set_shortcut(app, shell, binding, shortcuts::Action::PushToTalk).await
+}
+
+#[tauri::command]
+async fn set_push_to_mute_shortcut(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    binding: Option<String>,
+) -> Result<ShellSnapshot, &'static str> {
+    trusted_shell(&window)?;
+    set_shortcut(app, shell, binding, shortcuts::Action::PushToMute).await
+}
+
+#[tauri::command]
+async fn set_microphone_mode(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    mode: installations::MicrophoneMode,
+) -> Result<ShellSnapshot, &'static str> {
+    trusted_shell(&window)?;
+    if !cfg!(target_os = "windows") {
+        return Err("unsupported_platform");
+    }
+    let mut inner = shell.inner.lock().await;
+    let needed = match mode {
+        installations::MicrophoneMode::OpenMic => None,
+        installations::MicrophoneMode::PushToTalk => Some(shortcuts::Action::PushToTalk),
+        installations::MicrophoneMode::PushToMute => Some(shortcuts::Action::PushToMute),
+    };
+    if needed.is_some_and(|action| inner.shortcuts[action.index()].active.is_none()) {
+        return Err("shortcut_required");
+    }
+    let mut next = inner.preferences.clone();
+    next.microphone_mode = mode;
+    persist(&shell, &next)?;
+    inner.preferences = next;
+    deliver_microphone_mode(&app, &inner);
+    Ok(snapshot(&inner))
+}
+
+async fn set_shortcut(
+    app: tauri::AppHandle,
+    shell: tauri::State<'_, Shell>,
+    binding: Option<String>,
+    action: shortcuts::Action,
+) -> Result<ShellSnapshot, &'static str> {
     if !cfg!(target_os = "windows") {
         return Err("unsupported_platform");
     }
     let mut inner = shell.inner.lock().await;
     let mut next = inner.preferences.clone();
-    next.mute_shortcut = binding;
-    shell.shortcut_latch.reset();
-    let mut registration = inner.shortcut.clone();
+    next.set_binding(action, binding);
+    next.validate_shortcuts()?;
+    let mut registration = inner.shortcuts[action.index()].clone();
+    let current = registration.active.clone();
     let saved = next.clone();
     let path = shell.data.join("installations.json");
     let native_app = app.clone();
@@ -177,15 +270,22 @@ async fn set_mute_shortcut(
     // Perform the entire change there to avoid competing hotkey callbacks.
     app.run_on_main_thread(move || {
         let result = registration.change(
-            saved.mute_shortcut.as_deref(),
-            &mut shortcuts::NativeRegistry(&native_app),
+            saved.binding(action),
+            &mut shortcuts::NativeRegistry {
+                app: &native_app,
+                action,
+                current,
+            },
             || installations::save(&path, &saved),
         );
         let _ = send.send((registration, result));
     })
     .map_err(|_| "shortcut_failed")?;
     let (registration, result) = receive.await.map_err(|_| "shortcut_failed")?;
-    inner.shortcut = registration;
+    shell.shortcut_latches[action.index()].bind(registration.active.as_deref());
+    inner.shortcuts[action.index()] = registration;
+    // A changed/cleared binding must end its hold even if no key-up follows.
+    queue_voice_action(&app, action, false);
     result?;
     inner.preferences = next;
     Ok(snapshot(&inner))
@@ -200,75 +300,88 @@ fn handle_shortcut(
     let Some(shell) = app.try_state::<Shell>() else {
         return;
     };
-    if event.state() == ShortcutState::Released {
-        shell.shortcut_latch.keyboard_released();
-        return;
+    for action in shortcuts::Action::ALL {
+        let latch = &shell.shortcut_latches[action.index()];
+        let pressed = event.state() == ShortcutState::Pressed;
+        let changed = if pressed {
+            latch.keyboard_pressed(shortcut)
+        } else {
+            latch.keyboard_released(shortcut)
+        };
+        if changed {
+            queue_voice_action(app, action, pressed);
+        }
     }
-    // Never block the main thread while a command registers/unregisters there.
-    let Ok(inner) = shell.inner.try_lock() else {
-        return;
-    };
-    let Some(binding) = inner.shortcut.active.as_deref() else {
-        return;
-    };
-    if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Keyboard(ref registered)) if registered == shortcut)
-    {
-        return;
-    }
-    dispatch_mute(app, &shell, &inner);
 }
 
-#[cfg(target_os = "windows")]
-async fn handle_mouse_shortcut(app: tauri::AppHandle, event: mouse_hook::MousePress) {
-    let Some(shell) = app.try_state::<Shell>() else {
-        return;
-    };
-    // A shortcut press must wait through an installation/settings command,
-    // rather than disappear when that command temporarily owns inner.
-    let inner = shell.inner.lock().await;
-    let Some(binding) = inner.shortcut.active.as_deref() else {
-        return;
-    };
-    if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Mouse(ref registered)) if registered.button == event.button)
-    {
-        return;
+fn queue_voice_action(app: &tauri::AppHandle, action: shortcuts::Action, pressed: bool) {
+    if let Some(shell) = app.try_state::<Shell>() {
+        let _ = shell.shortcut_events.send(VoiceEvent {
+            action,
+            pressed,
+            generation: shell.voice_generation.load(Ordering::Acquire),
+        });
     }
-    if !matches!(shortcuts::parse_binding(binding), Ok(shortcuts::Binding::Mouse(ref registered)) if registered.modifiers == event.modifiers)
-    {
-        return;
-    }
-    deliver_mute(&app, &inner);
 }
 
-fn dispatch_mute(app: &tauri::AppHandle, shell: &Shell, inner: &Inner) {
-    if !shell.shortcut_latch.begin() {
-        return;
-    }
-    deliver_mute(app, inner);
+fn active_remote(app: &tauri::AppHandle, inner: &Inner) -> Option<WebviewWindow> {
+    let active = inner.active.as_ref()?;
+    let remote = app.get_webview_window(platform::INSTALLATION_WINDOW)?;
+    let url = remote.url().ok()?;
+    installations::same_origin(&active.origin, &url).then_some(remote)
 }
 
-fn deliver_mute(app: &tauri::AppHandle, inner: &Inner) {
-    // Recording a combination in the local chooser must not mute the call.
-    if app
-        .get_webview_window("shell")
-        .is_some_and(|window| window.is_focused().unwrap_or(true))
+fn deliver_microphone_mode(app: &tauri::AppHandle, inner: &Inner) {
+    if let Some(remote) = active_remote(app, inner) {
+        let mode = serde_json::to_string(&inner.preferences.microphone_mode).unwrap();
+        let _ = remote.eval(format!(
+            "window.__VOXLY_DESKTOP_V1__?.dispatchMicrophoneMode?.({mode});"
+        ));
+    }
+}
+
+fn deliver_voice_action(
+    app: &tauri::AppHandle,
+    target: &Installation,
+    action: shortcuts::Action,
+    pressed: bool,
+) {
+    // Releases must reach the call even when settings have since taken focus.
+    if pressed
+        && (app
+            .get_webview_window("shell")
+            .is_some_and(|window| window.is_focused().unwrap_or(true)))
     {
         return;
     }
-    let Some(active) = &inner.active else {
-        return;
-    };
     let Some(remote) = app.get_webview_window(platform::INSTALLATION_WINDOW) else {
         return;
     };
     let Ok(url) = remote.url() else {
         return;
     };
-    if !installations::same_origin(&active.origin, &url) {
+    if !installations::same_origin(&target.origin, &url) {
         return;
     }
-    // Fixed action, never script supplied by the installation or settings.
-    let _ = remote.eval("window.__VOXLY_DESKTOP_V1__?.dispatchMute();");
+    // Fixed actions and booleans, never script supplied by the installation.
+    let script = match (action, pressed) {
+        (shortcuts::Action::Mute, true) => "window.__VOXLY_DESKTOP_V1__?.dispatchMute();",
+        (shortcuts::Action::Deafen, true) => "window.__VOXLY_DESKTOP_V1__?.dispatchDeafen?.();",
+        (shortcuts::Action::PushToTalk, true) => {
+            "window.__VOXLY_DESKTOP_V1__?.dispatchPushToTalk?.(true);"
+        }
+        (shortcuts::Action::PushToTalk, false) => {
+            "window.__VOXLY_DESKTOP_V1__?.dispatchPushToTalk?.(false);"
+        }
+        (shortcuts::Action::PushToMute, true) => {
+            "window.__VOXLY_DESKTOP_V1__?.dispatchPushToMute?.(true);"
+        }
+        (shortcuts::Action::PushToMute, false) => {
+            "window.__VOXLY_DESKTOP_V1__?.dispatchPushToMute?.(false);"
+        }
+        _ => return,
+    };
+    let _ = remote.eval(script);
 }
 
 #[tauri::command]
@@ -393,8 +506,10 @@ async fn connect_installation(
         mouse_hook::set_installation_window(None)?;
         remote.destroy().map_err(|_| "window_failed")?;
     }
+    shell.voice_generation.fetch_add(1, Ordering::AcqRel);
     inner.active = None;
-    platform::open_installation(&app, &saved, &shell.data)?;
+    platform::open_installation(&app, &saved, &shell.data, inner.preferences.microphone_mode)?;
+    *shell.voice_target.write().map_err(|_| "window_failed")? = Some(saved.clone());
     inner.active = Some(saved);
     Ok(snapshot(&inner))
 }
@@ -417,6 +532,8 @@ async fn disconnect_installation(
         // Destroying the webview ends its tracks, rather than hiding them.
         remote.destroy().map_err(|_| "window_failed")?;
     }
+    shell.voice_generation.fetch_add(1, Ordering::AcqRel);
+    *shell.voice_target.write().map_err(|_| "window_failed")? = None;
     inner.active = None;
     Ok(snapshot(&inner))
 }
@@ -545,7 +662,11 @@ fn main() {
             set_language,
             acknowledge_tray,
             quit_app,
-            set_mute_shortcut
+            set_mute_shortcut,
+            set_deafen_shortcut,
+            set_push_to_talk_shortcut,
+            set_push_to_mute_shortcut,
+            set_microphone_mode
         ])
         .setup(|app| {
             let data = app.path().app_local_data_dir()?;
@@ -587,22 +708,53 @@ fn main() {
                     _ => {}
                 })
                 .build(app)?;
-            let mut shortcut = shortcuts::Registration::default();
-            if cfg!(target_os = "windows") {
-                shortcut.restore(
-                    preferences.mute_shortcut.as_deref(),
-                    &mut shortcuts::NativeRegistry(app.handle()),
-                );
+            let mut registrations = std::array::from_fn(|_| shortcuts::Registration::default());
+            let latches = std::array::from_fn(|_| shortcuts::ShortcutLatch::default());
+            for action in shortcuts::Action::ALL {
+                if cfg!(target_os = "windows") {
+                    registrations[action.index()].restore(
+                        preferences.binding(action),
+                        &mut shortcuts::NativeRegistry {
+                            app: app.handle(),
+                            action,
+                            current: None,
+                        },
+                    );
+                }
+                latches[action.index()].bind(registrations[action.index()].active.as_deref());
             }
+            let (shortcut_events, mut events) =
+                tokio::sync::mpsc::unbounded_channel::<VoiceEvent>();
             app.manage(Shell {
                 inner: Mutex::new(Inner {
                     preferences,
                     active: None,
-                    shortcut,
+                    shortcuts: registrations,
                 }),
                 data,
                 menu: tray_menu,
-                shortcut_latch: shortcuts::ShortcutLatch::default(),
+                shortcut_latches: latches,
+                shortcut_events,
+                voice_generation: AtomicU64::new(0),
+                voice_target: std::sync::RwLock::new(None),
+            });
+            let event_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                while let Some(event) = events.recv().await {
+                    let shell = event_app.state::<Shell>();
+                    // Settings and health checks may own inner for seconds.
+                    // Release delivery must never wait on that async lock.
+                    let target = shell
+                        .voice_target
+                        .read()
+                        .ok()
+                        .and_then(|target| target.clone());
+                    if event.generation == shell.voice_generation.load(Ordering::Acquire) {
+                        if let Some(target) = target {
+                            deliver_voice_action(&event_app, &target, event.action, event.pressed);
+                        }
+                    }
+                }
             });
             let window =
                 tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?

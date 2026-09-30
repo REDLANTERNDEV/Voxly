@@ -1,9 +1,15 @@
 import type { TranslationKey } from "./i18n.js";
 
 export interface ShortcutSnapshot {
-  preferences: { muteShortcut: string | null };
+  preferences: { muteShortcut: string | null; deafenShortcut?: string | null; pushToTalkShortcut?: string | null; pushToMuteShortcut?: string | null; microphoneMode?: "openMic" | "pushToTalk" | "pushToMute" };
   registeredMuteShortcut: string | null;
   shortcutError: TranslationKey | null;
+  registeredDeafenShortcut?: string | null;
+  deafenShortcutError?: TranslationKey | null;
+  registeredPushToTalkShortcut?: string | null;
+  pushToTalkShortcutError?: TranslationKey | null;
+  registeredPushToMuteShortcut?: string | null;
+  pushToMuteShortcutError?: TranslationKey | null;
 }
 
 export function bindingFromKey(event: Pick<KeyboardEvent, "code" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey" | "repeat">): string | null {
@@ -22,15 +28,17 @@ export function bindingLabel(binding: string, mouseName = "Mouse"): string {
   return binding.split("+").map((part) => part === "Control" ? "Ctrl" : part === "Super" ? "Win" : part.replace(/^(Key|Digit)/, "").replace(/^Mouse([345])$/, `${mouseName} $1`)).join(" + ");
 }
 
-export function mountShortcutSettings({ t, save }: {
+export function mountShortcutSettings({ t, save, action = "mute" }: {
   t: (key: TranslationKey) => string;
   save: (binding: string | null) => Promise<void>;
+  action?: "mute" | "deafen" | "push-to-talk" | "push-to-mute";
 }) {
-  const input = document.getElementById("mute-shortcut") as HTMLInputElement;
-  const record = document.getElementById("record-shortcut") as HTMLButtonElement;
-  const apply = document.getElementById("save-shortcut") as HTMLButtonElement;
-  const clear = document.getElementById("clear-shortcut") as HTMLButtonElement;
-  const status = document.getElementById("shortcut-status")!;
+  const input = document.getElementById(`${action}-shortcut`) as HTMLInputElement;
+  const suffix = action === "mute" ? "shortcut" : `${action}-shortcut`;
+  const record = document.getElementById(`record-${suffix}`) as HTMLButtonElement;
+  const apply = document.getElementById(`save-${suffix}`) as HTMLButtonElement;
+  const clear = document.getElementById(`clear-${suffix}`) as HTMLButtonElement;
+  const status = document.getElementById(action === "mute" ? "shortcut-status" : `${action}-shortcut-status`)!;
   let snapshot: ShortcutSnapshot | null = null;
   let enabled = false;
   let recording = false;
@@ -39,13 +47,20 @@ export function mountShortcutSettings({ t, save }: {
   let suppressedMouseButton: number | null = null;
 
   const refresh = () => {
+    const fields = {
+      mute: [snapshot?.preferences.muteShortcut, snapshot?.registeredMuteShortcut, snapshot?.shortcutError],
+      deafen: [snapshot?.preferences.deafenShortcut, snapshot?.registeredDeafenShortcut, snapshot?.deafenShortcutError],
+      "push-to-talk": [snapshot?.preferences.pushToTalkShortcut, snapshot?.registeredPushToTalkShortcut, snapshot?.pushToTalkShortcutError],
+      "push-to-mute": [snapshot?.preferences.pushToMuteShortcut, snapshot?.registeredPushToMuteShortcut, snapshot?.pushToMuteShortcutError]
+    } as const;
+    const [savedBinding, registered, error] = fields[action];
     record.disabled = !enabled;
     record.textContent = t(recording ? "cancel" : "recordShortcut");
     apply.disabled = !enabled || recording || draft === undefined;
-    clear.disabled = !enabled || recording || !snapshot?.preferences.muteShortcut;
-    const binding = draft ?? snapshot?.preferences.muteShortcut;
+    clear.disabled = !enabled || recording || !savedBinding;
+    const binding = draft ?? savedBinding;
     input.value = recording ? t("pressShortcut") : binding ? bindingLabel(binding, t("mouseButton")) : t("shortcutNone");
-    status.textContent = t(message ?? snapshot?.shortcutError ?? (snapshot?.registeredMuteShortcut ? "shortcutRegistered" : "shortcutDisabled"));
+    status.textContent = t(message ?? error ?? (registered ? "shortcutRegistered" : "shortcutDisabled"));
   };
   const cancelRecording = () => { recording = false; refresh(); };
   record.addEventListener("click", () => {

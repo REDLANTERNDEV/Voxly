@@ -10,6 +10,7 @@ pub fn open_installation(
     app: &AppHandle,
     saved: &Installation,
     data: &Path,
+    microphone_mode: crate::installations::MicrophoneMode,
 ) -> Result<WebviewWindow, &'static str> {
     if !cfg!(target_os = "windows") {
         return Err("unsupported_platform");
@@ -17,9 +18,10 @@ pub fn open_installation(
     let url = saved.origin.parse().map_err(|_| "invalid_address")?;
     let origin = saved.origin.clone();
     let bootstrap = format!(
-        "{}({});",
+        "{}({}, {});",
         include_str!("voice-bridge.js"),
-        serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?
+        serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
+        serde_json::to_string(&microphone_mode).map_err(|_| "invalid_address")?
     );
     let opener_app = app.clone();
     let window = WebviewWindowBuilder::new(app, INSTALLATION_WINDOW, WebviewUrl::External(url))
