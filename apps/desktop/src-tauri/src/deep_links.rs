@@ -4,7 +4,10 @@ use crate::installations::{self, Installation};
 // accepted: no authentication token, web route, command, or arbitrary payload.
 pub fn parse(input: &str) -> Option<Installation> {
     if input.len() > 4096
-        || !input.starts_with("voxly://open?origin=")
+        // Browsers may add a root slash to the protocol URL. Check the raw
+        // envelope too, so URL normalization cannot hide dot paths.
+        || !(input.starts_with("voxly://open?origin=")
+            || input.starts_with("voxly://open/?origin="))
         || input.contains('\\')
         || input.chars().any(char::is_control)
     {
@@ -16,7 +19,7 @@ pub fn parse(input: &str) -> Option<Installation> {
         || !url.username().is_empty()
         || url.password().is_some()
         || url.port().is_some()
-        || !url.path().is_empty()
+        || !matches!(url.path(), "" | "/")
         || url.fragment().is_some()
     {
         return None;
@@ -104,7 +107,12 @@ mod tests {
             "https://open?origin=https://chat.example",
             "voxly://quit?origin=https://chat.example",
             "voxly://open/path?origin=https://chat.example",
-            "voxly://open/?origin=https://chat.example",
+            "voxly://open/path/../?origin=https://chat.example",
+            "voxly://open/.?origin=https://chat.example",
+            "voxly://open/%2e/?origin=https://chat.example",
+            "voxly://open//?origin=https://chat.example",
+            "voxly://open/?origin=https://chat.example&token=secret",
+            "voxly://open/?origin=http%3A%2F%2F127.0.0.1%3A5173”",
             "voxly://open:123?origin=https://chat.example",
             "voxly://user@open?origin=https://chat.example",
             "voxly://open?origin=https://chat.example&origin=https://evil.example",
@@ -135,6 +143,27 @@ mod tests {
         pending.offer(installations::installation("https://other.example").unwrap());
         assert_eq!(pending.take().unwrap().origin, "https://other.example");
         assert!(pending.take().is_none());
+    }
+
+    #[test]
+    fn browser_root_slash_reaches_the_installation_offer() {
+        for origin in [
+            "https://chat.example",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ] {
+            let query = url::form_urlencoded::Serializer::new(String::new())
+                .append_pair("origin", origin)
+                .finish();
+            for envelope in ["voxly://open?", "voxly://open/?"] {
+                let args = vec!["Voxly.exe".into(), format!("{envelope}{query}")];
+                let target =
+                    from_args(&args).expect("browser URI must reach cold and running handlers");
+                let pending = PendingLink::default();
+                pending.offer(target);
+                assert_eq!(pending.take().unwrap().origin, origin);
+            }
+        }
     }
 
     #[test]
