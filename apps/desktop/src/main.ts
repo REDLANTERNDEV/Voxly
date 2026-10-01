@@ -1,16 +1,19 @@
+/// <reference types="vite/client" />
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { errorKey, translate, type Language, type TranslationKey } from "./i18n.js";
 import { createCaptureOwner, probeConstraints, screenConstraints, summarizeTracks, type ProbeKind } from "./media.js";
 import { performTransition, type CallState } from "./transitions.js";
 import "./styles.css";
+import "./home.css";
+import { startupInstallation } from "./home.js";
 import { installVerifiedUpdate, type UpdateSnapshot } from "./updates.js";
 import { mountShortcutSettings, type ShortcutSnapshot } from "./shortcuts.js";
 
-interface Installation { id: string; origin: string }
+interface Installation { id: string; origin: string; name?: string | null }
 interface DesktopLink extends Installation { launchId: string | null }
 interface Snapshot extends ShortcutSnapshot {
-  preferences: { installations: Installation[]; language: Language; trayAcknowledged: boolean; muteShortcut: string | null; deafenShortcut: string | null; pushToTalkShortcut: string | null; pushToMuteShortcut: string | null; microphoneMode: "openMic" | "pushToTalk" | "pushToMute"; pushToTalkReleaseDelayMs: number };
+  preferences: { installations: Installation[]; defaultInstallationId: string | null; openOnStartup: boolean; display: { fullAddresses: boolean; compactList: boolean; installationIcons: boolean }; language: Language; trayAcknowledged: boolean; muteShortcut: string | null; deafenShortcut: string | null; pushToTalkShortcut: string | null; pushToMuteShortcut: string | null; microphoneMode: "openMic" | "pushToTalk" | "pushToMute"; pushToTalkReleaseDelayMs: number };
   active: Installation | null;
   platform: string;
   shellVersion: string;
@@ -27,6 +30,9 @@ let language: Language = navigator.language.startsWith("tr") ? "tr" : "en";
 let state: Snapshot | null = null;
 let pendingDesktopLink: DesktopLink | null = null;
 let busy = false;
+let failedConnection: Installation | null = null;
+let attemptedConnection: Installation | null = null;
+let renaming: Installation | null = null;
 let updateState: UpdateSnapshot | null = null;
 let updateWorking = false;
 let confirmPending = false;
@@ -150,39 +156,70 @@ function renderInstallations() {
   list.replaceChildren();
   for (const saved of state?.preferences.installations ?? []) {
     const row = document.createElement("li");
+    row.className = "saved-installation";
+    if (state?.preferences.display.installationIcons) {
+      const icon = document.createElement("img"); icon.src = "/voxly-icon.png"; icon.alt = ""; icon.className = "installation-icon"; row.append(icon);
+    }
+    const identity = document.createElement("div"); identity.className = "installation-identity";
     const name = document.createElement("strong");
-    name.textContent = saved.origin;
-    row.append(name);
-    const actions = document.createElement("div");
-    actions.className = "actions";
-    const add = (key: TranslationKey, action: () => void) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = t(key);
-      button.dataset.focusKey = `${saved.id}:${key}`;
-      button.disabled = busy;
-      button.addEventListener("click", action);
-      actions.append(button);
+    name.textContent = saved.name || new URL(saved.origin).host;
+    const address = document.createElement("span");
+    address.textContent = state?.preferences.display.fullAddresses ? saved.origin : new URL(saved.origin).host;
+    address.title = saved.origin;
+    identity.append(name, address); row.append(identity);
+    if (saved.id === state?.preferences.defaultInstallationId) {
+      const badge = document.createElement("span"); badge.className = "badge"; badge.textContent = t("defaultBadge"); row.append(badge);
+    }
+    const actions = document.createElement("div"); actions.className = "actions";
+    const add = (key: TranslationKey, action: () => void, parent: HTMLElement = actions) => {
+      const button = document.createElement("button"); button.type = "button"; button.textContent = t(key);
+      button.setAttribute("aria-label", `${t(key)}: ${name.textContent}`);
+      button.dataset.focusKey = `${saved.id}:${key}`; button.disabled = busy;
+      button.addEventListener("click", action); parent.append(button);
     };
-    add("connect", () => void connect(saved));
-    add("browser", () => void run(async () => { await invoke("open_installation_browser", { id: saved.id }); }));
-    add("forget", () => void run(async () => {
-      state = await invoke<Snapshot>("forget_installation", { id: saved.id });
-      status("forgotten");
-    }));
+    add("launchDefault", () => void connect(saved));
+    const menu = document.createElement("details"); menu.className = "installation-menu";
+    const trigger = document.createElement("summary"); trigger.textContent = "•••"; trigger.setAttribute("aria-label", `${t("moreActions")}: ${name.textContent}`); trigger.dataset.focusKey = `${saved.id}:menu`;
+    const menuItems = document.createElement("div"); menuItems.className = "installation-menu-items";
+    add("rename", () => {
+      menu.open = false; renaming = saved; element<HTMLInputElement>("rename-name").value = saved.name ?? "";
+      element("rename-status").textContent = ""; element<HTMLDialogElement>("rename-dialog").showModal(); element("rename-name").focus();
+    }, menuItems);
+    add("makeDefault", () => void run(async () => {
+      state = await invoke<Snapshot>("desktop_settings", { operation: { kind: "default", id: saved.id, enabled: state?.preferences.openOnStartup ?? false } });
+    }), menuItems);
+    add("forget", () => void run(async () => { state = await invoke<Snapshot>("forget_installation", { id: saved.id }); status("forgotten"); }), menuItems);
+    menu.append(trigger, menuItems); actions.append(menu);
     row.append(actions);
     list.append(row);
   }
   if (focusKey) {
-    const next = [...list.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.dataset.focusKey === focusKey);
+    const next = [...list.querySelectorAll<HTMLElement>("[data-focus-key]")].find((button) => button.dataset.focusKey === focusKey);
     (next ?? element("address")).focus();
   }
+  const preferred = state?.preferences.installations.find((entry) => entry.id === state?.preferences.defaultInstallationId);
+  element("default-panel").hidden = !preferred && !state?.preferences.installations.length;
+  element("saved-panel").hidden = !state?.preferences.installations.length;
+  element("connection").hidden = !state?.active;
+  element("default-name").textContent = preferred?.name || (preferred ? new URL(preferred.origin).host : t("noDefault"));
+  element("default-origin").textContent = preferred?.origin ?? "";
+  element<HTMLButtonElement>("launch-default").disabled = !preferred || busy;
+  element("launch-default").setAttribute("aria-label", `${t("launchDefault")}: ${preferred?.name || preferred?.origin || t("noDefault")}`);
+  element<HTMLInputElement>("open-startup").checked = state?.preferences.openOnStartup ?? false;
+  element<HTMLInputElement>("open-startup").disabled = !preferred || busy;
+  list.classList.toggle("compact", state?.preferences.display.compactList ?? false);
+  for (const [id, key] of [["full-addresses", "fullAddresses"], ["compact-list", "compactList"], ["installation-icons", "installationIcons"]] as const) {
+    element<HTMLInputElement>(id).checked = state?.preferences.display[key] ?? key !== "compactList";
+    element<HTMLInputElement>(id).disabled = !native || !state || busy;
+  }
+  element("connection-recovery").hidden = !failedConnection;
   element("empty").hidden = Boolean(state?.preferences.installations.length);
   element("connection").textContent = state?.active ? `${t("connected")}: ${state.active.origin}` : t("disconnected");
+  element("disconnect").hidden = !state?.active;
+  element("retry").hidden = !state?.active;
   element<HTMLButtonElement>("disconnect").disabled = !state?.active || busy;
   element<HTMLButtonElement>("retry").disabled = !state?.active || busy;
   element<HTMLButtonElement>("save").disabled = !native || busy || !state;
-  element<HTMLButtonElement>("quit").disabled = !native || busy || !state;
   element<HTMLSelectElement>("language").disabled = native && (!state || busy);
   for (const id of ["microphone", "camera", "screen", "tone"]) element<HTMLButtonElement>(id).disabled = busy;
   const shortcutsAvailable = native && state?.platform === "windows" && !busy;
@@ -212,12 +249,13 @@ async function receiveDesktopLink() {
 async function openDesktopLink(target: DesktopLink) {
   await run(async () => {
     state = await invoke<Snapshot>("save_installation", { address: target.origin });
+    attemptedConnection = target;
     status("checking");
     const next = await transition((confirmed) => invoke<Snapshot>("connect_installation", {
       id: target.id, confirmLeave: confirmed, reload: false, desktopLaunch: target.launchId
     }));
     if (next) {
-      state = next;
+      state = next; failedConnection = null;
       if (pendingDesktopLink === target) pendingDesktopLink = null;
       element("status").textContent = "";
     }
@@ -272,12 +310,19 @@ async function run(action: () => Promise<void>) {
   const focusKey = opener?.dataset.focusKey;
   busy = true;
   renderInstallations();
-  try { await action(); } catch (error: unknown) { status(errorKey(error)); }
+  try { await action(); } catch (error: unknown) {
+    status(errorKey(error));
+    if (attemptedConnection) {
+      failedConnection = attemptedConnection;
+      element("status").textContent = `${t("connectionFailed")} ${failedConnection.origin}. ${t(errorKey(error))}`;
+    }
+  }
   finally {
     busy = false;
+    attemptedConnection = null;
     renderInstallations();
     const target = focusKey
-      ? [...element("installation-list").querySelectorAll<HTMLButtonElement>("button")].find((button) => button.dataset.focusKey === focusKey)
+      ? [...element("installation-list").querySelectorAll<HTMLElement>("[data-focus-key]")].find((button) => button.dataset.focusKey === focusKey)
       : opener;
     (target?.isConnected ? target : element("address"))?.focus();
   }
@@ -295,12 +340,13 @@ async function transition<T>(action: (confirmed: boolean) => Promise<T>, quittin
 }
 
 async function connect(saved: Installation, reload = false) {
+  attemptedConnection = saved;
   await run(async () => {
     const changing = state?.active && (state.active.id !== saved.id || reload);
     status("checking");
-    const open = (confirmed: boolean) => invoke<Snapshot>("connect_installation", { id: saved.id, confirmLeave: confirmed, reload });
+    const open = (confirmed: boolean) => invoke<Snapshot>("connect_installation", { id: saved.id, address: saved.origin, confirmLeave: confirmed, reload });
     const next = changing || !state?.active ? await transition(open) : await open(false);
-    if (next) state = next;
+    if (next) { state = next; failedConnection = null; }
     element("status").textContent = "";
   });
 }
@@ -308,10 +354,16 @@ async function connect(saved: Installation, reload = false) {
 element("installation-form").addEventListener("submit", (event) => {
   event.preventDefault();
   void run(async () => {
-    const address = element<HTMLInputElement>("address");
-    state = await invoke<Snapshot>("save_installation", { address: address.value });
-    address.value = "";
-    status("saved");
+    const address = element<HTMLInputElement>("address").value.trim();
+    const name = element<HTMLInputElement>("installation-name").value.trim();
+    if (element<HTMLInputElement>("remember").checked) state = await invoke<Snapshot>("save_installation", { address, name });
+    attemptedConnection = { id: "", origin: address };
+    status("checking");
+    const next = await transition((confirmed) => invoke<Snapshot>("connect_installation", { id: "", address, confirmLeave: confirmed, reload: false }));
+    if (next) {
+      state = next; failedConnection = null; element<HTMLInputElement>("address").value = "";
+      element<HTMLInputElement>("installation-name").value = ""; element("status").textContent = "";
+    }
   });
 });
 element("language").addEventListener("change", (event) => {
@@ -336,7 +388,6 @@ async function quit() {
     await transition((confirmed) => invoke("quit_app", { confirmLeave: confirmed }), true);
   });
 }
-element("quit").addEventListener("click", () => void quit());
 
 function refreshReport() {
   const media = navigator.mediaDevices;
@@ -472,6 +523,8 @@ async function start() {
   renderInstallations();
   refreshReport();
   element("browser-preview").hidden = native;
+  // Explicit developer entry; probes never appear in the production Home path.
+  element("diagnostics").hidden = !(import.meta.env.DEV && new URLSearchParams(location.search).has("diagnostics"));
   if (!native) return;
   try {
     // Subscribe before reading the cached startup request so neither a cold
@@ -485,6 +538,16 @@ async function start() {
     renderTranslations();
     renderInstallations();
     await receiveDesktopLink();
+    await listen<Installation>("shell:load-failed", (event) => {
+      failedConnection = event.payload;
+      element("status").textContent = `${t("connectionFailed")} ${event.payload.origin}. ${t("window_failed")}`;
+      renderInstallations();
+    });
+    await listen("shell:preferences", () => {
+      void invoke<Snapshot>("shell_state").then((next) => { state = next; renderInstallations(); }).catch((error) => status(errorKey(error)));
+    });
+    const preferred = startupInstallation(state, pendingDesktopLink);
+    if (preferred) await connect(preferred);
     refreshReport();
     await listen("shell:quit-requested", () => void quit());
     await listen<UpdateSnapshot>("shell:updates", (event) => { updateState = event.payload; renderUpdates(); });
@@ -498,7 +561,7 @@ async function start() {
     // Cover a native background transition between the initial read and subscription.
     updateState = await invoke<UpdateSnapshot>("shell_update_state");
     renderUpdates();
-    if (!state.preferences.trayAcknowledged) {
+    if (!state.active && !state.preferences.trayAcknowledged) {
       const dialog = element<HTMLDialogElement>("tray-dialog");
       dialog.addEventListener("close", () => {
         if (dialog.returnValue === "confirm") void run(async () => { state = await invoke<Snapshot>("acknowledge_tray"); });
@@ -508,3 +571,43 @@ async function start() {
   } catch (error: unknown) { status(errorKey(error)); }
 }
 void start();
+
+element("launch-default").addEventListener("click", () => {
+  const saved = state?.preferences.installations.find((entry) => entry.id === state?.preferences.defaultInstallationId);
+  if (saved) void connect(saved);
+});
+element("open-startup").addEventListener("change", () => {
+  const enabled = element<HTMLInputElement>("open-startup").checked;
+  void run(async () => {
+    state = await invoke<Snapshot>("desktop_settings", { operation: { kind: "default", id: state?.preferences.defaultInstallationId, enabled } });
+  });
+});
+for (const id of ["full-addresses", "compact-list", "installation-icons"]) {
+  element(id).addEventListener("change", () => {
+    const display = {
+      fullAddresses: element<HTMLInputElement>("full-addresses").checked,
+      compactList: element<HTMLInputElement>("compact-list").checked,
+      installationIcons: element<HTMLInputElement>("installation-icons").checked
+    };
+    void run(async () => { state = await invoke<Snapshot>("desktop_settings", { operation: { kind: "display", display } }); });
+  });
+}
+element("choose-another").addEventListener("click", () => { failedConnection = null; element("connection-recovery").hidden = true; element("status").textContent = ""; element("address").focus(); });
+element("retry-failed").addEventListener("click", () => { if (failedConnection) void connect(failedConnection, state?.active?.id === failedConnection.id); });
+element("rename-cancel").addEventListener("click", () => element<HTMLDialogElement>("rename-dialog").close());
+element("rename-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!renaming) return;
+  void invoke<Snapshot>("desktop_settings", { operation: { kind: "rename", id: renaming.id, name: element<HTMLInputElement>("rename-name").value } })
+    .then((next) => { state = next; element<HTMLDialogElement>("rename-dialog").close(); renderInstallations(); })
+    .catch((error) => { element("rename-status").textContent = t(errorKey(error)); });
+});
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") document.querySelectorAll<HTMLDetailsElement>(".installation-menu[open], .display-menu[open]").forEach((menu) => { menu.open = false; menu.querySelector<HTMLElement>("summary")?.focus(); }); });
+document.addEventListener("click", (event) => document.querySelectorAll<HTMLDetailsElement>(".installation-menu[open], .display-menu[open]").forEach((menu) => { if (!menu.contains(event.target as Node)) menu.open = false; }));
+
+element("rename-dialog").addEventListener("close", () => {
+  const key = `${renaming?.id}:menu`;
+  renaming = null;
+  const trigger = [...element("installation-list").querySelectorAll<HTMLElement>("summary")].find((node) => node.dataset.focusKey === key);
+  (trigger ?? element("address")).focus();
+});

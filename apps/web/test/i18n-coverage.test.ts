@@ -32,7 +32,7 @@ const untranslatedByDesign = new Set([
   "Microphone access is unavailable in this browser."
 ]);
 
-const domKeyNames = /^(Escape|Enter|Tab|Backspace|Delete|Arrow(Up|Down|Left|Right)|Shift|Control|Alt|Meta|Home|End|Page(Up|Down))$/;
+const domKeyNames = /^(Escape|Enter|Tab|Backspace|Delete|Arrow(Up|Down|Left|Right)|Shift|Control|Alt|Meta|Super|Ctrl|Win|Home|End|Page(Up|Down))$/;
 const httpMethods = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/;
 const svgPath = /^[Mm][\d.\s-]/;
 

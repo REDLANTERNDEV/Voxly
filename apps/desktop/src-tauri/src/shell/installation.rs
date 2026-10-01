@@ -121,9 +121,12 @@ pub(super) async fn save_installation(
     window: WebviewWindow,
     shell: tauri::State<'_, Shell>,
     address: String,
+    name: Option<String>,
 ) -> Result<ShellSnapshot, &'static str> {
     trusted_shell(&window)?;
-    let saved = installations::installation(&address)?;
+    let mut saved = installations::installation(&address)?;
+    installations::validate_name(name.as_deref())?;
+    saved.name = name.filter(|name| !name.trim().is_empty()).map(|name| name.trim().to_string());
     let mut inner = shell.inner.lock().await;
     let mut next = inner.preferences.clone();
     if !next.installations.iter().any(|entry| entry.id == saved.id) {
@@ -149,7 +152,7 @@ pub(super) async fn forget_installation(
         return Err("disconnect_first");
     }
     let mut next = inner.preferences.clone();
-    next.installations.retain(|entry| entry.id != id);
+    next.forget(&id);
     persist(&shell, &next)?;
     inner.preferences = next;
     // Forgetting an address doesn't sign out or delete a browser profile.
@@ -194,6 +197,7 @@ pub(super) async fn connect_installation(
     confirm_leave: bool,
     reload: bool,
     desktop_launch: Option<String>,
+    address: Option<String>,
 ) -> Result<ShellSnapshot, &'static str> {
     trusted_shell(&window)?;
     if !cfg!(target_os = "windows") {
@@ -207,13 +211,13 @@ pub(super) async fn connect_installation(
     }
     // Serialize changes across the await: two clicks cannot create two windows.
     let mut inner = shell.inner.lock().await;
-    let saved = inner
-        .preferences
-        .installations
-        .iter()
-        .find(|entry| entry.id == id)
-        .cloned()
-        .ok_or("installation_missing")?;
+    let saved = if let Some(address) = address.as_deref() {
+        let canonical = installations::installation(address)?;
+        if !id.is_empty() && canonical.id != id { return Err("invalid_address"); }
+        inner.preferences.installations.iter().find(|entry| entry.id == canonical.id).cloned().unwrap_or(canonical)
+    } else {
+        inner.preferences.installations.iter().find(|entry| entry.id == id).cloned().ok_or("installation_missing")?
+    };
     if !reload
         && inner
             .active
@@ -245,7 +249,19 @@ pub(super) async fn connect_installation(
         desktop_launch.as_deref(),
     )?;
     *shell.voice_target.write().map_err(|_| "window_failed")? = Some(saved.clone());
-    inner.active = Some(saved);
+    inner.active = Some(saved.clone());
+    shell.recording_shortcut.store(false, Ordering::Release);
+    let loading_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+        let shell = loading_app.state::<Shell>();
+        if shell.voice_generation.load(Ordering::Acquire) == generation
+            && shell.ready_generation.load(Ordering::Acquire) != generation {
+            show_shell(&loading_app);
+            let _ = loading_app.emit_to("shell", "shell:load-failed", saved);
+        }
+    });
+    let _ = window.hide();
     Ok(snapshot(&inner))
 }
 

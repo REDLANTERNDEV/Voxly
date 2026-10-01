@@ -109,7 +109,7 @@ Artifacts include installer, `.sig`, `latest.json`, `SHA256SUMS`, and
 `provenance.json` (commit, target, run, public-key fingerprint, certificate
 thumbprint). The ephemeral signing certificate is removed after the job. No
 private material is included in uploaded artifacts. The production installer
-is per-user and bundles WebView2's offline installer; it is larger than the
+is machine-wide and bundles WebView2's offline installer; it is larger than the
 feasibility bootstrapper build. Rust/npm lockfiles and the pinned toolchain are
 preserved. This does not promise byte-identical signed builds.
 
@@ -136,7 +136,7 @@ marked passed based on macOS compilation or unit tests.
 - Installer launch failure/interruption, first restart, old/new executable
   version, saved addresses, language, shortcuts and isolated WebView2 sessions.
 - Installation content cannot invoke update commands or updater plugin commands.
-- Check artifact checksums, publisher, silent `/S` install, per-user scope and
+- Check artifact checksums, publisher, silent `/S` install, machine-wide scope and
   offline WebView2 setup on a machine without WebView2.
 
 Verified downloads are held only in memory and discarded on cancellation or
@@ -204,3 +204,12 @@ release CI still uses the repository's pinned toolchain. Browser preview of the
 unconfigured update UI showed no horizontal overflow at 390px. This verifies
 frontend presentation only; signed Windows packaging, installed updater tests,
 Store acceptance, and the remaining media/resource gates are unverified.
+
+
+Program Files packages use NSIS `perMachine` and explicit Voxly installer and
+uninstaller icons. Setup and native updates request administrator approval;
+NSIS `/R` uses its RunAsUser relaunch path. Validate that the resulting Voxly
+process has no elevation. Existing per-user installations require the
+[data-preserving reinstall](desktop.md#move-an-existing-per-user-install-to-program-files)
+before relying on machine-wide updates. Do not treat a macOS build as Windows
+migration or UAC acceptance.

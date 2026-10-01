@@ -1,7 +1,7 @@
 //! Shortcut settings and ordered native voice-intent delivery.
 use super::{persist, snapshot, Inner, Shell, ShellSnapshot};
 use super::installation::remote_window;
-use super::trust::trusted_shell;
+use super::settings::{trusted_settings, validate_settings_caller};
 use crate::{installations, shortcuts};
 use crate::installations::Installation;
 use std::sync::atomic::Ordering;
@@ -45,8 +45,8 @@ pub(super) async fn set_mute_shortcut(
     shell: tauri::State<'_, Shell>,
     binding: Option<String>,
 ) -> Result<ShellSnapshot, &'static str> {
-    trusted_shell(&window)?;
-    set_shortcut(app, shell, binding, shortcuts::Action::Mute).await
+    trusted_settings(&window, &shell).await?;
+    set_shortcut(app, window, shell, binding, shortcuts::Action::Mute).await
 }
 
 #[tauri::command]
@@ -56,8 +56,8 @@ pub(super) async fn set_deafen_shortcut(
     shell: tauri::State<'_, Shell>,
     binding: Option<String>,
 ) -> Result<ShellSnapshot, &'static str> {
-    trusted_shell(&window)?;
-    set_shortcut(app, shell, binding, shortcuts::Action::Deafen).await
+    trusted_settings(&window, &shell).await?;
+    set_shortcut(app, window, shell, binding, shortcuts::Action::Deafen).await
 }
 
 #[tauri::command]
@@ -67,8 +67,8 @@ pub(super) async fn set_push_to_talk_shortcut(
     shell: tauri::State<'_, Shell>,
     binding: Option<String>,
 ) -> Result<ShellSnapshot, &'static str> {
-    trusted_shell(&window)?;
-    set_shortcut(app, shell, binding, shortcuts::Action::PushToTalk).await
+    trusted_settings(&window, &shell).await?;
+    set_shortcut(app, window, shell, binding, shortcuts::Action::PushToTalk).await
 }
 
 #[tauri::command]
@@ -78,8 +78,8 @@ pub(super) async fn set_push_to_mute_shortcut(
     shell: tauri::State<'_, Shell>,
     binding: Option<String>,
 ) -> Result<ShellSnapshot, &'static str> {
-    trusted_shell(&window)?;
-    set_shortcut(app, shell, binding, shortcuts::Action::PushToMute).await
+    trusted_settings(&window, &shell).await?;
+    set_shortcut(app, window, shell, binding, shortcuts::Action::PushToMute).await
 }
 
 #[tauri::command]
@@ -89,11 +89,12 @@ pub(super) async fn set_microphone_mode(
     shell: tauri::State<'_, Shell>,
     mode: installations::MicrophoneMode,
 ) -> Result<ShellSnapshot, &'static str> {
-    trusted_shell(&window)?;
+    trusted_settings(&window, &shell).await?;
     if !cfg!(target_os = "windows") {
         return Err("unsupported_platform");
     }
     let mut inner = shell.inner.lock().await;
+    validate_settings_caller(&window, &shell, &inner)?;
     let needed = match mode {
         installations::MicrophoneMode::OpenMic => None,
         installations::MicrophoneMode::PushToTalk => Some(shortcuts::Action::PushToTalk),
@@ -120,7 +121,7 @@ pub(super) async fn set_push_to_talk_release_delay(
     shell: tauri::State<'_, Shell>,
     delay_ms: u16,
 ) -> Result<ShellSnapshot, &'static str> {
-    trusted_shell(&window)?;
+    trusted_settings(&window, &shell).await?;
     if !cfg!(target_os = "windows") {
         return Err("unsupported_platform");
     }
@@ -128,6 +129,7 @@ pub(super) async fn set_push_to_talk_release_delay(
         return Err("invalid_release_delay");
     }
     let mut inner = shell.inner.lock().await;
+    validate_settings_caller(&window, &shell, &inner)?;
     let mut next = inner.preferences.clone();
     next.push_to_talk_release_delay_ms = delay_ms;
     persist(&shell, &next)?;
@@ -143,6 +145,7 @@ pub(super) async fn set_push_to_talk_release_delay(
 
 async fn set_shortcut(
     app: tauri::AppHandle,
+    window: WebviewWindow,
     shell: tauri::State<'_, Shell>,
     binding: Option<String>,
     action: shortcuts::Action,
@@ -151,6 +154,7 @@ async fn set_shortcut(
         return Err("unsupported_platform");
     }
     let mut inner = shell.inner.lock().await;
+    validate_settings_caller(&window, &shell, &inner)?;
     let mut next = inner.preferences.clone();
     next.set_binding(action, binding);
     next.validate_shortcuts()?;
@@ -268,6 +272,8 @@ fn deliver_voice_action(
     if !installations::same_origin(&target.origin, &url) {
         return;
     }
+    if pressed && remote.is_focused().unwrap_or(false)
+        && app.state::<Shell>().recording_shortcut.load(Ordering::Acquire) { return; }
     // Fixed actions and booleans, never script supplied by the installation.
     let talk_release =
         format!("window.__VOXLY_DESKTOP_V1__?.dispatchPushToTalk?.(false, {release_delay_ms});");

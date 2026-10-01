@@ -10,6 +10,7 @@ import {
 } from "../../api.js";
 import type { Translate } from "../../app/types.js";
 import { AuthPageHeader } from "../../components/ui/Primitives.js";
+import { rememberCompletedDesktopAuthentication } from "../../lib/desktopSettings.js";
 import { desktopLaunchFromSearch } from "../../lib/desktopLinks.js";
 import type { LanguageCode } from "../../lib/i18n.js";
 
@@ -45,6 +46,8 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
         if (!live) return;
         if (response.status === "approved") {
           current.current = null;
+          await rememberCompletedDesktopAuthentication(window, response.status, () => live);
+          if (!live) return;
           onLinked();
           return;
         }

@@ -37,11 +37,14 @@
   history.back = () => move(-1);
   history.forward = () => move(1);
   history.go = (delta = 0) => move(Number(delta));
+  const recordedButtons = new Set();
   for (const type of ["mousedown", "mouseup", "auxclick"]) {
     window.addEventListener(type, (event) => {
       if (event.button !== 3 && event.button !== 4) return;
       event.preventDefault();
-      if (type === "mouseup") move(event.button === 3 ? -1 : 1);
+      if (type === "mousedown" && window.__VOXLY_DESKTOP_SETTINGS_V1__?.recording) recordedButtons.add(event.button);
+      if (type === "mouseup" && !recordedButtons.has(event.button)) move(event.button === 3 ? -1 : 1);
+      if (type === "auxclick") recordedButtons.delete(event.button);
     }, true);
   }
   window.addEventListener("keydown", (event) => {

@@ -11,31 +11,61 @@
   },
   "app": {
     "withGlobalTauri": false,
-    "windows": [{
-      "label": "shell",
-      "create": false,
-      "title": "Voxly",
-      "width": 880,
-      "height": 760,
-      "minWidth": 380,
-      "minHeight": 520,
-      "useHttpsScheme": true
-    }],
+    "windows": [
+      {
+        "label": "shell",
+        "create": false,
+        "title": "Voxly",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 380,
+        "minHeight": 520,
+        "useHttpsScheme": true
+      }
+    ],
     "security": {
-      "capabilities": ["local-shell"],
+      "capabilities": [
+        "local-shell"
+      ],
       "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src ipc: http://ipc.localhost https://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
     }
   },
   "plugins": {
-    "deep-link": { "desktop": { "schemes": ["voxly"] } }
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "voxly"
+        ]
+      }
+    }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "icon": ["../branding/tauri/icons/32x32.png", "../branding/tauri/icons/128x128.png", "../branding/tauri/icons/128x128@2x.png", "../branding/tauri/icons/icon.icns", "../branding/tauri/icons/icon.ico"],
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "../branding/tauri/icons/32x32.png",
+      "../branding/tauri/icons/128x128.png",
+      "../branding/tauri/icons/128x128@2x.png",
+      "../branding/tauri/icons/icon.icns",
+      "../branding/tauri/icons/icon.ico"
+    ],
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
-      "nsis": { "installMode": "currentUser", "languages": ["English", "Turkish"], "displayLanguageSelector": true }
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "perMachine",
+        "languages": [
+          "English",
+          "Turkish"
+        ],
+        "displayLanguageSelector": true,
+        "installerIcon": "../branding/tauri/icons/icon.ico",
+        "uninstallerIcon": "../branding/tauri/icons/icon.ico"
+      }
     }
   }
 }

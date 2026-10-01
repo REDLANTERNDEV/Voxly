@@ -36,7 +36,7 @@ pub(super) fn update_tray_language(menu: &TrayMenu, language: Language) -> tauri
     menu.show
         .set_text(if tr { "Voxly’yi aç" } else { "Show Voxly" })?;
     menu.installations
-        .set_text(if tr { "Kurulumlar" } else { "Installations" })?;
+        .set_text(if tr { "Ana sayfa" } else { "Home" })?;
     menu.update.set_text(if tr {
         "Güncelle ve yeniden başlat…"
     } else {
@@ -54,7 +54,7 @@ pub(super) fn create(
     let installations = tauri::menu::MenuItem::with_id(
         app,
         "installations",
-        "Installations",
+        "Home",
         true,
         None::<&str>,
     )?;

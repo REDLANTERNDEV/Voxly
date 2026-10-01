@@ -27,7 +27,8 @@ describe("desktop native trust boundary", () => {
     const build = readFileSync("src-tauri/build.rs", "utf8");
     assert.match(build, /AppManifest::new\(\)\.commands/);
     const commands = [...native.matchAll(/#\[tauri::command\]\s*(?:pub\(super\) )?async fn (\w+)\((?:(?!#\[tauri::command\])[\s\S])*?\{\s*trusted_shell\(&window\)\?;/g)].map((match) => match[1]);
-    assert.equal(commands.length + 8, (native.match(/#\[tauri::command\]/g) ?? []).length);
+    const settingsCommands = [...native.matchAll(/#\[tauri::command\]\s*(?:pub\(super\) )?async fn (\w+)\((?:(?!#\[tauri::command\])[\s\S])*?\{\s*trusted_settings\(&window, &shell\)\.await\?;/g)].map((match) => match[1]);
+    assert.equal(commands.length + settingsCommands.length + 8, (native.match(/#\[tauri::command\]/g) ?? []).length);
     assert.match(native, /async fn report_call_state/);
     assert.match(native, /report_caller_matches\(/);
     assert.match(native, /same_origin\(origin, url\)/);
@@ -44,7 +45,7 @@ describe("desktop native trust boundary", () => {
     assert.match(native, /async fn activate_installation/);
     assert.match(native, /window\.unminimize\(\)/);
     const capability = JSON.parse(readFileSync("src-tauri/capabilities/shell.json", "utf8"));
-    for (const command of commands) {
+    for (const command of [...commands, ...settingsCommands]) {
       assert.ok(build.includes(`"${command}"`));
       assert.ok(capability.permissions.includes(`allow-${command.replaceAll("_", "-")}`));
     }

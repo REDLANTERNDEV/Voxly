@@ -37,7 +37,7 @@ pub fn open_installation(
         url.query_pairs_mut().append_pair("desktopLaunch", id);
     }
     let origin = saved.origin.clone();
-    let bootstrap = format!(
+    let mut bootstrap = format!(
         "{}({}, {});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});",
         include_str!("voice-bridge.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
@@ -57,6 +57,7 @@ pub fn open_installation(
         include_str!("update-bridge.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?
     );
+    bootstrap.push_str(&format!("\n{}({});", include_str!("settings-bridge.js"), serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?));
     let opener_app = app.clone();
     let label = installation_label(generation);
     // Grants never accumulate on a label reused by another installation.
@@ -72,6 +73,7 @@ pub fn open_installation(
             .permission("allow-show-desktop-notification")
             .permission("allow-close-desktop-notification")
             .permission("allow-read-desktop-update")
+            .permission("allow-desktop-settings")
             .permission("allow-review-desktop-update"),
     )
     .map_err(|_| "window_failed")?;

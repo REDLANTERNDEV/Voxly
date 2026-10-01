@@ -9,6 +9,8 @@ import type { TranslationKey } from "../../lib/i18n.js";
 import { ExternalPreviewSettings } from "../ExternalPreviewSettings.js";
 import { AccountDeletionSettings } from "../AccountDeletionSettings.js";
 import { DesktopNotificationSettings } from "../DesktopNotificationSettings.js";
+import { DesktopPreferences, DesktopMicrophoneSettings, DesktopShortcutSettings } from "../DesktopSettings.js";
+import { desktopSettingsAvailable } from "../../lib/desktopSettings.js";
 import { ApplicationVersionSettings } from "../ApplicationUpdateStatus.js";
 
 /**
@@ -25,10 +27,12 @@ import { ApplicationVersionSettings } from "../ApplicationUpdateStatus.js";
  * 260-pixel column ever wanted to be.
  */
 
-export type SettingsSection = "general" | "account" | "audio" | "appearance" | "privacy";
+export type SettingsSection = "general" | "account" | "audio" | "appearance" | "privacy" | "shortcuts" | "desktop";
 
 const sections: readonly SettingsSection[] = ["general", "account", "audio", "appearance", "privacy"];
 const sectionIcons = {
+  shortcuts: <GearIcon />,
+  desktop: <GearIcon />,
   general: <GearIcon />,
   account: <UsersIcon />,
   audio: <HeadsetIcon off={false} />,
@@ -38,6 +42,8 @@ const sectionIcons = {
 
 export function SettingsDialog(props: ShellModel & ShellActions & { initialSection?: SettingsSection; contextError?: TranslationKey | ""; onClose: () => void }) {
   const [section, setSection] = useState<SettingsSection>(props.initialSection ?? "account");
+  const desktop = desktopSettingsAvailable(window);
+  const visibleSections = desktop ? [...sections, "shortcuts", "desktop"] as SettingsSection[] : sections;
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -60,7 +66,7 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
       >
         <nav className="settings-nav" aria-label={props.t("settings.title")}>
           <span className="label settings-nav-label">{props.t("settings.title")}</span>
-          {sections.map((item) => (
+          {visibleSections.map((item) => (
             <button
               className="settings-nav-item"
               type="button"
@@ -81,6 +87,8 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
             </button>
           </header>
           <div className="settings-content">
+            {section === "desktop" && desktop ? <DesktopPreferences t={props.t} /> : null}
+            {section === "shortcuts" && desktop ? <DesktopShortcutSettings t={props.t} onAudio={() => setSection("audio")} /> : null}
             {section === "general" ? <ApplicationVersionSettings t={props.t} /> : null}
             {section === "account" ? (
               <>
@@ -155,6 +163,7 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
                 onNotificationSoundsChange={props.onNotificationSoundsChange}
                 onToggleMicrophoneTest={props.onToggleMicrophoneTest}
               />
+              {desktop ? <DesktopMicrophoneSettings t={props.t} onShortcuts={() => setSection("shortcuts")} /> : null}
               <DesktopNotificationSettings key={props.user.id} userId={props.user.id} t={props.t} />
               </>
             ) : null}

@@ -103,5 +103,8 @@ window uses its own dark palette. A denied Notification permission now has a
 finite reset control in Settings → Audio; it does not reload calls or clear
 login/media permissions. Both changes need an updated desktop build; the reset
 control also needs an updated web deployment. Installed Windows acceptance
-remains pending in `docs/desktop-windows-acceptance.md`. The broader settings
-organization and welcome/default-Installation redesign remain planned.
+remains pending in `docs/desktop-windows-acceptance.md`. The Home/default-Installation redesign and desktop-only Audio, Shortcuts and
+Desktop settings are implemented as of 2026-10-02. Latest completed browser
+approval selects the default and enables startup; Home and Desktop settings
+provide the opt-out. Both desktop and web deployments must be updated. Installed
+Windows results remain pending.

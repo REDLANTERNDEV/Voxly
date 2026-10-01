@@ -8,7 +8,7 @@ use crate::{
     appearance, call_state, deep_links, installations, native_notifications, shortcuts,
     update_installer, updates,
 };
-use std::sync::atomic::{AtomicU16, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64};
 use tauri::Manager;
 use tokio::sync::Mutex;
 
@@ -43,6 +43,7 @@ pub(super) fn run() {
             super::notification_commands::show_desktop_notification,
             super::notification_commands::close_desktop_notification,
             super::installation::shell_state,
+            super::settings::desktop_settings,
             super::installation::take_desktop_link,
             super::installation::transition_state,
             super::installation::report_call_state,
@@ -82,6 +83,9 @@ pub(super) fn run() {
             let data = app.path().app_local_data_dir()?;
             let preferences = installations::load(&data.join("installations.json"))
                 .map_err(std::io::Error::other)?;
+            if !data.join("installations.json").exists() {
+                installations::save(&data.join("installations.json"), &preferences).map_err(std::io::Error::other)?;
+            }
             let tray_menu = tray::create(app, preferences.language)?;
             let mut registrations = std::array::from_fn(|_| shortcuts::Registration::default());
             let latches = std::array::from_fn(|_| shortcuts::ShortcutLatch::default());
@@ -104,6 +108,8 @@ pub(super) fn run() {
             app.manage(native_notifications::Notifications::default());
             app.manage(Shell {
                 reports: call_state::Reports::default(),
+                recording_shortcut: AtomicBool::new(false),
+                ready_generation: AtomicU64::new(0),
                 inner: Mutex::new(Inner {
                     preferences,
                     active: None,

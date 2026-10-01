@@ -17,6 +17,7 @@ import type { LanguageCode } from "../lib/i18n.js";
 import type { OutboxEntry } from "../lib/messageOutbox.js";
 import type { TimeFormatPreference } from "../lib/timeFormat.js";
 import { resolveInitialRoute } from "../lib/navigation.js";
+import { applyDesktopSettings, desktopSettingsAvailable } from "../lib/desktopSettings.js";
 import { desktopLaunchFromSearch, desktopLaunchId } from "../lib/desktopLinks.js";
 import { startupSurface } from "../lib/startupSurface.js";
 import type { LoadState,Route,ShellActions,ShellModel,Translate } from "./types.js";
@@ -45,6 +46,9 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
   textRoomOutbox: OutboxEntry[];
   textRoomActions: { send(body: string, replyTo: ChatMessageReply | null): void; retrySend(localId: string): void; discardSend(localId: string): void; update(messageId: string, body: string): Promise<void>; delete(messageId: string): Promise<void>; suppressEmbed(messageId: string, embedKey: string): Promise<void> } | null;
 }) {
+  useEffect(() => {
+    if (desktopSettingsAvailable(window)) void applyDesktopSettings({ kind: "ready" }).catch(() => undefined);
+  }, []);
   const [pendingLaunch, setPendingLaunch] = useState<string | null>(null);
   useEffect(() => {
     if (window.__VOXLY_DESKTOP_V1__?.version !== 1) return;

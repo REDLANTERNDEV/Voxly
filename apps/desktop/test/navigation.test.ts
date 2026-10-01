@@ -40,6 +40,26 @@ function harness(origin = "https://chat.example", topFrame = true) {
 }
 
 describe("desktop page history", () => {
+  it("records side-button shortcuts without navigating, even after recording ends before release", () => {
+    const h = harness();
+    h.history.pushState(null, "", "/app/server/s/text/a");
+    h.history.pushState(null, "", "/app/server/s/text/b");
+    h.window.__VOXLY_DESKTOP_SETTINGS_V1__ = { recording: true };
+    const down = new Event("mousedown", { cancelable: true });
+    Object.defineProperty(down, "button", { value: 3 });
+    h.window.dispatchEvent(down);
+    h.window.__VOXLY_DESKTOP_SETTINGS_V1__.recording = false;
+    for (const type of ["mouseup", "auxclick"]) {
+      const event = new Event(type, { cancelable: true });
+      Object.defineProperty(event, "button", { value: 3 });
+      h.window.dispatchEvent(event);
+      assert.equal(event.defaultPrevented, true);
+    }
+    assert.equal(h.location.pathname, "/app/server/s/text/b");
+    h.mouse(3);
+    assert.equal(h.location.pathname, "/app/server/s/text/a");
+  });
+
   it("changes viewed routes without document traversal at both boundaries", () => {
     const h = harness();
     const viewed: string[] = [];

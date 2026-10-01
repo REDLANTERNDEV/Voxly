@@ -1,5 +1,6 @@
 //! Desktop shell orchestration. Platform adapters remain at the crate root.
 mod installation;
+mod settings;
 mod notification_commands;
 mod runtime;
 mod tray;
@@ -14,13 +15,15 @@ use crate::{call_state, installations, shortcuts};
 use crate::installations::{Installation, Preferences};
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU16, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64};
 use tokio::sync::Mutex;
 use tray::TrayMenu;
 use voice::VoiceEvent;
 
 pub(crate) struct Shell {
     pub(crate) inner: Mutex<Inner>,
+    recording_shortcut: AtomicBool,
+    ready_generation: AtomicU64,
     pub(crate) reports: call_state::Reports,
     pub(crate) data: PathBuf,
     menu: TrayMenu,
