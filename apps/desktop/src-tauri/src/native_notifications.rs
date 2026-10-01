@@ -50,7 +50,7 @@ fn foreground_matches(owner: Option<usize>, foreground: usize, foreground_owner:
 }
 
 #[cfg(windows)]
-fn system_window_focused(owner: Option<usize>) -> bool {
+fn system_focus(owner: Option<usize>) -> FocusSnapshot {
     use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetForegroundWindow, GA_ROOTOWNER};
     unsafe {
         let foreground = GetForegroundWindow();
@@ -59,13 +59,57 @@ fn system_window_focused(owner: Option<usize>) -> bool {
         } else {
             GetAncestor(foreground, GA_ROOTOWNER)
         };
-        foreground_matches(owner, foreground.0 as usize, root.0 as usize)
+        FocusSnapshot::new(owner, foreground.0 as usize, root.0 as usize)
     }
 }
 
 #[cfg(windows)]
 fn window_focused(window: &WebviewWindow) -> bool {
-    system_window_focused(window.hwnd().ok().map(|hwnd| hwnd.0 as usize))
+    system_focus(window.hwnd().ok().map(|hwnd| hwnd.0 as usize)).focused
+}
+
+#[cfg(any(windows, test))]
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FocusSnapshot {
+    probe: &'static str,
+    owner: Option<usize>,
+    foreground: usize,
+    foreground_owner: usize,
+    focused: bool,
+}
+
+#[cfg(any(windows, test))]
+impl FocusSnapshot {
+    fn new(owner: Option<usize>, foreground: usize, foreground_owner: usize) -> Self {
+        Self {
+            probe: "voxly-focus-v1",
+            owner,
+            foreground,
+            foreground_owner,
+            focused: foreground_matches(owner, foreground, foreground_owner),
+        }
+    }
+}
+
+#[cfg(windows)]
+fn record_focus(window: &WebviewWindow, point: &'static str, delivery: Option<Delivery>) -> bool {
+    use tauri::Manager;
+    let focus = system_focus(window.hwnd().ok().map(|hwnd| hwnd.0 as usize));
+    let snapshot = serde_json::json!({
+        "focus": focus,
+        "point": point,
+        "delivery": delivery,
+    });
+    write_diagnostic(
+        &window
+            .app_handle()
+            .state::<crate::Shell>()
+            .data
+            .join("native-notification-focus.json"),
+        &snapshot,
+    );
+    focus.focused
 }
 
 #[cfg(windows)]
@@ -80,11 +124,12 @@ pub fn suppress_focused_webview_notifications(
 
     // Older runtimes retain the existing document gate and default background UI.
     let Ok(view) = core.cast::<ICoreWebView2_24>() else {
+        record_focus(window, "webviewInterfaceUnavailable", None);
         return;
     };
-    let owner = window.hwnd().ok().map(|hwnd| hwnd.0 as usize);
+    let target = window.clone();
     let handler = NotificationReceivedEventHandler::create(Box::new(move |_, args| {
-        if system_window_focused(owner) {
+        if record_focus(&target, "webviewNotification", None) {
             if let Some(args) = args {
                 // Only suppress this event. Background notifications keep WebView2's
                 // default delivery/click handling; no custom UI or fake ReportShown.
@@ -94,7 +139,16 @@ pub fn suppress_focused_webview_notifications(
         Ok(())
     }));
     let mut token = 0;
-    let _ = unsafe { view.add_NotificationReceived(&handler, &mut token) };
+    let registered = unsafe { view.add_NotificationReceived(&handler, &mut token) }.is_ok();
+    record_focus(
+        window,
+        if registered {
+            "webviewRegistered"
+        } else {
+            "webviewRegistrationFailed"
+        },
+        None,
+    );
 }
 
 #[cfg(any(windows, test))]
@@ -134,7 +188,7 @@ impl Diagnostic {
 }
 
 #[cfg(any(windows, test))]
-fn write_diagnostic(path: &std::path::Path, diagnostic: &Diagnostic) {
+fn write_diagnostic(path: &std::path::Path, diagnostic: &impl Serialize) {
     // One bounded local snapshot, never routes, IDs, content or raw error messages.
     // A diagnostic write failure must not affect notification fallback or calls.
     static WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -207,7 +261,7 @@ impl Notifications {
     pub fn show(&self, window: &WebviewWindow, request: Request) -> Delivery {
         #[cfg(windows)]
         {
-            background_delivery(window_focused(window), || {
+            let delivery = background_delivery(record_focus(window, "nativeRequest", None), || {
                 match self.show_windows(window, request) {
                     Ok(delivery) => delivery,
                     Err(diagnostic) => {
@@ -215,7 +269,9 @@ impl Notifications {
                         Delivery::Fallback
                     }
                 }
-            })
+            });
+            record_focus(window, "nativeResult", Some(delivery));
+            delivery
         }
         #[cfg(not(windows))]
         {
@@ -452,7 +508,7 @@ impl Notifications {
                 ),
             ),
         )?);
-        if window_focused(window) {
+        if record_focus(window, "nativeBeforeShow", None) {
             return Ok(Delivery::Blocked);
         }
         let key = (window.label().to_owned(), request.id);
@@ -497,6 +553,25 @@ mod tests {
         assert!(!foreground_matches(Some(10), 20, 20));
         assert!(!foreground_matches(Some(10), 0, 0));
         assert!(foreground_matches(None, 20, 20));
+    }
+    #[test]
+    fn focus_snapshot_identifies_probe_and_contains_only_window_state() {
+        let path = std::env::temp_dir().join(format!(
+            "voxly-notification-focus-{}.json",
+            std::process::id()
+        ));
+        write_diagnostic(&path, &FocusSnapshot::new(Some(10), 20, 10));
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap(),
+            serde_json::json!({"probe": "voxly-focus-v1", "owner": 10,
+                "foreground": 20, "foregroundOwner": 10, "focused": true})
+        );
+        write_diagnostic(&path, &FocusSnapshot::new(Some(10), 20, 20));
+        let contents = std::fs::read(&path).unwrap();
+        assert!(contents.len() < 256);
+        let snapshot: serde_json::Value = serde_json::from_slice(&contents).unwrap();
+        assert_eq!(snapshot["focused"], false);
+        std::fs::remove_file(path).unwrap();
     }
     #[test]
     fn diagnostic_keeps_only_finite_stage_and_hresult_and_replaces_the_previous_failure() {
