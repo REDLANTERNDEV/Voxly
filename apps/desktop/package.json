@@ -10,7 +10,7 @@
     "bundle": "tauri build",
     "tauri": "tauri",
     "typecheck": "tsc --noEmit",
-    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/test/*.test.js\"",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/test/*.test.js\" && node --test scripts/release.test.mjs",
     "test:native": "cargo test --manifest-path src-tauri/Cargo.toml --locked"
   },
   "dependencies": {

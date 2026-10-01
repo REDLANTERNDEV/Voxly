@@ -1,0 +1,102 @@
+name: Windows desktop signed candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Stable version already set in desktop package, Cargo and Tauri config'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-desktop-release
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    # Configure required reviewers and restrict this environment to the release branch.
+    environment: desktop-production
+    runs-on: windows-2022
+    timeout-minutes: 50
+    env:
+      VOXLY_DESKTOP_RELEASE_VERSION: ${{ inputs.version }}
+      VOXLY_DESKTOP_UPDATE_ENDPOINT: ${{ vars.DESKTOP_UPDATE_ENDPOINT || format('https://github.com/{0}/releases/download/desktop-stable/latest.json', github.repository) }}
+      VOXLY_DESKTOP_UPDATER_PUBLIC_KEY: ${{ vars.DESKTOP_UPDATER_PUBLIC_KEY }}
+      VOXLY_DESKTOP_RELEASE_BASE_URL: ${{ vars.DESKTOP_RELEASE_BASE_URL || format('https://github.com/{0}/releases/download/desktop-v{1}/', github.repository, inputs.version) }}
+      VOXLY_DESKTOP_PUBLISHER: ${{ vars.DESKTOP_PUBLISHER }}
+      VOXLY_DESKTOP_TIMESTAMP_URL: ${{ vars.DESKTOP_TIMESTAMP_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run build -w @voxly/desktop
+      - name: Verify native shell
+        working-directory: apps/desktop/src-tauri
+        run: |
+          cargo fmt --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --locked --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare protected signing configuration
+        env:
+          CERTIFICATE_PFX: ${{ secrets.DESKTOP_AUTHENTICODE_PFX_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DESKTOP_AUTHENTICODE_PASSWORD }}
+        run: |
+          if (!$env:CERTIFICATE_PFX -or !$env:CERTIFICATE_PASSWORD) { throw 'Authenticode certificate secrets are required' }
+          $path = Join-Path $env:RUNNER_TEMP 'voxly-signing.pfx'
+          try {
+            [IO.File]::WriteAllBytes($path, [Convert]::FromBase64String($env:CERTIFICATE_PFX))
+            $password = ConvertTo-SecureString $env:CERTIFICATE_PASSWORD -AsPlainText -Force
+            $certificate = Import-PfxCertificate -FilePath $path -CertStoreLocation Cert:\CurrentUser\My -Password $password
+            if (!$certificate.HasPrivateKey -or $certificate.NotAfter -le (Get-Date)) { throw 'Valid Authenticode certificate required' }
+            "VOXLY_DESKTOP_CERTIFICATE_THUMBPRINT=$($certificate.Thumbprint)" >> $env:GITHUB_ENV
+            "VOXLY_DESKTOP_RELEASE_CONFIG=$(Join-Path $env:RUNNER_TEMP 'voxly-release.json')" >> $env:GITHUB_ENV
+            "VOXLY_DESKTOP_RELEASE_OUTPUT=$(Join-Path $env:RUNNER_TEMP 'voxly-release-output')" >> $env:GITHUB_ENV
+          } finally { Remove-Item $path -ErrorAction SilentlyContinue }
+      - name: Build signed release candidate
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.DESKTOP_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.DESKTOP_UPDATER_PASSWORD }}
+        run: |
+          if (!$env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Updater signing secret is required' }
+          node apps/desktop/scripts/release.mjs prepare
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run bundle -w @voxly/desktop -- --locked --config $env:VOXLY_DESKTOP_RELEASE_CONFIG
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify Authenticode and updater signature; generate manifest and checksums
+        run: |
+          $files = @(Get-Item apps/desktop/src-tauri/target/release/voxly-desktop.exe) + @(Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe)
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature $file.FullName
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $env:VOXLY_DESKTOP_CERTIFICATE_THUMBPRINT -or !$signature.TimeStamperCertificate) { throw 'Expected valid timestamped Authenticode signature from configured certificate' }
+          }
+          node apps/desktop/scripts/release.mjs finalize
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voxly-windows-signed-candidate-${{ inputs.version }}
+          path: ${{ env.VOXLY_DESKTOP_RELEASE_OUTPUT }}/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove signing material
+        if: always()
+        run: |
+          if ($env:VOXLY_DESKTOP_CERTIFICATE_THUMBPRINT) {
+            Remove-Item "Cert:\CurrentUser\My\$env:VOXLY_DESKTOP_CERTIFICATE_THUMBPRINT" -ErrorAction SilentlyContinue
+          }
+          Remove-Item (Join-Path $env:RUNNER_TEMP 'voxly-release.json') -ErrorAction SilentlyContinue

@@ -4,6 +4,7 @@ import { errorKey, translate, type Language, type TranslationKey } from "./i18n.
 import { createCaptureOwner, probeConstraints, screenConstraints, summarizeTracks, type ProbeKind } from "./media.js";
 import { performTransition, type CallState } from "./transitions.js";
 import "./styles.css";
+import { installVerifiedUpdate, type UpdateSnapshot } from "./updates.js";
 import { mountShortcutSettings, type ShortcutSnapshot } from "./shortcuts.js";
 
 interface Installation { id: string; origin: string }
@@ -26,6 +27,8 @@ let language: Language = navigator.language.startsWith("tr") ? "tr" : "en";
 let state: Snapshot | null = null;
 let pendingDesktopLink: DesktopLink | null = null;
 let busy = false;
+let updateState: UpdateSnapshot | null = null;
+let updateWorking = false;
 let confirmPending = false;
 const captures = createCaptureOwner();
 let toneContext: AudioContext | null = null;
@@ -74,7 +77,69 @@ function renderTranslations() {
   element<HTMLSelectElement>("output").options[0].textContent = t("defaultOutput");
 }
 
+function renderUpdates() {
+  const phase = updateState?.phase ?? "disabled";
+  const keys = { disabled: "updateDisabled", idle: "updateIdle", checking: "updateChecking", current: "updateCurrent", available: "updateAvailable", downloading: "updateDownloading", ready: "updateReady", installing: "updateInstalling", error: "update_unavailable" } as const;
+  const messages = [`Voxly v${state?.shellVersion ?? updateState?.currentVersion ?? "—"}`, t(keys[phase])];
+  if (updateState?.version && ["available", "ready", "downloading"].includes(phase)) messages.push(updateState.version);
+  if (phase === "downloading") messages.push(`${Math.round((updateState?.downloaded ?? 0) / 1024)} KB`);
+  if (updateState?.error) messages.push(t(errorKey(updateState.error)));
+  element("update-status").textContent = messages.join(" ");
+  element<HTMLButtonElement>("update-check").disabled = !native || !state || phase === "disabled" || busy || updateWorking || phase === "ready";
+  element<HTMLButtonElement>("update-download").hidden = phase !== "available";
+  element<HTMLButtonElement>("update-download").disabled = busy || updateWorking;
+  element<HTMLButtonElement>("update-install").hidden = phase !== "ready";
+  element<HTMLButtonElement>("update-install").disabled = busy || updateWorking;
+  element<HTMLButtonElement>("update-cancel").hidden = phase !== "downloading" && phase !== "ready";
+  element<HTMLButtonElement>("update-cancel").disabled = busy;
+}
+
+async function updateOperation(command: "check_shell_update" | "download_shell_update") {
+  if (!native || !state || busy || updateWorking) return;
+  updateWorking = true;
+  renderUpdates();
+  let polling = false;
+  const progress = command === "download_shell_update" ? window.setInterval(() => {
+    if (polling) return;
+    polling = true;
+    void invoke<UpdateSnapshot>("shell_update_state").then((next) => {
+      if (updateWorking) { updateState = next; renderUpdates(); }
+    }).catch(() => undefined).finally(() => { polling = false; });
+  }, 1000) : undefined;
+  try {
+    updateState = { currentVersion: state.shellVersion, phase: command === "check_shell_update" ? "checking" : "downloading", version: updateState?.version ?? null, downloaded: 0, total: null, error: null };
+    renderUpdates();
+    updateState = await invoke<UpdateSnapshot>(command);
+  } catch (error) { status(errorKey(error)); }
+  finally {
+    if (progress !== undefined) window.clearInterval(progress);
+    updateWorking = false;
+    renderUpdates();
+  }
+}
+
+element("update-check").addEventListener("click", () => void updateOperation("check_shell_update"));
+element("update-download").addEventListener("click", () => void updateOperation("download_shell_update"));
+element("update-cancel").addEventListener("click", () => {
+  void invoke<UpdateSnapshot>("cancel_shell_update").then((next) => { updateState = next; renderUpdates(); }).catch((error) => status(errorKey(error)));
+});
+element("update-install").addEventListener("click", () => {
+  if (updateState?.phase !== "ready" || updateWorking) return;
+  void run(async () => {
+    try {
+      await installVerifiedUpdate({ report: () => invoke<CallState | null>("transition_state"),
+        confirm: (report) => confirmAction(false, report, true), stop: stopMedia,
+        install: async () => { await invoke("install_shell_update", { confirmed: true }); }
+      });
+    } finally {
+      state = await invoke<Snapshot>("shell_state");
+      updateState = await invoke<UpdateSnapshot>("shell_update_state");
+    }
+  });
+});
+
 function renderInstallations() {
+  renderUpdates();
   element("desktop-link").hidden = !pendingDesktopLink;
   element("desktop-link-origin").textContent = pendingDesktopLink?.origin ?? "";
   element<HTMLButtonElement>("desktop-link-review").disabled = busy;
@@ -174,7 +239,7 @@ function localMediaActive(): boolean {
   return captures.isPending() || Boolean(captures.current()) || Boolean(toneContext && toneContext.state !== "closed");
 }
 
-async function confirmAction(quitting = false, report: CallState | null = null): Promise<boolean> {
+async function confirmAction(quitting = false, report: CallState | null = null, updating = false): Promise<boolean> {
   if (confirmPending) return false;
   confirmPending = true;
   const dialog = element<HTMLDialogElement>("confirm-dialog");
@@ -190,8 +255,8 @@ async function confirmAction(quitting = false, report: CallState | null = null):
   if (report?.pendingJoin || report?.pendingCapture) details.push("callStatePending");
   if (report?.microphoneTest) details.push("callStateTest");
   if (localMediaActive()) details.push("callStateLocalMedia");
-  element("confirm-body").textContent = [t(quitting ? "quitConfirmationBody" : "confirmationBody"), ...details.map(t)].join(" ");
-  element("confirm-title").textContent = t(quitting ? "quit" : "confirmationTitle");
+  element("confirm-body").textContent = [t(updating ? "updateConfirmation" : quitting ? "quitConfirmationBody" : "confirmationBody"), ...details.map(t)].join(" ");
+  element("confirm-title").textContent = t(updating ? "updateInstall" : quitting ? "quit" : "confirmationTitle");
   dialog.returnValue = "cancel";
   dialog.showModal();
   return new Promise((resolve) => dialog.addEventListener("close", () => {
@@ -415,12 +480,24 @@ async function start() {
       void receiveDesktopLink().catch((error: unknown) => status(errorKey(error)));
     });
     state = await invoke<Snapshot>("shell_state");
+    updateState = await invoke<UpdateSnapshot>("shell_update_state");
     language = state.preferences.language;
     renderTranslations();
     renderInstallations();
     await receiveDesktopLink();
     refreshReport();
     await listen("shell:quit-requested", () => void quit());
+    await listen<UpdateSnapshot>("shell:updates", (event) => { updateState = event.payload; renderUpdates(); });
+    await listen("shell:review-update", () => {
+      void invoke<UpdateSnapshot>("shell_update_state").then((next) => {
+        updateState = next; renderUpdates();
+        element("updates-heading").scrollIntoView({ block: "center" });
+        if (next.phase === "ready" && !confirmPending) element("update-install").click();
+      }).catch((error: unknown) => status(errorKey(error)));
+    });
+    // Cover a native background transition between the initial read and subscription.
+    updateState = await invoke<UpdateSnapshot>("shell_update_state");
+    renderUpdates();
     if (!state.preferences.trayAcknowledged) {
       const dialog = element<HTMLDialogElement>("tray-dialog");
       dialog.addEventListener("close", () => {

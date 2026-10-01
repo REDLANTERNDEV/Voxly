@@ -1,6 +1,8 @@
 import type { Translate } from "../app/types.js";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useClientUpdate } from "../lib/useClientUpdate.js";
+import { ApplicationUpdateContext } from "../lib/applicationUpdates.js";
+import { desktopUpdateBridge, observeDesktopUpdates, type DesktopUpdateSnapshot } from "../lib/desktopUpdates.js";
 
 export function ClientUpdateBoundary({ latestVersion, media, t, children }: {
   latestVersion: string | null;
@@ -14,8 +16,16 @@ export function ClientUpdateBoundary({ latestVersion, media, t, children }: {
   const busy = Boolean(media.voice.joinPending || media.voice.activeRoomId || media.voice.microphoneMonitorStream
     || media.voice.localPreviews.length || media.microphoneTest.active);
   const update = useClientUpdate(latestVersion, busy, media.voice.isJoinPending);
-  return <>{children}{update.pendingVersion ? <aside className="client-update-notice" aria-label={t("clientUpdate.ready")}>
-    <p role="status">{t(busy ? "clientUpdate.afterCall" : "clientUpdate.ready")}</p>
-    <button className="btn" type="button" disabled={busy} onClick={update.reloadWhenSafe}>{t("clientUpdate.reload")}</button>
-  </aside> : null}</>;
+  const [desktop, setDesktop] = useState<DesktopUpdateSnapshot | null>(null);
+  useEffect(() => {
+    const bridge = desktopUpdateBridge();
+    return bridge ? observeDesktopUpdates(bridge, setDesktop) : undefined;
+  }, []);
+  const reviewDesktop = useCallback(async () => {
+    let shown = false;
+    try { shown = await desktopUpdateBridge()?.review() ?? false; } catch { /* Present failure in the same update row. */ }
+    if (!shown) setDesktop(current => current ? { ...current, error: "update_review_failed" } : current);
+  }, []);
+  const context = useMemo(() => ({ desktop, reviewDesktop, pendingClient: update.pendingVersion, clientBusy: busy, reloadClient: update.reloadWhenSafe }), [desktop, reviewDesktop, update.pendingVersion, busy, update.reloadWhenSafe]);
+  return <ApplicationUpdateContext value={context}>{children}</ApplicationUpdateContext>;
 }

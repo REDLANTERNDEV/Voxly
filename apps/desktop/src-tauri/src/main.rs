@@ -9,6 +9,8 @@ mod mouse_hook;
 mod native_notifications;
 mod platform;
 mod shortcuts;
+mod update_installer;
+mod updates;
 
 use installations::{Installation, Language, Preferences};
 use serde::Serialize;
@@ -68,6 +70,8 @@ async fn next_voice_delivery(
 }
 
 struct TrayMenu {
+    root: tauri::menu::Menu<tauri::Wry>,
+    update: tauri::menu::MenuItem<tauri::Wry>,
     show: tauri::menu::MenuItem<tauri::Wry>,
     installations: tauri::menu::MenuItem<tauri::Wry>,
     quit: tauri::menu::MenuItem<tauri::Wry>,
@@ -959,6 +963,165 @@ async fn acknowledge_tray(
 }
 
 #[tauri::command]
+async fn shell_update_state(
+    window: WebviewWindow,
+    updates: tauri::State<'_, updates::Updates>,
+) -> Result<updates::Snapshot, &'static str> {
+    trusted_shell(&window)?;
+    Ok(updates.snapshot())
+}
+
+// Installation content may read presentation and open local review, never install.
+#[tauri::command]
+async fn read_desktop_update(
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    updates: tauri::State<'_, updates::Updates>,
+) -> Result<updates::Snapshot, &'static str> {
+    let inner = shell.inner.lock().await;
+    let active = inner.active.as_ref().ok_or("forbidden")?;
+    if !report_caller_matches(
+        shell.voice_generation.load(Ordering::Acquire),
+        window.label(),
+        &active.origin,
+        &window.url().map_err(|_| "forbidden")?,
+    ) {
+        return Err("forbidden");
+    }
+    Ok(updates.snapshot())
+}
+
+#[tauri::command]
+async fn review_desktop_update(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    updates: tauri::State<'_, updates::Updates>,
+) -> Result<(), &'static str> {
+    read_desktop_update(window, shell, updates).await?;
+    review_update(&app);
+    Ok(())
+}
+
+fn review_update(app: &tauri::AppHandle) {
+    show_shell(app);
+    let _ = app.emit_to("shell", "shell:review-update", ());
+}
+
+fn publish_update_state(app: &tauri::AppHandle) {
+    let state = app.state::<updates::Updates>().snapshot();
+    let _ = app.emit_to("shell", "shell:updates", &state);
+    if let Ok(json) = serde_json::to_string(&state) {
+        for (label, window) in app.webview_windows() {
+            if label.starts_with("installation-") {
+                let _ = window.eval(format!(
+                    "window.__VOXLY_DESKTOP_UPDATES_V1__?.dispatch({json});"
+                ));
+            }
+        }
+    }
+    let native = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let shell = native.state::<Shell>();
+        let ready = native.state::<updates::Updates>().snapshot().phase == "ready";
+        let present = shell.menu.root.get("update").is_some();
+        if ready && !present {
+            let _ = shell.menu.root.insert(&shell.menu.update, 2);
+        }
+        if !ready && present {
+            let _ = shell.menu.root.remove(&shell.menu.update);
+        }
+    });
+}
+
+#[tauri::command]
+async fn check_shell_update(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    updates: tauri::State<'_, updates::Updates>,
+) -> Result<updates::Snapshot, &'static str> {
+    trusted_shell(&window)?;
+    updates.check(&app).await
+}
+
+#[tauri::command]
+async fn download_shell_update(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    updates: tauri::State<'_, updates::Updates>,
+) -> Result<updates::Snapshot, &'static str> {
+    trusted_shell(&window)?;
+    updates.download(&app).await
+}
+
+#[tauri::command]
+async fn cancel_shell_update(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    updates: tauri::State<'_, updates::Updates>,
+) -> Result<updates::Snapshot, &'static str> {
+    trusted_shell(&window)?;
+    let result = updates.cancel();
+    publish_update_state(&app);
+    result
+}
+
+#[tauri::command]
+async fn install_shell_update(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    updates: tauri::State<'_, updates::Updates>,
+    confirmed: bool,
+) -> Result<(), &'static str> {
+    trusted_shell(&window)?;
+    // Always require local consent, even when both windows are idle.
+    if !confirmed {
+        return Err("confirmation_required");
+    }
+    if !cfg!(target_os = "windows") {
+        return Err("unsupported_platform");
+    }
+    let _lease = updates.operation.try_lock().map_err(|_| "update_busy")?;
+    let mut inner = shell.inner.lock().await;
+    let root = app
+        .path()
+        .app_cache_dir()
+        .map_err(|_| "update_install_failed")?
+        .join("updates");
+    let bytes = updates.installer()?;
+    publish_update_state(&app);
+    let prepared = match update_installer::Prepared::new(&root, &bytes) {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            updates.install_failed(&app);
+            return Err(error);
+        }
+    };
+    // A current report remains advisory; explicit consent includes unknown and pending media.
+    let _report = query_call_state(&app, &shell).await;
+    if let Some(remote) = remote_window(&app) {
+        app.state::<native_notifications::Notifications>()
+            .clear(remote.label());
+        if remote.destroy().is_err() {
+            updates.install_failed(&app);
+            return Err("window_failed");
+        }
+    }
+    shell.voice_generation.fetch_add(1, Ordering::AcqRel);
+    shell.reports.invalidate();
+    *shell.voice_target.write().map_err(|_| "window_failed")? = None;
+    inner.active = None;
+    // No await between teardown and install: no new Installation can open under this lease.
+    if prepared.launch().is_err() {
+        updates.install_failed(&app);
+        return Err("update_install_failed");
+    }
+    app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
 async fn quit_app(
     app: tauri::AppHandle,
     window: WebviewWindow,
@@ -1027,6 +1190,11 @@ fn update_tray_language(menu: &TrayMenu, language: Language) -> tauri::Result<()
         .set_text(if tr { "Voxly’yi aç" } else { "Show Voxly" })?;
     menu.installations
         .set_text(if tr { "Kurulumlar" } else { "Installations" })?;
+    menu.update.set_text(if tr {
+        "Güncelle ve yeniden başlat…"
+    } else {
+        "Update and restart…"
+    })?;
     menu.quit.set_text(if tr { "Çık…" } else { "Quit…" })
 }
 
@@ -1072,6 +1240,13 @@ fn main() {
             set_language,
             acknowledge_tray,
             quit_app,
+            shell_update_state,
+            read_desktop_update,
+            review_desktop_update,
+            check_shell_update,
+            download_shell_update,
+            cancel_shell_update,
+            install_shell_update,
             set_mute_shortcut,
             set_deafen_shortcut,
             set_push_to_talk_shortcut,
@@ -1080,6 +1255,16 @@ fn main() {
             set_push_to_talk_release_delay
         ])
         .setup(|app| {
+            if let Ok(cache) = app.path().app_cache_dir() {
+                update_installer::cleanup(&cache.join("updates"));
+            }
+            let updates_enabled = cfg!(target_os = "windows") && updates::configured(app.handle());
+            if updates_enabled {
+                // No updater plugin ACL is granted to any webview, including the shell.
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+            }
+            app.manage(updates::Updates::new(updates_enabled));
             let data = app.path().app_local_data_dir()?;
             let preferences = installations::load(&data.join("installations.json"))
                 .map_err(std::io::Error::other)?;
@@ -1093,8 +1278,25 @@ fn main() {
                 None::<&str>,
             )?;
             let quit = tauri::menu::MenuItem::with_id(app, "quit", "Quit…", true, None::<&str>)?;
-            let menu = tauri::menu::Menu::with_items(app, &[&show, &installations, &quit])?;
+            let update = tauri::menu::MenuItem::with_id(
+                app,
+                "update",
+                "Update and restart…",
+                true,
+                None::<&str>,
+            )?;
+            let version = tauri::menu::MenuItem::with_id(
+                app,
+                "version",
+                format!("Voxly v{}", env!("CARGO_PKG_VERSION")),
+                false,
+                None::<&str>,
+            )?;
+            let menu =
+                tauri::menu::Menu::with_items(app, &[&show, &installations, &quit, &version])?;
             let tray_menu = TrayMenu {
+                root: menu.clone(),
+                update,
                 show,
                 installations,
                 quit,
@@ -1106,12 +1308,13 @@ fn main() {
                         .ok_or("missing tray icon")?
                         .clone(),
                 )
-                .tooltip("Voxly")
+                .tooltip(format!("Voxly v{}", env!("CARGO_PKG_VERSION")))
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_current(app),
                     "installations" => show_shell(app),
+                    "update" => review_update(app),
                     "quit" => {
                         show_shell(app);
                         let _ = app.emit_to("shell", "shell:quit-requested", ());
@@ -1153,6 +1356,21 @@ fn main() {
                 voice_target: std::sync::RwLock::new(None),
                 push_to_talk_release_delay_ms: AtomicU16::new(release_delay_ms),
             });
+            if updates_enabled {
+                let update_app = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        let updates = update_app.state::<updates::Updates>();
+                        if updates.check(&update_app).await.is_ok()
+                            && updates.background_download_allowed()
+                        {
+                            let _ = updates.download(&update_app).await;
+                        }
+                        // Native scheduling also runs while every window is hidden.
+                        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                    }
+                });
+            }
             let event_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let mut release = None;

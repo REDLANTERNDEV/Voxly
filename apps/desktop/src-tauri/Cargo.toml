@@ -20,7 +20,12 @@ serde_json = "1"
 sha2 = "0.10"
 url = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"] }
-tokio = { version = "1", features = ["sync", "time"] }
+tokio = { version = "1", features = ["sync", "time", "macros"] }
+tauri-plugin-updater = "=2.10.1"
+base64 = "0.22"
+minisign-verify = "=0.2.5"
+semver = "1"
+tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_LibraryLoader", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }

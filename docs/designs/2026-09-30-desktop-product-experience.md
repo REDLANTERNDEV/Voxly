@@ -74,7 +74,13 @@ Do not infer criticality from an asset hash or abruptly reload a live call.
 The exact compatibility version/configuration contract is a later design and
 must include server/web tests and safe failure/rollback behavior.
 
-Signed native updates check at startup and through local Settings. Installation
+Signed native updates check at startup, hourly while running (including hidden
+tray sessions), and through local Settings. Available packages download and
+verify quietly; the dock/account menu display public status and versions, and
+the ready-only tray action opens local review. Settings → General separates
+desktop and web versions. Mandatory deadlines and automatic restart/rejoin
+remain proposals in the [continuous-session research](2026-10-01-desktop-continuous-session-update-research.md).
+Installation
 requires the media gate because Windows updater installation exits the process.
 Do not ship a fake signing key, placeholder endpoint or remote-controlled
 update trust. Real distributor ownership/signing remains a release prerequisite.

@@ -38,7 +38,7 @@ pub fn open_installation(
     }
     let origin = saved.origin.clone();
     let bootstrap = format!(
-        "{}({}, {});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});",
+        "{}({}, {});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});",
         include_str!("voice-bridge.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
         serde_json::to_string(&microphone_mode).map_err(|_| "invalid_address")?,
@@ -53,6 +53,8 @@ pub fn open_installation(
         include_str!("native-notifications.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
         include_str!("notifications.js"),
+        serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?,
+        include_str!("update-bridge.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?
     );
     let opener_app = app.clone();
@@ -68,7 +70,9 @@ pub fn open_installation(
             .permission("allow-reset-notification-permission")
             .permission("allow-set-installation-theme")
             .permission("allow-show-desktop-notification")
-            .permission("allow-close-desktop-notification"),
+            .permission("allow-close-desktop-notification")
+            .permission("allow-read-desktop-update")
+            .permission("allow-review-desktop-update"),
     )
     .map_err(|_| "window_failed")?;
     let navigation_app = app.clone();

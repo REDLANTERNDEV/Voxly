@@ -9,6 +9,7 @@ import type { TranslationKey } from "../../lib/i18n.js";
 import { ExternalPreviewSettings } from "../ExternalPreviewSettings.js";
 import { AccountDeletionSettings } from "../AccountDeletionSettings.js";
 import { DesktopNotificationSettings } from "../DesktopNotificationSettings.js";
+import { ApplicationVersionSettings } from "../ApplicationUpdateStatus.js";
 
 /**
  * Settings, in a window over the room rather than stacked down the channel rail.
@@ -24,10 +25,11 @@ import { DesktopNotificationSettings } from "../DesktopNotificationSettings.js";
  * 260-pixel column ever wanted to be.
  */
 
-export type SettingsSection = "account" | "audio" | "appearance" | "privacy";
+export type SettingsSection = "general" | "account" | "audio" | "appearance" | "privacy";
 
-const sections: readonly SettingsSection[] = ["account", "audio", "appearance", "privacy"];
+const sections: readonly SettingsSection[] = ["general", "account", "audio", "appearance", "privacy"];
 const sectionIcons = {
+  general: <GearIcon />,
   account: <UsersIcon />,
   audio: <HeadsetIcon off={false} />,
   appearance: <GearIcon />,
@@ -79,6 +81,7 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
             </button>
           </header>
           <div className="settings-content">
+            {section === "general" ? <ApplicationVersionSettings t={props.t} /> : null}
             {section === "account" ? (
               <>
                 <DeviceSettings t={props.t} />
