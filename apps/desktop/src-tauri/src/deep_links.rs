@@ -1,8 +1,27 @@
 use crate::installations::{self, Installation};
 
 // OS URLs and process arguments are untrusted. Only an Installation origin is
-// accepted: no authentication token, web route, command, or arbitrary payload.
-pub fn parse(input: &str) -> Option<Installation> {
+// accepted, plus an optional public sign-in correlation id. Never a credential.
+#[derive(Clone, serde::Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopLink {
+    #[serde(flatten)]
+    pub installation: Installation,
+    pub launch_id: Option<String>,
+}
+
+pub fn launch_id(value: &str) -> bool {
+    value.len() == 36
+        && value.bytes().enumerate().all(|(i, byte)| {
+            if [8, 13, 18, 23].contains(&i) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()
+            }
+        })
+}
+
+pub fn parse(input: &str) -> Option<DesktopLink> {
     if input.len() > 4096
         // Browsers may add a root slash to the protocol URL. Check the raw
         // envelope too, so URL normalization cannot hide dot paths.
@@ -26,14 +45,25 @@ pub fn parse(input: &str) -> Option<Installation> {
     }
     let mut pairs = url.query_pairs();
     let (key, origin) = pairs.next()?;
-    if key != "origin" || pairs.next().is_some() {
+    if key != "origin" {
+        return None;
+    }
+    let launch_id = match pairs.next() {
+        None => None,
+        Some((key, id)) if key == "launch" && launch_id(&id) => Some(id.into_owned()),
+        _ => return None,
+    };
+    if pairs.next().is_some() {
         return None;
     }
     let saved = installations::installation(&origin).ok()?;
-    (saved.origin == origin).then_some(saved)
+    (saved.origin == origin).then_some(DesktopLink {
+        installation: saved,
+        launch_id,
+    })
 }
 
-pub fn from_args(args: &[String]) -> Option<Installation> {
+pub fn from_args(args: &[String]) -> Option<DesktopLink> {
     if args.len() != 2 {
         return None;
     }
@@ -50,17 +80,17 @@ pub fn restores_active(
 }
 
 #[derive(Default)]
-pub struct PendingLink(std::sync::Mutex<Option<Installation>>);
+pub struct PendingLink(std::sync::Mutex<Option<DesktopLink>>);
 
 impl PendingLink {
-    pub fn offer(&self, target: Installation) {
+    pub fn offer(&self, target: DesktopLink) {
         // Keep one bounded, validated request, even before the chooser is ready.
         if let Ok(mut pending) = self.0.lock() {
             *pending = Some(target);
         }
     }
 
-    pub fn take(&self) -> Option<Installation> {
+    pub fn take(&self) -> Option<DesktopLink> {
         self.0.lock().ok()?.take()
     }
 }
@@ -73,7 +103,7 @@ mod tests {
     fn accepts_only_canonical_installation_origins() {
         let target = parse("voxly://open?origin=https%3A%2F%2Fchat.example").unwrap();
         assert_eq!(
-            target,
+            target.installation,
             installations::installation("https://chat.example").unwrap()
         );
         assert!(parse("voxly://open?origin=http%3A%2F%2Flocalhost%3A3000").is_some());
@@ -140,8 +170,11 @@ mod tests {
         assert!(from_args(&[args[0].clone(), "--open".into(), args[1].clone()]).is_none());
         let pending = PendingLink::default();
         pending.offer(from_args(&args).unwrap());
-        pending.offer(installations::installation("https://other.example").unwrap());
-        assert_eq!(pending.take().unwrap().origin, "https://other.example");
+        pending.offer(parse("voxly://open?origin=https://other.example").unwrap());
+        assert_eq!(
+            pending.take().unwrap().installation.origin,
+            "https://other.example"
+        );
         assert!(pending.take().is_none());
     }
 
@@ -161,8 +194,18 @@ mod tests {
                     from_args(&args).expect("browser URI must reach cold and running handlers");
                 let pending = PendingLink::default();
                 pending.offer(target);
-                assert_eq!(pending.take().unwrap().origin, origin);
+                assert_eq!(pending.take().unwrap().installation.origin, origin);
             }
+        }
+    }
+
+    #[test]
+    fn accepts_only_a_single_public_launch_identifier() {
+        let id = "12345678-1234-1234-1234-123456789abc";
+        let input = format!("voxly://open/?origin=https%3A%2F%2Fchat.example&launch={id}");
+        assert_eq!(parse(&input).unwrap().launch_id.as_deref(), Some(id));
+        for suffix in ["&launch=bad", "&token=secret", "&launch=12345678-1234-1234-1234-123456789abc&launch=12345678-1234-1234-1234-123456789abc"] {
+            assert!(parse(&format!("voxly://open?origin=https://chat.example{suffix}")).is_none());
         }
     }
 

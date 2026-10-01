@@ -17,6 +17,12 @@ describe("startup surface", () => {
     assert.equal(startupSurface("owner", "loading"), "shell-skeleton");
   });
 
+  it("waits for the desktop profile session before starting browser-initiated sign-in", () => {
+    assert.equal(startupSurface("link-device", "loading", true), "shell-skeleton");
+    assert.equal(startupSurface("link-device", "ready", true), "route");
+    assert.equal(startupSurface("link-device", "loading", false), "route");
+  });
+
   it("uses the resolved route after authentication completes", () => {
     assert.equal(startupSurface("text", "ready"), "route");
   });

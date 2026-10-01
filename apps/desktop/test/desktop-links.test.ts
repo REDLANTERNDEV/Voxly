@@ -13,13 +13,15 @@ describe("desktop link native boundary", () => {
     assert.equal((source.match(/deep_links::from_args/g) ?? []).length, 2);
   });
 
-  it("offers links locally without navigation, persistence, authentication or media changes", () => {
+  it("offers links locally and sends only a public sign-in signal to a matching window", () => {
     const source = readFileSync("src-tauri/src/main.rs", "utf8");
     const offer = source.split("fn offer_desktop_link(")[1].split("fn update_tray_language")[0];
     assert.match(offer, /restores_active/);
+    assert.match(offer, /serde_json::to_string\(id\)/);
+    assert.match(offer, /voxly:desktop-launch/);
     assert.match(offer, /show_current\(app\)/);
     assert.match(offer, /emit_to\("shell", "shell:desktop-link", \(\)\)/);
-    assert.doesNotMatch(offer, /destroy|navigate|eval|connect_installation|check_health|persist|voice_generation\.fetch/);
+    assert.doesNotMatch(offer, /destroy|navigate|connect_installation|check_health|persist|voice_generation\.fetch/);
     const remote = readFileSync("src-tauri/src/platform.rs", "utf8");
     assert.doesNotMatch(remote, /allow-take-desktop-link|deep-link:/);
     const capability = JSON.parse(readFileSync("src-tauri/capabilities/shell.json", "utf8"));
@@ -28,6 +30,9 @@ describe("desktop link native boundary", () => {
     const ui = readFileSync("src/main.ts", "utf8");
     assert.ok(ui.indexOf('await listen("shell:desktop-link"') < ui.lastIndexOf("await receiveDesktopLink()"));
     const receive = ui.split("async function receiveDesktopLink()")[1].split('element("desktop-link-review")')[0];
-    assert.doesNotMatch(receive, /connect\(|save_installation|stopMedia|location\./);
+    const intake = receive.split("async function openDesktopLink")[0];
+    assert.match(intake, /!state\?\.active && !busy && state\?\.preferences\.installations\.some/);
+    assert.doesNotMatch(intake, /save_installation|stopMedia|location\./);
+    assert.match(receive, /await transition/);
   });
 });

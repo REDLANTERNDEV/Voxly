@@ -749,7 +749,7 @@ async fn shell_state(
 async fn take_desktop_link(
     window: WebviewWindow,
     pending: tauri::State<'_, deep_links::PendingLink>,
-) -> Result<Option<Installation>, &'static str> {
+) -> Result<Option<deep_links::DesktopLink>, &'static str> {
     trusted_shell(&window)?;
     Ok(pending.take())
 }
@@ -831,10 +831,17 @@ async fn connect_installation(
     id: String,
     confirm_leave: bool,
     reload: bool,
+    desktop_launch: Option<String>,
 ) -> Result<ShellSnapshot, &'static str> {
     trusted_shell(&window)?;
     if !cfg!(target_os = "windows") {
         return Err("unsupported_platform");
+    }
+    if desktop_launch
+        .as_deref()
+        .is_some_and(|id| !deep_links::launch_id(id))
+    {
+        return Err("invalid_address");
     }
     // Serialize changes across the await: two clicks cannot create two windows.
     let mut inner = shell.inner.lock().await;
@@ -873,6 +880,7 @@ async fn connect_installation(
         &shell.data,
         inner.preferences.microphone_mode,
         generation,
+        desktop_launch.as_deref(),
     )?;
     *shell.voice_target.write().map_err(|_| "window_failed")? = Some(saved.clone());
     inner.active = Some(saved);
@@ -987,7 +995,7 @@ fn show_current(app: &tauri::AppHandle) {
     }
 }
 
-fn offer_desktop_link(app: &tauri::AppHandle, target: Installation) {
+fn offer_desktop_link(app: &tauri::AppHandle, target: deep_links::DesktopLink) {
     // Restoring the active Installation leaves its route and media untouched.
     let active = app.try_state::<Shell>().and_then(|shell| {
         shell
@@ -997,7 +1005,14 @@ fn offer_desktop_link(app: &tauri::AppHandle, target: Installation) {
             .and_then(|active| active.clone())
     });
     let window_url = remote_window(app).and_then(|window| window.url().ok());
-    if deep_links::restores_active(&target, active.as_ref(), window_url.as_ref()) {
+    if deep_links::restores_active(&target.installation, active.as_ref(), window_url.as_ref()) {
+        if let (Some(id), Some(remote)) = (target.launch_id.as_ref(), remote_window(app)) {
+            // A finite public signal: the web UI ignores it if already signed in.
+            // No cookies, credentials, paths, or native permission travel here.
+            if let Ok(id) = serde_json::to_string(id) {
+                let _ = remote.eval(format!("window.dispatchEvent(new CustomEvent('voxly:desktop-launch', {{ detail: {id} }}));"));
+            }
+        }
         show_current(app);
         return;
     }

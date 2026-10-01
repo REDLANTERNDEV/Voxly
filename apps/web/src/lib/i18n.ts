@@ -9,7 +9,7 @@ const supportedLanguages = new Set<LanguageCode>(["en", "tr"]);
 const translations = {
   en: {
     "desktop.open": "Open in desktop",
-    "desktop.openHint": "Requires the installed Voxly desktop app. Opens this installation; sign-in remains separate.",
+    "desktop.openHint": "Requires the installed Voxly desktop app. First sign-in needs browser approval.",
     "clientUpdate.ready": "A Voxly update is ready.",
     "clientUpdate.afterCall": "A Voxly update is ready. End your call and media checks before reloading.",
     "clientUpdate.reload": "Reload to update",
@@ -201,6 +201,8 @@ const translations = {
     "link.waitingTitle": "Waiting for approval",
     "link.waitingCopy": "Approve this on your other device. Check that it is showing this number.",
     "link.startOver": "Try another code",
+    "desktopSignIn.launchWaiting": "Open Voxly and approve this address there. If desktop is already signed in, you can continue there. Otherwise, return here to approve sign-in. You can also use a Link code.",
+    "desktopSignIn.returnBrowser": "Return to the browser tab where you chose Open in desktop to approve this request.",
     "desktopSignIn.title": "Sign in with browser",
     "desktopSignIn.copy": "Already signed in on this installation in your browser? Approve this desktop Device there.",
     "desktopSignIn.start": "Start browser sign-in",
@@ -762,7 +764,7 @@ const translations = {
   },
   tr: {
     "desktop.open": "Masaüstünde aç",
-    "desktop.openHint": "Kurulu Voxly masaüstü uygulaması gerekir. Bu kurulumu açar; giriş ayrıca yapılır.",
+    "desktop.openHint": "Kurulu Voxly masaüstü uygulaması gerekir. İlk giriş için tarayıcı onayı gerekir.",
     "clientUpdate.ready": "Bir Voxly güncellemesi hazır.",
     "clientUpdate.afterCall": "Bir Voxly güncellemesi hazır. Yeniden yüklemeden önce aramanızı ve medya kontrollerini sonlandırın.",
     "clientUpdate.reload": "Güncellemek için yeniden yükle",
@@ -954,6 +956,8 @@ const translations = {
     "link.waitingTitle": "Onay bekleniyor",
     "link.waitingCopy": "Diğer cihazından onayla. Orada da bu numaranın göründüğünü kontrol et.",
     "link.startOver": "Başka bir kod dene",
+    "desktopSignIn.launchWaiting": "Voxly’yi aç ve adresi orada onayla. Masaüstünde zaten giriş yaptıysan oradan devam edebilirsin. Aksi halde girişi onaylamak için buraya dön. Bağlama kodunu da kullanabilirsin.",
+    "desktopSignIn.returnBrowser": "Bu isteği onaylamak için Masaüstünde aç seçeneğini kullandığın tarayıcı sekmesine dön.",
     "desktopSignIn.title": "Tarayıcıyla giriş yap",
     "desktopSignIn.copy": "Bu kurulumda tarayıcında zaten girişli misin? Bu masaüstü cihazına oradan onay ver.",
     "desktopSignIn.start": "Tarayıcıyla girişi başlat",

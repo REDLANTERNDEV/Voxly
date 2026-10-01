@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "node:test";
-import { desktopOpenLink } from "../src/lib/desktopLinks.js";
+import { desktopOpenLink, desktopLaunchFromSearch } from "../src/lib/desktopLinks.js";
 import { OpenInDesktop } from "../src/components/OpenInDesktop.js";
 import { translate } from "../src/lib/i18n.js";
 
@@ -20,6 +20,15 @@ describe("Open in desktop links", () => {
     assert.equal(desktopOpenLink("https://chat.example", true), null);
   });
 
+  it("carries only a validated public launch id and validates arriving correlation", () => {
+    const id = "12345678-1234-1234-1234-123456789abc";
+    assert.equal(desktopOpenLink("https://chat.example", false, id), `voxly://open?origin=https%3A%2F%2Fchat.example&launch=${id}`);
+    assert.equal(desktopOpenLink("https://chat.example", false, "secret&token=private"), null);
+    assert.equal(desktopLaunchFromSearch(`?desktopLaunch=${id}`), id);
+    assert.equal(desktopLaunchFromSearch(`?desktopLaunch=${id}&desktopLaunch=${id}`), undefined);
+    assert.equal(desktopLaunchFromSearch("?desktopLaunch=secret"), undefined);
+  });
+
   it("renders keyboard-accessible localized links and hides them inside desktop", () => {
     const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
     const target = { location: { origin: "https://chat.example", pathname: "/invite/private", hash: "#token=private" },
@@ -34,6 +43,9 @@ describe("Open in desktop links", () => {
         assert.ok(html.includes(translate(language, "desktop.openHint")));
         assert.ok(!html.includes("private"));
       }
+      const authenticated = renderToStaticMarkup(createElement(OpenInDesktop, { t: (key) => translate("en", key), authenticated: true }));
+      assert.ok(authenticated.startsWith("<button "));
+      assert.ok(!authenticated.includes("private"));
       target.__VOXLY_DESKTOP_V1__ = { version: 1 };
       assert.equal(renderToStaticMarkup(createElement(OpenInDesktop, { t: (key) => translate("en", key) })), "");
     } finally {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PublicUser } from "@voxly/shared";
 import {
   answerDesktopAuthorization,
@@ -10,10 +10,14 @@ import {
 } from "../../api.js";
 import type { Translate } from "../../app/types.js";
 import { AuthPageHeader } from "../../components/ui/Primitives.js";
+import { desktopLaunchFromSearch } from "../../lib/desktopLinks.js";
 import type { LanguageCode } from "../../lib/i18n.js";
 
 /** The private collection secret lives only in this desktop webview's memory. */
 export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: () => void }) {
+  const [launchId] = useState(() => desktopLaunchFromSearch(window.location.search));
+  const automaticStarted = useRef(false);
+  const [usingLaunch, setUsingLaunch] = useState(false);
   const [request, setRequest] = useState<DesktopAuthorization | null>(null);
   const current = useRef<DesktopAuthorization | null>(null);
   const mounted = useRef(false);
@@ -61,11 +65,12 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
     return () => { live = false; window.clearTimeout(timeout); };
   }, [request, outcome, onLinked]);
 
-  const start = async () => {
+  const start = useCallback(async (automaticLaunchId?: string) => {
     setBusy(true);
     setError(false);
+    setUsingLaunch(Boolean(automaticLaunchId));
     try {
-      const created = await createDesktopAuthorization();
+      const created = await createDesktopAuthorization(automaticLaunchId);
       if (!mounted.current) {
         void cancelDesktopAuthorization(created.id, created.secret).catch(() => undefined);
         return;
@@ -78,7 +83,13 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
     } finally {
       setBusy(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!launchId || automaticStarted.current) return;
+    automaticStarted.current = true;
+    void start(launchId);
+  }, [launchId, start]);
 
   const cancel = () => {
     const pending = current.current;
@@ -96,8 +107,10 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
         <>
           <p className="muted small">{t("desktopSignIn.compare")}</p>
           <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>{request.confirmation}</span>
-          <a className="btn btn-primary" href={address} target="_blank" rel="noopener noreferrer">{t("desktopSignIn.openBrowser")}</a>
-          <code className="desktop-browser-address">{address}</code>
+          {usingLaunch ? <p className="muted small">{t("desktopSignIn.returnBrowser")}</p> : <>
+            <a className="btn btn-primary" href={address} target="_blank" rel="noopener noreferrer">{t("desktopSignIn.openBrowser")}</a>
+            <code className="desktop-browser-address">{address}</code>
+          </>}
           <p className="muted small" role="status">{t("desktopSignIn.waiting")}</p>
           <button className="btn btn-ghost" type="button" onClick={cancel}>{t("common.cancel")}</button>
         </>

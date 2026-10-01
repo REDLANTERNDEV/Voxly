@@ -1,5 +1,5 @@
 import type { ChatMessage,ChatMessageReply,PublicUser } from "@voxly/shared";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AppShellSkeleton } from "../components/AppShellSkeleton.js";
 import { AppChrome } from "../components/shell/AppChrome.js";
 import { FatalState } from "../components/ui/Primitives.js";
@@ -17,6 +17,7 @@ import type { LanguageCode } from "../lib/i18n.js";
 import type { OutboxEntry } from "../lib/messageOutbox.js";
 import type { TimeFormatPreference } from "../lib/timeFormat.js";
 import { resolveInitialRoute } from "../lib/navigation.js";
+import { desktopLaunchFromSearch, desktopLaunchId } from "../lib/desktopLinks.js";
 import { startupSurface } from "../lib/startupSurface.js";
 import type { LoadState,Route,ShellActions,ShellModel,Translate } from "./types.js";
 
@@ -44,7 +45,31 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
   textRoomOutbox: OutboxEntry[];
   textRoomActions: { send(body: string, replyTo: ChatMessageReply | null): void; retrySend(localId: string): void; discardSend(localId: string): void; update(messageId: string, body: string): Promise<void>; delete(messageId: string): Promise<void>; suppressEmbed(messageId: string, embedKey: string): Promise<void> } | null;
 }) {
-  if (startupSurface(route.name, authState) === "shell-skeleton") return renderSurface(<AppShellSkeleton t={t} />);
+  const [pendingLaunch, setPendingLaunch] = useState<string | null>(null);
+  useEffect(() => {
+    if (window.__VOXLY_DESKTOP_V1__?.version !== 1) return;
+    const receive = (event: Event) => {
+      const id: unknown = (event as CustomEvent<unknown>).detail;
+      if (typeof id === "string" && desktopLaunchId(id)) setPendingLaunch(id);
+    };
+    window.addEventListener("voxly:desktop-launch", receive);
+    return () => window.removeEventListener("voxly:desktop-launch", receive);
+  }, []);
+  useEffect(() => {
+    if (!pendingLaunch || authState !== "ready") return;
+    setPendingLaunch(null);
+    // An authenticated desktop Account and any ongoing call remain untouched.
+    if (!user) window.location.assign(`/link-device?desktopLaunch=${pendingLaunch}`);
+  }, [pendingLaunch, authState, user]);
+  const arrivingDesktopLaunch = Boolean(route.name === "link-device"
+    && window.__VOXLY_DESKTOP_V1__?.version === 1 && desktopLaunchFromSearch(window.location.search));
+  const existingDesktopSession = arrivingDesktopLaunch && Boolean(user);
+  useEffect(() => {
+    if (existingDesktopSession) navigate("/");
+  }, [existingDesktopSession, navigate]);
+  if (existingDesktopSession) return renderSurface(<AppShellSkeleton t={t} />);
+  if (startupSurface(route.name, authState, arrivingDesktopLaunch) === "shell-skeleton") return renderSurface(<AppShellSkeleton t={t} />);
+  if (arrivingDesktopLaunch && authState === "error") return renderSurface(<FatalState t={t} />);
   if (user && !rtcConfigReady && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<AppShellSkeleton t={t} />);
   if (authState === "error" && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<FatalState t={t} />);
   if (route.name === "owner-claim") {

@@ -23,11 +23,19 @@ pub fn open_installation(
     data: &Path,
     microphone_mode: crate::installations::MicrophoneMode,
     generation: u64,
+    desktop_launch: Option<&str>,
 ) -> Result<WebviewWindow, &'static str> {
     if !cfg!(target_os = "windows") {
         return Err("unsupported_platform");
     }
-    let url = saved.origin.parse().map_err(|_| "invalid_address")?;
+    let mut url: url::Url = saved.origin.parse().map_err(|_| "invalid_address")?;
+    if let Some(id) = desktop_launch {
+        if !crate::deep_links::launch_id(id) {
+            return Err("invalid_address");
+        }
+        url.set_path("/link-device");
+        url.query_pairs_mut().append_pair("desktopLaunch", id);
+    }
     let origin = saved.origin.clone();
     let bootstrap = format!(
         "{}({}, {});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});",

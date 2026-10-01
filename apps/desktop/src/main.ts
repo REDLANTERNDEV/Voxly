@@ -7,6 +7,7 @@ import "./styles.css";
 import { mountShortcutSettings, type ShortcutSnapshot } from "./shortcuts.js";
 
 interface Installation { id: string; origin: string }
+interface DesktopLink extends Installation { launchId: string | null }
 interface Snapshot extends ShortcutSnapshot {
   preferences: { installations: Installation[]; language: Language; trayAcknowledged: boolean; muteShortcut: string | null; deafenShortcut: string | null; pushToTalkShortcut: string | null; pushToMuteShortcut: string | null; microphoneMode: "openMic" | "pushToTalk" | "pushToMute"; pushToTalkReleaseDelayMs: number };
   active: Installation | null;
@@ -23,7 +24,7 @@ function element<T extends HTMLElement>(id: string): T {
 const native = isTauri();
 let language: Language = navigator.language.startsWith("tr") ? "tr" : "en";
 let state: Snapshot | null = null;
-let pendingDesktopLink: Installation | null = null;
+let pendingDesktopLink: DesktopLink | null = null;
 let busy = false;
 let confirmPending = false;
 const captures = createCaptureOwner();
@@ -134,18 +135,33 @@ function renderInstallations() {
 }
 
 async function receiveDesktopLink() {
-  const target = await invoke<Installation | null>("take_desktop_link");
+  const target = await invoke<DesktopLink | null>("take_desktop_link");
   if (!target) return;
   pendingDesktopLink = target;
   renderInstallations();
+  if (!state?.active && !busy && state?.preferences.installations.some((saved) => saved.id === target.id)) {
+    await openDesktopLink(target);
+  }
+}
+
+async function openDesktopLink(target: DesktopLink) {
+  await run(async () => {
+    state = await invoke<Snapshot>("save_installation", { address: target.origin });
+    status("checking");
+    const next = await transition((confirmed) => invoke<Snapshot>("connect_installation", {
+      id: target.id, confirmLeave: confirmed, reload: false, desktopLaunch: target.launchId
+    }));
+    if (next) {
+      state = next;
+      if (pendingDesktopLink === target) pendingDesktopLink = null;
+      element("status").textContent = "";
+    }
+  });
 }
 
 element("desktop-link-review").addEventListener("click", () => {
   if (busy || !pendingDesktopLink) return;
-  element<HTMLInputElement>("address").value = pendingDesktopLink.origin;
-  pendingDesktopLink = null;
-  renderInstallations();
-  element("address").focus();
+  void openDesktopLink(pendingDesktopLink);
 });
 element("desktop-link-dismiss").addEventListener("click", () => {
   if (busy) return;

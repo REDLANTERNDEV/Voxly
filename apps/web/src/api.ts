@@ -152,8 +152,22 @@ export interface DesktopAuthorization {
   expiresInSeconds: number;
 }
 
-export async function createDesktopAuthorization() {
-  return apiPost<DesktopAuthorization>("/api/devices/desktop-authorizations");
+export async function createDesktopAuthorization(launchId?: string) {
+  return apiPost<DesktopAuthorization>("/api/devices/desktop-authorizations", launchId ? { launchId } : {});
+}
+
+export function createDesktopLaunch() {
+  return apiPost<{ id: string; account: string }>("/api/devices/desktop-launches");
+}
+
+export function fetchDesktopLaunch(id: string) {
+  return apiGet<{ authorizationId: string | null }>(`/api/devices/desktop-launches/${encodeURIComponent(id)}`);
+}
+
+export function cancelDesktopLaunch(id: string) {
+  return request<{ ok: boolean }>(`/api/devices/desktop-launches/${encodeURIComponent(id)}/cancel`, {
+    method: "POST", body: "{}", keepalive: true
+  });
 }
 
 export async function fetchDesktopAuthorization(id: string) {

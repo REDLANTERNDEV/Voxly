@@ -135,4 +135,68 @@ describe("browser approval for a desktop Device", () => {
     assert.equal(result.json().status, "expired");
     assert.equal(result.cookies.length, 0);
   });
+  async function launch(cookies: Record<string, string>) {
+    const response = await app.server.inject({ method: "POST", url: "/api/devices/desktop-launches", headers: { origin }, cookies });
+    assert.equal(response.statusCode, 201);
+    return response.json() as { id: string; account: string };
+  }
+
+  async function arrive(id: string, requestOrigin = origin) {
+    return app.server.inject({ method: "POST", url: "/api/devices/desktop-authorizations",
+      headers: { origin: requestOrigin, "user-agent": desktopAgent }, payload: { launchId: id } });
+  }
+
+  it("joins browser launch to a private desktop request without authorizing the public id", async () => {
+    const cookies = await owner();
+    const opened = await launch(cookies);
+    assert.equal(opened.account, "Owner");
+    assert.deepEqual(Object.keys(opened).sort(), ["account", "id"]);
+    const before = await app.server.inject({ method: "GET", url: `/api/devices/desktop-launches/${opened.id}`, cookies });
+    assert.equal(before.json().authorizationId, null);
+    assert.equal((await arrive(opened.id, "https://other.example")).statusCode, 404);
+    const arrived = await arrive(opened.id);
+    assert.equal(arrived.statusCode, 201);
+    const request = arrived.json() as { id: string; secret: string; confirmation: string };
+    assert.equal((await arrive(opened.id)).statusCode, 404);
+    const waiting = await app.server.inject({ method: "GET", url: `/api/devices/desktop-launches/${opened.id}`, cookies });
+    assert.deepEqual(waiting.json(), { authorizationId: request.id });
+    assert.equal((await collect(request.id, opened.id)).statusCode, 404);
+    assert.equal((await collect(request.id, request.secret)).json().status, "pending");
+    assert.equal((await decision(request.id, cookies, true)).statusCode, 200);
+    assert.equal((await collect(request.id, request.secret)).json().status, "approved");
+    assert.equal((await collect(request.id, request.secret)).json().status, "expired");
+    const stored = app.sqlite.prepare("select secret_hash from desktop_authorizations where id = ?").get(request.id) as { secret_hash: string };
+    assert.notEqual(stored.secret_hash, request.secret);
+  });
+
+  it("binds launch lookup and approval to the originating browser Device", async () => {
+    const cookies = await owner();
+    const opened = await launch(cookies);
+    const request = (await arrive(opened.id)).json() as { id: string; secret: string };
+    // The manually approved flow gives the same Account another Device.
+    const other = await create();
+    await decision(other.id, cookies, true);
+    const collected = await collect(other.id, other.secret);
+    const otherCookies = Object.fromEntries(collected.cookies.map((cookie) => [cookie.name, cookie.value]));
+    assert.equal((await app.server.inject({ method: "GET", url: `/api/devices/desktop-launches/${opened.id}`, cookies: otherCookies })).statusCode, 404);
+    assert.equal((await decision(request.id, otherCookies, true)).statusCode, 404);
+    assert.equal((await decision(request.id, cookies, true)).statusCode, 200);
+  });
+
+  it("cancels and expires launches without minting a Device and refuses revoked initiating sessions", async () => {
+    const cookies = await owner();
+    const opened = await launch(cookies);
+    const request = (await arrive(opened.id)).json() as { id: string; secret: string };
+    const cancel = await app.server.inject({ method: "POST", url: `/api/devices/desktop-launches/${opened.id}/cancel`, headers: { origin }, cookies });
+    assert.equal(cancel.statusCode, 200);
+    assert.equal((await decision(request.id, cookies, true)).statusCode, 404);
+    assert.equal((await collect(request.id, request.secret)).json().status, "expired");
+    const expired = await launch(cookies);
+    app.sqlite.prepare("update desktop_launches set expires_at = ? where id = ?").run("2000-01-01T00:00:00.000Z", expired.id);
+    assert.equal((await arrive(expired.id)).statusCode, 404);
+    const revoked = await launch(cookies);
+    app.sqlite.prepare("update sessions set revoked_at = ? where id = (select session_id from desktop_launches where id = ?)").run(new Date().toISOString(), revoked.id);
+    assert.equal((await arrive(revoked.id)).statusCode, 404);
+  });
+
 });

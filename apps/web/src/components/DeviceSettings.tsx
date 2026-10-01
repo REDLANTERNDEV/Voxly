@@ -68,7 +68,7 @@ export function DeviceSettings({ t }: { t: Translate }) {
     <section className="theme-card device-card">
       <div className="theme-card-head"><span className="label">{t("devices.title")}</span></div>
       <p className="muted small">{t("devices.hint")}</p>
-      <OpenInDesktop t={t} />
+      <OpenInDesktop t={t} authenticated />
       {error ? <InlineAlert
         title={t("notification.settingsErrorTitle")}
         message={error}

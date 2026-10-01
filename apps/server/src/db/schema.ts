@@ -76,6 +76,17 @@ export const deviceLinks = sqliteTable("device_links", {
   refusedAt: text("refused_at")
 });
 
+/** Public launch correlation only; the browser session authorizes approval. */
+export const desktopLaunches = sqliteTable("desktop_launches", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  sessionId: text("session_id").notNull(),
+  origin: text("origin").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  authorizationId: text("authorization_id").unique(),
+  cancelledAt: text("cancelled_at")
+});
+
 /** A short browser approval request; only the arriving Device holds the secret. */
 export const desktopAuthorizations = sqliteTable("desktop_authorizations", {
   id: text("id").primaryKey(),

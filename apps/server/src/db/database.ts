@@ -121,6 +121,17 @@ function migrate(sqlite: DatabaseSync) {
       refused_at text
     );
 
+    create table if not exists desktop_launches (
+      id text primary key,
+      user_id text not null,
+      session_id text not null,
+      origin text not null,
+      expires_at text not null,
+      authorization_id text unique,
+      cancelled_at text
+    );
+    create index if not exists desktop_launches_expires on desktop_launches(expires_at);
+
     create table if not exists desktop_authorizations (
       id text primary key,
       secret_hash text not null unique,
