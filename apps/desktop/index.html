@@ -15,6 +15,11 @@
       <p id="browser-preview" class="notice" hidden data-i18n="preview">Browser preview: native controls require the desktop app.</p>
       <section aria-labelledby="installations-heading">
         <h2 id="installations-heading" data-i18n="installations">Installations</h2>
+        <div id="desktop-link" hidden role="status" aria-live="polite">
+          <p data-i18n="desktopLinkHint"></p>
+          <strong id="desktop-link-origin"></strong>
+          <div class="actions"><button id="desktop-link-review" type="button" data-i18n="desktopLinkReview">Use this address</button><button id="desktop-link-dismiss" type="button" data-i18n="cancel">Cancel</button></div>
+        </div>
         <form id="installation-form">
           <label for="address" data-i18n="address">Installation address</label>
           <div class="form-row"><input id="address" type="url" required autocomplete="url" placeholder="https://chat.example.com" aria-describedby="address-hint" maxlength="2048" /><button id="save" type="submit" data-i18n="save">Remember installation</button></div>

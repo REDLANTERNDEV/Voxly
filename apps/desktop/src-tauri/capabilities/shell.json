@@ -5,7 +5,7 @@
   "windows": ["shell"],
   "webviews": ["shell"],
   "permissions": [
-    "allow-shell-state", "allow-transition-state", "allow-save-installation", "allow-forget-installation",
+    "allow-shell-state", "allow-take-desktop-link", "allow-transition-state", "allow-save-installation", "allow-forget-installation",
     "allow-connect-installation", "allow-disconnect-installation",
     "allow-open-installation-browser", "allow-set-language", "allow-acknowledge-tray",
     "allow-quit-app", "allow-set-mute-shortcut", "allow-set-deafen-shortcut", "allow-set-push-to-talk-shortcut", "allow-set-push-to-mute-shortcut", "allow-set-microphone-mode", "allow-set-push-to-talk-release-delay", "core:event:allow-listen", "core:event:allow-unlisten"

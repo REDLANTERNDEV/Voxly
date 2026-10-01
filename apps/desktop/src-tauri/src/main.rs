@@ -2,6 +2,7 @@
 
 mod appearance;
 mod call_state;
+mod deep_links;
 mod installations;
 #[cfg(target_os = "windows")]
 mod mouse_hook;
@@ -745,6 +746,15 @@ async fn shell_state(
 }
 
 #[tauri::command]
+async fn take_desktop_link(
+    window: WebviewWindow,
+    pending: tauri::State<'_, deep_links::PendingLink>,
+) -> Result<Option<Installation>, &'static str> {
+    trusted_shell(&window)?;
+    Ok(pending.take())
+}
+
+#[tauri::command]
 async fn save_installation(
     window: WebviewWindow,
     shell: tauri::State<'_, Shell>,
@@ -961,6 +971,7 @@ async fn quit_app(
 
 fn show_shell(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("shell") {
+        let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }
@@ -968,11 +979,31 @@ fn show_shell(app: &tauri::AppHandle) {
 
 fn show_current(app: &tauri::AppHandle) {
     if let Some(window) = remote_window(app) {
+        let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     } else {
         show_shell(app);
     }
+}
+
+fn offer_desktop_link(app: &tauri::AppHandle, target: Installation) {
+    // Restoring the active Installation leaves its route and media untouched.
+    let active = app.try_state::<Shell>().and_then(|shell| {
+        shell
+            .voice_target
+            .read()
+            .ok()
+            .and_then(|active| active.clone())
+    });
+    let window_url = remote_window(app).and_then(|window| window.url().ok());
+    if deep_links::restores_active(&target, active.as_ref(), window_url.as_ref()) {
+        show_current(app);
+        return;
+    }
+    app.state::<deep_links::PendingLink>().offer(target);
+    show_shell(app);
+    let _ = app.emit_to("shell", "shell:desktop-link", ());
 }
 
 fn update_tray_language(menu: &TrayMenu, language: Language) -> tauri::Result<()> {
@@ -986,10 +1017,16 @@ fn update_tray_language(menu: &TrayMenu, language: Language) -> tauri::Result<()
 
 fn main() {
     tauri::Builder::default()
+        .manage(deep_links::PendingLink::default())
         // Register first, before any other plugin initializes a webview.
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            show_current(app)
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            if let Some(target) = deep_links::from_args(&args) {
+                offer_desktop_link(app, target);
+            } else if args.len() == 1 {
+                show_current(app);
+            }
         }))
+        .plugin(tauri_plugin_deep_link::init())
         // Handle browser opening in Rust. The plugin's default injected click
         // listener would consume remote links and invoke its forbidden IPC API.
         .plugin(
@@ -1009,6 +1046,7 @@ fn main() {
             show_desktop_notification,
             close_desktop_notification,
             shell_state,
+            take_desktop_link,
             transition_state,
             report_call_state,
             save_installation,
@@ -1180,6 +1218,17 @@ fn main() {
                     }
                 }
             });
+            // Validate the original, bounded URI rather than a plugin-normalized
+            // URL. The same parser handles single-instance forwarded arguments.
+            if cfg!(windows) {
+                let args: Option<Vec<String>> = std::env::args_os()
+                    .take(3)
+                    .map(|arg| arg.into_string().ok())
+                    .collect();
+                if let Some(target) = args.as_deref().and_then(deep_links::from_args) {
+                    offer_desktop_link(app.handle(), target);
+                }
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

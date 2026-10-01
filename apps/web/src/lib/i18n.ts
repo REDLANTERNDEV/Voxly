@@ -8,6 +8,8 @@ const supportedLanguages = new Set<LanguageCode>(["en", "tr"]);
 
 const translations = {
   en: {
+    "desktop.open": "Open in desktop",
+    "desktop.openHint": "Requires the installed Voxly desktop app. Opens this installation; sign-in remains separate.",
     "clientUpdate.ready": "A Voxly update is ready.",
     "clientUpdate.afterCall": "A Voxly update is ready. End your call and media checks before reloading.",
     "clientUpdate.reload": "Reload to update",
@@ -759,6 +761,8 @@ const translations = {
     "system.loadingVoxly": "Loading Voxly"
   },
   tr: {
+    "desktop.open": "Masaüstünde aç",
+    "desktop.openHint": "Kurulu Voxly masaüstü uygulaması gerekir. Bu kurulumu açar; giriş ayrıca yapılır.",
     "clientUpdate.ready": "Bir Voxly güncellemesi hazır.",
     "clientUpdate.afterCall": "Bir Voxly güncellemesi hazır. Yeniden yüklemeden önce aramanızı ve medya kontrollerini sonlandırın.",
     "clientUpdate.reload": "Güncellemek için yeniden yükle",

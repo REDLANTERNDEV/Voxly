@@ -26,6 +26,7 @@ button[type=submit] { background: #55d5c4; color: #0e141b; font-weight: 650; }
 ul { padding: 0; list-style: none; }
 li { padding: 14px 0; border-bottom: 1px solid #283543; }
 li strong { display: block; overflow-wrap: anywhere; }
+#desktop-link-origin { display: block; overflow-wrap: anywhere; }
 li button { font-size: 13px; }
 #status, #probe-status { min-height: 24px; color: #b9ddd6; overflow-wrap: anywhere; }
 #mute-shortcut, #deafen-shortcut, #push-to-talk-shortcut, #push-to-mute-shortcut { display: block; width: 100%; margin-top: 10px; }

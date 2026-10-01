@@ -3,6 +3,7 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "shell_state",
+            "take_desktop_link",
             "transition_state",
             "report_call_state",
             "activate_installation",

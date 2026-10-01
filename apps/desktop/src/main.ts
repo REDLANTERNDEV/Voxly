@@ -23,6 +23,7 @@ function element<T extends HTMLElement>(id: string): T {
 const native = isTauri();
 let language: Language = navigator.language.startsWith("tr") ? "tr" : "en";
 let state: Snapshot | null = null;
+let pendingDesktopLink: Installation | null = null;
 let busy = false;
 let confirmPending = false;
 const captures = createCaptureOwner();
@@ -73,6 +74,10 @@ function renderTranslations() {
 }
 
 function renderInstallations() {
+  element("desktop-link").hidden = !pendingDesktopLink;
+  element("desktop-link-origin").textContent = pendingDesktopLink?.origin ?? "";
+  element<HTMLButtonElement>("desktop-link-review").disabled = busy;
+  element<HTMLButtonElement>("desktop-link-dismiss").disabled = busy;
   const list = element("installation-list");
   const focused = document.activeElement as HTMLElement | null;
   const focusKey = focused && list.contains(focused) ? focused.dataset.focusKey : null;
@@ -127,6 +132,27 @@ function renderInstallations() {
   releaseDelay.setAttribute("aria-valuetext", `${delayMs} ms`);
   element("push-to-talk-delay-value").textContent = `${delayMs} ms`;
 }
+
+async function receiveDesktopLink() {
+  const target = await invoke<Installation | null>("take_desktop_link");
+  if (!target) return;
+  pendingDesktopLink = target;
+  renderInstallations();
+}
+
+element("desktop-link-review").addEventListener("click", () => {
+  if (busy || !pendingDesktopLink) return;
+  element<HTMLInputElement>("address").value = pendingDesktopLink.origin;
+  pendingDesktopLink = null;
+  renderInstallations();
+  element("address").focus();
+});
+element("desktop-link-dismiss").addEventListener("click", () => {
+  if (busy) return;
+  pendingDesktopLink = null;
+  renderInstallations();
+  element("address").focus();
+});
 
 function localMediaActive(): boolean {
   return captures.isPending() || Boolean(captures.current()) || Boolean(toneContext && toneContext.state !== "closed");
@@ -367,10 +393,16 @@ async function start() {
   element("browser-preview").hidden = native;
   if (!native) return;
   try {
+    // Subscribe before reading the cached startup request so neither a cold
+    // launch nor a forwarded request races the chooser's first render.
+    await listen("shell:desktop-link", () => {
+      void receiveDesktopLink().catch((error: unknown) => status(errorKey(error)));
+    });
     state = await invoke<Snapshot>("shell_state");
     language = state.preferences.language;
     renderTranslations();
     renderInstallations();
+    await receiveDesktopLink();
     refreshReport();
     await listen("shell:quit-requested", () => void quit());
     if (!state.preferences.trayAcknowledged) {
