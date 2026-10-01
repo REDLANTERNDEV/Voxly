@@ -90,7 +90,7 @@ pub fn open_installation(
             {
                 alerts.clear(&installation_label(generation));
             }
-            if let Some(shell) = navigation_app.try_state::<crate::Shell>() {
+            if let Some(shell) = navigation_app.try_state::<crate::shell::Shell>() {
                 shell.reports.invalidate();
             }
             crate::installations::same_origin(&origin, url)

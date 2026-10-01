@@ -29,8 +29,8 @@ test("idle updates also require confirmation and stop chooser media before insta
 });
 
 test("updater authority and trust remain bundled, with explicit native consent before teardown", () => {
-  const main = readFileSync("src-tauri/src/main.rs", "utf8");
-  const install = main.slice(main.indexOf("async fn install_shell_update"), main.indexOf("async fn quit_app"));
+  const main = readFileSync("src-tauri/src/shell/update_commands.rs", "utf8");
+  const install = main.slice(main.indexOf("async fn install_shell_update"));
   assert.ok(install.indexOf('if !confirmed') < install.indexOf('remote.destroy()'));
   assert.ok(install.indexOf('remote.destroy()') < install.indexOf('prepared.launch()'));
   const config = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));

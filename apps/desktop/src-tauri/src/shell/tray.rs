@@ -1,0 +1,117 @@
+//! Tray menu, localized labels, and window reveal behavior.
+use super::installation::remote_window;
+use super::update_commands::review_update;
+use crate::installations::Language;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+use tauri::{Emitter, Manager};
+
+pub(super) struct TrayMenu {
+    pub(super) root: tauri::menu::Menu<tauri::Wry>,
+    pub(super) update: tauri::menu::MenuItem<tauri::Wry>,
+    pub(super) show: tauri::menu::MenuItem<tauri::Wry>,
+    pub(super) installations: tauri::menu::MenuItem<tauri::Wry>,
+    pub(super) quit: tauri::menu::MenuItem<tauri::Wry>,
+}
+
+pub(super) fn show_shell(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("shell") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+pub(super) fn show_current(app: &tauri::AppHandle) {
+    if let Some(window) = remote_window(app) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    } else {
+        show_shell(app);
+    }
+}
+
+pub(super) fn update_tray_language(menu: &TrayMenu, language: Language) -> tauri::Result<()> {
+    let tr = language == Language::Tr;
+    menu.show
+        .set_text(if tr { "Voxly’yi aç" } else { "Show Voxly" })?;
+    menu.installations
+        .set_text(if tr { "Kurulumlar" } else { "Installations" })?;
+    menu.update.set_text(if tr {
+        "Güncelle ve yeniden başlat…"
+    } else {
+        "Update and restart…"
+    })?;
+    menu.quit.set_text(if tr { "Çık…" } else { "Quit…" })
+}
+
+pub(super) fn create(
+    app: &tauri::App,
+    language: Language,
+) -> Result<TrayMenu, Box<dyn std::error::Error>> {
+    let show =
+        tauri::menu::MenuItem::with_id(app, "show", "Show Voxly", true, None::<&str>)?;
+    let installations = tauri::menu::MenuItem::with_id(
+        app,
+        "installations",
+        "Installations",
+        true,
+        None::<&str>,
+    )?;
+    let quit = tauri::menu::MenuItem::with_id(app, "quit", "Quit…", true, None::<&str>)?;
+    let update = tauri::menu::MenuItem::with_id(
+        app,
+        "update",
+        "Update and restart…",
+        true,
+        None::<&str>,
+    )?;
+    let version = tauri::menu::MenuItem::with_id(
+        app,
+        "version",
+        format!("Voxly v{}", env!("CARGO_PKG_VERSION")),
+        false,
+        None::<&str>,
+    )?;
+    let menu =
+        tauri::menu::Menu::with_items(app, &[&show, &installations, &quit, &version])?;
+    let tray_menu = TrayMenu {
+        root: menu.clone(),
+        update,
+        show,
+        installations,
+        quit,
+    };
+    update_tray_language(&tray_menu, language)?;
+    tauri::tray::TrayIconBuilder::new()
+        .icon(
+            app.default_window_icon()
+                .ok_or("missing tray icon")?
+                .clone(),
+        )
+        .tooltip(format!("Voxly v{}", env!("CARGO_PKG_VERSION")))
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_current(tray.app_handle());
+            }
+        })
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => show_current(app),
+            "installations" => show_shell(app),
+            "update" => review_update(app),
+            "quit" => {
+                show_shell(app);
+                let _ = app.emit_to("shell", "shell:quit-requested", ());
+            }
+            _ => {}
+        })
+        .build(app)?;
+    Ok(tray_menu)
+}

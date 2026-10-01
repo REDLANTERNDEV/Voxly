@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, it } from "node:test";
 
 describe("desktop native trust boundary", () => {
@@ -16,10 +16,17 @@ describe("desktop native trust boundary", () => {
   });
 
   it("generates ACL permissions and checks the caller for every custom command", () => {
-    const native = readFileSync("src-tauri/src/main.rs", "utf8");
+    const native = readdirSync("src-tauri/src/shell").filter((name) => name.endsWith(".rs"))
+      .map((name) => readFileSync(`src-tauri/src/shell/${name}`, "utf8")).join("\n");
+    const runtime = readFileSync("src-tauri/src/shell/runtime.rs", "utf8");
+    const declared = [...native.matchAll(/#\[tauri::command\]\s*(?:pub\(super\) )?async fn (\w+)/g)]
+      .map((match) => match[1]);
+    const handler = runtime.split("tauri::generate_handler![")[1].split("])")[0];
+    const registered = [...handler.matchAll(/super::\w+::(\w+)/g)].map((match) => match[1]);
+    assert.deepEqual(registered.sort(), declared.sort());
     const build = readFileSync("src-tauri/build.rs", "utf8");
     assert.match(build, /AppManifest::new\(\)\.commands/);
-    const commands = [...native.matchAll(/#\[tauri::command\]\s*async fn (\w+)\((?:(?!#\[tauri::command\])[\s\S])*?\{\s*trusted_shell\(&window\)\?;/g)].map((match) => match[1]);
+    const commands = [...native.matchAll(/#\[tauri::command\]\s*(?:pub\(super\) )?async fn (\w+)\((?:(?!#\[tauri::command\])[\s\S])*?\{\s*trusted_shell\(&window\)\?;/g)].map((match) => match[1]);
     assert.equal(commands.length + 8, (native.match(/#\[tauri::command\]/g) ?? []).length);
     assert.match(native, /async fn report_call_state/);
     assert.match(native, /report_caller_matches\(/);
@@ -60,6 +67,6 @@ describe("desktop native trust boundary", () => {
     assert.match(source, /initialization_script\(&bootstrap\)/);
     const bootstrap = readFileSync("src-tauri/src/voice-bridge.js", "utf8");
     assert.doesNotMatch(bootstrap, /invoke|ipc|postMessage|__TAURI__/);
-    assert.match(readFileSync("src-tauri/src/main.rs", "utf8"), /open_js_links_on_click\(false\)/);
+    assert.match(readFileSync("src-tauri/src/shell/runtime.rs", "utf8"), /open_js_links_on_click\(false\)/);
   });
 });

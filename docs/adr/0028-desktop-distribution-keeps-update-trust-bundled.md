@@ -28,11 +28,16 @@ package adds a tray-menu action; ordinary discovery never opens a dialog or
 steals focus. Mandatory deadlines and automatic restart/rejoin remain proposed,
 not implemented by this presentation change.
 
-Production candidates require updater signing and timestamped Windows
-Authenticode separately. Bundle Evergreen WebView2 offline in production NSIS
+On 2026-10-02 the distributor chose initial GitHub distribution without a paid
+Windows certificate. Release candidates always require updater signing; Windows
+Authenticode is a separate, explicit workflow mode. Certificate-free candidates
+may trigger Windows unknown-publisher warnings and must never claim a verified
+Windows publisher. Selecting Authenticode still requires a valid timestamped
+signature; absent credentials must fail rather than silently downgrade.
+Bundle Evergreen WebView2 offline in production NSIS
 installers to prepare the Microsoft Store EXE route, which still uses the app's
 updater. MSIX would instead require a separately validated package/identity and
 Store-managed updates with this NSIS updater disabled; it is not implemented.
 Keep unsigned feasibility CI distinct. The candidate workflow creates reviewable
-artifacts without publishing; signed candidates do not close Windows media or
+artifacts without publishing; candidates do not close Windows media or
 installed-update acceptance gates. See [release operations](../desktop-releases.md).

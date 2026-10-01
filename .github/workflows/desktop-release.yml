@@ -1,4 +1,4 @@
-name: Windows desktop signed candidate
+name: Windows desktop release candidate
 
 on:
   workflow_dispatch:
@@ -7,6 +7,14 @@ on:
         description: 'Stable version already set in desktop package, Cargo and Tauri config'
         required: true
         type: string
+      windows_signing:
+        description: 'none signs updates with Tauri only; authenticode also requires a Windows certificate'
+        required: true
+        default: none
+        type: choice
+        options:
+          - none
+          - authenticode
 
 permissions:
   contents: read
@@ -26,7 +34,8 @@ jobs:
       VOXLY_DESKTOP_UPDATE_ENDPOINT: ${{ vars.DESKTOP_UPDATE_ENDPOINT || format('https://github.com/{0}/releases/download/desktop-stable/latest.json', github.repository) }}
       VOXLY_DESKTOP_UPDATER_PUBLIC_KEY: ${{ vars.DESKTOP_UPDATER_PUBLIC_KEY }}
       VOXLY_DESKTOP_RELEASE_BASE_URL: ${{ vars.DESKTOP_RELEASE_BASE_URL || format('https://github.com/{0}/releases/download/desktop-v{1}/', github.repository, inputs.version) }}
-      VOXLY_DESKTOP_PUBLISHER: ${{ vars.DESKTOP_PUBLISHER }}
+      VOXLY_DESKTOP_WINDOWS_SIGNING: ${{ inputs.windows_signing }}
+      VOXLY_DESKTOP_PUBLISHER: ${{ vars.DESKTOP_PUBLISHER || (inputs.windows_signing == 'none' && github.repository_owner) || '' }}
       VOXLY_DESKTOP_TIMESTAMP_URL: ${{ vars.DESKTOP_TIMESTAMP_URL }}
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +59,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo clippy --locked --all-targets -- -D warnings
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Prepare protected signing configuration
+      - name: Prepare candidate output
+        run: |
+          "VOXLY_DESKTOP_RELEASE_CONFIG=$(Join-Path $env:RUNNER_TEMP 'voxly-release.json')" >> $env:GITHUB_ENV
+          "VOXLY_DESKTOP_RELEASE_OUTPUT=$(Join-Path $env:RUNNER_TEMP 'voxly-release-output')" >> $env:GITHUB_ENV
+      - name: Prepare Windows certificate
+        if: inputs.windows_signing == 'authenticode'
         env:
           CERTIFICATE_PFX: ${{ secrets.DESKTOP_AUTHENTICODE_PFX_BASE64 }}
           CERTIFICATE_PASSWORD: ${{ secrets.DESKTOP_AUTHENTICODE_PASSWORD }}
@@ -63,8 +77,6 @@ jobs:
             $certificate = Import-PfxCertificate -FilePath $path -CertStoreLocation Cert:\CurrentUser\My -Password $password
             if (!$certificate.HasPrivateKey -or $certificate.NotAfter -le (Get-Date)) { throw 'Valid Authenticode certificate required' }
             "VOXLY_DESKTOP_CERTIFICATE_THUMBPRINT=$($certificate.Thumbprint)" >> $env:GITHUB_ENV
-            "VOXLY_DESKTOP_RELEASE_CONFIG=$(Join-Path $env:RUNNER_TEMP 'voxly-release.json')" >> $env:GITHUB_ENV
-            "VOXLY_DESKTOP_RELEASE_OUTPUT=$(Join-Path $env:RUNNER_TEMP 'voxly-release-output')" >> $env:GITHUB_ENV
           } finally { Remove-Item $path -ErrorAction SilentlyContinue }
       - name: Build signed release candidate
         env:
@@ -76,20 +88,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run bundle -w @voxly/desktop -- --locked --config $env:VOXLY_DESKTOP_RELEASE_CONFIG
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Verify Authenticode and updater signature; generate manifest and checksums
+      - name: Verify selected Windows signing mode
         run: |
           $files = @(Get-Item apps/desktop/src-tauri/target/release/voxly-desktop.exe) + @(Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe)
           foreach ($file in $files) {
             $signature = Get-AuthenticodeSignature $file.FullName
-            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $env:VOXLY_DESKTOP_CERTIFICATE_THUMBPRINT -or !$signature.TimeStamperCertificate) { throw 'Expected valid timestamped Authenticode signature from configured certificate' }
+            if ($env:VOXLY_DESKTOP_WINDOWS_SIGNING -eq 'authenticode') {
+              if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $env:VOXLY_DESKTOP_CERTIFICATE_THUMBPRINT -or !$signature.TimeStamperCertificate) { throw 'Expected valid timestamped Authenticode signature from configured certificate' }
+            } elseif ($signature.Status -ne 'NotSigned') { throw 'Expected no Authenticode signature in certificate-free mode' }
           }
+      - name: Verify updater signature; generate manifest and checksums
+        run: |
           node apps/desktop/scripts/release.mjs finalize
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
-          name: voxly-windows-signed-candidate-${{ inputs.version }}
+          name: voxly-windows-candidate-${{ inputs.windows_signing }}-${{ inputs.version }}
           path: ${{ env.VOXLY_DESKTOP_RELEASE_OUTPUT }}/*
           if-no-files-found: error
           retention-days: 14

@@ -104,7 +104,7 @@ fn record_focus(window: &WebviewWindow, point: &'static str, delivery: Option<De
     write_diagnostic(
         &window
             .app_handle()
-            .state::<crate::Shell>()
+            .state::<crate::shell::Shell>()
             .data
             .join("native-notification-focus.json"),
         &snapshot,
@@ -204,7 +204,7 @@ fn write_diagnostic(path: &std::path::Path, diagnostic: &impl Serialize) {
 fn record_diagnostic(window: &WebviewWindow, diagnostic: &Diagnostic) {
     use tauri::Manager;
     let app = window.app_handle();
-    let shell = app.state::<crate::Shell>();
+    let shell = app.state::<crate::shell::Shell>();
     write_diagnostic(
         &shell.data.join("native-notification-diagnostic.json"),
         diagnostic,
@@ -370,11 +370,11 @@ fn event(window: &WebviewWindow, id: &str, event: &'static str) {
     tauri::async_runtime::spawn(async move {
         let app = window.app_handle();
         app.state::<Notifications>().close(window.label(), &id);
-        let shell = app.state::<crate::Shell>();
+        let shell = app.state::<crate::shell::Shell>();
         let inner = shell.inner.lock().await;
         let Some(active) = &inner.active else { return };
         let Ok(url) = window.url() else { return };
-        if !crate::report_caller_matches(
+        if !crate::shell::trust::report_caller_matches(
             shell
                 .voice_generation
                 .load(std::sync::atomic::Ordering::Acquire),

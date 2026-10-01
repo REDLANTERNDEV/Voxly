@@ -1,7 +1,7 @@
 # Desktop release operations
 
 Voxly uses GitHub Releases for initial Windows desktop distribution. The
-`Windows desktop signed candidate` workflow prepares signed installers and a
+`Windows desktop release candidate` workflow prepares updater-signed installers and a
 manifest; it does **not** publish, tag, or deploy them. Ordinary `desktop:build`
 and `Windows desktop feasibility` builds remain unsigned, with updates disabled.
 The desktop client remains a feasibility build until installed Windows acceptance
@@ -48,9 +48,17 @@ replace keys or downgrade clients to recover a release.
 
 ## Protected release configuration
 
+Initial GitHub distribution uses the workflow's `windows_signing: none` mode.
+It requires no Windows certificate or signing-service subscription. Tauri updater
+signatures remain mandatory and independently verified. Windows may show
+unknown-publisher/SmartScreen warnings; this mode is not suitable for Store EXE
+submission. Provenance records `windowsSigning: none` and a null Authenticode
+thumbprint. Neither mode publishes a release automatically.
+
 Create a `desktop-production` GitHub environment with required reviewers and
 release-branch restrictions. The workflow is manual and has read-only repository
-permissions. Its exported-PFX signing adapter needs a CA-issued Authenticode
+permissions. To additionally sign for Windows, select `windows_signing: authenticode`.
+Its exported-PFX signing adapter needs a CA-issued Authenticode
 certificate accepted by Windows; a self-signed certificate is not production or
 Store signing. A provider using hardware/cloud signing needs a separately
 reviewed Tauri `signCommand` adapter; the current workflow does not configure one.
@@ -61,8 +69,8 @@ Environment variables (public configuration):
 | Variable | Value |
 | --- | --- |
 | `DESKTOP_UPDATER_PUBLIC_KEY` | Entire base64 text from the Tauri public-key file, not a path |
-| `DESKTOP_PUBLISHER` | Distributor publisher name, distinct from `Voxly`; use the verified signing/Store publisher identity |
-| `DESKTOP_TIMESTAMP_URL` | Your signing provider's HTTPS RFC 3161 timestamp endpoint |
+| `DESKTOP_PUBLISHER` | Distributor label; defaults to repository owner for `none`, verified signing/Store identity required for `authenticode` |
+| `DESKTOP_TIMESTAMP_URL` | Authenticode only: your signing provider's HTTPS RFC 3161 timestamp endpoint |
 | `DESKTOP_UPDATE_ENDPOINT` | Optional override of the repository's `desktop-stable/latest.json` URL |
 | `DESKTOP_RELEASE_BASE_URL` | Optional override of the versioned installer directory; trailing slash required |
 
@@ -72,8 +80,14 @@ Environment secrets:
 | --- | --- |
 | `DESKTOP_UPDATER_PRIVATE_KEY` | Tauri updater private-key content |
 | `DESKTOP_UPDATER_PASSWORD` | Password protecting that key |
-| `DESKTOP_AUTHENTICODE_PFX_BASE64` | Exported signing certificate including private key, base64 encoded |
-| `DESKTOP_AUTHENTICODE_PASSWORD` | PFX import password |
+| `DESKTOP_AUTHENTICODE_PFX_BASE64` | Authenticode only: exported signing certificate including private key, base64 encoded |
+| `DESKTOP_AUTHENTICODE_PASSWORD` | Authenticode only: PFX import password |
+
+For the initial `none` mode, configure only `DESKTOP_UPDATER_PUBLIC_KEY`,
+`DESKTOP_UPDATER_PRIVATE_KEY` and `DESKTOP_UPDATER_PASSWORD`. The publisher label
+in this mode defaults to the repository owner; it is metadata, not a Windows-verified
+identity. `DESKTOP_PUBLISHER` may override it. Certificate/password and timestamp
+settings are needed only for `authenticode`. Update hosting URLs use the defaults above.
 
 Generate production keys only after choosing their owner and backup procedure,
 on an authorized trusted machine, using the Tauri signer CLI. Do not paste private
@@ -86,8 +100,9 @@ Before running the workflow, set the same stable desktop version in
 `apps/desktop/src-tauri/tauri.conf.json`; update Cargo/npm lockfile metadata as
 needed. The version input must match all three. The workflow fails on missing or
 malformed trust/signing configuration. It compiles the fixed endpoint/key,
-creates signed NSIS artifacts, verifies timestamped Authenticode signatures on
-both executable and installer, then independently verifies the updater signature
+creates updater-signed NSIS artifacts, verifies the selected Windows signing mode
+on both executable and installer (timestamped Authenticode or no Authenticode),
+then independently verifies the updater signature
 against the embedded public key before generating `latest.json`.
 
 Artifacts include installer, `.sig`, `latest.json`, `SHA256SUMS`, and
@@ -103,7 +118,7 @@ preserved. This does not promise byte-identical signed builds.
 After authorization to publish, create `desktop-vVERSION` from the tested
 commit and upload the candidate assets unchanged. Run installed Windows tests
 before promoting `latest.json` to the dedicated `desktop-stable` release. A
-single-version smoke test is insufficient: install an older signed build and
+single-version smoke test is insufficient: install an older updater-signed build and
 update to a strictly newer one sharing its endpoint and public key.
 
 Record Windows build, WebView2 version, versions/commits, signing identity,

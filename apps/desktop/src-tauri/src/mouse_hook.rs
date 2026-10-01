@@ -91,7 +91,7 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: usize, lparam: isize) ->
                 (dispatch.map(|_| context.app.clone()), dispatch)
             });
             if let (Some(app), Some((action, pressed))) = (app, action) {
-                crate::queue_voice_action(&app, action, pressed);
+                crate::shell::queue_voice_action(&app, action, pressed);
             }
             // Observe shortcuts without consuming normal browser/game input.
         }

@@ -42,14 +42,19 @@ export function releaseConfig(env, versions) {
   publicKey(key);
   const version = env.VOXLY_DESKTOP_RELEASE_VERSION;
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version) || !versions.every((actual) => actual === version)) throw new Error('Release version must match desktop package, Cargo and Tauri versions');
-  const thumbprint = env.VOXLY_DESKTOP_CERTIFICATE_THUMBPRINT;
-  if (!/^[0-9a-f]{40}$/i.test(thumbprint ?? '')) throw new Error('A Windows Authenticode certificate is required');
+  const signing = env.VOXLY_DESKTOP_WINDOWS_SIGNING ?? 'authenticode';
+  if (!['none', 'authenticode'].includes(signing)) throw new Error('Windows signing must be none or authenticode');
   const publisher = env.VOXLY_DESKTOP_PUBLISHER?.trim();
-  if (!publisher || publisher.toLowerCase() === 'voxly' || publisher.length > 100) throw new Error('Set the distributor publisher name, distinct from Voxly');
-  const timestamp = https(env.VOXLY_DESKTOP_TIMESTAMP_URL).href;
+  if (!publisher || publisher.length > 100 || (signing === 'authenticode' && publisher.toLowerCase() === 'voxly')) throw new Error('Set the distributor publisher name');
+  const windows = { webviewInstallMode: { type: 'offlineInstaller' } };
+  if (signing === 'authenticode') {
+    const thumbprint = env.VOXLY_DESKTOP_CERTIFICATE_THUMBPRINT;
+    if (!/^[0-9a-f]{40}$/i.test(thumbprint ?? '')) throw new Error('A Windows Authenticode certificate is required');
+    Object.assign(windows, { certificateThumbprint: thumbprint, digestAlgorithm: 'sha256', timestampUrl: https(env.VOXLY_DESKTOP_TIMESTAMP_URL).href, tsp: true });
+  }
   return {
     plugins: { updater: { endpoints: [endpoint], pubkey: key, windows: { installMode: 'passive' } } },
-    bundle: { publisher, createUpdaterArtifacts: true, windows: { webviewInstallMode: { type: 'offlineInstaller' }, certificateThumbprint: thumbprint, digestAlgorithm: 'sha256', timestampUrl: timestamp, tsp: true } }
+    bundle: { publisher, createUpdaterArtifacts: true, windows }
   };
 }
 
@@ -82,7 +87,8 @@ function run() {
       version: env.VOXLY_DESKTOP_RELEASE_VERSION, commit: env.GITHUB_SHA, repository: env.GITHUB_REPOSITORY,
       run: env.GITHUB_RUN_ID, target: 'x86_64-pc-windows-msvc', updaterEndpoint: config.plugins.updater.endpoints[0],
       updaterKeySha256: createHash('sha256').update(env.VOXLY_DESKTOP_UPDATER_PUBLIC_KEY).digest('hex'),
-      authenticodeThumbprint: env.VOXLY_DESKTOP_CERTIFICATE_THUMBPRINT
+      windowsSigning: config.bundle.windows.certificateThumbprint ? 'authenticode' : 'none',
+      authenticodeThumbprint: config.bundle.windows.certificateThumbprint ?? null
     }, null, 2) + '\n');
     const checksums = readdirSync(output).sort().map((file) => `${createHash('sha256').update(readFileSync(resolve(output, file))).digest('hex')}  ${basename(file)}`).join('\n');
     writeFileSync(resolve(output, 'SHA256SUMS'), checksums + '\n');

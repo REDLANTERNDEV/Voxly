@@ -8,14 +8,14 @@ describe("desktop link native boundary", () => {
     assert.deepEqual(config.plugins["deep-link"].desktop.schemes, ["voxly"]);
     const cargo = readFileSync("src-tauri/Cargo.toml", "utf8");
     assert.match(cargo, /tauri-plugin-single-instance = .*features = \["deep-link"\]/);
-    const source = readFileSync("src-tauri/src/main.rs", "utf8");
+    const source = readFileSync("src-tauri/src/shell/runtime.rs", "utf8");
     assert.ok(source.indexOf(".plugin(tauri_plugin_single_instance") < source.indexOf(".plugin(tauri_plugin_deep_link"));
     assert.equal((source.match(/deep_links::from_args/g) ?? []).length, 2);
   });
 
   it("offers links locally and sends only a public sign-in signal to a matching window", () => {
-    const source = readFileSync("src-tauri/src/main.rs", "utf8");
-    const offer = source.split("fn offer_desktop_link(")[1].split("fn update_tray_language")[0];
+    const source = readFileSync("src-tauri/src/shell/installation.rs", "utf8");
+    const offer = source.split("fn offer_desktop_link(")[1].split("#[cfg(test)]")[0];
     assert.match(offer, /restores_active/);
     assert.match(offer, /serde_json::to_string\(id\)/);
     assert.match(offer, /voxly:desktop-launch/);

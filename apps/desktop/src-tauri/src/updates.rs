@@ -130,7 +130,7 @@ impl Updates {
             return Ok(self.snapshot());
         }
         self.phase("checking", None);
-        crate::publish_update_state(app);
+        crate::shell::publish_update_state(app);
         let result = async {
             let updater = app
                 .updater_builder()
@@ -170,7 +170,7 @@ impl Updates {
         }
         let snapshot = inner.snapshot.clone();
         drop(inner);
-        crate::publish_update_state(app);
+        crate::shell::publish_update_state(app);
         Ok(snapshot)
     }
 
@@ -191,7 +191,7 @@ impl Updates {
             inner.snapshot.total = None;
             (candidate, receive)
         };
-        crate::publish_update_state(app);
+        crate::shell::publish_update_state(app);
         let key = app.config().plugins.0["updater"]["pubkey"]
             .as_str()
             .ok_or("update_signature")?;
@@ -216,7 +216,7 @@ impl Updates {
         }
         let snapshot = inner.snapshot.clone();
         drop(inner);
-        crate::publish_update_state(app);
+        crate::shell::publish_update_state(app);
         Ok(snapshot)
     }
 
@@ -272,7 +272,7 @@ impl Updates {
 
     pub fn install_failed(&self, app: &tauri::AppHandle) {
         self.phase("available", Some("update_install_failed"));
-        crate::publish_update_state(app);
+        crate::shell::publish_update_state(app);
     }
 }
 

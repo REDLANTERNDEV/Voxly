@@ -40,3 +40,19 @@ test('release artifacts must verify against the embedded public key before manif
   const tamperedComment = Buffer.from(rawSignature.replace('file:test', 'file:other')).toString('base64');
   assert.throws(() => verifyArtifact(Buffer.from('test'), tamperedComment, key));
 });
+
+test('certificate-free releases still require updater trust and matching versions', () => {
+  const unsigned = { ...env, VOXLY_DESKTOP_WINDOWS_SIGNING: 'none' };
+  delete unsigned.VOXLY_DESKTOP_CERTIFICATE_THUMBPRINT;
+  delete unsigned.VOXLY_DESKTOP_TIMESTAMP_URL;
+  const config = releaseConfig(unsigned, ['0.1.0', '0.1.0', '0.1.0']);
+  assert.equal(config.bundle.createUpdaterArtifacts, true);
+  assert.equal(config.plugins.updater.pubkey, key);
+  assert.deepEqual(config.bundle.windows, { webviewInstallMode: { type: 'offlineInstaller' } });
+  for (const field of ['VOXLY_DESKTOP_UPDATER_PUBLIC_KEY', 'VOXLY_DESKTOP_UPDATE_ENDPOINT', 'VOXLY_DESKTOP_RELEASE_VERSION', 'VOXLY_DESKTOP_PUBLISHER']) {
+    assert.throws(() => releaseConfig({ ...unsigned, [field]: '' }, ['0.1.0', '0.1.0', '0.1.0']), field);
+  }
+  assert.throws(() => releaseConfig(unsigned, ['0.1.0', '0.2.0', '0.1.0']));
+  assert.throws(() => releaseConfig({ ...unsigned, VOXLY_DESKTOP_WINDOWS_SIGNING: 'authenticode' }, ['0.1.0', '0.1.0', '0.1.0']));
+  assert.throws(() => releaseConfig({ ...unsigned, VOXLY_DESKTOP_WINDOWS_SIGNING: 'invalid' }, ['0.1.0', '0.1.0', '0.1.0']));
+});
