@@ -4,6 +4,7 @@ export interface DesktopSettingsSnapshot {
     installations: { id: string; origin: string; name?: string | null }[];
     defaultInstallationId: string | null;
     openOnStartup: boolean;
+    quitOnClose?: boolean;
     muteShortcut: string | null;
     deafenShortcut: string | null;
     pushToTalkShortcut: string | null;
@@ -27,6 +28,7 @@ export type DesktopSettingsOperation =
   | { kind: "shortcut"; action: DesktopAction; binding: string | null }
   | { kind: "microphone"; mode: DesktopSettingsSnapshot["preferences"]["microphoneMode"] }
   | { kind: "delay"; milliseconds: number }
+  | { kind: "quitOnClose"; enabled: boolean }
   | { kind: "recording"; enabled: boolean };
 export interface DesktopSettingsBridge {
   version: 1;
@@ -61,4 +63,11 @@ export async function rememberCompletedDesktopAuthentication(
   if (outcome !== "approved" || !current() || !desktopSettingsAvailable(target)) return;
   try { await target.__VOXLY_DESKTOP_SETTINGS_V1__!.apply({ kind: "authenticationCompleted" }); }
   catch { /* Local storage failure must not undo a successful sign-in. */ }
+}
+
+// Permission reset is a separate, parameterless native operation.
+declare global {
+  interface Window {
+    __VOXLY_DESKTOP_MICROPHONE_V1__?: { version: 1; resetPermission(): Promise<boolean> };
+  }
 }

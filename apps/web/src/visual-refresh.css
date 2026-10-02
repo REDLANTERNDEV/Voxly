@@ -1362,7 +1362,6 @@ select {
   .voice-dock > .dock-controls { justify-content: center; }
   .voice-dock > .dock-self { gap: 6px; }
   .voice-dock > .dock-controls:empty { background: transparent; border: 0; }
-  body:has(.dock-controls:empty) .app-shell > .main-panel { height: calc(100% + var(--dock)); }
 }
 
 .room-identity { align-items: center; display: flex; gap: 12px; min-width: 0; }
@@ -1699,10 +1698,6 @@ select {
   .composer-send { bottom: 6px; right: 6px; width: 44px; height: 44px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 }
 
-/* Keep quiet chat aligned with the bottom of the outer docks. */
-@media (min-width: 901px) {
-  body:has(.dock-controls:empty) .app-shell > .main-panel { height: calc(100% + var(--dock) + 24px); }
-}
 .workspace-servers { overflow-x: hidden; }
 .music-panel-controls .music-transport { color: var(--fg); background: var(--surface-2); border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; }
 .music-panel-controls .music-transport:first-child { color: var(--bg); background: var(--fg); border-color: var(--fg); }

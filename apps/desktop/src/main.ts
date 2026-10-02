@@ -3,7 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { errorKey, translate, type Language, type TranslationKey } from "./i18n.js";
 import { createCaptureOwner, probeConstraints, screenConstraints, summarizeTracks, type ProbeKind } from "./media.js";
-import { performTransition, type CallState } from "./transitions.js";
+import { createQuitRequest, performTransition, type CallState } from "./transitions.js";
 import "./styles.css";
 import "./home.css";
 import { installationMenus } from "./popover.js";
@@ -14,7 +14,7 @@ import { mountShortcutSettings, type ShortcutSnapshot } from "./shortcuts.js";
 interface Installation { id: string; origin: string; name?: string | null }
 interface DesktopLink extends Installation { launchId: string | null }
 interface Snapshot extends ShortcutSnapshot {
-  preferences: { installations: Installation[]; defaultInstallationId: string | null; openOnStartup: boolean; display: { fullAddresses: boolean; compactList: boolean; installationIcons: boolean }; language: Language; trayAcknowledged: boolean; muteShortcut: string | null; deafenShortcut: string | null; pushToTalkShortcut: string | null; pushToMuteShortcut: string | null; microphoneMode: "openMic" | "pushToTalk" | "pushToMute"; pushToTalkReleaseDelayMs: number };
+  preferences: { installations: Installation[]; defaultInstallationId: string | null; openOnStartup: boolean; quitOnClose: boolean; display: { fullAddresses: boolean; compactList: boolean; installationIcons: boolean }; language: Language; trayAcknowledged: boolean; muteShortcut: string | null; deafenShortcut: string | null; pushToTalkShortcut: string | null; pushToMuteShortcut: string | null; microphoneMode: "openMic" | "pushToTalk" | "pushToMute"; pushToTalkReleaseDelayMs: number };
   active: Installation | null;
   loading: boolean;
   platform: string;
@@ -412,13 +412,14 @@ element("disconnect").addEventListener("click", () => {
 });
 element("retry").addEventListener("click", () => { if (state?.active) void connect(state.active, true); });
 
-async function quit() {
+const quit = createQuitRequest(async () => {
+  if (confirmPending) return;
   if (busy) { pendingQuit = true; if (loadingTarget) void cancelLoading().catch((error) => status(errorKey(error))); return; }
   if (state?.loading) await cancelLoading();
   await run(async () => {
     await transition((confirmed) => invoke("quit_app", { confirmLeave: confirmed }), true);
   });
-}
+});
 
 function refreshReport() {
   const media = navigator.mediaDevices;

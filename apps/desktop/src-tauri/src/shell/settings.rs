@@ -71,6 +71,9 @@ pub(super) enum Operation {
     Delay {
         milliseconds: u16,
     },
+    QuitOnClose {
+        enabled: bool,
+    },
     AuthenticationCompleted {},
 }
 
@@ -186,6 +189,7 @@ pub(super) async fn desktop_settings(
             };
         }
         Operation::Display { display } => next.display = display,
+        Operation::QuitOnClose { enabled } => next.quit_on_close = enabled,
         Operation::AuthenticationCompleted {} => {
             // Origin comes exclusively from the locally selected, current window.
             if trusted_shell(&window).is_ok() {
@@ -197,6 +201,9 @@ pub(super) async fn desktop_settings(
         _ => return Err("forbidden"),
     }
     persist(&shell, &next)?;
+    shell
+        .quit_on_close
+        .store(next.quit_on_close, Ordering::Release);
     inner.preferences = next;
     let _ = app.emit_to("shell", "shell:preferences", ());
     Ok(snapshot(&inner))
@@ -210,6 +217,7 @@ mod tests {
     fn settings_accept_only_finite_intents_and_never_caller_supplied_authentication_origins() {
         for value in [
             r#"{"kind":"read"}"#,
+            r#"{"kind":"quitOnClose","enabled":true}"#,
             r#"{"kind":"resetShortcut","action":"mute"}"#,
             r#"{"kind":"home"}"#,
             r#"{"kind":"authenticationCompleted"}"#,
@@ -222,6 +230,8 @@ mod tests {
             r#"{"kind":"authenticationCompleted","origin":"https://evil.example"}"#,
             r#"{"kind":"microphone","mode":"anything"}"#,
             r#"{"kind":"execute","command":"anything"}"#,
+            r#"{"kind":"quitOnClose","enabled":"true"}"#,
+            r#"{"kind":"quitOnClose","enabled":true,"origin":"https://evil.example"}"#,
             r#"{"kind":"resetShortcut","action":"mute","binding":"Alt+KeyK"}"#,
             r#"{"kind":"update","endpoint":"https://evil.example"}"#,
             r#"{"kind":"rename","id":"saved","name":"Name","path":"../profile"}"#,

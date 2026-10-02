@@ -40,6 +40,7 @@ pub(super) fn run() {
         .invoke_handler(tauri::generate_handler![
             super::notification_commands::activate_installation,
             super::notification_commands::reset_notification_permission,
+            super::notification_commands::reset_microphone_permission,
             super::notification_commands::set_installation_theme,
             super::notification_commands::show_desktop_notification,
             super::notification_commands::close_desktop_notification,
@@ -108,10 +109,12 @@ pub(super) fn run() {
             }
             let (shortcut_events, events) = tokio::sync::mpsc::unbounded_channel::<VoiceEvent>();
             let release_delay_ms = preferences.push_to_talk_release_delay_ms;
+            let quit_on_close = preferences.quit_on_close;
             app.manage(native_notifications::Notifications::default());
             app.manage(Shell {
                 reports: call_state::Reports::default(),
                 recording_shortcut: AtomicBool::new(false),
+                quit_on_close: AtomicBool::new(quit_on_close),
                 ready_generation: AtomicU64::new(0),
                 home_requested: AtomicBool::new(false),
                 launch_sequence: AtomicU64::new(0),
@@ -160,9 +163,8 @@ pub(super) fn run() {
                     let _ = appearance::apply(&close_window, appearance::WindowTheme::Welcome);
                 }
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    if close_window.hide().is_ok() {
-                        api.prevent_close();
-                    }
+                    api.prevent_close();
+                    super::close_requested(&close_window);
                 }
             });
             super::update_commands::initialize_tray_check(app.handle());

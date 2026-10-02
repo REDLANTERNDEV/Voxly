@@ -22,6 +22,8 @@ pub struct Preferences {
     #[serde(default)]
     pub open_on_startup: bool,
     #[serde(default)]
+    pub quit_on_close: bool,
+    #[serde(default)]
     pub display: DisplayPreferences,
     pub language: Language,
     pub tray_acknowledged: bool,
@@ -48,7 +50,11 @@ pub struct DisplayPreferences {
 }
 impl Default for DisplayPreferences {
     fn default() -> Self {
-        Self { full_addresses: true, compact_list: false, installation_icons: true }
+        Self {
+            full_addresses: true,
+            compact_list: false,
+            installation_icons: true,
+        }
     }
 }
 
@@ -64,7 +70,9 @@ pub enum MicrophoneMode {
 impl Preferences {
     pub fn remember_authenticated(&mut self, active: &Installation) -> Result<(), &'static str> {
         if !self.installations.iter().any(|entry| entry.id == active.id) {
-            if self.installations.len() >= INSTALLATION_LIMIT { return Err("installation_limit"); }
+            if self.installations.len() >= INSTALLATION_LIMIT {
+                return Err("installation_limit");
+            }
             self.installations.push(active.clone());
         }
         self.default_installation_id = Some(active.id.clone());
@@ -72,8 +80,15 @@ impl Preferences {
         Ok(())
     }
 
-    pub fn select_default(&mut self, id: Option<String>, enabled: bool) -> Result<(), &'static str> {
-        if id.as_ref().is_some_and(|id| !self.installations.iter().any(|entry| &entry.id == id)) {
+    pub fn select_default(
+        &mut self,
+        id: Option<String>,
+        enabled: bool,
+    ) -> Result<(), &'static str> {
+        if id
+            .as_ref()
+            .is_some_and(|id| !self.installations.iter().any(|entry| &entry.id == id))
+        {
             return Err("installation_missing");
         }
         self.open_on_startup = enabled && id.is_some();
@@ -121,9 +136,11 @@ impl Preferences {
 
     pub fn reset_shortcut(&mut self, action: crate::shortcuts::Action) -> Result<(), &'static str> {
         use crate::shortcuts::Action;
-        if matches!((self.microphone_mode, action),
-            (MicrophoneMode::PushToTalk, Action::PushToTalk) |
-            (MicrophoneMode::PushToMute, Action::PushToMute)) {
+        if matches!(
+            (self.microphone_mode, action),
+            (MicrophoneMode::PushToTalk, Action::PushToTalk)
+                | (MicrophoneMode::PushToMute, Action::PushToMute)
+        ) {
             return Err("shortcut_required");
         }
         self.set_binding(action, action.default_binding().map(str::to_owned));
@@ -179,7 +196,11 @@ pub fn normalize_origin(input: &str) -> Result<String, &'static str> {
 pub fn installation(input: &str) -> Result<Installation, &'static str> {
     let origin = normalize_origin(input)?;
     let id = format!("{:x}", Sha256::digest(origin.as_bytes()));
-    Ok(Installation { id, origin, name: None })
+    Ok(Installation {
+        id,
+        origin,
+        name: None,
+    })
 }
 
 pub fn same_origin(origin: &str, candidate: &Url) -> bool {
@@ -205,7 +226,7 @@ pub fn load(path: &Path) -> Result<Preferences, &'static str> {
             for action in crate::shortcuts::Action::ALL {
                 preferences.set_binding(action, action.default_binding().map(str::to_owned));
             }
-            return Ok(preferences)
+            return Ok(preferences);
         }
         Err(_) => return Err("storage_failed"),
     };
@@ -222,12 +243,19 @@ pub fn load(path: &Path) -> Result<Preferences, &'static str> {
     let mut seen = std::collections::HashSet::new();
     for saved in &preferences.installations {
         let canonical = installation(&saved.origin).map_err(|_| "storage_failed")?;
-        if canonical.id != saved.id || canonical.origin != saved.origin
-            || validate_name(saved.name.as_deref()).is_err() || !seen.insert(&saved.id) {
+        if canonical.id != saved.id
+            || canonical.origin != saved.origin
+            || validate_name(saved.name.as_deref()).is_err()
+            || !seen.insert(&saved.id)
+        {
             return Err("storage_failed");
         }
     }
-    if preferences.default_installation_id.as_ref().is_some_and(|id| !seen.contains(id)) {
+    if preferences
+        .default_installation_id
+        .as_ref()
+        .is_some_and(|id| !seen.contains(id))
+    {
         return Err("storage_failed");
     }
     Ok(preferences)
@@ -254,6 +282,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn close_preference_defaults_off_and_persists_both_choices() {
+        let old: Preferences =
+            serde_json::from_str(r#"{"installations":[],"language":"en","trayAcknowledged":true}"#)
+                .unwrap();
+        assert!(!old.quit_on_close);
+        let directory = TestDirectory::new();
+        let path = directory.0.join("installations.json");
+        fs::create_dir_all(&directory.0).unwrap();
+        fs::write(
+            &path,
+            r#"{"installations":[],"language":"en","trayAcknowledged":true}"#,
+        )
+        .unwrap();
+        assert!(!load(&path).unwrap().quit_on_close);
+        for enabled in [true, false] {
+            let preferences = Preferences {
+                quit_on_close: enabled,
+                ..old.clone()
+            };
+            save(&path, &preferences).unwrap();
+            assert_eq!(load(&path).unwrap().quit_on_close, enabled);
+        }
+    }
+
+    #[test]
     fn removing_default_preserves_saved_address_and_profile() {
         let mut preferences = Preferences::default();
         let active = installation("https://chat.example").unwrap();
@@ -264,7 +317,10 @@ mod tests {
         assert!(!preferences.open_on_startup);
         assert_eq!(preferences.installations[0].id, before[0].id);
         assert_eq!(preferences.installations[0].origin, before[0].origin);
-        assert_eq!(preferences.select_default(Some("missing".into()), true), Err("installation_missing"));
+        assert_eq!(
+            preferences.select_default(Some("missing".into()), true),
+            Err("installation_missing")
+        );
     }
 
     #[test]
@@ -273,12 +329,21 @@ mod tests {
         let mut preferences = Preferences::default();
         preferences.mute_shortcut = Some("Alt+KeyK".into());
         preferences.reset_shortcut(Action::Mute).unwrap();
-        assert_eq!(preferences.mute_shortcut.as_deref(), Some("Control+Shift+KeyM"));
+        assert_eq!(
+            preferences.mute_shortcut.as_deref(),
+            Some("Control+Shift+KeyM")
+        );
         preferences.reset_shortcut(Action::Deafen).unwrap();
-        assert_eq!(preferences.deafen_shortcut.as_deref(), Some("Control+Shift+KeyD"));
+        assert_eq!(
+            preferences.deafen_shortcut.as_deref(),
+            Some("Control+Shift+KeyD")
+        );
         preferences.push_to_talk_shortcut = Some("Mouse4".into());
         preferences.microphone_mode = MicrophoneMode::PushToTalk;
-        assert_eq!(preferences.reset_shortcut(Action::PushToTalk), Err("shortcut_required"));
+        assert_eq!(
+            preferences.reset_shortcut(Action::PushToTalk),
+            Err("shortcut_required")
+        );
         assert_eq!(preferences.push_to_talk_shortcut.as_deref(), Some("Mouse4"));
         assert!(preferences.microphone_mode == MicrophoneMode::PushToTalk);
         preferences.microphone_mode = MicrophoneMode::OpenMic;
@@ -286,7 +351,10 @@ mod tests {
         assert!(preferences.push_to_talk_shortcut.is_none());
         preferences.push_to_mute_shortcut = Some("Mouse5".into());
         preferences.microphone_mode = MicrophoneMode::PushToMute;
-        assert_eq!(preferences.reset_shortcut(Action::PushToMute), Err("shortcut_required"));
+        assert_eq!(
+            preferences.reset_shortcut(Action::PushToMute),
+            Err("shortcut_required")
+        );
         assert_eq!(preferences.push_to_mute_shortcut.as_deref(), Some("Mouse5"));
         preferences.microphone_mode = MicrophoneMode::OpenMic;
         preferences.reset_shortcut(Action::PushToMute).unwrap();
@@ -304,7 +372,11 @@ mod tests {
         save(&path, &Preferences::default()).unwrap();
         let existing = load(&path).unwrap();
         assert!(existing.mute_shortcut.is_none() && existing.deafen_shortcut.is_none());
-        assert!(existing.display.full_addresses && existing.display.installation_icons && !existing.display.compact_list);
+        assert!(
+            existing.display.full_addresses
+                && existing.display.installation_icons
+                && !existing.display.compact_list
+        );
     }
 
     #[test]
@@ -316,7 +388,10 @@ mod tests {
         preferences.remember_authenticated(&last).unwrap();
         preferences.remember_authenticated(&last).unwrap();
         assert_eq!(preferences.installations.len(), 2);
-        assert_eq!(preferences.default_installation_id.as_deref(), Some(last.id.as_str()));
+        assert_eq!(
+            preferences.default_installation_id.as_deref(),
+            Some(last.id.as_str())
+        );
         assert!(preferences.open_on_startup);
         preferences.forget(&first.id);
         assert!(preferences.open_on_startup);
@@ -325,7 +400,8 @@ mod tests {
     }
 
     #[test]
-    fn names_and_display_preferences_preserve_origin_profile_identity_and_validate_saved_defaults() {
+    fn names_and_display_preferences_preserve_origin_profile_identity_and_validate_saved_defaults()
+    {
         let directory = TestDirectory::new();
         let path = directory.0.join("installations.json");
         let original = installation("https://chat.example").unwrap();

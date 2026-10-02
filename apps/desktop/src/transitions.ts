@@ -11,6 +11,16 @@ export interface CallState {
   microphoneTest: boolean;
 }
 
+/** Close button, Alt+F4 and tray requests share one pending quit decision. */
+export function createQuitRequest(request: () => Promise<void>): () => Promise<void> {
+  let pending: Promise<void> | null = null;
+  return () => {
+    if (pending) return pending;
+    pending = Promise.resolve().then(request).finally(() => { pending = null; });
+    return pending;
+  };
+}
+
 export function needsConfirmation(active: boolean, report: CallState | null, localMedia: boolean): boolean {
   return localMedia || (active && (!report || report.version !== 1
     || Object.entries(report).some(([key, value]) => key !== "version" && value === true)));

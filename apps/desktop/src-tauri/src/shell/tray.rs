@@ -109,11 +109,15 @@ pub(super) fn create(
             "installations" => show_shell(app),
             "update" => check_from_tray(app),
             "quit" => {
-                show_shell(app);
-                let _ = app.emit_to("shell", "shell:quit-requested", ());
+                request_quit(app);
             }
             _ => {}
         })
         .build(app)?;
     Ok(tray_menu)
+}
+
+pub(super) fn request_quit(app: &tauri::AppHandle) {
+    show_shell(app);
+    let _ = app.emit_to("shell", "shell:quit-requested", ());
 }

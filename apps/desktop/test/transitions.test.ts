@@ -2,9 +2,39 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { runInNewContext } from "node:vm";
-import { needsConfirmation, performTransition, type CallState } from "../src/transitions.js";
+import { createQuitRequest, needsConfirmation, performTransition, type CallState } from "../src/transitions.js";
 
 const idle: CallState = { version: 1, inVoice: false, microphone: false, camera: false, screen: false, computerAudio: false, capture: false, pendingJoin: false, pendingCapture: false, microphoneTest: false };
+
+describe("quit request coalescing", () => {
+  it("shares one confirmation and accepts a fresh request after cancellation", async () => {
+    let prompts = 0;
+    let cancel!: () => void;
+    const quit = createQuitRequest(async () => {
+      prompts++;
+      await new Promise<void>((resolve) => { cancel = resolve; });
+    });
+    const first = quit();
+    assert.equal(quit(), first);
+    await Promise.resolve();
+    assert.equal(prompts, 1);
+    cancel();
+    await first;
+    const second = quit();
+    await Promise.resolve();
+    assert.equal(prompts, 2);
+    cancel();
+    await second;
+  });
+
+  it("releases a failed quit request for retry", async () => {
+    let attempts = 0;
+    const quit = createQuitRequest(async () => { if (++attempts === 1) throw Error("window_failed"); });
+    await assert.rejects(quit(), /window_failed/);
+    await quit();
+    assert.equal(attempts, 2);
+  });
+});
 
 describe("call-aware shell transitions", () => {
   it("confirms missing state and every media/pending flag, including muted calls", () => {

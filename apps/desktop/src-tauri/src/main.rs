@@ -4,12 +4,13 @@ mod appearance;
 mod call_state;
 mod deep_links;
 mod installations;
+mod microphone_permission;
 #[cfg(target_os = "windows")]
 mod mouse_hook;
 mod native_notifications;
 mod platform;
-mod shortcuts;
 mod shell;
+mod shortcuts;
 mod update_installer;
 mod updates;
 

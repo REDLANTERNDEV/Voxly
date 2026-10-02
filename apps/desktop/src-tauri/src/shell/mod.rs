@@ -23,6 +23,7 @@ use voice::VoiceEvent;
 pub(crate) struct Shell {
     pub(crate) inner: Mutex<Inner>,
     recording_shortcut: AtomicBool,
+    quit_on_close: AtomicBool,
     ready_generation: AtomicU64,
     home_requested: AtomicBool,
     launch_sequence: AtomicU64,
@@ -86,4 +87,30 @@ fn persist(shell: &Shell, preferences: &Preferences) -> Result<(), &'static str>
 
 pub(crate) fn run() {
     runtime::run();
+}
+
+// Native close buttons and Alt+F4 share the same trusted quit flow as the tray.
+pub(crate) fn close_requested(window: &tauri::WebviewWindow) {
+    use std::sync::atomic::Ordering;
+    use tauri::Manager;
+    if window
+        .app_handle()
+        .state::<Shell>()
+        .quit_on_close
+        .load(Ordering::Acquire)
+    {
+        tray::request_quit(window.app_handle());
+    } else {
+        let _ = window.hide();
+    }
+}
+
+#[cfg(windows)]
+impl Shell {
+    pub(crate) fn language(&self) -> Option<installations::Language> {
+        self.inner
+            .try_lock()
+            .ok()
+            .map(|inner| inner.preferences.language)
+    }
 }

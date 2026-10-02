@@ -37,6 +37,8 @@ pub fn open_installation(
         url.query_pairs_mut().append_pair("desktopLaunch", id);
     }
     let origin = saved.origin.clone();
+    let permission_epoch = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let navigation_epoch = permission_epoch.clone();
     let mut bootstrap = format!(
         "{}({}, {});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});\n{}({});",
         include_str!("voice-bridge.js"),
@@ -62,6 +64,11 @@ pub fn open_installation(
         include_str!("settings-bridge.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?
     ));
+    bootstrap.push_str(&format!(
+        "\n{}({});",
+        include_str!("microphone-permission.js"),
+        serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?
+    ));
     let opener_app = app.clone();
     let label = installation_label(generation);
     // Grants never accumulate on a label reused by another installation.
@@ -73,6 +80,7 @@ pub fn open_installation(
             .permission("allow-report-call-state")
             .permission("allow-activate-installation")
             .permission("allow-reset-notification-permission")
+            .permission("allow-reset-microphone-permission")
             .permission("allow-set-installation-theme")
             .permission("allow-show-desktop-notification")
             .permission("allow-close-desktop-notification")
@@ -93,6 +101,7 @@ pub fn open_installation(
         // Voice intent stays one-way; the separate state bridge can only report.
         .initialization_script(&bootstrap)
         .on_navigation(move |url| {
+            navigation_epoch.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
             if let Some(alerts) =
                 navigation_app.try_state::<crate::native_notifications::Notifications>()
             {
@@ -123,6 +132,12 @@ pub fn open_installation(
                 let Ok(core) = webview.controller().CoreWebView2() else {
                     return;
                 };
+                crate::microphone_permission::install(
+                    notification_window.clone(),
+                    &core,
+                    notification_origin.clone(),
+                    permission_epoch,
+                );
                 crate::native_notifications::suppress_focused_webview_notifications(
                     &notification_window,
                     &core,
@@ -152,6 +167,8 @@ pub fn open_installation(
             })
             .map_err(|_| "window_failed")?;
     }
+    #[cfg(not(windows))]
+    let _ = permission_epoch;
     let close_window = window.clone();
     window.on_window_event(move |event| {
         if matches!(event, tauri::WindowEvent::Destroyed) {
@@ -161,10 +178,8 @@ pub fn open_installation(
                 .clear(close_window.label());
         }
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            // Keep the webview and all peer connections alive when hidden.
-            if close_window.hide().is_ok() {
-                api.prevent_close();
-            }
+            api.prevent_close();
+            crate::shell::close_requested(&close_window);
         }
     });
     Ok(window)
@@ -174,11 +189,27 @@ pub async fn reset_notification_permission(
     window: &WebviewWindow,
     origin: String,
 ) -> Result<(), &'static str> {
+    reset_permission(window, origin, false).await
+}
+
+pub async fn reset_microphone_permission(
+    window: &WebviewWindow,
+    origin: String,
+) -> Result<(), &'static str> {
+    reset_permission(window, origin, true).await
+}
+
+async fn reset_permission(
+    window: &WebviewWindow,
+    origin: String,
+    microphone: bool,
+) -> Result<(), &'static str> {
     #[cfg(windows)]
     {
         use webview2_com::{
             Microsoft::Web::WebView2::Win32::{
-                ICoreWebView2Profile4, ICoreWebView2_13, COREWEBVIEW2_PERMISSION_STATE_DEFAULT,
+                ICoreWebView2Profile4, ICoreWebView2_13, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE,
+                COREWEBVIEW2_PERMISSION_STATE_DEFAULT,
             },
             SetPermissionStateCompletedHandler,
         };
@@ -210,7 +241,11 @@ pub async fn reset_notification_permission(
                         }));
                     unsafe {
                         profile.SetPermissionState(
-                            COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS,
+                            if microphone {
+                                COREWEBVIEW2_PERMISSION_KIND_MICROPHONE
+                            } else {
+                                COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS
+                            },
                             &HSTRING::from(origin),
                             COREWEBVIEW2_PERMISSION_STATE_DEFAULT,
                             &completion,
@@ -227,7 +262,7 @@ pub async fn reset_notification_permission(
     }
     #[cfg(not(windows))]
     {
-        let _ = (window, origin);
+        let _ = (window, origin, microphone);
         Err("unsupported_platform")
     }
 }

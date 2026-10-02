@@ -49,7 +49,9 @@ describe("desktop settings presentation", () => {
     assert.match(source, /kind: "recording", enabled: false/);
     assert.match(source, /event\.key === "Escape".*onRecording\(null\)/);
     const settings = readFileSync("src/components/shell/SettingsDialog.tsx", "utf8");
-    assert.doesNotMatch(settings, /"general"|"desktop"/);
+    assert.match(settings, /desktop \? \["general", \.\.\.sections, "shortcuts"\]/);
+    assert.match(settings, /section === "general" && desktop/);
+    assert.doesNotMatch(settings, /section === "desktop"/);
     assert.match(settings, /DesktopHomeButton/);
     assert.match(settings, /settings-nav-footer/);
     assert.match(settings, /section === "notifications"/);

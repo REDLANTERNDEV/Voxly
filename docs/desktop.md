@@ -182,7 +182,18 @@ expired, do not run `owner:create` again. With the same `DATABASE_PATH`, run
 `npm run owner:claim -w @voxly/server -- --base-url http://127.0.0.1:5173`
 and open its new one-use link.
 
-Close hides a window to the tray. Tray Show Voxly restores the installation;
+Close hides a window to the tray by default. Desktop Settings → General
+contains **Quit Voxly when closing the window**, a device-wide preference that
+starts off, including when upgrading an existing installation. When enabled,
+closing Home or an Installation window (including Alt+F4) requests the same
+trusted Quit flow as explicit Home/tray Quit. Saving the switch never closes
+a window. Repeated close requests reuse one pending quit flow; cancellation
+keeps the application and call intact. Explicit Quit always requests exit,
+regardless of this preference. Older shells show the switch disabled with an
+update-required explanation. General is first in desktop navigation; opening
+Settings retains its existing initial section. Browser Settings omit General.
+
+Tray Show Voxly restores the installation;
 Installations restores the chooser. Retry, disconnect, switching addresses, and
 Quit request fresh media state from the updated installation. They ask for
 confirmation when you are in voice (including muted or receive-only calls),
@@ -416,7 +427,8 @@ ongoing check. Unconfigured builds show updates unavailable; downloading or read
 keep their existing state. The tray never installs an update. Update actions open local review;
 installing still needs explicit confirmation and may interrupt voice.
 The small interface version at the bottom of Settings opens the desktop and web
-interface version details. There is no General or Desktop section. On
+interface version details. General contains the close behavior preference;
+Appearance remains separate. There is no Desktop section. On
 narrow screens the dock keeps a compact status; full version details stay in
 Home and Settings. Mandatory restart deadlines and automatic rejoining are
 not implemented yet.
@@ -478,3 +490,28 @@ For actual Home markup/menu checks with disposable saved addresses, run
 Then run `checkHomeMenus(tab, viewport)` from
 `apps/desktop/scripts/home-ux/check.mjs` through CUA at port 1423. This fixture
 aliases the native API only in its test configuration; production uses real IPC.
+
+## Windows microphone consent
+
+Joining voice and testing a microphone retain their existing acquisition flow.
+On supported Windows/WebView2 runtimes, a dialog titled **Voxly** identifies the
+requesting Installation by its origin and offers **Allow microphone** or
+**Block** in the desktop shell's English/Turkish language. Explicit choices are
+saved in that Installation's WebView2 profile. Closing the dialog rejects only
+the current request. Existing decisions remain effective; Windows microphone
+privacy restrictions still apply, and camera permission remains separate.
+
+**Settings → Audio → Reset microphone permission** clears only the current
+Installation's microphone decision. The next microphone request asks again.
+Other Installations, login, camera and notification permissions remain intact.
+The action requires an updated shell; it is absent in browser Settings.
+
+Native consent is limited to the current Installation window and top-level
+origin. Frame requests are denied without persistence; concurrent requests and
+requests invalidated by navigation or replacement cannot save a grant. Runtime
+APIs unavailable for safely handling consent retain the ordinary permission
+prompt. Screen capture keeps its existing chooser and runtime-owned sharing
+bar. See [ADR-0029](adr/0029-desktop-microphone-consent-stays-per-installation.md).
+Deploy the updated web client and rebuild the Windows shell together. Installed
+Windows/WebView2 dialog, persistence and privacy-denial checks remain release
+gates in the [acceptance record](desktop-windows-acceptance.md).

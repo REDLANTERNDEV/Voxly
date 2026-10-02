@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { Translate } from "../app/types.js";
 import { HomeIcon, ExternalLinkIcon, CloseIcon, RefreshIcon } from "./ui/Icons.js";
 import { applyDesktopSettings, desktopSettingsAvailable, desktopBindingLabel, desktopKeyboardBinding, desktopMouseBinding, type DesktopAction, type DesktopSettingsOperation, type DesktopSettingsSnapshot } from "../lib/desktopSettings.js";
@@ -42,8 +42,28 @@ export function DesktopHomeButton({ t, onOpened }: { t: Translate; onOpened?: ()
     {error ? <p className="error-text small" role="alert">{t("desktopSettings.failed")}</p> : null}
   </>;
 }
+export function DesktopGeneralSettings({ t }: { t: Translate }) {
+  const { snapshot, pending, error, save } = useDesktopSettings();
+  const labelId = useId();
+  const supported = typeof snapshot?.preferences.quitOnClose === "boolean";
+  const enabled = snapshot?.preferences.quitOnClose ?? false;
+  return <section className="settings-card">
+    <div className="audio-toggle-control">
+      <span id={labelId}><strong>{t("desktopSettings.quitOnClose")}</strong></span>
+      <button type="button" role="switch" aria-checked={enabled} aria-labelledby={labelId}
+        className={`audio-switch ${enabled ? "is-on" : ""}`} disabled={!supported || pending}
+        onClick={() => void save({ kind: "quitOnClose", enabled: !enabled })}><span aria-hidden="true" /></button>
+    </div>
+    <p className="muted small">{t("desktopSettings.quitOnCloseHint")}</p>
+    {snapshot && !supported ? <p className="muted small">{t("desktopSettings.updateRequired")}</p> : null}
+    <Feedback error={error} t={t} />
+  </section>;
+}
+
 export function DesktopMicrophoneSettings({ t, onShortcuts }: { t: Translate; onShortcuts: () => void }) {
   const { snapshot, pending, error, save } = useDesktopSettings();
+  const [resetting, setResetting] = useState(false);
+  const [resetResult, setResetResult] = useState<boolean | null>(null);
   const preferences = snapshot?.preferences;
   const [delay, setDelay] = useState(0);
   useEffect(() => { setDelay(preferences?.pushToTalkReleaseDelayMs ?? 0); }, [preferences?.pushToTalkReleaseDelayMs]);
@@ -57,6 +77,14 @@ export function DesktopMicrophoneSettings({ t, onShortcuts }: { t: Translate; on
       <label className="audio-level-control"><span><span>{t("desktopSettings.delay")}</span><strong>{delay} ms</strong></span><input type="range" min={0} max={2000} step={10} value={delay} disabled={pending || delay === 0} aria-valuetext={`${delay} ms`} onChange={(event) => setDelay(Number(event.target.value))} onPointerUp={() => void save({ kind: "delay", milliseconds: delay })} onKeyUp={(event) => { if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) void save({ kind: "delay", milliseconds: delay }); }} /></label>
     </div> : null}
     {preferences?.microphoneMode !== "openMic" ? <button type="button" className="btn btn-ghost desktop-settings-link" onClick={onShortcuts}>{t("desktopSettings.editShortcuts")}</button> : null}
+    {window.__VOXLY_DESKTOP_MICROPHONE_V1__?.version === 1 ? <>
+      <button type="button" className="btn btn-ghost" disabled={resetting} onClick={() => {
+        setResetting(true); setResetResult(null);
+        void window.__VOXLY_DESKTOP_MICROPHONE_V1__!.resetPermission().then(setResetResult).catch(() => setResetResult(false)).finally(() => setResetting(false));
+      }}>{t("desktopSettings.resetMicrophone")}</button>
+      <p className="muted small">{t("desktopSettings.resetMicrophoneHint")}</p>
+      {resetResult !== null ? <p className={resetResult ? "muted small" : "error-text small"} role="status">{t(resetResult ? "desktopSettings.microphoneReset" : "desktopSettings.failed")}</p> : null}
+    </> : null}
     <Feedback error={error} t={t} />
   </div>;
 }

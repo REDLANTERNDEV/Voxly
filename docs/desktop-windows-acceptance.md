@@ -986,3 +986,59 @@ Loopback integration tests required local-listen permission in this sandbox;
 rerunning with that permission passed. Vite retains its existing large-chunk
 warning. No Windows NSIS compiler/runtime is present, so package/wizard artwork,
 protocol prompts, actual tray behavior and global registration remain pending.
+
+## Dock, microphone consent and close preference
+
+The composer fixture now renders the real chat panel and voice dock in the
+application shell. Pointer hit testing reproduced the disconnected overlap
+before removing the two desktop height extensions. General exposes the native
+close preference only on desktop, defaulting to off; older shells show an
+update-required disabled switch. Audio exposes the finite microphone reset
+bridge on supporting shells. These fixtures cannot certify Windows behavior.
+
+| Installed Windows/WebView2 gate | Result |
+| --- | --- |
+| Owned Voxly dialog in EN/TR identifies the Installation; Allow and Block persist across relaunch | Pending |
+| Dismissal rejects one request and asks again; reset clears only microphone for the current Installation | Pending |
+| Existing decisions, Installation isolation, concurrent requests, iframe rejection and navigation/replacement during the prompt | Pending |
+| Windows privacy denial, independent camera permission and unsupported-runtime prompt fallback | Pending |
+| Missing preference defaults off; saved preference survives relaunch | Pending |
+| Home and Installation X/Alt+F4 hide with preference off and request Quit with it on | Pending |
+| Active-call cancellation preserves call; repeated close requests show one confirmation; explicit Home/tray Quit works with either value | Pending |
+| Composer edge/padding focus and Send across voice transitions, replies and multiline drafts at Windows display scaling | Pending |
+
+Screen capture and the runtime sharing bar are retained. Rebuild the Windows
+shell and deploy the web client together before performing these gates.
+
+Local verification for this change:
+
+- `npm run test -w @voxly/web` (864 passing), `npm run typecheck -w
+  @voxly/web`, and `npm run build -w @voxly/web`.
+- `npm run test -w @voxly/desktop` (64 desktop and 3 release tests),
+  `npm run typecheck -w @voxly/desktop`, and
+  `npm run build -w @voxly/desktop`.
+- `cargo test --locked` (54 passing; loopback tests required local-listen
+  access). Tests cover default and disk save/load, finite preference validation,
+  coalesced quit requests, cancellation, microphone bridge scoping and consent
+  persistence policy.
+- CUA pointer-hit/focus/Send checks in the real chat/dock fixture at 1280×720,
+  1024×480, 901×700, 900×700 and 390×700: disconnected, joined and left; empty
+  and multiline drafts; English/dark browser and Turkish/light desktop layouts.
+  Reply drafts also passed at 1024×480 and 390×700. General default-off, saved operation,
+  browser omission, older-shell fallback and Audio reset were checked.
+- Changed Rust files pass `rustfmt --check` with `skip_children=true`;
+  `git diff --check` passes. `cargo fmt --all -- --check` still reports existing
+  formatting drift in unchanged `shell/trust.rs`, `shell/update_commands.rs`,
+  `shell/voice.rs` and `update_installer.rs`.
+- `cargo clippy --locked --all-targets -- -D warnings` reports existing
+  `too_many_arguments` in `connect_installation` and
+  `field_reassign_with_default` in a shortcut test. It passes with only those
+  two lints allowed on the command line.
+- A Windows-target harness type-checks the microphone adapter against the pinned
+  WebView2/Windows COM dependencies, using Tauri window stubs. Full
+  `cargo check --target x86_64-pc-windows-gnu --locked` is blocked by the missing
+  `x86_64-w64-mingw32-gcc` compiler. This does not verify installed Windows UI.
+
+No remote deployment destination was supplied for this change. The local web and
+desktop frontend artifacts are built; Windows packaging and deployment remain
+outstanding. Vite retains its existing large-chunk warning.

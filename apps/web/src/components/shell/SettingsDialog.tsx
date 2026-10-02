@@ -9,7 +9,7 @@ import type { TranslationKey } from "../../lib/i18n.js";
 import { ExternalPreviewSettings } from "../ExternalPreviewSettings.js";
 import { AccountDeletionSettings } from "../AccountDeletionSettings.js";
 import { DesktopNotificationSettings } from "../DesktopNotificationSettings.js";
-import { DesktopHomeButton, DesktopMicrophoneSettings, DesktopShortcutSettings } from "../DesktopSettings.js";
+import { DesktopGeneralSettings, DesktopHomeButton, DesktopMicrophoneSettings, DesktopShortcutSettings } from "../DesktopSettings.js";
 import { desktopSettingsAvailable } from "../../lib/desktopSettings.js";
 import { NotificationSoundSettings } from "../NotificationSoundSettings.js";
 import { webReleaseVersion } from "../../lib/applicationUpdates.js";
@@ -29,10 +29,11 @@ import { ApplicationVersionSettings } from "../ApplicationUpdateStatus.js";
  * 260-pixel column ever wanted to be.
  */
 
-export type SettingsSection = "account" | "audio" | "appearance" | "privacy" | "shortcuts" | "notifications" | "about";
+export type SettingsSection = "general" | "account" | "audio" | "appearance" | "privacy" | "shortcuts" | "notifications" | "about";
 
 const sections: readonly SettingsSection[] = ["account", "audio", "notifications", "appearance", "privacy"];
 const sectionIcons = {
+  general: <GearIcon />,
   shortcuts: <KeyboardIcon />,
   notifications: <BellIcon />,
   about: <GearIcon />,
@@ -45,7 +46,7 @@ const sectionIcons = {
 export function SettingsDialog(props: ShellModel & ShellActions & { initialSection?: SettingsSection; contextError?: TranslationKey | ""; onClose: () => void }) {
   const [section, setSection] = useState<SettingsSection>(props.initialSection ?? "account");
   const desktop = typeof window !== "undefined" && desktopSettingsAvailable(window);
-  const visibleSections = desktop ? [...sections, "shortcuts"] as SettingsSection[] : sections;
+  const visibleSections = desktop ? ["general", ...sections, "shortcuts"] as SettingsSection[] : sections;
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -180,6 +181,7 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
               <NotificationSoundSettings t={props.t} preferences={props.notificationSounds} onChange={props.onNotificationSoundsChange} />
               {desktop ? <DesktopNotificationSettings key={props.user.id} userId={props.user.id} t={props.t} /> : null}
             </> : null}
+            {section === "general" && desktop ? <DesktopGeneralSettings t={props.t} /> : null}
             {section === "appearance" ? (
               <PreferencesCard
                 language={props.language}
