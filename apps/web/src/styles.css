@@ -5657,7 +5657,8 @@ button.reply-quote:focus-visible .reply-quote-body {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  /* Leave room for the translated labels in every platform's fallback font. */
+  grid-template-columns: minmax(220px, max-content) minmax(0, 1fr);
   /*
    * The row has to be constrained as well as the columns. Without it the body
    * grows to whatever the tallest section needs, the dialog overflows its own
@@ -6016,7 +6017,9 @@ button.reply-quote:focus-visible .reply-quote-body {
 /* Desktop preferences share the same Settings geometry as browser controls. */
 .settings-nav { display: flex; flex-direction: column; }
 .settings-nav-item { flex: 0 0 auto; min-width: 0; }
-.settings-nav-item > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.settings-nav-item > span:last-child { min-width: 0; white-space: nowrap; }
+.settings-home-label { display: inline-flex; align-items: center; gap: 6px; }
+.settings-home-label .ui-icon { flex: none; width: 12px; height: 12px; }
 .settings-nav-footer { display: grid; gap: 10px; margin-top: auto; padding-top: 24px; }
 .settings-version-link { background: none; border: 0; cursor: pointer; font: inherit; font-size: 11px; line-height: 1.5; padding: 6px 10px; text-align: start; }
 .settings-section-header { gap: 16px; }
@@ -6048,7 +6051,7 @@ button.reply-quote:focus-visible .reply-quote-body {
 .desktop-link-fallback .link-panel { margin-top: 12px; }
 .language-switch { position: relative; min-width: 8rem; height: 44px; }
 .language-switch select { position: absolute; inset: 0; width: 100%; padding: 0 28px 0 34px; }
-.language-switch svg { position: absolute; left: 10px; pointer-events: none; }
+.language-switch svg { position: absolute; left: 10px; z-index: 1; pointer-events: none; }
 .language-switch .language-switch-chevron { left: auto; right: 10px; }
 
 @media (max-width: 720px) {

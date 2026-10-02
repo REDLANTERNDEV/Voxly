@@ -61,9 +61,9 @@ describe("desktop UX polish", () => {
     assert.match(auth, /revision\.current !== requestRevision \|\| current\.current !== request/);
     assert.match(auth, /request\.expiresInSeconds \* 1000/);
     const composer = readFileSync("src/features/chat/TextRoomScreen.tsx", "utf8");
-    assert.match(composer, /<footer className="composer" onMouseDown/);
-    assert.match(composer, /!event\.target\.closest\("button, a, input, textarea, select, label, \[role=button\], \.composer-reply"\)/);
-    assert.match(composer, /!window\.getSelection\(\)\?\.toString\(\)/);
-    assert.match(composer, /event\.preventDefault\(\); composerRef\.current\?\.focus\(\)/);
+    assert.match(composer, /<footer className="composer" onClick/);
+    assert.match(composer, /!event\.target\.closest\("button, a, input, textarea, select, \[role=button\], \.composer-reply"\)/);
+    assert.doesNotMatch(composer, /window\.getSelection/);
+    assert.match(composer, /composerRef\.current\?\.focus\(\)/);
   });
 });

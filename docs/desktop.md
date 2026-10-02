@@ -17,22 +17,85 @@ Install Node.js 22+, npm, the pinned Rust toolchain, and the
 need Microsoft C++ Build Tools with the desktop C++ workload and Windows SDK,
 plus WebView2. The NSIS installer uses the Evergreen runtime bootstrapper;
 therefore a machine without WebView2 needs internet access for installation.
-The default installation is per-user and does not require running Voxly as an
-administrator.
+The NSIS package installs machine-wide under Program Files. Setup and desktop
+updates require administrator approval; Voxly itself runs without elevation.
+Setup and uninstall use the dark Voxly icon for visibility on the light installer
+background; the application retains its silver icon.
+Preferences and WebView2 profiles remain in each Windows user’s application
+data directory, separate from application binaries and updater staging.
 
 ```sh
 npm install
 npm run desktop:dev
 ```
 
-For a browser-only chooser layout/localization preview:
+For a browser-only Home layout/localization preview:
 
 ```sh
 npm run dev:shell -w @voxly/desktop
 ```
 
-Open `http://127.0.0.1:1420`. Native buttons are disabled in this preview. Its
-media checks use the browser, so they do not establish Tauri compatibility.
+Open `http://127.0.0.1:1420`. Native buttons are disabled in this preview. Developer media checks are hidden
+from production Home. In a development preview, open `/?diagnostics` and expand
+Developer diagnostics; browser probes do not establish Tauri compatibility.
+
+## Home and desktop settings
+
+Home prioritizes **Connect** for a new member and **Launch** for a remembered
+default. Add an optional local name and a Voxly address; **Remember installation**
+is enabled initially. Turning it off opens the address without adding a saved
+entry. Sessions still use the same isolated origin-specific WebView2 profile.
+Saved entries offer Launch, Rename, Make default (or Remove default) and Forget.
+Remove default disables automatic opening and preserves the saved address and profile. Forget removes the
+address, not cookies or sign-in data; disconnect an active installation first.
+
+After browser-approved sign-in successfully completes in the desktop window,
+that locally selected Installation becomes the default and opens on future
+launches. Failed or cancelled approval and ordinary session restoration do not
+change the default. Disable **Always open this installation** in Home or use a
+saved Installation's menu to change the default. Home is available from the tray
+and the bottom of the Settings sidebar;
+opening it preserves the current installation and call. Switching addresses
+continues to require confirmation when media is active or its state is unknown.
+A branded loading screen stays visible until the installation interface is
+ready; the new installation window is initially hidden to avoid a blank window
+and overlapping startup windows. Choose another installation cancels pending
+loading. A startup failure offers Retry and Choose another installation. A web interface
+that does not report readiness within 20 seconds reveals Home for recovery;
+the replacement window is retained until the member chooses to retry or switch.
+
+Home contains display preferences and the native updater. Settings → Audio
+contains microphone mode and push-to-talk release delay; Settings → Shortcuts
+contains all four bindings. These controls require both the updated desktop
+build and the updated web deployment, and are hidden in ordinary browsers.
+Use **Edit keybind**, press the combination, then **Stop recording** to save it.
+Escape, leaving the row, or losing window focus cancels recording. Notification
+sounds and desktop notifications are grouped in Settings → Notifications.
+New desktop profiles start with Ctrl+Shift+M for mute and Ctrl+Shift+D for deafen.
+Existing custom or cleared shortcuts are preserved; push-to-talk and push-to-mute
+remain unassigned until configured. Preferences are local to this computer.
+
+## Move an existing per-user install to Program Files
+
+This installation-mode change needs a one-time reinstall. Do not rely on an
+old per-user updater to remove its existing Windows registration.
+
+1. Quit Voxly from its tray menu.
+2. Back up `%LOCALAPPDATA%\app.voxly.desktop` (preferences and `profiles`).
+   Keep this backup private; profiles contain authenticated session data.
+3. Uninstall the old Voxly entry through Windows Installed apps. Leave the
+   option to delete application data **unchecked**.
+4. Run the new setup, approve elevation, and use its Program Files destination.
+5. Start Voxly normally under the original Windows account. Confirm saved
+   addresses, shortcuts and sign-ins, and verify there is only one Voxly entry
+   in Installed apps and that `voxly:` links open the new executable.
+
+Application data is not moved into Program Files. Signed update installers use
+an app-cache staging directory and request elevation to replace application
+binaries. If UAC is cancelled or the installer cannot start, Home remains
+available for reopening an Installation and retrying. Explicit update consent
+ends calls before launching the installer. Installed migration, UAC and restart
+results remain pending in the Windows acceptance record.
 
 ## Connect and sign in
 
@@ -47,7 +110,7 @@ opening an installation, using an eight-second timeout, no redirects, and a
 bounded response. This does not prove the interface/media are working; it only
 rejects an unreachable or invalid health response. A failed replacement health
 check leaves the existing installation window intact. If its interface later
-fails, use the tray's Installations action and Retry loading or another address.
+fails, use the tray's Home action and Retry loading or another address.
 
 The installation interface provides Invite and Link code paths. On an updated
 installation, **Sign in with browser** appears on the desktop Link a device
@@ -58,6 +121,57 @@ request expires after 90 seconds; leaving the desktop screen sends cancellation.
 The existing Link code path remains available: open Account & devices on a
 signed-in browser, generate a code, enter it in the desktop interface, and
 approve the matching confirmation number.
+
+On the updated web interface, **Open in desktop** is available on the landing
+page and in Settings → Account. It requires the installed Windows shell. The
+browser may ask permission to launch Voxly; if no handler is installed, stay in
+the browser and use the existing sign-in/Link code paths.
+
+The installer registers the `voxly` scheme. Signed-out links contain only the
+canonical Installation origin, for example
+`voxly://open?origin=https%3A%2F%2Fchat.example.com`. Signed-in Settings adds a
+public, short-lived `launch` UUID to coordinate sign-in with this exact browser
+Device. Neither form includes a session token, Link code, Invite, Recovery code,
+private collection secret, channel route, or arbitrary navigation path. The
+browser-normalized `voxly://open/?origin=…` form is also accepted. HTTP is limited
+to loopback development origins; credentials, shell origins, fragments, extra
+parameters, non-root paths, and malformed IDs are rejected.
+
+**Open in desktop** restores the currently open Installation without reloading,
+changing Accounts, or interrupting media. Remembered and unfamiliar addresses
+open directly after validation and health checking; switching keeps the existing
+call-aware confirmation. A protocol link alone never saves an unfamiliar address.
+Successful browser-approved desktop sign-in remembers it, selects it as default,
+and enables automatic opening. Cancelling a transition leaves the current call
+and Installation intact. Offline failures return to Home with recovery controls.
+
+When opened from signed-in Settings, a signed-out desktop webview starts its
+own authorization automatically and displays a confirmation number. Return to
+the original browser tab, compare the number in the compact approval dialog,
+and choose **Approve**. The desktop completes sign-in in the background without
+another confirmation. The server
+uses that browser's existing Account to authorize a separate desktop Device.
+No code typing or approval-address copying is required. The desktop keeps its
+private collection secret in webview memory and receives its HttpOnly session
+cookie through same-origin HTTP; the native shell never handles credentials.
+The public launch ID alone cannot approve or collect sign-in. Launches expire
+after three minutes, and desktop authorization after 90 seconds. Cancellation,
+expiry, reuse, and revoked/deleted/banned approving Accounts cannot mint a new
+Device session. An already signed-in desktop keeps its existing Account even
+when the browser uses another one. Signed-out landing links still open the
+Installation; browser sign-in and Link code remain available there.
+
+Deploy the updated server **and** web interface, then rebuild/reinstall the
+updated desktop shell. The database change only adds a short-lived correlation
+table. Copying a standalone executable does not establish protocol registration.
+Browser application-launch prompts cannot be bypassed, and first sign-in still
+requires explicit browser approval. Without the installed app, use the browser
+normally or Link code; an older server leaves those sign-in methods available.
+No broad plugin permission is granted to remote content. See
+[the design](adr/0027-browser-desktop-handoff-keeps-approval.md) and
+[primary-source research](designs/2026-10-01-desktop-sign-in-handoff-research.md).
+Installed Windows cold/running/tray, first sign-in, and call-continuity tests
+remain required; macOS and Linux Installation adapters remain unsupported.
 
 For local development, start the server on port 3000 and Vite on port 5173.
 Set `VOXLY_PUBLIC_URL=http://127.0.0.1:5173` when starting the server **and**
@@ -126,6 +240,20 @@ for an explicitly initiated request from the active Installation's exact
 origin. WebView2 does not show the ordinary browser permission prompt by itself,
 so a fresh desktop shell is required for this host integration.
 
+Updated Windows shells also check the actual foreground window before native
+delivery, including a dialog owned by the Installation window. This suppresses
+alerts even when WebView2 reports that the document is unfocused. A native
+failure after returning to Voxly closes the alert instead of requesting a
+Compatibility popup. Where the WebView2 runtime exposes `NotificationReceived`
+(`ICoreWebView2_24`), the host also suppresses focused Compatibility alerts;
+background Compatibility alerts retain WebView2's default UI and click handling.
+Older runtimes retain the existing document gate for Compatibility delivery.
+The contributor reports native delivery and foreground suppression working on
+Windows. The full release matrix remains in the acceptance document. Rebuild
+the desktop shell for changes;
+no web deployment change is required. In-app audio cue preferences remain
+independent of desktop banners.
+
 If permission was previously denied, use **Reset notification permission**
 in this section, then enable notifications again. The reset clears only the
 current Installation's saved Notification permission; login, microphone and
@@ -141,8 +269,7 @@ the current Installation window and opens its channel through ordinary Voxly
 navigation. This does not join or switch voice. Old Account/Installation alerts
 cannot activate a replacement session. Channel targets stay out of OS alert
 content and native storage. Installed Windows tray/minimize/focus behavior is
-still pending acceptance; activation after Quit and external desktop links are
-not implemented. See [ADR-0024](adr/0024-desktop-alert-activation-only-reveals-its-window.md).
+still pending acceptance; notification activation after Quit is not implemented. See [ADR-0024](adr/0024-desktop-alert-activation-only-reveals-its-window.md).
 
 Delivery prefers native Windows toasts without a notification plugin; only a
 finite category, language and temporary handle ID enter native state. Native
@@ -155,6 +282,24 @@ and close the current window's own toast handles. See
 Installed Windows acceptance must establish permission, toast delivery,
 tray/lock behavior and foreground behavior; local builds do not establish
 installed OS integration.
+
+Updated desktop shells also save the most recent native API or asynchronous
+delivery failure to
+`%LOCALAPPDATA%\app.voxly.desktop\native-notification-diagnostic.json`.
+This is one overwritten local snapshot containing only a finite API stage and
+numeric HRESULT; no Account, channel, message, origin or toast handle is written.
+After reproducing fallback with the rebuilt shell, read it in PowerShell:
+
+```powershell
+Get-Content "$env:LOCALAPPDATA\app.voxly.desktop\native-notification-diagnostic.json"
+```
+
+The file's modification time identifies when the captured failure occurred;
+a successful send does not clear a previous failure. No file means no native
+failure has been captured, rather than proof of successful delivery. In that
+case also check that the running shell is the rebuilt version and that the
+native IPC bridge is reached. A diagnostic write failure never disables the
+fallback or affects a call.
 
 Windows stores chooser preferences under the application local-data directory
 for `app.voxly.desktop` (`%LOCALAPPDATA%\app.voxly.desktop` in a standard profile).
@@ -257,17 +402,79 @@ rerun the installer checks after any dependency/toolchain change.
 
 ## Distribution and updating
 
-This experiment has no native updater, no update endpoint, and no signing key.
+The local shell implements signed updates, but ordinary feasibility builds have
+no updater endpoint or public key and make no update requests. Production
+configuration is supplied only at build time by the distributor.
+Configured Windows builds check at application startup and hourly while open
+or hidden to tray, and quietly download and verify available updates. The
+bottom-left connection area and account menu show update actions without visible
+version numbers. Home and Settings retain version details. The native tray menu is **Show Voxly**, **Home**, **Check for
+updates**, a separator, then **Quit**. It contains no version row. Checking
+opens Home's updater and immediately runs the same native check as Home's button;
+early requests are queued until startup initializes, and repeated clicks reuse an
+ongoing check. Unconfigured builds show updates unavailable; downloading or ready updates
+keep their existing state. The tray never installs an update. Update actions open local review;
+installing still needs explicit confirmation and may interrupt voice.
+The small interface version at the bottom of Settings opens the desktop and web
+interface version details. There is no General or Desktop section. On
+narrow screens the dock keeps a compact status; full version details stay in
+Home and Settings. Mandatory restart deadlines and automatic rejoining are
+not implemented yet.
 Installation-delivered interface updates use Voxly's existing version checker;
 while media is active an update waits behind an explicit reload notice. End
-media before reloading. Shell releases will be separately signed and distributed
-after feasibility passes.
+media before reloading. Release candidates and distribution remain gated on updater-key setup and
+Windows acceptance.
 
 Before a production shell release, the distributor must establish a fixed HTTPS
 manifest endpoint, protect the updater private key in release secrets, embed the
-matching public key, and separately configure Windows Authenticode signing.
+matching public key. Initial GitHub releases use updater signatures without a
+Windows certificate; Authenticode remains an optional separate workflow mode.
 Tauri updater signatures do not replace Authenticode. Installing a Windows
 update exits the app, so confirmation/track cleanup precede installation. Never
 take the updater URL or public key from a connected installation. The
 [revised plan](designs/2026-09-29-windows-desktop.md#milestone-4-signed-release-and-shell-updates)
 lists the required failure tests.
+
+See [desktop releases](desktop-releases.md) for GitHub hosting, signing ownership,
+the protected candidate workflow, recovery and future Microsoft Store distribution.
+
+## UX correction verification
+
+Browser Download desktop lives directly above Settings at the bottom of the
+workspace rail. The authenticated Open in desktop button prepares its public
+correlation before enabling, renews expired preparation, and invokes the URI
+directly from the click. Opening and matching-code approval share one dialog;
+the browser's application-opening prompt and explicit approval remain required.
+Unused preparations are cancelled on close or unmount.
+
+Settings uses a translated 44px X close button with Escape and focus restoration.
+Each shortcut row has an Edit/Stop control and reset icon. Valid combinations
+replace the draft without ending recording; Stop saves. Escape, section change,
+closing Settings, window blur, and starting another recorder discard the draft
+and release suppression. Reset uses native defaults and registration; resetting
+a required hold binding requires first selecting Open mic in Audio.
+
+Installation menus prefer above their buttons, fall back below, and stay inside
+the viewport on scrolling/resizing. Arrow keys, Home/End, Escape and outside
+clicks work. The setup EXE uses a dark mark on silver for Explorer; an NSIS GUI
+hook preserves the dark wizard mark. Application and uninstall icons are unchanged.
+[Tauri installer hooks](https://v2.tauri.app/reference/config/#nsisconfig) and
+[NSIS GUI customization](https://nsis.sourceforge.io/Docs/Modern%20UI%202/Readme.html)
+are the supported extension points.
+
+For rendered component regressions, run `npm run dev:ux-check -w @voxly/web`.
+This disposable fixture uses actual components and CSS, in-memory data and a
+finite native-settings mock; only protocol navigation is replaced. Run the
+exported `checkDesktopUx(tab, viewport)` from
+`apps/web/scripts/desktop-ux/check.mjs` through the CUA browser API. It checks
+composer padding/Send, recording continuity and cancellation, reset, X focus,
+English/Turkish narrow headings, language edges, download positioning, and
+first/repeated approval dialogs. It does not establish native Windows behavior.
+Deploy the web interface and rebuild the desktop shell together. Installed
+Windows artwork, protocol handling, tray and shortcut checks remain release gates.
+
+For actual Home markup/menu checks with disposable saved addresses, run
+`npm run dev:shell -w @voxly/desktop -- --config scripts/home-ux/vite.config.mjs`.
+Then run `checkHomeMenus(tab, viewport)` from
+`apps/desktop/scripts/home-ux/check.mjs` through CUA at port 1423. This fixture
+aliases the native API only in its test configuration; production uses real IPC.

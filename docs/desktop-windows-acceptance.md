@@ -34,54 +34,12 @@ The contributor subsequently reported that the new global mute shortcut
 tray state, conflict/restart behavior, and moderation states were not supplied,
 so this is an initial smoke result rather than completion of the shortcut row.
 
-## Mouse shortcut follow-up — 2026-09-30
+## Mouse shortcut result
 
-The contributor now reports shortcuts are generally successful and requests
-continuing the desktop plan. The shallow-press cause remains unresolved; this
-is not completion of the full installed shortcut matrix.
-The contributor reports intermittent failures
-with Mouse 4/5, including Ctrl combinations, while Ctrl+N worked for 25 presses.
-The press-latch change in `71d5af61` did not resolve the reported failure.
-Commit `5cb04ed8` moves mouse press/release gating to the hook thread, waits
-through the settings lock for accepted presses, and suppresses bound clicks
-when the installation window is foreground. Its portable gate test verifies
-those rules; it does not reproduce the physical Windows failure.
-
-The latest report distinguishes "half" presses followed by release, which fail,
-from full long presses followed by release and a one-second wait, which work.
-The contributor clarified that these are quick, shallow presses on a Logitech
-Superlight 1. The saved binding, focus, tested build, navigation behavior, and
-number of microphone transitions per failed press must still be confirmed.
-This report does not establish whether a press is missing or extra transitions
-occur.
-
-On the rebuilt `5cb04ed8` app, test Mouse 5 alone with Voxly focused. Check every
-transition during 20 presses, then verify a 21st press inverts the starting
-state; final parity alone can hide two missed presses or extra toggles. Compare
-quick clicks one second apart, full holds one second apart, and rapid full
-clicks to separate press duration from the interval. Record any Back/Forward
-navigation. If failure persists, capture native press/release and web-intent
-delivery evidence before applying another timing or latch change.
-
-For an independent input check, open
-[`mouse-input-check.html`](../apps/desktop/scripts/mouse-input-check.html) in a
-browser on the same Windows PC. Keep that browser focused and compare 10 shallow
-presses with 10 full clicks, one second apart; reset between runs and copy each
-report. This requires no shell rebuild or web deployment. It records middle/side
-button events, modifiers, and relative timing only, with no network traffic.
-It distinguishes event counts/timing delivered to that browser, not the complete
-native-to-web mute path. Missing browser events alone cannot identify the failing
-hardware, driver, hook, or browser stage.
-
-One supplied browser report contains 16 complete Mouse 4 down/up pairs and 10
-complete Mouse 5 pairs, no modifiers, no repeated-down or unmatched-up events,
-and no button held at the end. Mouse 4 hold durations range from 23.1 to 129.8
-ms, with some releases followed by another press after 50.7–126 ms. Mouse 5
-holds range from 196.6 to 268 ms. The contributor describes 10 clicks, but which
-button(s) that physical count covers and which sequence used shallow presses
-still need confirmation. Extra complete click pairs would be different from a
-missing release; this browser trace alone does not locate their source or
-reproduce the Voxly native-to-web failure.
+The contributor reports the earlier Mouse 4/5 input issue resolved. The temporary
+independent input harness and its diagnostic instructions have been retired.
+Production shortcut regression tests remain. Full installed shortcut acceptance,
+including conflicts, restart and moderation, remains in the matrix below.
 
 ## Test setup
 
@@ -683,3 +641,348 @@ No dependency, signing key, updater endpoint or protocol registration was added.
    release gate. A Windows-target probe checked the actual WinRT API module
    with minimal Tauri interface stubs; full cross-check on macOS was blocked
    by missing `x86_64-w64-mingw32-gcc` for the existing ring dependency.
+
+### Native notification result
+
+The contributor reports native Windows delivery, banner/history activation and
+foreground suppression working. The one-off PowerShell diagnostic is retired.
+This closes the reported troubleshooting issues; the full release matrix above
+still covers OS settings, cancellation, session isolation and failure recovery.
+
+The shell checks Windows foreground ownership before delivery and before Show.
+Focus suppression returns blocked, while asynchronous failure after returning to
+Voxly retires the alert. Supported WebView2 runtimes also suppress focused
+Compatibility alerts. These protections and their production regression tests
+remain in place.
+
+### Open in desktop links, 2026-10-01
+
+The updated browser landing page and Settings → Account provide an English/
+Turkish app-opening link containing only the current canonical Installation
+origin. The shell registers `voxly` through the pinned Tauri deep-link plugin
+and single-instance integration. Original startup/forwarded URI arguments are
+bounded and validated independently of plugin normalization. Matching active
+Installations restore their current window; other requests are shown only in
+the local chooser and require the existing Remember/Open actions. No web route,
+authentication material, automatic connection, native remote permission or
+voice action was added.
+
+Installed Windows acceptance remains **not run**:
+
+Browser-launch diagnosis: the reported Windows process argument contains
+`voxly://open/?origin=http%3A%2F%2F127.0.0.1%3A5173`, while the direct executable
+test used the form without the root slash and displayed **Use this address**.
+The original parser rejected that root slash. The correction accepts both
+envelopes through the shared cold/running argument handler, retaining all origin
+checks and rejecting non-root and normalized dot paths. The regression failed
+before the correction. Rebuild/reinstall the corrected NSIS shell and fully quit
+Voxly before retrying the browser launch; installed Windows retesting remains
+pending. The reported command also ends with a curly quote, so verify the fresh
+installer's handler uses ASCII double quotes if launching still fails.
+
+Local correction checks passed: native tests (36/36), desktop workspace tests
+(50/50), desktop typecheck/build, native Clippy with warnings denied, Rust
+format checking, and `git diff --check`. These do not verify an installed Windows
+browser launch.
+
+1. Rebuild/reinstall the NSIS shell and deploy the updated web interface. From
+   the signed-out landing page, choose Open in desktop while Voxly is fully
+   quit. After approving the browser's launch prompt, the chooser must show
+   the exact origin. No health request, saved address or login occurs until
+   the normal chooser actions. Repeat from signed-in Settings → Account.
+2. Repeat while the chooser is already running, including its startup and
+   first-use tray dialog. Only one Voxly instance remains. Cancel the offered
+   address and verify saved Installations and local probes are unchanged.
+3. Keep the matching Installation in a call, minimize it and hide it to tray.
+   Open its link: its window restores with the same viewed room and a peer
+   confirms uninterrupted audio. No full-document reload or automatic join.
+4. Open a different Installation's link during that call. The chooser offers
+   its address while the original call continues. Remembering an address does
+   not switch. Open follows health checking and media confirmation; cancelling
+   or an unreachable destination preserves the original call.
+5. Try wrong schemes/actions, credentials, paths, fragments, duplicate/extra
+   parameters and oversized arguments. They must not navigate, save, switch,
+   authenticate or join voice. Installation content must still be unable to
+   invoke the local link command or open custom protocols through its opener.
+6. Repeat first-install, reinstall and uninstall protocol behavior. Without
+   Voxly installed, the browser remains usable and Link code remains available.
+   Check English/Turkish copy and keyboard operation at narrow widths.
+
+Development verification passed:
+
+- `npm run typecheck`, `npm test`, and `npm run build` across the repository.
+- `npm run typecheck -w @voxly/desktop`, `npm run test -w @voxly/desktop`
+  (50/50), and `npm run build -w @voxly/desktop`.
+- `npm run build:tests -w @voxly/web` and
+  `node --test dist-test/test/desktop-links.test.js` from `apps/web` (2/2).
+- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline`
+  (35/35). The initial sandbox run failed only on the existing loopback health
+  fixture's `EPERM`; rerunning with local-listen permission passed.
+- `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline --all-targets -- -D warnings`.
+- Browser inspection of the landing action at desktop and 390px width in English
+  and Turkish. This did not launch the Windows protocol or exercise an installed
+  Windows webview. The existing web bundle chunk-size warning remains.
+- `npm run bundle -w @voxly/desktop -- --no-bundle --debug -- --locked --offline`:
+  macOS host debug executable built; this is not Windows NSIS packaging.
+- `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check` and
+  `git diff --check`.
+
+Development checks for this correction passed:
+
+- `npm run test -w @voxly/desktop`: 48/48 at the time of this correction.
+- `npm run typecheck -w @voxly/desktop`.
+- `npm run build -w @voxly/desktop`.
+- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline native_notifications`:
+  4/4; the focused-sender regression failed before applying suppression.
+- `cargo check --manifest-path /private/tmp/voxly-windows-api-check/Cargo.toml --target x86_64-pc-windows-gnu --tests --locked --offline`:
+  actual notification/foreground/WebView2 APIs with the corrected minimal Tauri
+  interface stubs. This is not a full Windows app build. The probe retains two
+  unrelated unused-fixture warnings.
+- `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline --all-targets -- -D warnings`.
+- `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check`.
+- `git diff --check`.
+
+Native commands used the previously documented temporary stable toolchain.
+No new dependency, remote permission, web code, staging or publishing was added.
+
+### Browser-to-desktop sign-in handoff, 2026-10-01
+
+The member confirmed the browser-normalized link now displays the address offer
+in installed Windows. This verifies that specific parser correction only. The
+following smoother handoff is a new change and has **not** been accepted on
+installed Windows.
+
+Follow-up member report: the smoother handoff works on their Windows setup.
+Record the main happy path as member-confirmed. The report does not individually
+verify the running/tray, different-Account, active-call, cancellation, expiry,
+or revocation cases below; those remain pending.
+
+Signed-in Settings creates a public launch UUID bound to its browser Device.
+A signed-out desktop creates its own private authorization and the original
+browser tab presents the matching-number approval. Only the desktop receives
+its new session cookie. Existing desktop Accounts remain unchanged. A saved
+address opens directly when no Installation is active; a new address or switch
+has one local Open Voxly action, retaining health and call-aware checks. See
+[ADR-0027](adr/0027-browser-desktop-handoff-keeps-approval.md).
+
+Windows acceptance still required:
+
+1. Deploy updated server/web and rebuild/reinstall desktop. From signed-in
+   Settings, choose Open in desktop with Voxly fully quit. A new address asks
+   Open Voxly once; a remembered address opens directly. The signed-out desktop
+   shows a number automatically, without starting/copying a second sign-in link.
+   Return to the same browser tab, compare the number and Account, and approve.
+   The desktop enters chat and appears as a separate Device in Settings.
+2. Repeat with the signed-out desktop already running and hidden to tray.
+   Repeat with it already signed in, including as a different Account: existing
+   Account, current room and live call must remain unchanged. Browser approval
+   should not be needed for the existing desktop session.
+3. Open a different Installation during a call. Confirm before switching; cancel
+   and verify audio remains live. An unreachable replacement preserves the old
+   window. The accepted destination may remain remembered after cancellation.
+4. Cancel before desktop arrival and while approval is pending; expire requests;
+   refuse via Cancel; revoke the source browser Device or delete/ban its Account
+   before collection. No new desktop session is created. Reuse the launch ID,
+   wrong-origin requests, duplicate IDs and collection with only a public ID
+   must fail. Another signed-in browser Device must not approve the launch.
+5. Try a missing desktop handler and an older server. The browser stays usable;
+   Link code/manual browser approval remains available. Browser application-launch
+   prompts remain controlled by the browser. Check both languages and keyboard
+   operation. First-time Device approval is deliberate, never automatic.
+
+Development verification:
+
+- `npm run typecheck`, `npm test` (19 shared, 400 server, 849 web, 277 bot,
+  50 desktop tests, all passed), `npm run build`, and desktop Vite build.
+  The final session-startup gate was then checked with web workspace
+  typecheck/build and all 850 web tests.
+- Native tests: 37/37; Clippy with warnings denied and Rust formatting checks.
+- Isolated in-memory browser/server preview: launch, desktop request arrival,
+  visible matching-number approval, and separate desktop-cookie collection.
+  Closing the approved browser panel before collection did not cancel it.
+  English and Turkish narrow-layout inspection use a simulated desktop request,
+  not an installed WebView2 profile or Windows protocol handler.
+- `git diff --check`. Existing web bundle chunk-size warning remains.
+
+
+## Signed shell update acceptance — pending, 2026-10-01
+
+The bundled updater and protected release-candidate workflow are implemented.
+GitHub Releases is the selected host; updater key ownership/backup details still
+need configuration. On 2026-10-02 initial distribution was selected without a
+paid Windows certificate: `windows_signing: none` retains mandatory Tauri updater
+signatures. Authenticode credentials are required only if that mode is selected;
+the Store EXE route still requires them. No updater-signed Windows installer
+or Store submission has been built, published, installed or tested in this chat.
+All installed results below remain **PENDING**. Follow
+[release operations](desktop-releases.md) for exact setup and recovery steps.
+
+| Case | Installed Windows result |
+| --- | --- |
+| Startup/hourly/manual check, including hidden tray sessions, and offline recovery without disrupting a call | Pending |
+| Verified update between two signed desktop versions | Pending |
+| Cancel download, discard verified update, cancel installation confirmation | Pending |
+| Active/muted/receive-only voice, camera, screen/computer audio, retained capture, pending join/capture and microphone test | Pending |
+| Invalid signature/key, altered artifact, wrong version/platform and interrupted download | Pending |
+| Installation content denied check/download/install authority; scoped public status and local-review commands only | Pending |
+| Tray Check for updates, current/available versions in dock/account menu, Settings version footer, and 380px/1280px layouts | Pending |
+| Checked NSIS launch failure and successful exit/restart | Pending |
+| Interrupted installation and recovery using signed installer | Pending |
+| First restart keeps saved addresses, language, shortcuts and isolated signed-in sessions | Pending |
+| Machine-wide install with per-user data, WebView2 bootstrapper, and the selected signing mode | Pending |
+| Microsoft Store EXE certification or MSIX packaging | Pending; no submission/package created |
+
+Local macOS verification covers cryptographic fixtures, HTTP download failure
+fixtures, finite native ACLs, confirmation cancellation, staging cleanup,
+TypeScript/builds and native tests. It does not prove Windows updater process
+launch, WebView2 capture teardown, relaunch or Store acceptance.
+
+## Home, settings, and Program Files acceptance — pending, 2026-10-02
+
+The Home layout, local startup preferences, bounded settings bridge, and
+machine-wide NSIS configuration are implemented. These are code results;
+installed Windows acceptance below remains **PENDING**.
+
+| Case | Installed Windows result |
+| --- | --- |
+| Fresh setup targets Program Files; setup/uninstall, taskbar and shortcuts show the Voxly icon | Pending |
+| Existing per-user install is removed without deleting app data, then reinstalled machine-wide with one application/protocol registration | Pending |
+| Separate Windows users keep separate preferences and WebView2 profiles | Pending |
+| First use prioritizes the connection form; English/Turkish, keyboard, touch, 380px and short windows remain usable | Pending |
+| Remembered and unremembered origins retain separate sign-ins; Rename and Forget do not clear session data | Pending |
+| Completed browser approval sets the latest default and enables startup; refused/cancelled/expired/stale requests do not | Pending |
+| Cold startup opens the default; a pending handoff wins; disabling/changing the default and tray Home work | Pending |
+| Home access preserves a call; switching/retry keeps call-aware confirmation; health and interface-load failures provide recovery | Pending |
+| Desktop Home button and microphone/Shortcuts controls; Notifications section; fresh mute/deafen defaults, custom/cleared bindings, conflicts and Mouse4/5 recording | Pending |
+| Global shortcuts work with another app focused; recording does not mute a live call or navigate history | Pending |
+| Signed machine-wide update requests UAC, handles cancellation/launch failure, and restarts Voxly without administrator privileges | Pending |
+| Update restart preserves names, startup/display settings and signed-in profiles | Pending |
+
+Desktop and web interface must both be updated to use the new settings and
+successful-sign-in/default flow. Local browser layout inspection and macOS
+native tests do not establish installed Windows behavior.
+
+## Desktop UX follow-up — code verified, Windows pending, 2026-10-02
+
+Implemented:
+
+- Setup/uninstall use the dark local Voxly icon; application branding stays silver.
+- Home shows a branded loading screen while the Installation window stays hidden.
+  Only an active-origin/window-generation readiness report reveals it. Cancel
+  invalidates pending work; timeout and offline failures keep Home recovery.
+- Remembered addresses skip the extra address review. New addresses retain
+  review, and browser matching-number approval remains explicit. Successful
+  desktop collection completes in the background and selects the local default;
+  cancelled/stale attempts cannot trigger navigation after collection.
+- Settings has Home and a small clickable interface version in the sidebar
+  footer. Notifications groups sound preferences and desktop notifications.
+  Microphone mode sits directly beneath Microphone in Voice & audio.
+- Shortcuts uses one Edit keybind / Stop recording control per binding, red
+  recording feedback, Escape/blur cancellation, and row-contained Audio links.
+  Recording animation respects reduced-motion preference.
+- Account heading wraps in narrow windows; chat composer padding focuses the
+  message field; the language selector covers its full visible control.
+- Ordinary browsers offer a green Download desktop link to GitHub Releases.
+  Browser approval uses a compact modal above Settings with focus restoration.
+- Tray order is Show Voxly, Home, Check for updates, separator, Quit. Versions
+  are absent. Checking runs a native check while idle, preserves in-flight/ready
+  updates, and never installs or interrupts a call by itself.
+
+Installed Windows follow-up remains required:
+
+| Case | Installed Windows result |
+| --- | --- |
+| Dark setup/uninstall icon is visible; application/taskbar/shortcut icons remain correct | Pending |
+| Cold default startup shows one visible window, no white flash, then the usable Installation | Pending |
+| Slow/offline startup, timeout, cancellation, late readiness, Retry and Choose another installation | Pending |
+| Settings/tray Home preserves an active call; remembered handoff switching still confirms active or unknown media | Pending |
+| Browser matching-number approval, cancellation, expiry, already signed-in desktop and latest successful default | Pending |
+| Shortcut recording with keyboard and Mouse4/5, Escape/blur cancellation, registration conflicts and an active call | Pending |
+| Tray Quit remains last; Check for updates works for idle/current/available/error and preserves downloading/ready states | Pending |
+| English/Turkish, keyboard/touch, light/dark, reduced motion and 100/125/150/200% Windows scaling | Pending |
+
+Local verification and any remaining development-check limits are recorded below.
+
+- Passed `npm test`: 19 shared, 400 server, 861 web, 277 bot, 60 desktop and
+  3 desktop release-script tests. Loopback fixtures ran with local-listen access.
+- Passed `npm run typecheck`, `npm run build`, and
+  `npm run build -w @voxly/desktop`. The existing large web-chunk warning remains.
+- Passed `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked`
+  (49 tests), native `cargo check --locked`, and formatting checks for the Rust
+  files changed in this follow-up.
+- Full `cargo fmt --check` still reports pre-existing formatting in untouched
+  native files. `cargo clippy --locked --all-targets -- -D warnings` reports the
+  existing default-field assignment in `installations.rs` and existing
+  eight-argument `connect_installation` command. These are not passing checks.
+- Inspected actual React components using disposable local fixtures: English
+  and Turkish Settings, 380px and 1280px layouts, dark/light shortcut recording,
+  saving on Stop, Escape cancellation, microphone mode placement, Notifications,
+  browser-only visibility, compact approval above Settings and focus restoration.
+  Verified the composer outer-padding click focuses its field and the language
+  selector's edge/icon areas target the select. No real authorization, call,
+  Windows installation or global-shortcut registration was exercised by fixtures.
+- Passed `git diff --check`. Unrelated working-tree changes were preserved.
+
+## UX corrections — 2026-10-02
+
+This follow-up supersedes the earlier new-address review, row-blur recording,
+setup EXE artwork, and visible dock/profile version behavior.
+
+Implemented direct opening for validated new and saved addresses without saving
+a new address on URI intake. Successful browser-approved desktop completion
+still remembers/defaults it. Public preparation precedes the first browser click;
+stale/unused preparations are cancelled and browser/code consent is retained.
+Home offers Remove default for the current default. Menus prefer above, clamp
+to the viewport, and support keyboard, dismissal and scrolling. Browser download
+is directly above Settings; dock/profile version numbers are removed.
+
+Tray checking uses Home's native check operation, publishes progress/results,
+preserves downloading/ready/installing states, and queues startup requests.
+Settings uses a 44px translated X, native per-row reset, recognizable Audio
+buttons and continuous recording until Stop. Cancellation releases suppression.
+Blank composer areas focus the textarea without consuming Send or selection;
+language controls use an associated full-control label.
+
+Rendered interaction suite: actual React components/CSS with disposable API and
+settings fixtures, English/Turkish, 320px and normal width, light/dark. Verified
+composer blank-row focus/Send, latest recorded draft, row-external clicks, invalid
+input, starting another recorder, Escape/section/X cancellation, suppression
+cleanup, reset, close focus restoration, heading geometry, selector edge hit
+targets, download placement, and first/repeated single approval dialogs.
+Native tests cover reset defaults/required hold rejection, default removal with
+retained addresses/profiles, settings operation rejection, early tray request
+consumption and updater phase preservation. Public preparation tests cover
+shared work, expiry renewal, failure retry, cancellation and late responses.
+
+| Installed Windows gate | Result |
+| --- | --- |
+| Silver setup package in light/dark Explorer; unchanged dark wizard, uninstall and installed app icons | Pending |
+| First/repeated browser protocol opening; unfamiliar address stays unsaved until successful approval | Pending |
+| Offline/slow startup, retry, cancellation, active-call switching, session isolation | Pending |
+| Tray check during startup/hidden Home, Checking/result publication, unavailable/offline, repeated clicks, downloading/ready preservation | Pending |
+| Reset registration/conflicts, required hold rejection, continuous keyboard/Mouse4/5 recording and native suppression cleanup | Pending |
+| Actual Windows Settings/device headings, composer/language hit targets, keyboard/touch/reduced motion, 100/125/150/200% scaling | Pending |
+
+macOS compilation and rendered browser fixtures cannot complete these gates.
+Ship updated web and desktop builds together. Existing unrelated work is retained.
+
+Rendered actual Home markup also passed Remove default with retained entries,
+above-button placement, viewport clamping at 380px, ArrowUp/Escape/outside
+dismissal, Make default, and focus retention.
+
+Verification commands completed successfully:
+
+- `npm test` (19 shared, 400 server, 864 web, 277 bot, 61 desktop and 3 release tests).
+- `npm run typecheck` and `npm run build`.
+- Final affected suites: `npm run test -w @voxly/web` and
+  `npm run test -w @voxly/desktop`; final repository typecheck/build repeated
+  after recovery/copy changes.
+- `cargo test --locked` from `apps/desktop/src-tauri` (52 passing tests).
+- `npm run tauri -w @voxly/desktop -- build --no-bundle` (desktop frontend
+  and native macOS release executable).
+- `git diff --check`.
+
+Loopback integration tests required local-listen permission in this sandbox;
+rerunning with that permission passed. Vite retains its existing large-chunk
+warning. No Windows NSIS compiler/runtime is present, so package/wizard artwork,
+protocol prompts, actual tray behavior and global registration remain pending.

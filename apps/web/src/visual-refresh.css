@@ -296,25 +296,23 @@ select {
 
 .language-switch {
   align-items: center;
-  background: var(--surface);
-  border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--fg);
   display: inline-flex;
   flex: 0 0 auto;
   gap: 7px;
   height: 44px;
-  padding: 0 10px;
   width: fit-content;
 }
-.language-switch:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.language-switch:hover select { background: var(--surface-2); border-color: var(--border-strong); }
 .language-switch:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .language-switch svg { fill: none; flex: 0 0 auto; height: 16px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; width: 16px; }
 .language-switch .language-switch-chevron { height: 13px; width: 13px; }
 .language-switch select {
   appearance: none;
-  background: transparent;
-  border: 0;
+  /* The native control owns the border and padding, including their hit area. */
+  background: var(--surface);
+  border: 1px solid var(--border);
   color: inherit;
   cursor: pointer;
   font: 600 12px var(--font-sans);

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Translate } from "../app/types.js";
-import { HomeIcon, CloseIcon, RefreshIcon } from "./ui/Icons.js";
+import { HomeIcon, ExternalLinkIcon, CloseIcon, RefreshIcon } from "./ui/Icons.js";
 import { applyDesktopSettings, desktopSettingsAvailable, desktopBindingLabel, desktopKeyboardBinding, desktopMouseBinding, type DesktopAction, type DesktopSettingsOperation, type DesktopSettingsSnapshot } from "../lib/desktopSettings.js";
 
 function useDesktopSettings() {
@@ -38,7 +38,7 @@ export function DesktopHomeButton({ t, onOpened }: { t: Translate; onOpened?: ()
     <button className="settings-nav-item settings-home" type="button" disabled={pending} onClick={() => {
       setPending(true); setError(false);
       void applyDesktopSettings({ kind: "home" }).then(onOpened).catch(() => setError(true)).finally(() => setPending(false));
-    }}><span className="settings-nav-icon" aria-hidden="true"><HomeIcon /></span><span>{t("desktopSettings.home")}</span></button>
+    }}><span className="settings-nav-icon" aria-hidden="true"><HomeIcon /></span><span className="settings-home-label">{t("desktopSettings.home")}<ExternalLinkIcon /></span></button>
     {error ? <p className="error-text small" role="alert">{t("desktopSettings.failed")}</p> : null}
   </>;
 }
