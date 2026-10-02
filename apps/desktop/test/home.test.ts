@@ -35,7 +35,28 @@ test("settings bridge refuses subframes and origin changes and contains no updat
 test("release packaging uses Program Files and explicit brand icons; diagnostics require a development entry", () => {
   const config = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
   assert.equal(config.bundle.windows.nsis.installMode, "perMachine");
-  for (const key of ["installerIcon", "uninstallerIcon"]) assert.equal(config.bundle.windows.nsis[key], "../branding/tauri/icons/icon.ico");
+  for (const key of ["installerIcon", "uninstallerIcon"]) assert.equal(config.bundle.windows.nsis[key], "../branding/tauri/icons/setup-dark.ico");
   const ui = readFileSync("src/main.ts", "utf8");
   assert.match(ui, /import.meta.env.DEV && new URLSearchParams\(location.search\).has\("diagnostics"\)/);
+});
+
+test("startup reveals only ready installation windows, supports cancellation, and keeps Quit last in the tray", () => {
+  const platform = readFileSync("src-tauri/src/platform.rs", "utf8");
+  assert.match(platform, /\.visible\(false\)/);
+  assert.match(platform, /\.background_color\(/);
+  const settings = readFileSync("src-tauri/src/shell/settings.rs", "utf8");
+  assert.match(settings, /inner\.loading_attempt != shell\.launch_sequence\.load/);
+  assert.match(settings, /!shell\.home_requested\.load/);
+  const native = readFileSync("src-tauri/src/shell/installation.rs", "utf8");
+  const cancel = native.split("async fn cancel_connection")[1].split("#[tauri::command]")[0];
+  assert.ok(cancel.indexOf("launch_sequence.fetch_add") < cancel.indexOf("shell.inner.lock().await"));
+  assert.match(cancel, /if inner\.loading/);
+  const tray = readFileSync("src-tauri/src/shell/tray.rs", "utf8");
+  assert.match(tray, /\[&show, &installations, &update, &separator, &quit\]/);
+  assert.match(tray, /"update" => check_from_tray\(app\)/);
+  assert.doesNotMatch(tray, /CARGO_PKG_VERSION|Update and restart/);
+  const update = readFileSync("src-tauri/src/shell/update_commands.rs", "utf8");
+  const check = update.split("fn check_from_tray")[1].split("fn tray_check_needed")[0];
+  assert.match(check, /updates\.check\(&app\)\.await/);
+  assert.doesNotMatch(check, /install_shell_update|confirmed|destroy/);
 });

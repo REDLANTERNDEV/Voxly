@@ -78,11 +78,8 @@ export function LinkDeviceScreen({ language, t, onLanguageChange, onLinked, turn
     return () => window.clearInterval(timer);
   }, [claimToken, onLinked, outcome]);
 
-  return (
-    <main className="landing link-screen">
-      <AuthPageHeader language={language} t={t} onLanguageChange={onLanguageChange} />
-      {window.__VOXLY_DESKTOP_V1__?.version === 1 ? <DesktopBrowserSignIn t={t} onLinked={onLinked} /> : null}
-      {claimToken ? (
+  const desktop = window.__VOXLY_DESKTOP_V1__?.version === 1;
+  const codeSurface = (claimToken ? (
         <section className="link-panel">
           <strong>{t("link.waitingTitle")}</strong>
           <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>{confirmation}</span>
@@ -131,7 +128,14 @@ export function LinkDeviceScreen({ language, t, onLanguageChange, onLinked, turn
               code from. Offered plainly, because that is what Recovery is for. */}
           <a className="small muted recovery-link" href="/recover">{t("recovery.lostDevice")}</a>
         </form>
-      )}
+      ));
+
+  return (
+    <main className="landing link-screen">
+      <AuthPageHeader language={language} t={t} onLanguageChange={onLanguageChange} />
+      {desktop ? <DesktopBrowserSignIn t={t} onLinked={onLinked} /> : null}
+      {desktop ? <details className="desktop-link-fallback"><summary>{t("desktopSignIn.useCode")}</summary>{codeSurface}</details> : codeSurface}
+
     </main>
   );
 }

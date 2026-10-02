@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { serverPath } from "../../app/navigation.js";
 import type { ShellActions, ShellModel } from "../../app/types.js";
-import { CloseIcon, GearIcon } from "../ui/Icons.js";
+import { CloseIcon, GearIcon, DownloadIcon } from "../ui/Icons.js";
 import { NavLink } from "../ui/Navigation.js";
 
 type WorkspaceRailProps = Pick<ShellModel, "activeServerId" | "servers" | "rooms" | "roomHistory" | "t"> & Pick<ShellActions, "onNavigate" | "onSelectServer"> & {
@@ -37,6 +37,7 @@ export function WorkspaceRail({ activeServerId, servers, rooms, roomHistory, t, 
           }}
         ><span aria-hidden="true">{Array.from(server.name.trim())[0]?.toLocaleUpperCase() ?? "V"}</span></button>)}
       </div>
+      {typeof window === "undefined" || window.__VOXLY_DESKTOP_V1__?.version !== 1 ? <a className="workspace-rail-link workspace-download" href="https://github.com/REDLANTERNDEV/Voxly/releases" target="_blank" rel="noopener noreferrer" title={t("desktop.download")} aria-label={t("desktop.download")}><DownloadIcon /></a> : null}
     </div>
     <span className="workspace-switch-error" role="status">{error}</span>
     <button className="workspace-rail-link workspace-settings" type="button" title={t("settings.open")} aria-label={t("settings.open")} onClick={onOpenSettings}><GearIcon /></button>

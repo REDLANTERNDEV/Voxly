@@ -4,7 +4,7 @@ use super::{persist, snapshot, Shell, ShellSnapshot};
 use crate::installations;
 use serde::Deserialize;
 use std::sync::atomic::Ordering;
-use tauri::{Emitter, WebviewWindow};
+use tauri::{Emitter, Manager, WebviewWindow};
 
 pub(super) async fn trusted_settings(
     window: &WebviewWindow,
@@ -122,11 +122,30 @@ pub(super) async fn desktop_settings(
             if trusted_shell(&window).is_ok() {
                 return Err("forbidden");
             }
+            if inner.loading
+                && inner.loading_attempt != shell.launch_sequence.load(Ordering::Acquire)
+            {
+                return Err("connection_cancelled");
+            }
+            if shell.ready_generation.load(Ordering::Acquire)
+                == shell.voice_generation.load(Ordering::Acquire)
+            {
+                return Ok(snapshot(&inner));
+            }
             shell.recording_shortcut.store(false, Ordering::Release);
             shell.ready_generation.store(
                 shell.voice_generation.load(Ordering::Acquire),
                 Ordering::Release,
             );
+            inner.loading = false;
+            if !shell.home_requested.load(Ordering::Acquire) {
+                window.show().map_err(|_| "window_failed")?;
+                window.set_focus().map_err(|_| "window_failed")?;
+                if let Some(home) = app.get_webview_window("shell") {
+                    let _ = home.hide();
+                }
+            }
+            let _ = app.emit_to("shell", "shell:ready", &snapshot(&inner));
             return Ok(snapshot(&inner));
         }
         Operation::Recording { enabled } => {

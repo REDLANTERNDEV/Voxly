@@ -22,6 +22,7 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
   const [request, setRequest] = useState<DesktopAuthorization | null>(null);
   const current = useRef<DesktopAuthorization | null>(null);
   const mounted = useRef(false);
+  const revision = useRef(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [outcome, setOutcome] = useState<"pending" | "refused" | "expired">("pending");
@@ -38,16 +39,21 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
   useEffect(() => {
     if (!request || outcome !== "pending") return;
     let live = true;
+    const requestRevision = revision.current;
     let timeout = 0;
     let delay = 1500;
+    const deadline = Date.now() + request.expiresInSeconds * 1000;
     const poll = async () => {
+      if (Date.now() >= deadline) {
+        current.current = null; setOutcome("expired"); return;
+      }
       try {
         const response = await collectDesktopAuthorization(request.id, request.secret);
-        if (!live) return;
+        if (!live || revision.current !== requestRevision || current.current !== request) return;
         if (response.status === "approved") {
           current.current = null;
-          await rememberCompletedDesktopAuthentication(window, response.status, () => live);
-          if (!live) return;
+          await rememberCompletedDesktopAuthentication(window, response.status, () => live && revision.current === requestRevision);
+          if (!live || revision.current !== requestRevision) return;
           onLinked();
           return;
         }
@@ -69,12 +75,13 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
   }, [request, outcome, onLinked]);
 
   const start = useCallback(async (automaticLaunchId?: string) => {
+    const startingRevision = ++revision.current;
     setBusy(true);
     setError(false);
     setUsingLaunch(Boolean(automaticLaunchId));
     try {
       const created = await createDesktopAuthorization(automaticLaunchId);
-      if (!mounted.current) {
+      if (!mounted.current || revision.current !== startingRevision) {
         void cancelDesktopAuthorization(created.id, created.secret).catch(() => undefined);
         return;
       }
@@ -82,9 +89,9 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
       setRequest(created);
       setOutcome("pending");
     } catch {
-      setError(true);
+      if (mounted.current && revision.current === startingRevision) setError(true);
     } finally {
-      setBusy(false);
+      if (mounted.current && revision.current === startingRevision) setBusy(false);
     }
   }, []);
 
@@ -95,6 +102,7 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
   }, [launchId, start]);
 
   const cancel = () => {
+    revision.current += 1;
     const pending = current.current;
     current.current = null;
     setRequest(null);
@@ -108,12 +116,12 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
       <strong>{t("desktopSignIn.title")}</strong>
       {request && outcome === "pending" ? (
         <>
-          <p className="muted small">{t("desktopSignIn.compare")}</p>
+          <p className="desktop-launch-origin">{window.location.origin}</p>
+          <p className="muted small">{t(usingLaunch ? "desktopSignIn.returnBrowser" : "desktopSignIn.compare")}</p>
           <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>{request.confirmation}</span>
-          {usingLaunch ? <p className="muted small">{t("desktopSignIn.returnBrowser")}</p> : <>
+          {!usingLaunch ? <>
             <a className="btn btn-primary" href={address} target="_blank" rel="noopener noreferrer">{t("desktopSignIn.openBrowser")}</a>
-            <code className="desktop-browser-address">{address}</code>
-          </>}
+          </> : null}
           <p className="muted small" role="status">{t("desktopSignIn.waiting")}</p>
           <button className="btn btn-ghost" type="button" onClick={cancel}>{t("common.cancel")}</button>
         </>

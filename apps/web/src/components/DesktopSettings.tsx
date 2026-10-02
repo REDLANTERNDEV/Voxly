@@ -1,41 +1,46 @@
 import { useEffect, useRef, useState } from "react";
 import type { Translate } from "../app/types.js";
+import { HomeIcon, CloseIcon } from "./ui/Icons.js";
 import { applyDesktopSettings, desktopSettingsAvailable, desktopBindingLabel, desktopKeyboardBinding, desktopMouseBinding, type DesktopAction, type DesktopSettingsOperation, type DesktopSettingsSnapshot } from "../lib/desktopSettings.js";
 
 function useDesktopSettings() {
   const [snapshot, setSnapshot] = useState<DesktopSettingsSnapshot | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const live = useRef(false);
   useEffect(() => {
-    let live = true;
-    void applyDesktopSettings({ kind: "read" }).then((next) => { if (live) setSnapshot(next); }).catch(() => { if (live) setError("failed"); });
-    return () => { live = false; };
+    live.current = true;
+    if (desktopSettingsAvailable(window)) void applyDesktopSettings({ kind: "read" }).then((next) => { if (live.current) setSnapshot(next); }).catch(() => { if (live.current) setError("failed"); });
+    return () => { live.current = false; };
   }, []);
   async function save(operation: DesktopSettingsOperation) {
     setPending(true); setError("");
-    try { setSnapshot(await applyDesktopSettings(operation)); }
-    catch (error) {
-      setError(typeof error === "string" ? error : "failed");
-      try { setSnapshot(await applyDesktopSettings({ kind: "read" })); } catch { /* Keep last usable snapshot. */ }
-    } finally { setPending(false); }
+    try {
+      const next = await applyDesktopSettings(operation);
+      if (live.current) setSnapshot(next);
+      return true;
+    } catch (error) {
+      if (live.current) setError(typeof error === "string" ? error : "failed");
+      try { const next = await applyDesktopSettings({ kind: "read" }); if (live.current) setSnapshot(next); } catch { /* Keep last usable snapshot. */ }
+      return false;
+    } finally { if (live.current) setPending(false); }
   }
   return { snapshot, pending, error, save };
 }
 function Feedback({ error, t }: { error: string; t: Translate }) {
-  return <p className="muted small" role="status">{error ? t(error === "shortcut_duplicate" ? "desktopSettings.duplicate" : error === "shortcut_required" ? "desktopSettings.required" : error === "shortcut_unavailable" ? "desktopSettings.conflict" : "desktopSettings.failed") : ""}</p>;
+  return error ? <p className="error-text small" role="alert">{t(error === "shortcut_duplicate" ? "desktopSettings.duplicate" : error === "shortcut_required" ? "desktopSettings.required" : error === "shortcut_unavailable" ? "desktopSettings.conflict" : "desktopSettings.failed")}</p> : null;
 }
-export function DesktopPreferences({ t }: { t: Translate }) {
-  const { snapshot, pending, error, save } = useDesktopSettings();
-  const preferences = snapshot?.preferences;
+export function DesktopHomeButton({ t, onOpened }: { t: Translate; onOpened?: () => void }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState(false);
   if (typeof window === "undefined" || !desktopSettingsAvailable(window)) return null;
-  return <section className="theme-card">
-    <h3 className="label">{t("settings.desktop")}</h3><p className="muted small">{t("desktopSettings.local")}</p>
-    <label className="field"><span>{t("desktopSettings.default")}</span><select disabled={!preferences || pending} value={preferences?.defaultInstallationId ?? ""} onChange={(event) => void save({ kind: "default", id: event.target.value || null, enabled: preferences?.openOnStartup ?? false })}>
-      <option value="">{t("desktopSettings.none")}</option>{preferences?.installations.map((entry) => <option key={entry.id} value={entry.id}>{entry.name || entry.origin}</option>)}
-    </select></label>
-    <label className="field"><span>{t("desktopSettings.startup")}</span><input type="checkbox" checked={preferences?.openOnStartup ?? false} disabled={!preferences?.defaultInstallationId || pending} onChange={(event) => void save({ kind: "default", id: preferences?.defaultInstallationId ?? null, enabled: event.target.checked })} /></label>
-    <button type="button" className="btn" disabled={pending} onClick={() => void save({ kind: "home" })}>{t("desktopSettings.home")}</button><Feedback error={error} t={t} />
-  </section>;
+  return <>
+    <button className="settings-nav-item settings-home" type="button" disabled={pending} onClick={() => {
+      setPending(true); setError(false);
+      void applyDesktopSettings({ kind: "home" }).then(onOpened).catch(() => setError(true)).finally(() => setPending(false));
+    }}><span className="settings-nav-icon" aria-hidden="true"><HomeIcon /></span><span>{t("desktopSettings.home")}</span></button>
+    {error ? <p className="error-text small" role="alert">{t("desktopSettings.failed")}</p> : null}
+  </>;
 }
 export function DesktopMicrophoneSettings({ t, onShortcuts }: { t: Translate; onShortcuts: () => void }) {
   const { snapshot, pending, error, save } = useDesktopSettings();
@@ -43,66 +48,87 @@ export function DesktopMicrophoneSettings({ t, onShortcuts }: { t: Translate; on
   const [delay, setDelay] = useState(0);
   useEffect(() => { setDelay(preferences?.pushToTalkReleaseDelayMs ?? 0); }, [preferences?.pushToTalkReleaseDelayMs]);
   if (typeof window === "undefined" || !desktopSettingsAvailable(window)) return null;
-  return <section className="theme-card"><h3 className="label">{t("desktopSettings.microphone")}</h3><p className="muted small">{t("desktopSettings.modeHint")}</p>
-    <label className="field"><span>{t("desktopSettings.mode")}</span><select disabled={!preferences || pending} value={preferences?.microphoneMode ?? "openMic"} onChange={(event) => void save({ kind: "microphone", mode: event.target.value as NonNullable<typeof preferences>["microphoneMode"] })}>
+  return <div className="desktop-microphone-settings">
+    <label className="form-field"><span>{t("desktopSettings.mode")}</span><select className="input" disabled={!preferences || pending} value={preferences?.microphoneMode ?? "openMic"} onChange={(event) => void save({ kind: "microphone", mode: event.target.value as NonNullable<typeof preferences>["microphoneMode"] })}>
       <option value="openMic">{t("desktopSettings.openMic")}</option><option value="pushToTalk">{t("desktopSettings.pushToTalk")}</option><option value="pushToMute">{t("desktopSettings.pushToMute")}</option>
     </select></label>
-    {preferences?.microphoneMode === "pushToTalk" ? <>
-      <label className="field"><span>{t("desktopSettings.delayEnabled")}</span><input type="checkbox" checked={delay > 0} disabled={pending} onChange={(event) => void save({ kind: "delay", milliseconds: event.target.checked ? 200 : 0 })} /></label>
-      <label className="field"><span>{t("desktopSettings.delay")} · {delay} ms</span><input type="range" min={0} max={2000} step={10} value={delay} disabled={pending || delay === 0} aria-valuetext={`${delay} ms`} onChange={(event) => setDelay(Number(event.target.value))} onPointerUp={() => void save({ kind: "delay", milliseconds: delay })} onKeyUp={(event) => { if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) void save({ kind: "delay", milliseconds: delay }); }} /></label>
-    </> : null}
-    <button type="button" className="btn btn-ghost" onClick={onShortcuts}>{t("desktopSettings.editShortcuts")}</button><Feedback error={error} t={t} />
-  </section>;
+    {preferences?.microphoneMode === "pushToTalk" ? <div className="desktop-release-delay">
+      <label className="audio-toggle-control"><span>{t("desktopSettings.delayEnabled")}</span><input type="checkbox" checked={delay > 0} disabled={pending} onChange={(event) => void save({ kind: "delay", milliseconds: event.target.checked ? 200 : 0 })} /></label>
+      <label className="audio-level-control"><span><span>{t("desktopSettings.delay")}</span><strong>{delay} ms</strong></span><input type="range" min={0} max={2000} step={10} value={delay} disabled={pending || delay === 0} aria-valuetext={`${delay} ms`} onChange={(event) => setDelay(Number(event.target.value))} onPointerUp={() => void save({ kind: "delay", milliseconds: delay })} onKeyUp={(event) => { if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) void save({ kind: "delay", milliseconds: delay }); }} /></label>
+    </div> : null}
+    {preferences?.microphoneMode !== "openMic" ? <button type="button" className="btn btn-ghost desktop-settings-link" onClick={onShortcuts}>{t("desktopSettings.editShortcuts")}</button> : null}
+    <Feedback error={error} t={t} />
+  </div>;
 }
 const actions = ["mute", "deafen", "pushToTalk", "pushToMute"] as const;
-function ShortcutRow({ action, snapshot, pending, save, t }: { action: DesktopAction; snapshot: DesktopSettingsSnapshot | null; pending: boolean; save: (operation: DesktopSettingsOperation) => Promise<void>; t: Translate }) {
-  const [recording, setRecording] = useState(false);
-  const [draft, setDraft] = useState<string | undefined>();
+function ShortcutRow({ action, snapshot, pending, save, t, recording, onRecording, onAudio }: {
+  action: DesktopAction; snapshot: DesktopSettingsSnapshot | null; pending: boolean; save: (operation: DesktopSettingsOperation) => Promise<boolean>;
+  t: Translate; recording: boolean; onRecording: (action: DesktopAction | null) => void; onAudio: () => void;
+}) {
+  const [draft, setDraft] = useState<string>();
   const [invalid, setInvalid] = useState(false);
+  const [recordError, setRecordError] = useState(false);
+  const row = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
-  const saveButton = useRef<HTMLButtonElement>(null);
-  const recordButton = useRef<HTMLButtonElement>(null);
-  useEffect(() => { if (draft !== undefined && !recording) saveButton.current?.focus(); }, [draft, recording]);
+  const edit = useRef<HTMLButtonElement>(null);
   const binding = snapshot?.preferences[`${action}Shortcut`];
   const registration = snapshot?.[({ mute: "registeredMuteShortcut", deafen: "registeredDeafenShortcut", pushToTalk: "registeredPushToTalkShortcut", pushToMute: "registeredPushToMuteShortcut" } as const)[action]];
   useEffect(() => {
     if (!recording) return;
     let live = true;
-    // Native delivery pauses only new presses while this focused recorder is active.
-    void applyDesktopSettings({ kind: "recording", enabled: true }).then(() => { if (live) input.current?.focus(); }).catch(() => setRecording(false));
+    void applyDesktopSettings({ kind: "recording", enabled: true }).then(() => { if (live) input.current?.focus(); }).catch(() => { if (live) { setRecordError(true); onRecording(null); } });
     let suppressed: number | null = null;
     const mouse = (event: MouseEvent) => {
       const value = desktopMouseBinding(event);
       if (!value) return;
       event.preventDefault(); event.stopPropagation(); suppressed = event.button;
-      setDraft(value); setRecording(false); setInvalid(false);
-      saveButton.current?.focus();
+      setDraft(value); setInvalid(false);
     };
     const release = (event: MouseEvent) => { if (event.button === suppressed) { event.preventDefault(); event.stopPropagation(); } };
-    const blur = () => setRecording(false);
-    window.addEventListener("mousedown", mouse, true); window.addEventListener("mouseup", release, true); window.addEventListener("auxclick", release, true); window.addEventListener("blur", blur);
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onRecording(null); edit.current?.focus(); return; }
+      if (event.key === "Tab" || event.target !== input.current && ["Enter", " "].includes(event.key)) return;
+      event.preventDefault(); event.stopPropagation();
+      const value = desktopKeyboardBinding(event);
+      if (value) { setDraft(value); setInvalid(false); }
+      else if (!event.repeat && !/^(Control|Alt|Shift|Meta)(Left|Right)$/.test(event.code)) setInvalid(true);
+    };
+    const blur = () => onRecording(null);
+    window.addEventListener("keydown", key, true); window.addEventListener("mousedown", mouse, true); window.addEventListener("mouseup", release, true); window.addEventListener("auxclick", release, true); window.addEventListener("blur", blur);
     return () => {
       live = false;
       void applyDesktopSettings({ kind: "recording", enabled: false }).catch(() => undefined);
-      window.removeEventListener("mousedown", mouse, true); window.removeEventListener("mouseup", release, true); window.removeEventListener("auxclick", release, true); window.removeEventListener("blur", blur);
+      window.removeEventListener("keydown", key, true); window.removeEventListener("mousedown", mouse, true); window.removeEventListener("mouseup", release, true); window.removeEventListener("auxclick", release, true); window.removeEventListener("blur", blur);
     };
-  }, [recording]);
-  async function persist(binding: string | null) { setDraft(undefined); await save({ kind: "shortcut", action, binding }); recordButton.current?.focus(); }
-  return <div className="theme-card desktop-shortcut-row"><label className="field"><span>{t(`desktopSettings.${action}`)}</span><input ref={input} readOnly value={recording ? t("desktopSettings.press") : draft || binding ? desktopBindingLabel(draft ?? binding!) : t("desktopSettings.none")} onBlur={(event) => { if (event.relatedTarget !== recordButton.current) setRecording(false); }} onKeyDown={(event) => {
-    if (!recording) return;
-    if (event.key === "Tab" || event.key === "Escape") { setRecording(false); if (event.key === "Escape") { event.preventDefault(); recordButton.current?.focus(); } return; }
-    event.preventDefault(); const value = desktopKeyboardBinding(event.nativeEvent);
-    if (!value) { if (!/^(Control|Alt|Shift|Meta)(Left|Right)$/.test(event.code)) setInvalid(true); return; }
-    setDraft(value); setRecording(false); setInvalid(false); saveButton.current?.focus();
-  }} /></label>
-    <div className="actions"><button ref={recordButton} type="button" className="btn" disabled={!snapshot || pending} onClick={() => { setRecording(!recording); setInvalid(false); }}>{t(recording ? "common.cancel" : "desktopSettings.record")}</button>
-      <button ref={saveButton} type="button" className="btn" disabled={pending || draft === undefined || recording} onClick={() => void persist(draft!)}>{t("desktopSettings.save")}</button>
-      <button type="button" className="btn btn-ghost" disabled={pending || !binding || recording} onClick={() => void persist(null)}>{t("desktopSettings.clear")}</button></div>
-    <p className="muted small" role="status">{t(invalid ? "desktopSettings.invalid" : draft ? "desktopSettings.draft" : registration ? "desktopSettings.active" : binding ? "desktopSettings.conflict" : "desktopSettings.none")}</p>
+  }, [recording, onRecording]);
+  async function stop() {
+    onRecording(null);
+    if (draft) await save({ kind: "shortcut", action, binding: draft });
+    edit.current?.focus();
+  }
+  const warning = recordError ? "desktopSettings.failed" : invalid && recording ? "desktopSettings.invalid" : binding && !registration ? "desktopSettings.conflict" : null;
+  return <div ref={row} className={`desktop-shortcut-row ${recording ? "is-recording" : ""}`} onBlur={(event) => { if (recording && !event.currentTarget.contains(event.relatedTarget as Node | null)) onRecording(null); }}>
+    <div className="desktop-shortcut-description"><strong>{t(`desktopSettings.${action}`)}</strong>
+      {action === "pushToTalk" || action === "pushToMute" ? <button type="button" className="desktop-settings-link" onClick={onAudio}>{t("desktopSettings.editAudio")}</button> : null}
+    </div>
+    <div className="desktop-shortcut-controls">
+      <div className="desktop-shortcut-binding"><input ref={input} className="input" aria-label={t(`desktopSettings.${action}`)} readOnly value={recording ? draft ? desktopBindingLabel(draft) : t("desktopSettings.press") : binding ? desktopBindingLabel(binding) : t("desktopSettings.none")} />
+        {binding && !recording ? <button type="button" className="icon-btn" disabled={pending} aria-label={`${t("desktopSettings.clear")}: ${t(`desktopSettings.${action}`)}`} title={t("desktopSettings.clear")} onClick={() => void save({ kind: "shortcut", action, binding: null })}><CloseIcon /></button> : null}
+      </div>
+      <button ref={edit} type="button" className="btn desktop-record-button" disabled={!snapshot || pending} aria-pressed={recording} onClick={() => {
+        if (recording) void stop();
+        else { setDraft(undefined); setInvalid(false); setRecordError(false); onRecording(action); }
+      }}>{t(recording ? "desktopSettings.stopRecording" : "desktopSettings.editKeybind")}</button>
+    </div>
+    <p className={`desktop-shortcut-status small ${warning ? "error-text" : "muted"}`} role="status">{warning ? t(warning) : recording ? t("desktopSettings.recordingHint") : registration ? t("desktopSettings.active") : ""}</p>
   </div>;
 }
 export function DesktopShortcutSettings({ t, onAudio }: { t: Translate; onAudio: () => void }) {
   const { snapshot, pending, error, save } = useDesktopSettings();
+  const [recordingAction, setRecordingAction] = useState<DesktopAction | null>(null);
   if (typeof window === "undefined" || !desktopSettingsAvailable(window)) return null;
-  return <section><p className="muted small">{t("desktopSettings.shortcutHint")}</p>{actions.map((action) => <ShortcutRow key={action} action={action} snapshot={snapshot} pending={pending} save={save} t={t} />)}<button type="button" className="btn btn-ghost" onClick={onAudio}>{t("desktopSettings.editAudio")}</button><Feedback error={error} t={t} /></section>;
+  return <section className="desktop-shortcut-settings"><p className="muted small">{t("desktopSettings.shortcutHint")}</p>
+    <div className="desktop-shortcut-list">{actions.map((action) => <ShortcutRow key={action} action={action} snapshot={snapshot} pending={pending} save={save} t={t} recording={recordingAction === action} onRecording={setRecordingAction} onAudio={onAudio} />)}</div>
+    <Feedback error={error} t={t} />
+  </section>;
 }

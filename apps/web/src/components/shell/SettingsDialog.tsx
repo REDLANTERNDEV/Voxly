@@ -4,13 +4,15 @@ import { AudioDeviceSettings } from "../AudioDeviceSettings.js";
 import { DeviceSettings } from "../DeviceSettings.js";
 import { RecoverySettings } from "../RecoverySettings.js";
 import { PreferencesCard } from "../ui/Primitives.js";
-import { GearIcon, HeadsetIcon, ShieldIcon, UsersIcon } from "../ui/Icons.js";
+import { GearIcon, HeadsetIcon, ShieldIcon, UsersIcon, KeyboardIcon, BellIcon } from "../ui/Icons.js";
 import type { TranslationKey } from "../../lib/i18n.js";
 import { ExternalPreviewSettings } from "../ExternalPreviewSettings.js";
 import { AccountDeletionSettings } from "../AccountDeletionSettings.js";
 import { DesktopNotificationSettings } from "../DesktopNotificationSettings.js";
-import { DesktopPreferences, DesktopMicrophoneSettings, DesktopShortcutSettings } from "../DesktopSettings.js";
+import { DesktopHomeButton, DesktopMicrophoneSettings, DesktopShortcutSettings } from "../DesktopSettings.js";
 import { desktopSettingsAvailable } from "../../lib/desktopSettings.js";
+import { NotificationSoundSettings } from "../NotificationSoundSettings.js";
+import { webReleaseVersion } from "../../lib/applicationUpdates.js";
 import { ApplicationVersionSettings } from "../ApplicationUpdateStatus.js";
 
 /**
@@ -27,13 +29,13 @@ import { ApplicationVersionSettings } from "../ApplicationUpdateStatus.js";
  * 260-pixel column ever wanted to be.
  */
 
-export type SettingsSection = "general" | "account" | "audio" | "appearance" | "privacy" | "shortcuts" | "desktop";
+export type SettingsSection = "account" | "audio" | "appearance" | "privacy" | "shortcuts" | "notifications" | "about";
 
-const sections: readonly SettingsSection[] = ["general", "account", "audio", "appearance", "privacy"];
+const sections: readonly SettingsSection[] = ["account", "audio", "notifications", "appearance", "privacy"];
 const sectionIcons = {
-  shortcuts: <GearIcon />,
-  desktop: <GearIcon />,
-  general: <GearIcon />,
+  shortcuts: <KeyboardIcon />,
+  notifications: <BellIcon />,
+  about: <GearIcon />,
   account: <UsersIcon />,
   audio: <HeadsetIcon off={false} />,
   appearance: <GearIcon />,
@@ -42,14 +44,14 @@ const sectionIcons = {
 
 export function SettingsDialog(props: ShellModel & ShellActions & { initialSection?: SettingsSection; contextError?: TranslationKey | ""; onClose: () => void }) {
   const [section, setSection] = useState<SettingsSection>(props.initialSection ?? "account");
-  const desktop = desktopSettingsAvailable(window);
-  const visibleSections = desktop ? [...sections, "shortcuts", "desktop"] as SettingsSection[] : sections;
+  const desktop = typeof window !== "undefined" && desktopSettingsAvailable(window);
+  const visibleSections = desktop ? [...sections, "shortcuts"] as SettingsSection[] : sections;
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     closeRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") props.onClose();
+      if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("dialog[open]")) props.onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -75,9 +77,15 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
               onClick={() => setSection(item)}
             >
               <span className="settings-nav-icon" aria-hidden="true">{sectionIcons[item]}</span>
-              {props.t(`settings.${item}`)}
+              <span>{props.t(`settings.${item}`)}</span>
             </button>
           ))}
+          <div className="settings-nav-footer">
+            {desktop ? <DesktopHomeButton t={props.t} onOpened={props.onClose} /> : null}
+            <button className="settings-version-link" type="button" aria-current={section === "about"} aria-label={`${props.t("settings.webVersion")}: ${webReleaseVersion ? `v${webReleaseVersion}` : "—"}`} onClick={() => setSection("about")}>
+              {props.t("settings.interface")} {webReleaseVersion ? `v${webReleaseVersion}` : "—"}
+            </button>
+          </div>
         </nav>
         <div className="settings-body">
           <header className="settings-section-header">
@@ -87,9 +95,8 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
             </button>
           </header>
           <div className="settings-content">
-            {section === "desktop" && desktop ? <DesktopPreferences t={props.t} /> : null}
             {section === "shortcuts" && desktop ? <DesktopShortcutSettings t={props.t} onAudio={() => setSection("audio")} /> : null}
-            {section === "general" ? <ApplicationVersionSettings t={props.t} /> : null}
+            {section === "about" ? <ApplicationVersionSettings t={props.t} /> : null}
             {section === "account" ? (
               <>
                 <DeviceSettings t={props.t} />
@@ -101,6 +108,8 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
               <>
               <AudioDeviceSettings
                 inline
+                showNotificationSounds={false}
+                microphoneControls={desktop ? <DesktopMicrophoneSettings t={props.t} onShortcuts={() => setSection("shortcuts")} /> : null}
                 inputs={props.audioDevices.inputs}
                 outputs={props.audioDevices.outputs}
                 selectedInputId={props.audioDevices.selectedInputId}
@@ -163,10 +172,13 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
                 onNotificationSoundsChange={props.onNotificationSoundsChange}
                 onToggleMicrophoneTest={props.onToggleMicrophoneTest}
               />
-              {desktop ? <DesktopMicrophoneSettings t={props.t} onShortcuts={() => setSection("shortcuts")} /> : null}
-              <DesktopNotificationSettings key={props.user.id} userId={props.user.id} t={props.t} />
+
               </>
             ) : null}
+            {section === "notifications" ? <>
+              <NotificationSoundSettings t={props.t} preferences={props.notificationSounds} onChange={props.onNotificationSoundsChange} />
+              {desktop ? <DesktopNotificationSettings key={props.user.id} userId={props.user.id} t={props.t} /> : null}
+            </> : null}
             {section === "appearance" ? (
               <PreferencesCard
                 language={props.language}

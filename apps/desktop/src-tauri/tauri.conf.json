@@ -63,8 +63,8 @@
           "Turkish"
         ],
         "displayLanguageSelector": true,
-        "installerIcon": "../branding/tauri/icons/icon.ico",
-        "uninstallerIcon": "../branding/tauri/icons/icon.ico"
+        "installerIcon": "../branding/tauri/icons/setup-dark.ico",
+        "uninstallerIcon": "../branding/tauri/icons/setup-dark.ico"
       }
     }
   }

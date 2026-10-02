@@ -15,6 +15,7 @@
     "allow-save-installation",
     "allow-forget-installation",
     "allow-connect-installation",
+    "allow-cancel-connection",
     "allow-disconnect-installation",
     "allow-open-installation-browser",
     "allow-set-language",

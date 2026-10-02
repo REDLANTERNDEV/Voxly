@@ -1,9 +1,9 @@
 //! Tauri startup: plugins, managed state, and background tasks.
-use super::{Inner, Shell};
 use super::installation::offer_desktop_link;
 use super::tray::{self, show_current};
 use super::trust::shell_navigation;
 use super::voice::{handle_shortcut, start_delivery, VoiceEvent};
+use super::{Inner, Shell};
 use crate::{
     appearance, call_state, deep_links, installations, native_notifications, shortcuts,
     update_installer, updates,
@@ -50,6 +50,7 @@ pub(super) fn run() {
             super::installation::save_installation,
             super::installation::forget_installation,
             super::installation::connect_installation,
+            super::installation::cancel_connection,
             super::installation::disconnect_installation,
             super::installation::open_installation_browser,
             super::installation::set_language,
@@ -84,7 +85,8 @@ pub(super) fn run() {
             let preferences = installations::load(&data.join("installations.json"))
                 .map_err(std::io::Error::other)?;
             if !data.join("installations.json").exists() {
-                installations::save(&data.join("installations.json"), &preferences).map_err(std::io::Error::other)?;
+                installations::save(&data.join("installations.json"), &preferences)
+                    .map_err(std::io::Error::other)?;
             }
             let tray_menu = tray::create(app, preferences.language)?;
             let mut registrations = std::array::from_fn(|_| shortcuts::Registration::default());
@@ -102,17 +104,20 @@ pub(super) fn run() {
                 }
                 latches[action.index()].bind(registrations[action.index()].active.as_deref());
             }
-            let (shortcut_events, events) =
-                tokio::sync::mpsc::unbounded_channel::<VoiceEvent>();
+            let (shortcut_events, events) = tokio::sync::mpsc::unbounded_channel::<VoiceEvent>();
             let release_delay_ms = preferences.push_to_talk_release_delay_ms;
             app.manage(native_notifications::Notifications::default());
             app.manage(Shell {
                 reports: call_state::Reports::default(),
                 recording_shortcut: AtomicBool::new(false),
                 ready_generation: AtomicU64::new(0),
+                home_requested: AtomicBool::new(false),
+                launch_sequence: AtomicU64::new(0),
                 inner: Mutex::new(Inner {
                     preferences,
                     active: None,
+                    loading: false,
+                    loading_attempt: 0,
                     shortcuts: registrations,
                 }),
                 data,
@@ -141,6 +146,7 @@ pub(super) fn run() {
             start_delivery(app.handle(), events);
             let window =
                 tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+                    .background_color(tauri::window::Color(15, 19, 25, 255))
                     .on_navigation(shell_navigation)
                     .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
                     .on_download(|_, _| false)

@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Voxly desktop</title>
   </head>
-  <body>
+  <body class="is-loading">
+    <section id="startup-loading" class="startup-loading" aria-labelledby="loading-title">
+      <img src="/voxly-icon.png" alt="" width="72" height="72" />
+      <h1 id="loading-title">Voxly</h1>
+      <p id="loading-status" role="status" aria-live="polite">Opening Voxly…</p>
+      <p id="loading-origin"></p>
+      <button id="cancel-connection" type="button" data-i18n="chooseAnother" hidden></button>
+    </section>
     <main>
       <header class="home-header">
         <div class="home-brand"><img src="/voxly-icon.png" alt="" /><div><h1>Voxly</h1><p data-i18n="subtitle"></p></div></div>

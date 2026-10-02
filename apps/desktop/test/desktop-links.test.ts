@@ -17,6 +17,7 @@ describe("desktop link native boundary", () => {
     const source = readFileSync("src-tauri/src/shell/installation.rs", "utf8");
     const offer = source.split("fn offer_desktop_link(")[1].split("#[cfg(test)]")[0];
     assert.match(offer, /restores_active/);
+    assert.match(offer, /if ready\s*&& deep_links::restores_active/);
     assert.match(offer, /serde_json::to_string\(id\)/);
     assert.match(offer, /voxly:desktop-launch/);
     assert.match(offer, /show_current\(app\)/);
@@ -31,7 +32,9 @@ describe("desktop link native boundary", () => {
     assert.ok(ui.indexOf('await listen("shell:desktop-link"') < ui.lastIndexOf("await receiveDesktopLink()"));
     const receive = ui.split("async function receiveDesktopLink()")[1].split('element("desktop-link-review")')[0];
     const intake = receive.split("async function openDesktopLink")[0];
-    assert.match(intake, /!state\?\.active && !busy && state\?\.preferences\.installations\.some/);
+    assert.match(intake, /state\?\.preferences\.installations\.some/);
+    assert.match(intake, /if \(busy\) deferredDesktopLink = target/);
+    assert.match(ui, /const target = deferredDesktopLink; deferredDesktopLink = null/);
     assert.doesNotMatch(intake, /save_installation|stopMedia|location\./);
     assert.match(receive, /await transition/);
   });

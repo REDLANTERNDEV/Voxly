@@ -57,7 +57,11 @@ pub fn open_installation(
         include_str!("update-bridge.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?
     );
-    bootstrap.push_str(&format!("\n{}({});", include_str!("settings-bridge.js"), serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?));
+    bootstrap.push_str(&format!(
+        "\n{}({});",
+        include_str!("settings-bridge.js"),
+        serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?
+    ));
     let opener_app = app.clone();
     let label = installation_label(generation);
     // Grants never accumulate on a label reused by another installation.
@@ -80,6 +84,8 @@ pub fn open_installation(
     let navigation_app = app.clone();
     let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url))
         .title(format!("Voxly — {}", saved.origin))
+        .visible(false)
+        .background_color(tauri::window::Color(15, 19, 25, 255))
         .inner_size(1280.0, 800.0)
         .min_inner_size(380.0, 520.0)
         .data_directory(data.join("profiles").join(&saved.id))

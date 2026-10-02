@@ -15,6 +15,7 @@ interface DesktopLink extends Installation { launchId: string | null }
 interface Snapshot extends ShortcutSnapshot {
   preferences: { installations: Installation[]; defaultInstallationId: string | null; openOnStartup: boolean; display: { fullAddresses: boolean; compactList: boolean; installationIcons: boolean }; language: Language; trayAcknowledged: boolean; muteShortcut: string | null; deafenShortcut: string | null; pushToTalkShortcut: string | null; pushToMuteShortcut: string | null; microphoneMode: "openMic" | "pushToTalk" | "pushToMute"; pushToTalkReleaseDelayMs: number };
   active: Installation | null;
+  loading: boolean;
   platform: string;
   shellVersion: string;
 }
@@ -29,7 +30,13 @@ const native = isTauri();
 let language: Language = navigator.language.startsWith("tr") ? "tr" : "en";
 let state: Snapshot | null = null;
 let pendingDesktopLink: DesktopLink | null = null;
+let deferredDesktopLink: DesktopLink | null = null;
 let busy = false;
+let pendingQuit = false;
+let loadingTarget: Installation | null = null;
+let receivedReady: Snapshot | null = null;
+let connectionRevision = 0;
+let booting = true;
 let failedConnection: Installation | null = null;
 let attemptedConnection: Installation | null = null;
 let renaming: Installation | null = null;
@@ -43,6 +50,34 @@ const probeResults: { kind: ProbeKind; outcome: "captured" | "failed"; error?: s
 
 function t(key: TranslationKey) { return translate(language, key); }
 function status(key: TranslationKey) { element("status").textContent = t(key); }
+function renderLoading() {
+  const loading = booting || Boolean(loadingTarget);
+  document.body.classList.toggle("is-loading", loading);
+  element("loading-status").textContent = t(loadingTarget ? "openingInstallation" : "openingVoxly");
+  element("loading-origin").textContent = loadingTarget?.origin ?? "";
+  element<HTMLButtonElement>("cancel-connection").hidden = !loadingTarget;
+}
+async function openConnection(saved: Installation, arguments_: Record<string, unknown>): Promise<Snapshot | undefined> {
+  const revision = ++connectionRevision;
+  loadingTarget = saved; receivedReady = null; booting = false; renderLoading();
+  try {
+    const next = await invoke<Snapshot>("connect_installation", arguments_);
+    if (revision !== connectionRevision) return undefined;
+    const ready = receivedReady as Snapshot | null;
+    const result = ready?.active?.id === next.active?.id ? ready! : next;
+    if (!result.loading) loadingTarget = null;
+    renderLoading();
+    return result;
+  } catch (error) {
+    if (revision !== connectionRevision) return undefined;
+    loadingTarget = null; renderLoading(); throw error;
+  }
+}
+async function cancelLoading() {
+  connectionRevision += 1; loadingTarget = null; receivedReady = null; attemptedConnection = null; booting = false; renderLoading();
+  state = await invoke<Snapshot>("cancel_connection"); renderInstallations(); element("address").focus();
+}
+element("cancel-connection").addEventListener("click", () => { void cancelLoading().catch((error) => status(errorKey(error))); });
 function probeStatus(key: TranslationKey) { element("probe-status").textContent = t(key); }
 
 const shortcutSettings = ([
@@ -146,6 +181,7 @@ element("update-install").addEventListener("click", () => {
 
 function renderInstallations() {
   renderUpdates();
+  renderLoading();
   element("desktop-link").hidden = !pendingDesktopLink;
   element("desktop-link-origin").textContent = pendingDesktopLink?.origin ?? "";
   element<HTMLButtonElement>("desktop-link-review").disabled = busy;
@@ -241,8 +277,9 @@ async function receiveDesktopLink() {
   if (!target) return;
   pendingDesktopLink = target;
   renderInstallations();
-  if (!state?.active && !busy && state?.preferences.installations.some((saved) => saved.id === target.id)) {
-    await openDesktopLink(target);
+  if (state?.preferences.installations.some((saved) => saved.id === target.id)) {
+    if (busy) deferredDesktopLink = target;
+    else await openDesktopLink(target);
   }
 }
 
@@ -251,7 +288,7 @@ async function openDesktopLink(target: DesktopLink) {
     state = await invoke<Snapshot>("save_installation", { address: target.origin });
     attemptedConnection = target;
     status("checking");
-    const next = await transition((confirmed) => invoke<Snapshot>("connect_installation", {
+    const next = await transition((confirmed) => openConnection(target, {
       id: target.id, confirmLeave: confirmed, reload: false, desktopLaunch: target.launchId
     }));
     if (next) {
@@ -312,6 +349,7 @@ async function run(action: () => Promise<void>) {
   renderInstallations();
   try { await action(); } catch (error: unknown) {
     status(errorKey(error));
+    if (String(error) === "connection_cancelled") return;
     if (attemptedConnection) {
       failedConnection = attemptedConnection;
       element("status").textContent = `${t("connectionFailed")} ${failedConnection.origin}. ${t(errorKey(error))}`;
@@ -320,11 +358,17 @@ async function run(action: () => Promise<void>) {
   finally {
     busy = false;
     attemptedConnection = null;
+    renderLoading();
     renderInstallations();
     const target = focusKey
       ? [...element("installation-list").querySelectorAll<HTMLElement>("[data-focus-key]")].find((button) => button.dataset.focusKey === focusKey)
       : opener;
-    (target?.isConnected ? target : element("address"))?.focus();
+    (loadingTarget ? element("cancel-connection") : target?.isConnected ? target : element("address"))?.focus();
+    if (pendingQuit) { pendingQuit = false; queueMicrotask(() => void quit()); }
+    else if (deferredDesktopLink) {
+      const target = deferredDesktopLink; deferredDesktopLink = null;
+      if (pendingDesktopLink === target) queueMicrotask(() => void openDesktopLink(target));
+    }
   }
 }
 
@@ -344,7 +388,7 @@ async function connect(saved: Installation, reload = false) {
   await run(async () => {
     const changing = state?.active && (state.active.id !== saved.id || reload);
     status("checking");
-    const open = (confirmed: boolean) => invoke<Snapshot>("connect_installation", { id: saved.id, address: saved.origin, confirmLeave: confirmed, reload });
+    const open = (confirmed: boolean) => openConnection(saved, { id: saved.id, address: saved.origin, confirmLeave: confirmed, reload });
     const next = changing || !state?.active ? await transition(open) : await open(false);
     if (next) { state = next; failedConnection = null; }
     element("status").textContent = "";
@@ -359,7 +403,7 @@ element("installation-form").addEventListener("submit", (event) => {
     if (element<HTMLInputElement>("remember").checked) state = await invoke<Snapshot>("save_installation", { address, name });
     attemptedConnection = { id: "", origin: address };
     status("checking");
-    const next = await transition((confirmed) => invoke<Snapshot>("connect_installation", { id: "", address, confirmLeave: confirmed, reload: false }));
+    const next = await transition((confirmed) => openConnection({ id: "", origin: address }, { id: "", address, confirmLeave: confirmed, reload: false }));
     if (next) {
       state = next; failedConnection = null; element<HTMLInputElement>("address").value = "";
       element<HTMLInputElement>("installation-name").value = ""; element("status").textContent = "";
@@ -384,6 +428,8 @@ element("disconnect").addEventListener("click", () => {
 element("retry").addEventListener("click", () => { if (state?.active) void connect(state.active, true); });
 
 async function quit() {
+  if (busy) { pendingQuit = true; if (loadingTarget) void cancelLoading().catch((error) => status(errorKey(error))); return; }
+  if (state?.loading) await cancelLoading();
   await run(async () => {
     await transition((confirmed) => invoke("quit_app", { confirmLeave: confirmed }), true);
   });
@@ -525,7 +571,7 @@ async function start() {
   element("browser-preview").hidden = native;
   // Explicit developer entry; probes never appear in the production Home path.
   element("diagnostics").hidden = !(import.meta.env.DEV && new URLSearchParams(location.search).has("diagnostics"));
-  if (!native) return;
+  if (!native) { booting = false; renderLoading(); return; }
   try {
     // Subscribe before reading the cached startup request so neither a cold
     // launch nor a forwarded request races the chooser's first render.
@@ -537,18 +583,25 @@ async function start() {
     language = state.preferences.language;
     renderTranslations();
     renderInstallations();
-    await receiveDesktopLink();
+    await listen<Snapshot>("shell:ready", (event) => {
+      state = event.payload; receivedReady = event.payload; loadingTarget = null; booting = false; renderInstallations();
+    });
+    await listen("shell:show-home", () => { booting = false; loadingTarget = null; renderLoading(); });
+    await listen("shell:check-update", () => {
+      booting = false; loadingTarget = null; renderLoading();
+      element("updates-heading").scrollIntoView({ block: "center" });
+      element("update-check").focus();
+    });
     await listen<Installation>("shell:load-failed", (event) => {
+      loadingTarget = null; booting = false;
       failedConnection = event.payload;
       element("status").textContent = `${t("connectionFailed")} ${event.payload.origin}. ${t("window_failed")}`;
       renderInstallations();
+      void invoke<Snapshot>("shell_state").then((next) => { state = next; renderInstallations(); }).catch((error) => status(errorKey(error)));
     });
     await listen("shell:preferences", () => {
       void invoke<Snapshot>("shell_state").then((next) => { state = next; renderInstallations(); }).catch((error) => status(errorKey(error)));
     });
-    const preferred = startupInstallation(state, pendingDesktopLink);
-    if (preferred) await connect(preferred);
-    refreshReport();
     await listen("shell:quit-requested", () => void quit());
     await listen<UpdateSnapshot>("shell:updates", (event) => { updateState = event.payload; renderUpdates(); });
     await listen("shell:review-update", () => {
@@ -558,6 +611,11 @@ async function start() {
         if (next.phase === "ready" && !confirmPending) element("update-install").click();
       }).catch((error: unknown) => status(errorKey(error)));
     });
+    await receiveDesktopLink();
+    const preferred = startupInstallation(state, pendingDesktopLink);
+    if (preferred) await connect(preferred);
+    booting = false; renderLoading();
+    refreshReport();
     // Cover a native background transition between the initial read and subscription.
     updateState = await invoke<UpdateSnapshot>("shell_update_state");
     renderUpdates();
@@ -568,7 +626,7 @@ async function start() {
       });
       dialog.showModal();
     }
-  } catch (error: unknown) { status(errorKey(error)); }
+  } catch (error: unknown) { booting = false; loadingTarget = null; renderLoading(); status(errorKey(error)); }
 }
 void start();
 

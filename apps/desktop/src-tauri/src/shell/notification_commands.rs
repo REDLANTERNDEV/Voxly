@@ -1,6 +1,6 @@
 //! Finite commands available to the active Installation window.
-use super::Shell;
 use super::trust::report_caller_matches;
+use super::Shell;
 use crate::{appearance, native_notifications, platform};
 use std::sync::atomic::Ordering;
 use tauri::{Manager, WebviewWindow};
@@ -20,6 +20,9 @@ pub(super) async fn activate_installation(
         &window.url().map_err(|_| "forbidden")?,
     ) {
         return Err("forbidden");
+    }
+    if inner.loading {
+        return Err("window_loading");
     }
     window.show().map_err(|_| "window_failed")?;
     window.unminimize().map_err(|_| "window_failed")?;

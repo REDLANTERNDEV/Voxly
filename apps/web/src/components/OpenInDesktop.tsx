@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { Translate } from "../app/types.js";
 import { answerDesktopAuthorization, cancelDesktopLaunch, createDesktopLaunch, fetchDesktopAuthorization, fetchDesktopLaunch } from "../api.js";
+import { DesktopLaunchDialog } from "./DesktopLaunchDialog.js";
 import { desktopOpenLink } from "../lib/desktopLinks.js";
 
 /** Launch ids are public correlation only. Approval never travels in the URI. */
 export function OpenInDesktop({ t, authenticated = false }: { t: Translate; authenticated?: boolean }) {
   const [launch, setLaunch] = useState<{ id: string; account: string } | null>(null);
-  const [waiting, setWaiting] = useState<{ id: string; confirmation: string; label: string; origin: string } | null>(null);
+  const [waiting, setWaiting] = useState<{ id: string; confirmation: string; label: string; origin: string; expiresAt: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<"waiting" | "approved" | "failed">("waiting");
+  const [outcome, setOutcome] = useState<"waiting" | "approved" | "failed" | "continue" | "expired">("waiting");
+  const [showing, setShowing] = useState(false);
   const current = useRef<string | null>(null);
   const mounted = useRef(false);
   const opener = useRef<HTMLButtonElement>(null);
@@ -30,7 +32,7 @@ export function OpenInDesktop({ t, authenticated = false }: { t: Translate; auth
     let timer = 0;
     const deadline = Date.now() + 180_000;
     const poll = async () => {
-      if (Date.now() >= deadline) { if (live) setOutcome("failed"); return; }
+      if (Date.now() >= deadline) { if (live) setOutcome("continue"); return; }
       try {
         const response = await fetchDesktopLaunch(launch.id);
         if (!live) return;
@@ -49,12 +51,17 @@ export function OpenInDesktop({ t, authenticated = false }: { t: Translate; auth
   }, [launch, outcome, waiting]);
 
   useEffect(() => { if (waiting) cancelButton.current?.focus(); }, [waiting]);
+  useEffect(() => {
+    if (!waiting || outcome !== "waiting") return;
+    const timeout = window.setTimeout(() => setOutcome("expired"), Math.max(0, Date.parse(waiting.expiresAt) - Date.now()));
+    return () => window.clearTimeout(timeout);
+  }, [waiting, outcome]);
 
   const cancel = () => {
     if (busy) return;
     const id = current.current;
     current.current = null;
-    setLaunch(null);
+    setShowing(false); setLaunch(null);
     setWaiting(null);
     if (id) void cancelDesktopLaunch(id).catch(() => undefined);
     opener.current?.focus();
@@ -62,7 +69,7 @@ export function OpenInDesktop({ t, authenticated = false }: { t: Translate; auth
 
   const start = async () => {
     if (busy) return;
-    setBusy(true);
+    setBusy(true); setShowing(true);
     setOutcome("waiting");
     try {
       const created = await createDesktopLaunch();
@@ -98,21 +105,21 @@ export function OpenInDesktop({ t, authenticated = false }: { t: Translate; auth
   if (!authenticated) return <a className="btn btn-ghost" href={href} title={t("desktop.openHint")}>{t("desktop.open")}</a>;
   return <>
     <button ref={opener} className="btn btn-ghost" type="button" disabled={busy || Boolean(launch)} onClick={() => void start()}>{t("desktop.open")}</button>
-    {launch ? <section className="link-panel" aria-live="polite">
+    {showing ? <DesktopLaunchDialog title={t(waiting && outcome === "waiting" ? "desktopSignIn.approvalTitle" : "desktop.open")} onCancel={cancel}>
+      <p className="desktop-launch-origin">{waiting?.origin ?? window.location.origin}</p>
       {outcome === "approved" ? <p role="status">{t("desktopSignIn.approved")}</p>
         : outcome === "failed" ? <p role="alert">{t("desktopSignIn.failed")}</p>
-          : waiting ? <>
-            <strong>{t("desktopSignIn.approvalTitle")}</strong>
-            <p>{t("desktopSignIn.approvalCopy", { account: launch.account, device: waiting.label })}</p>
-            <p className="muted small">{waiting.origin}</p>
-            <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>{waiting.confirmation}</span>
-            <p className="muted small">{t("link.confirmationHint")}</p>
-            <button className="btn btn-primary" type="button" disabled={busy} onClick={() => void approve()}>{t("link.approve")}</button>
-          </> : <>
-            <p role="status">{t("desktopSignIn.launchWaiting")}</p>
-            <a className="btn btn-ghost" href={href}>{t("desktop.open")}</a>
-          </>}
-      <button ref={cancelButton} className="btn btn-ghost" type="button" disabled={busy} onClick={cancel}>{t(outcome === "approved" ? "common.done" : "common.cancel")}</button>
-    </section> : outcome === "failed" ? <p role="alert">{t("desktopSignIn.failed")}</p> : null}
+          : outcome === "expired" ? <p role="alert">{t("desktopSignIn.expiredBrowser")}</p>
+            : waiting ? <>
+              <p>{t("desktopSignIn.approvalCopy", { account: launch?.account ?? "", device: waiting.label })}</p>
+              <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>{waiting.confirmation}</span>
+              <p className="muted small">{t("link.confirmationHint")}</p>
+            </> : <p role="status">{t("desktopSignIn.launchWaiting")}</p>}
+      <div className="confirm-actions">
+        <button ref={cancelButton} className="btn btn-ghost" type="button" disabled={busy} onClick={cancel}>{t(outcome === "approved" || outcome === "continue" || !waiting ? "common.done" : "common.cancel")}</button>
+        {waiting && outcome === "waiting" ? <button className="btn btn-primary" type="button" disabled={busy} onClick={() => void approve()}>{t("link.approve")}</button> : null}
+        {!waiting && launch && outcome !== "approved" ? <a className="btn btn-primary" href={href}>{t("desktop.open")}</a> : null}
+      </div>
+    </DesktopLaunchDialog> : null}
   </>;
 }

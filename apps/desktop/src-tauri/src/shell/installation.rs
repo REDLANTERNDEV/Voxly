@@ -1,9 +1,9 @@
 //! Installation preferences, window transitions, and local shell commands.
-use super::{persist, snapshot, Inner, Shell, ShellSnapshot};
-use super::trust::{report_caller_matches, trusted_shell};
 use super::tray::{show_current, show_shell, update_tray_language};
-use crate::{call_state, deep_links, installations, native_notifications, platform};
+use super::trust::{report_caller_matches, trusted_shell};
+use super::{persist, snapshot, Inner, Shell, ShellSnapshot};
 use crate::installations::Language;
+use crate::{call_state, deep_links, installations, native_notifications, platform};
 use std::sync::atomic::Ordering;
 use tauri::{Emitter, Manager, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
@@ -126,7 +126,9 @@ pub(super) async fn save_installation(
     trusted_shell(&window)?;
     let mut saved = installations::installation(&address)?;
     installations::validate_name(name.as_deref())?;
-    saved.name = name.filter(|name| !name.trim().is_empty()).map(|name| name.trim().to_string());
+    saved.name = name
+        .filter(|name| !name.trim().is_empty())
+        .map(|name| name.trim().to_string());
     let mut inner = shell.inner.lock().await;
     let mut next = inner.preferences.clone();
     if !next.installations.iter().any(|entry| entry.id == saved.id) {
@@ -209,30 +211,60 @@ pub(super) async fn connect_installation(
     {
         return Err("invalid_address");
     }
+    let attempt = shell.launch_sequence.fetch_add(1, Ordering::AcqRel) + 1;
+    shell.home_requested.store(false, Ordering::Release);
     // Serialize changes across the await: two clicks cannot create two windows.
     let mut inner = shell.inner.lock().await;
     let saved = if let Some(address) = address.as_deref() {
         let canonical = installations::installation(address)?;
-        if !id.is_empty() && canonical.id != id { return Err("invalid_address"); }
-        inner.preferences.installations.iter().find(|entry| entry.id == canonical.id).cloned().unwrap_or(canonical)
+        if !id.is_empty() && canonical.id != id {
+            return Err("invalid_address");
+        }
+        inner
+            .preferences
+            .installations
+            .iter()
+            .find(|entry| entry.id == canonical.id)
+            .cloned()
+            .unwrap_or(canonical)
     } else {
-        inner.preferences.installations.iter().find(|entry| entry.id == id).cloned().ok_or("installation_missing")?
+        inner
+            .preferences
+            .installations
+            .iter()
+            .find(|entry| entry.id == id)
+            .cloned()
+            .ok_or("installation_missing")?
     };
     if !reload
+        && !(inner.loading && desktop_launch.is_some())
         && inner
             .active
             .as_ref()
             .is_some_and(|active| active.id == saved.id)
     {
         if let Some(remote) = remote_window(&app) {
-            remote.show().map_err(|_| "window_failed")?;
-            remote.set_focus().map_err(|_| "window_failed")?;
+            if inner.loading {
+                inner.loading_attempt = attempt;
+            }
+            if !inner.loading {
+                remote.show().map_err(|_| "window_failed")?;
+                remote.set_focus().map_err(|_| "window_failed")?;
+                let _ = window.hide();
+            }
+
             return Ok(snapshot(&inner));
         }
     }
     // Keep the old installation/call intact if the replacement is unreachable.
     check_health(&saved.origin).await?;
+    if shell.launch_sequence.load(Ordering::Acquire) != attempt {
+        return Err("connection_cancelled");
+    }
     require_confirmation(&app, &shell, &inner, confirm_leave).await?;
+    if shell.launch_sequence.load(Ordering::Acquire) != attempt {
+        return Err("connection_cancelled");
+    }
     if let Some(remote) = remote_window(&app) {
         remote.destroy().map_err(|_| "window_failed")?;
     }
@@ -250,18 +282,47 @@ pub(super) async fn connect_installation(
     )?;
     *shell.voice_target.write().map_err(|_| "window_failed")? = Some(saved.clone());
     inner.active = Some(saved.clone());
+    inner.loading = true;
+    inner.loading_attempt = attempt;
     shell.recording_shortcut.store(false, Ordering::Release);
     let loading_app = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(20)).await;
         let shell = loading_app.state::<Shell>();
+        let mut inner = shell.inner.lock().await;
         if shell.voice_generation.load(Ordering::Acquire) == generation
-            && shell.ready_generation.load(Ordering::Acquire) != generation {
+            && shell.ready_generation.load(Ordering::Acquire) != generation
+            && inner.loading
+        {
+            inner.loading = false;
             show_shell(&loading_app);
             let _ = loading_app.emit_to("shell", "shell:load-failed", saved);
         }
     });
-    let _ = window.hide();
+    Ok(snapshot(&inner))
+}
+
+#[tauri::command]
+pub(super) async fn cancel_connection(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+) -> Result<ShellSnapshot, &'static str> {
+    trusted_shell(&window)?;
+    // Invalidate before waiting for health/window creation so late work cannot reveal a window.
+    shell.launch_sequence.fetch_add(1, Ordering::AcqRel);
+    let mut inner = shell.inner.lock().await;
+    if inner.loading {
+        if let Some(remote) = remote_window(&app) {
+            remote.destroy().map_err(|_| "window_failed")?;
+        }
+        shell.voice_generation.fetch_add(1, Ordering::AcqRel);
+        shell.reports.invalidate();
+        *shell.voice_target.write().map_err(|_| "window_failed")? = None;
+        inner.active = None;
+        inner.loading = false;
+    }
+    show_shell(&app);
     Ok(snapshot(&inner))
 }
 
@@ -283,6 +344,7 @@ pub(super) async fn disconnect_installation(
     shell.reports.invalidate();
     *shell.voice_target.write().map_err(|_| "window_failed")? = None;
     inner.active = None;
+    inner.loading = false;
     Ok(snapshot(&inner))
 }
 
@@ -365,7 +427,13 @@ pub(super) fn offer_desktop_link(app: &tauri::AppHandle, target: deep_links::Des
             .and_then(|active| active.clone())
     });
     let window_url = remote_window(app).and_then(|window| window.url().ok());
-    if deep_links::restores_active(&target.installation, active.as_ref(), window_url.as_ref()) {
+    let ready = app.try_state::<Shell>().is_some_and(|shell| {
+        shell.ready_generation.load(Ordering::Acquire)
+            == shell.voice_generation.load(Ordering::Acquire)
+    });
+    if ready
+        && deep_links::restores_active(&target.installation, active.as_ref(), window_url.as_ref())
+    {
         if let (Some(id), Some(remote)) = (target.launch_id.as_ref(), remote_window(app)) {
             // A finite public signal: the web UI ignores it if already signed in.
             // No cookies, credentials, paths, or native permission travel here.

@@ -1,5 +1,5 @@
 import type { ChatMessage,ChatMessageReply,PublicUser } from "@voxly/shared";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AppShellSkeleton } from "../components/AppShellSkeleton.js";
 import { AppChrome } from "../components/shell/AppChrome.js";
 import { FatalState } from "../components/ui/Primitives.js";
@@ -19,7 +19,7 @@ import type { TimeFormatPreference } from "../lib/timeFormat.js";
 import { resolveInitialRoute } from "../lib/navigation.js";
 import { applyDesktopSettings, desktopSettingsAvailable } from "../lib/desktopSettings.js";
 import { desktopLaunchFromSearch, desktopLaunchId } from "../lib/desktopLinks.js";
-import { startupSurface } from "../lib/startupSurface.js";
+import { desktopSurfaceReady, startupSurface } from "../lib/startupSurface.js";
 import type { LoadState,Route,ShellActions,ShellModel,Translate } from "./types.js";
 
 export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, messages, language, timeFormat, t, renderSurface, turnstileSiteKey, analytics, signedOutReason, completeAuthentication, loadAcceptedServer, onOwnerClaimed, onAccessClaimed, navigate, changeLanguage, textRoomOutbox, textRoomActions }: {
@@ -46,9 +46,7 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
   textRoomOutbox: OutboxEntry[];
   textRoomActions: { send(body: string, replyTo: ChatMessageReply | null): void; retrySend(localId: string): void; discardSend(localId: string): void; update(messageId: string, body: string): Promise<void>; delete(messageId: string): Promise<void>; suppressEmbed(messageId: string, embedKey: string): Promise<void> } | null;
 }) {
-  useEffect(() => {
-    if (desktopSettingsAvailable(window)) void applyDesktopSettings({ kind: "ready" }).catch(() => undefined);
-  }, []);
+  const reportedReady = useRef(false);
   const [pendingLaunch, setPendingLaunch] = useState<string | null>(null);
   useEffect(() => {
     if (window.__VOXLY_DESKTOP_V1__?.version !== 1) return;
@@ -71,11 +69,18 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
   useEffect(() => {
     if (existingDesktopSession) navigate("/");
   }, [existingDesktopSession, navigate]);
+  useEffect(() => {
+    const usable = desktopSurfaceReady({ routeName: route.name, authState, desktopLaunch: arrivingDesktopLaunch, existingDesktopSession, authenticated: Boolean(user), rtcConfigReady });
+    if (!reportedReady.current && usable && desktopSettingsAvailable(window)) {
+      reportedReady.current = true;
+      void applyDesktopSettings({ kind: "ready" }).catch(() => { reportedReady.current = false; });
+    }
+  }, [authState, existingDesktopSession, arrivingDesktopLaunch, rtcConfigReady, route.name, user]);
   if (existingDesktopSession) return renderSurface(<AppShellSkeleton t={t} />);
   if (startupSurface(route.name, authState, arrivingDesktopLaunch) === "shell-skeleton") return renderSurface(<AppShellSkeleton t={t} />);
   if (arrivingDesktopLaunch && authState === "error") return renderSurface(<FatalState t={t} />);
-  if (user && !rtcConfigReady && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<AppShellSkeleton t={t} />);
   if (authState === "error" && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<FatalState t={t} />);
+  if (user && !rtcConfigReady && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<AppShellSkeleton t={t} />);
   if (route.name === "owner-claim") {
     return renderSurface(<OwnerClaimScreen token={route.token} language={language} t={t} onLanguageChange={changeLanguage} onClaimed={onOwnerClaimed} />);
   }

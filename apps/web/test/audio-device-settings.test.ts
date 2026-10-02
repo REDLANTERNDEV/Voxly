@@ -45,11 +45,14 @@ describe("audio device settings permission flow", () => {
 
     // Each switch renders its own label id, so the group can mount repeatedly
     // without colliding.
-    assert.match(source, /function AudioSwitchControl\(/);
-    assert.match(source, /const labelId = useId\(\)/);
-    assert.match(source, /props\.onNotificationSoundsChange\(\{ enabled \}\)/);
-    assert.match(source, /props\.notificationSounds\.enabled \? \(/);
-    assert.match(source, /max=\{MAX_NOTIFICATION_VOLUME_PERCENT\}/);
+    const controls = readFileSync("src/components/AudioControls.tsx", "utf8");
+    const sound = readFileSync("src/components/NotificationSoundSettings.tsx", "utf8");
+    assert.match(controls, /function AudioSwitchControl\(/);
+    assert.match(controls, /const labelId = useId\(\)/);
+    assert.match(sound, /onChange\(\{ enabled \}\)/);
+    assert.match(sound, /preferences\.enabled \? /);
+    assert.match(sound, /max=\{MAX_NOTIFICATION_VOLUME_PERCENT\}/);
+    assert.match(source, /props\.showNotificationSounds !== false/);
     assert.match(styles, /\.notification-sound-section\s*\{/);
   });
 

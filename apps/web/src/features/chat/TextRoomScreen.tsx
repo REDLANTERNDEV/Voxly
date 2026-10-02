@@ -191,7 +191,11 @@ export function TextRoomScreen(props: TextRoomProps) {
             </button>
           ) : null}
         </div>
-        <footer className="composer">
+        <footer className="composer" onMouseDown={(event) => {
+          if (event.target === event.currentTarget || (event.target instanceof HTMLElement && event.target.tagName === "FORM")) {
+            event.preventDefault(); composerRef.current?.focus();
+          }
+        }}>
           {replyTarget ? (
             <div className="composer-reply">
               <span className="composer-reply-label" aria-hidden="true"><ReplyIcon /></span>

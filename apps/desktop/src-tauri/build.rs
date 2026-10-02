@@ -15,6 +15,7 @@ fn main() {
             "save_installation",
             "forget_installation",
             "connect_installation",
+            "cancel_connection",
             "disconnect_installation",
             "open_installation_browser",
             "set_language",

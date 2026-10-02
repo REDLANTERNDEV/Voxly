@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "node:test";
 import { desktopSettingsAvailable, desktopKeyboardBinding, desktopMouseBinding, rememberCompletedDesktopAuthentication, type DesktopSettingsBridge } from "../src/lib/desktopSettings.js";
-import { DesktopPreferences, DesktopMicrophoneSettings, DesktopShortcutSettings } from "../src/components/DesktopSettings.js";
+import { DesktopHomeButton, DesktopMicrophoneSettings, DesktopShortcutSettings } from "../src/components/DesktopSettings.js";
 import { translate } from "../src/lib/i18n.js";
 
 describe("desktop-only settings", () => {
@@ -11,7 +11,7 @@ describe("desktop-only settings", () => {
     assert.equal(desktopSettingsAvailable({}), false);
     for (const language of ["en", "tr"] as const) {
       const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
-      assert.equal(renderToStaticMarkup(createElement(DesktopPreferences, { t })), "");
+      assert.equal(renderToStaticMarkup(createElement(DesktopHomeButton, { t })), "");
       assert.equal(renderToStaticMarkup(createElement(DesktopMicrophoneSettings, { t, onShortcuts() {} })), "");
       assert.equal(renderToStaticMarkup(createElement(DesktopShortcutSettings, { t, onAudio() {} })), "");
     }
@@ -36,5 +36,22 @@ describe("desktop-only settings", () => {
     assert.deepEqual(operations, []);
     await rememberCompletedDesktopAuthentication(target, "approved", () => true);
     assert.deepEqual(operations, [{ kind: "authenticationCompleted" }]);
+  });
+});
+
+describe("desktop settings presentation", () => {
+  it("keeps recording in one button and places audio links inside held-shortcut rows", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync("src/components/DesktopSettings.tsx", "utf8");
+    assert.doesNotMatch(source, /saveButton|desktopSettings\.save|DesktopPreferences/);
+    assert.match(source, /desktopSettings\.stopRecording/);
+    assert.match(source, /action === "pushToTalk" \|\| action === "pushToMute"/);
+    assert.match(source, /kind: "recording", enabled: false/);
+    assert.match(source, /event\.key === "Escape".*onRecording\(null\)/);
+    const settings = readFileSync("src/components/shell/SettingsDialog.tsx", "utf8");
+    assert.doesNotMatch(settings, /"general"|"desktop"/);
+    assert.match(settings, /DesktopHomeButton/);
+    assert.match(settings, /settings-nav-footer/);
+    assert.match(settings, /section === "notifications"/);
   });
 });

@@ -1,8 +1,8 @@
 //! Local update authority and read-only Installation update presentation.
-use super::Shell;
 use super::installation::{query_call_state, remote_window};
 use super::tray::show_shell;
 use super::trust::{report_caller_matches, trusted_shell};
+use super::Shell;
 use crate::{native_notifications, update_installer, updates};
 use std::sync::atomic::Ordering;
 use tauri::{Emitter, Manager, WebviewWindow};
@@ -65,18 +65,36 @@ pub(crate) fn publish_update_state(app: &tauri::AppHandle) {
             }
         }
     }
-    let native = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        let shell = native.state::<Shell>();
-        let ready = native.state::<updates::Updates>().snapshot().phase == "ready";
-        let present = shell.menu.root.get("update").is_some();
-        if ready && !present {
-            let _ = shell.menu.root.insert(&shell.menu.update, 2);
-        }
-        if !ready && present {
-            let _ = shell.menu.root.remove(&shell.menu.update);
+}
+
+/// Checking never grants installation consent and never tears down an active call.
+pub(super) fn check_from_tray(app: &tauri::AppHandle) {
+    show_shell(app);
+    let _ = app.emit_to("shell", "shell:check-update", ());
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let updates = app.state::<updates::Updates>();
+        if tray_check_needed(updates.snapshot().phase) {
+            let _ = updates.check(&app).await;
         }
     });
+}
+
+fn tray_check_needed(phase: &str) -> bool {
+    matches!(phase, "idle" | "current" | "available" | "error")
+}
+
+#[cfg(test)]
+mod tray_tests {
+    #[test]
+    fn checks_only_idle_states_and_keeps_downloads_and_ready_installers() {
+        for phase in ["idle", "current", "available", "error"] {
+            assert!(super::tray_check_needed(phase));
+        }
+        for phase in ["disabled", "checking", "downloading", "ready", "installing"] {
+            assert!(!super::tray_check_needed(phase));
+        }
+    }
 }
 
 #[tauri::command]

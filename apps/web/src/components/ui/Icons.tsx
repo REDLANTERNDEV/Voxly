@@ -40,3 +40,8 @@ export function SkipIcon() { return <svg className="ui-icon" viewBox="0 0 24 24"
 /** The Queue's head while it is sounding. Bars of unequal height so it reads as
  *  level rather than as a third play control. */
 export function PlayingIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 13v6" /><path d="M12 6v13" /><path d="M18 10v9" /></svg>; }
+
+export function KeyboardIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2" /><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 15.5h10" /></svg>; }
+export function BellIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 10a6 6 0 0 1 12 0v4l2 3H4l2-3zM10 20h4" /></svg>; }
+export function HomeIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-8h6v8" /></svg>; }
+export function DownloadIcon() { return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5" /></svg>; }

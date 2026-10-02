@@ -303,7 +303,7 @@ select {
   display: inline-flex;
   flex: 0 0 auto;
   gap: 7px;
-  height: 38px;
+  height: 44px;
   padding: 0 10px;
   width: fit-content;
 }
@@ -321,10 +321,10 @@ select {
   height: 100%;
   min-width: 55px;
   outline: 0;
-  padding: 0;
+  padding: 0 28px 0 34px;
 }
 .language-switch option { background: var(--surface); color: var(--fg); }
-.landing-nav-actions .language-switch { min-width: 0; }
+.landing-nav-actions .language-switch { min-width: 8rem; }
 .auth-page-header { align-items: center; display: flex; gap: 12px; justify-content: space-between; min-width: 0; width: 100%; }
 .auth-page-header .brand-lockup { min-width: 0; }
 .auth-page-header .brand-copy { min-width: 0; }
@@ -1757,3 +1757,22 @@ select {
 .message-body a, .message-embed-head a { color: var(--chat-link); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .message-body a:hover, .message-embed-head a:hover { text-decoration-thickness: 2px; }
 .message-body a:focus-visible, .message-embed-head a:focus-visible { outline: 2px solid var(--chat-link); outline-offset: 3px; border-radius: 2px; }
+
+.settings-version-link, .desktop-settings-link { color: var(--muted); }
+.settings-version-link:hover, .desktop-settings-link:hover { color: var(--fg); text-decoration: underline; }
+.desktop-shortcut-row + .desktop-shortcut-row { border-top: 1px solid var(--border); }
+.desktop-shortcut-binding .input { font-family: var(--font-mono); font-size: 12px; }
+.desktop-shortcut-binding .icon-btn { color: var(--muted); background: none; }
+.desktop-shortcut-binding .icon-btn:hover { color: var(--fg); }
+.desktop-shortcut-row.is-recording .input { border-color: var(--danger); }
+.desktop-shortcut-row.is-recording .desktop-record-button { color: var(--danger); border-color: var(--danger); }
+.desktop-shortcut-row.is-recording .desktop-shortcut-binding::after { content: ""; position: absolute; inset: -3px; border: 1px solid var(--danger); border-radius: 10px; pointer-events: none; opacity: .6; }
+@media (prefers-reduced-motion: no-preference) {
+  .desktop-shortcut-row.is-recording .desktop-shortcut-binding::after { animation: shortcut-recording-pulse 1.4s ease-in-out infinite; }
+}
+@keyframes shortcut-recording-pulse { 50% { opacity: .15; } }
+.desktop-launch-dialog { background: var(--surface); color: var(--fg); border: 1px solid var(--border); box-shadow: 0 24px 80px rgb(0 0 0 / .25); }
+.desktop-launch-dialog::backdrop { background: rgb(0 0 0 / .55); }
+.desktop-launch-origin { color: var(--muted); }
+.workspace-rail-link.workspace-download { background: var(--success-soft); color: var(--success); border: 1px solid color-mix(in srgb, var(--success) 35%, transparent); }
+.workspace-rail-link.workspace-download:hover { background: var(--success); color: white; }

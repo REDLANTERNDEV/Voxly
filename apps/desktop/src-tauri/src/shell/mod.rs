@@ -1,29 +1,31 @@
 //! Desktop shell orchestration. Platform adapters remain at the crate root.
 mod installation;
-mod settings;
 mod notification_commands;
 mod runtime;
+mod settings;
 mod tray;
 pub(crate) mod trust;
 mod update_commands;
 mod voice;
 
-pub(crate) use update_commands::publish_update_state;
-#[cfg(target_os = "windows")]
-pub(crate) use voice::queue_voice_action;
-use crate::{call_state, installations, shortcuts};
 use crate::installations::{Installation, Preferences};
+use crate::{call_state, installations, shortcuts};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64};
 use tokio::sync::Mutex;
 use tray::TrayMenu;
+pub(crate) use update_commands::publish_update_state;
+#[cfg(target_os = "windows")]
+pub(crate) use voice::queue_voice_action;
 use voice::VoiceEvent;
 
 pub(crate) struct Shell {
     pub(crate) inner: Mutex<Inner>,
     recording_shortcut: AtomicBool,
     ready_generation: AtomicU64,
+    home_requested: AtomicBool,
+    launch_sequence: AtomicU64,
     pub(crate) reports: call_state::Reports,
     pub(crate) data: PathBuf,
     menu: TrayMenu,
@@ -37,6 +39,8 @@ pub(crate) struct Shell {
 pub(crate) struct Inner {
     preferences: Preferences,
     pub(crate) active: Option<Installation>,
+    loading: bool,
+    loading_attempt: u64,
     shortcuts: [shortcuts::Registration; 4],
 }
 
@@ -45,6 +49,7 @@ pub(crate) struct Inner {
 pub(super) struct ShellSnapshot {
     preferences: Preferences,
     active: Option<Installation>,
+    loading: bool,
     platform: &'static str,
     shell_version: &'static str,
     registered_mute_shortcut: Option<String>,
@@ -61,6 +66,7 @@ fn snapshot(inner: &Inner) -> ShellSnapshot {
     ShellSnapshot {
         preferences: inner.preferences.clone(),
         active: inner.active.clone(),
+        loading: inner.loading,
         platform: std::env::consts::OS,
         shell_version: env!("CARGO_PKG_VERSION"),
         registered_mute_shortcut: inner.shortcuts[0].active.clone(),
