@@ -39,6 +39,8 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
     voiceRoomIds,
     afkRoomIds,
     microphoneDeviceId: audioDevices.selectedInputId,
+    microphoneDevices: audioDevices.inputs,
+    microphoneDeviceRevision: audioDevices.deviceRevision,
     microphoneVolume: audioLevels.input,
     noiseSuppression
   });

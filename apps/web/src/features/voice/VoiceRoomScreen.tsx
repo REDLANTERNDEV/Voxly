@@ -12,8 +12,11 @@ import { participantsForViewedRoom,remoteStreamKey } from "../../lib/voiceStream
 import { StageMemberActions } from "../../components/shell/StageMemberActions.js";
 import { countPeople } from "../../lib/memberDirectory.js";
 import { stageTileSelection } from "./stageTileSelection.js";
+import { StreamActions } from "./StreamActions.js";
+import { combineOutputVolume } from "../../lib/audioLevels.js";
+import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
 import { MusicPanel } from "./MusicPanel.js";
-import { RemoteVideo,VisualStage,VoiceStatusBadges,type StageSource } from "./VoicePresentation.js";
+import { RemoteAudio,RemoteVideo,VisualStage,VoiceStatusBadges,type StageSource } from "./VoicePresentation.js";
 
 type VoiceRoomProps = Pick<ShellModel,
   "user" | "currentNickname" | "route" | "activeServerId" | "rooms" | "socketState" |
@@ -30,6 +33,10 @@ type VoiceRoomProps = Pick<ShellModel,
 
 export function VoiceRoomScreen(props: VoiceRoomProps) {
   const [localStageKeys, setLocalStageKeys] = useState<string[]>([]);
+  const [screenStageKeys, setScreenStageKeys] = useState<string[]>([]);
+  const [suppressedKeys, setSuppressedKeys] = useState<Set<string>>(new Set());
+  const suppressedRef = useRef(suppressedKeys);
+  suppressedRef.current = suppressedKeys;
   const [focusedSourceKey, setFocusedSourceKey] = useState<string | null>(null);
   const [stageStatus, setStageStatus] = useState("");
   const [selectionPending, setSelectionPending] = useState(false);
@@ -86,9 +93,9 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
   const requestedLiveSource = pendingLiveWatch
     ? visualSources.find((source) => source.ownerId === pendingLiveWatch.publisherUserId && source.kind === "screen") ?? null
     : null;
-  const selectedRemoteKeys = new Set(inViewedVoiceRoom ? props.visualTargets.map(visualTargetKey) : []);
+  const selectedRemoteKeys = new Set(inViewedVoiceRoom ? props.visualTargets.map(visualTargetKey).filter((key) => !suppressedKeys.has(key)) : []);
   const selectedKeys = new Set([...selectedRemoteKeys, ...(inViewedVoiceRoom ? localStageKeys : [])]);
-  const stageSources = (inViewedVoiceRoom ? visualSources : []).filter((source) => selectedKeys.has(source.key));
+  const stageSources = (inViewedVoiceRoom ? visualSources : []).filter((source) => selectedKeys.has(source.key) && (source.kind !== "screen" || screenStageKeys.includes(source.key)));
   const focusedSource = stageSources.find((source) => source.key === focusedSourceKey) ?? stageSources[0] ?? null;
   const hasVoiceActivity = Boolean(props.activeVoiceRoomId || snapshotMembers.length > 0);
   const targetTextRoom = resolveRememberedRoom(
@@ -102,7 +109,7 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
   useEffect(() => {
     selectionGeneration.current += 1;
     selectionPendingRef.current = false; setSelectionPending(false);
-    setLocalStageKeys([]); setFocusedSourceKey(null); setStageStatus("");
+    setLocalStageKeys([]); setScreenStageKeys([]); setSuppressedKeys(new Set()); setFocusedSourceKey(null); setStageStatus("");
     return () => {
       selectionGeneration.current += 1;
       if (latestSelection.current.targets.length) void latestSelection.current.clear([]).catch(() => undefined);
@@ -113,6 +120,7 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
   useEffect(() => {
     const available = new Set(visualSources.map((source) => source.key));
     setLocalStageKeys((keys) => keys.filter((key) => available.has(key)));
+    setScreenStageKeys((keys) => keys.filter((key) => available.has(key)));
     setFocusedSourceKey((key) => key && available.has(key) ? key : null);
     if (!inViewedVoiceRoom) return;
     const remaining = props.visualTargets.filter((target) => available.has(visualTargetKey(target)));
@@ -123,7 +131,7 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
     const generation = selectionGeneration.current;
     const response = await props.onSetVisualSubscriptions(targets);
     if (generation !== selectionGeneration.current) return false;
-    if (response.ok) {
+    if (response.ok && (!focusKey || !targets.some((target) => visualTargetKey(target) === focusKey) || response.targets.some((target) => visualTargetKey(target) === focusKey))) {
       setFocusedSourceKey(focusKey);
       setStageStatus("");
       return true;
@@ -148,8 +156,15 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
       });
       return;
     }
+    if (source.kind === "screen" && selectedKeys.has(source.key)) {
+      setScreenStageKeys([source.key]); setFocusedSourceKey(source.key);
+      return;
+    }
     if (selectionPendingRef.current) return;
-    const selection = stageTileSelection(selectedKeys, source);
+    const selection = source.kind === "screen" ? {
+      targets: source.target ? [...props.visualTargets.filter((target) => !suppressedRef.current.has(visualTargetKey(target)) && visualTargetKey(target) !== source.key), source.target] : props.visualTargets,
+      localKeys: source.target ? localStageKeys : [source.key], focusKey: source.key
+    } : stageTileSelection(selectedKeys, source, props.visualTargets.filter((target) => target.kind === "screen" && !suppressedRef.current.has(visualTargetKey(target))));
     const generation = selectionGeneration.current;
     selectionPendingRef.current = true;
     setSelectionPending(true);
@@ -157,10 +172,35 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
       .then((ok) => {
         if (!ok || generation !== selectionGeneration.current) return;
         setLocalStageKeys(selection.localKeys);
+        if (source.kind === "screen") {
+          setSuppressedKeys((keys) => { const next = new Set(keys); next.delete(source.key); return next; });
+          setScreenStageKeys([source.key]);
+        } else setScreenStageKeys([]);
         if (selectedKeys.has(source.key)) window.setTimeout(() => tileButtons.current.get(source.key)?.focus(), 0);
       })
       .catch(() => { if (generation === selectionGeneration.current) setStageStatus(props.t("voice.sourceUnavailable")); })
       .finally(() => { if (generation === selectionGeneration.current) { selectionPendingRef.current = false; setSelectionPending(false); } });
+  };
+
+  const dismissStage = (source: StageSource) => {
+    if (source.kind !== "screen") { watchSource(source); return; }
+    setScreenStageKeys((keys) => keys.filter((key) => key !== source.key));
+    setFocusedSourceKey(null);
+    window.setTimeout(() => tileButtons.current.get(source.key)?.focus(), 0);
+  };
+  const unwatchSource = (source: StageSource) => {
+    selectionGeneration.current += 1;
+    selectionPendingRef.current = false; setSelectionPending(false);
+    const nextSuppressed = new Set(suppressedRef.current); nextSuppressed.add(source.key);
+    suppressedRef.current = nextSuppressed; setSuppressedKeys(nextSuppressed);
+    setScreenStageKeys((keys) => keys.filter((key) => key !== source.key)); setFocusedSourceKey(null);
+    if (document.fullscreenElement?.classList.contains("screen-stage")) void document.exitFullscreen?.().catch(() => undefined);
+    if (pendingLiveWatch?.publisherUserId === source.ownerId) props.onLiveWatchHandled();
+    const generation = selectionGeneration.current;
+    void props.onSetVisualSubscriptions(props.visualTargets.filter((target) => !nextSuppressed.has(visualTargetKey(target))))
+      .then((response) => { if (!response.ok && generation === selectionGeneration.current) setStageStatus(props.t("voice.unwatchFailed")); })
+      .catch(() => { if (generation === selectionGeneration.current) setStageStatus(props.t("voice.unwatchFailed")); });
+    window.setTimeout(() => tileButtons.current.get(source.key)?.focus(), 0);
   };
 
   useEffect(() => {
@@ -188,6 +228,7 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
     if (!pendingLiveWatch || props.socketState !== "live" || !inViewedVoiceRoom || !requestedLiveSource) return;
     if (requestedLiveSource.ownerIsLocal) {
       setLocalStageKeys([requestedLiveSource.key]);
+      setScreenStageKeys([requestedLiveSource.key]);
       setFocusedSourceKey(requestedLiveSource.key);
       props.onLiveWatchHandled();
       return;
@@ -195,7 +236,7 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
     if (!requestedLiveSource.target) return;
     const generation = selectionGeneration.current;
     void updateRemoteSelection([requestedLiveSource.target], requestedLiveSource.key)
-      .then((ok) => { if (ok && generation === selectionGeneration.current) setLocalStageKeys([]); })
+      .then((ok) => { if (ok && generation === selectionGeneration.current) { setLocalStageKeys([]); setScreenStageKeys([requestedLiveSource.key]); setSuppressedKeys((keys) => { const next = new Set(keys); next.delete(requestedLiveSource.key); return next; }); } })
       .catch(() => { if (generation === selectionGeneration.current) setStageStatus(props.t("voice.sourceUnavailable")); })
       .finally(() => { if (generation === selectionGeneration.current && latestWatch.current === pendingLiveWatch) props.onLiveWatchHandled(); });
   }, [pendingLiveWatch?.publisherUserId, inViewedVoiceRoom, props.socketState, requestedLiveSource?.key, viewedRoomId]);
@@ -220,8 +261,9 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
             {stageSources.length > 0 ? <VisualStage
               sources={stageSources} focusedSource={focusedSource}
               screenVolumes={props.screenVolumes} outputVolume={props.audioLevels.output}
-              onFocus={setFocusedSourceKey} onDismiss={watchSource} onScreenVolumeChange={props.onScreenVolumeChange} t={props.t}
+              onFocus={setFocusedSourceKey} onDismiss={dismissStage} onUnwatch={unwatchSource} onScreenVolumeChange={props.onScreenVolumeChange} t={props.t}
             /> : null}
+            {visualSources.filter((source) => source.kind === "screen" && !source.ownerIsLocal && selectedKeys.has(source.key) && source.stream).map((source) => <RemoteAudio key={source.key} stream={source.stream!} muted={false} volume={combineOutputVolume(props.screenVolumes[source.stream!.id] ?? DEFAULT_VOLUME_PERCENT, props.audioLevels.output)} />)}
             <ul className="voice-tile-grid" aria-label={props.t("common.members")}>
               {participants.map((participant) => {
                 const media = mediaFor(participant.userId);
@@ -248,13 +290,13 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
               {visualSources.filter((source) => source.kind === "screen").map((source) => {
                 const selected = selectedKeys.has(source.key);
                 return <li className={`voice-stream-tile ${selected ? "is-selected" : ""}`} key={source.key}>
-                  <button className="voice-stream-watch" ref={(button) => { if (button) tileButtons.current.set(source.key, button); else tileButtons.current.delete(source.key); }} type="button" disabled={props.socketState !== "live" || selectionPending} onClick={() => watchSource(source)} aria-pressed={selected} aria-label={selected ? props.t("voice.removeFromStage", { nickname: source.ownerName }) : `${props.t("voice.watchStream")} — ${source.ownerName}`}>
+                  <StreamActions name={source.ownerName} watched={inViewedVoiceRoom && !source.ownerIsLocal && (selected || props.visualTargets.some((target) => visualTargetKey(target) === source.key))} volume={selected && source.stream?.getAudioTracks().length ? props.screenVolumes[source.stream.id] ?? DEFAULT_VOLUME_PERCENT : undefined} onVolume={source.stream ? (value) => props.onScreenVolumeChange(source.stream!.id, value) : undefined} onUnwatch={() => unwatchSource(source)} t={props.t}><button className="voice-stream-watch" ref={(button) => { if (button) tileButtons.current.set(source.key, button); else tileButtons.current.delete(source.key); }} type="button" disabled={props.socketState !== "live" || selectionPending} onClick={() => watchSource(source)} aria-pressed={selected} aria-label={selected ? props.t("voice.addToStage", { nickname: source.ownerName }) : `${props.t("voice.watchStream")} — ${source.ownerName}`}>
                     {source.ownerIsLocal && source.stream ? <RemoteVideo stream={source.stream} muted /> : selected && inViewedVoiceRoom && source.stream ? <RemoteVideo stream={source.stream} muted /> : <span className="stream-unwatched-background" aria-hidden="true" />}
                     {!selected && !source.ownerIsLocal ? <span className="stream-watch-label">{props.t("voice.watchStream")}</span> : null}
                     {selected ? <span className="selected-stream-mark" aria-hidden="true"><ScreenIcon off={false} /></span> : null}
                     <span className="tile-live">{props.t("common.live")}</span>
                     <span className="voice-tile-caption"><strong>{source.ownerName}</strong><VoiceStatusBadges media={mediaFor(source.ownerId)} moderation={moderationByUser.get(source.ownerId)} t={props.t} showVisual={false} />{!selected ? <ScreenIcon off={false} /> : null}</span>
-                  </button>
+                  </button></StreamActions>
 
                 </li>;
               })}

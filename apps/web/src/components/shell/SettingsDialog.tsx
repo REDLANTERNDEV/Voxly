@@ -48,16 +48,18 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
   const desktop = typeof window !== "undefined" && desktopSettingsAvailable(window);
   const visibleSections = desktop ? ["general", ...sections, "shortcuts"] as SettingsSection[] : sections;
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const onCloseRef = useRef(props.onClose);
+  onCloseRef.current = props.onClose;
 
   useEffect(() => {
     const returnFocus = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("dialog[open]")) props.onClose();
+      if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("dialog[open]")) onCloseRef.current();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => { window.removeEventListener("keydown", onKeyDown); if (returnFocus?.isConnected) returnFocus.focus(); };
-  }, [props.onClose]);
+  }, []);
 
   return (
     <div className="settings-backdrop" role="presentation" onMouseDown={props.onClose}>

@@ -119,14 +119,15 @@ describe("voice snapshot reconciliation", () => {
     assert.match(remoteAudio, /return <audio[^>]*ref=\{audioRef\}/);
   });
 
-  it("keeps focused screen-share audio audible while participant audio is deafened", () => {
+  it("keeps watched screen-share audio independent of stage and participant deafen", () => {
     const source = readAppSource();
     const globalVoiceAudio = source.match(/function GlobalVoiceAudio[\s\S]*?\n}\n\nfunction VisualStage/)?.[0] ?? "";
     const visualStage = source.match(/function VisualStage[\s\S]*?\n}\n\nfunction StatusPill/)?.[0] ?? "";
     const voiceRoom = source.match(/function VoiceRoomScreen[\s\S]*?\n}\n\nfunction OwnerPanel/)?.[0] ?? "";
 
     assert.match(globalVoiceAudio, /<RemoteAudio[\s\S]*?muted=\{muted \|\| mutedUserIds\.has\(item\.userId\)\}/);
-    assert.match(visualStage, /<RemoteAudio stream=\{focusedStream\} muted=\{false\}/);
+    assert.doesNotMatch(visualStage, /<RemoteAudio/);
+    assert.match(voiceRoom, /<RemoteAudio key=\{source.key\} stream=\{source.stream!\} muted=\{false\}/);
     assert.doesNotMatch(visualStage, /^\s*muted:\s*boolean;/m);
     assert.doesNotMatch(voiceRoom, /<VisualStage[\s\S]*?muted=\{props\.controls\.deafen\.on\}/);
   });
@@ -235,12 +236,14 @@ describe("voice snapshot reconciliation", () => {
     assert.doesNotMatch(toggleMic, /microphoneOnBeforeDeafenRef/);
   });
 
-  it("invalidates deafen mic restoration when the microphone is lost", () => {
+  it("retains microphone intent for recovery while a lost microphone stays unpublished", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
     const handleMicrophoneLost = source.match(/const handleMicrophoneLost = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
     const activateMicrophoneInput = source.match(/const activateMicrophoneInput = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
 
-    assert.match(handleMicrophoneLost, /microphoneOnBeforeDeafenRef\.current = false/);
+    assert.match(handleMicrophoneLost, /microphoneRecoveryRef.current =/);
+    assert.match(handleMicrophoneLost, /controlsRef.current.deafen.on && microphoneOnBeforeDeafenRef.current/);
+    assert.match(handleMicrophoneLost, /mic: \{ \.\.\.controlsRef.current.mic, on: false \}/);
     // Only the input that is still current may report itself as lost.
     assert.match(activateMicrophoneInput, /if \(microphoneInputRef\.current !== input\) return;\s*\n\s*handleMicrophoneLost\(/);
   });

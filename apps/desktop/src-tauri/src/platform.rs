@@ -59,6 +59,11 @@ pub fn open_installation(
     );
     bootstrap.push_str(&format!(
         "\n{}({});",
+        include_str!("diagnostics-bridge.js"),
+        serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?
+    ));
+    bootstrap.push_str(&format!(
+        "\n{}({});",
         include_str!("settings-bridge.js"),
         serde_json::to_string(&saved.origin).map_err(|_| "invalid_address")?
     ));
@@ -85,6 +90,7 @@ pub fn open_installation(
             .permission("allow-close-desktop-notification")
             .permission("allow-read-desktop-update")
             .permission("allow-desktop-settings")
+            .permission("allow-save-voice-diagnostics")
             .permission("allow-review-desktop-update"),
     )
     .map_err(|_| "window_failed")?;

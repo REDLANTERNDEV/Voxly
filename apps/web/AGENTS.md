@@ -403,7 +403,8 @@ requirement.
   a media fact rather than a moderation state.
 - The LIVE trigger remains a compact, high-contrast red badge. Its accessible
   hover/focus/touch card opens beside the trigger, is not clipped by the rail,
-  and uses no captured or fabricated thumbnail.
+  and uses no captured or fabricated thumbnail. Keep its icon and nickname
+  stationary during opening; animate opacity only.
 - The card stays open across pointer travel using the cancellable grace period
   and closes on focus exit, outside input, Escape, or source removal.
 - Watch is one action: if necessary, join or move to the target voice room with
@@ -415,8 +416,13 @@ requirement.
   voice room and acknowledged subscription selection inside it.
 - Stream viewing follows box, stage, fullscreen. Clicking fullscreen video or
   exiting fullscreen retains the stage and subscription; clicking stage video
-  returns to the box and unsubscribes. Keep an explicit return control and keep
-  volume/fullscreen controls independent of the video click.
+  returns to a watched box with preview and audio continuing. Keep acknowledged
+  subscriptions separate from stage presentation. Only Unwatch removes the
+  subscription and restores Watch. Provide matching right-click and ellipsis
+  menus with stream volume and icon-labelled Unwatch on boxes and stage surfaces.
+  Unwatch suppresses playback immediately, including after a failed acknowledgement;
+  show recoverable feedback and reject late Watch acknowledgements. Keep an
+  explicit return control and volume/fullscreen controls independent of video clicks.
 - Media previews, speaking rings, selected stages, and Music controls require
   confirmed membership in the viewed voice room. Observers see identities and
   public camera/LIVE status only.
@@ -607,6 +613,13 @@ requirement.
 - Menus, popovers, dialogs, sliders, and custom controls must remain keyboard
   and touch operable, correctly labeled, focus-managed, and usable with reduced
   motion.
+- Initialize settings focus once per opening and read current close handlers
+  through refs. Device enumeration and voice updates preserve native selector
+  nodes and focus; outside input and explicit close controls still dismiss.
+- Voice diagnostics export stays local and anonymous. Browsers download JSON;
+  desktop uses the dedicated Save As bridge defined in
+  [ADR-0030](../../docs/adr/0030-desktop-diagnostics-save-requires-user-selection.md).
+  Cancellation is quiet and save failures have bilingual recoverable feedback.
 - General input and output levels are listener-account preferences shared across
   that user's servers and clamped to 0–200%. Input gain affects both published
   microphone audio and microphone monitoring. General output composes with

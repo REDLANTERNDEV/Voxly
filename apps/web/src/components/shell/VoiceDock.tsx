@@ -94,6 +94,8 @@ export function ConnectionSignal({ health, quality, inCall, t }: {
   inCall: boolean;
   t: Translate;
 }) {
+  const [savingReport, setSavingReport] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const { tone, value, label } = voiceSignalPresentation(health, quality, inCall, t);
   return (
     <span className={`connection-signal is-${tone}`} role="status" aria-label={label} title={label}>
@@ -104,9 +106,13 @@ export function ConnectionSignal({ health, quality, inCall, t }: {
         <rect x="16" y="1" width="3" height="14" rx="1" />
       </svg>
       <span>{value}</span>
-      {inCall && <button type="button" className="voice-diagnostics-download" onClick={downloadVoiceDiagnostics} title={t("voiceQuality.downloadDiagnostics")} aria-label={t("voiceQuality.downloadDiagnostics")}>
+      {inCall && <button type="button" className="voice-diagnostics-download" disabled={savingReport} onClick={() => {
+        setSavingReport(true); setSaveError(false);
+        void downloadVoiceDiagnostics().catch(() => setSaveError(true)).finally(() => setSavingReport(false));
+      }} title={t("voiceQuality.downloadDiagnostics")} aria-label={t("voiceQuality.downloadDiagnostics")}>
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 13v4h14v-4" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
       </button>}
+      {saveError ? <span className="microphone-health-warning" role="alert">{t("voiceQuality.saveFailed")}</span> : null}
     </span>
   );
 }

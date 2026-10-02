@@ -82,12 +82,14 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const closeRef = useRef<() => void>(() => undefined);
 
   const close = useCallback(() => {
     props.onClose();
     setIsOpen(false);
     window.setTimeout(() => triggerRef.current?.focus(), 0);
   }, [props.onClose]);
+  closeRef.current = close;
 
   const open = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
@@ -123,21 +125,22 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
     if (!isOpen) return;
     closeButtonRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape") closeRef.current();
     };
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!popoverRef.current?.contains(target) && !triggerRef.current?.contains(target)) close();
+      if (!popoverRef.current?.contains(target) && !triggerRef.current?.contains(target)) closeRef.current();
     };
     window.addEventListener("keydown", closeOnEscape);
     window.addEventListener("pointerdown", closeOnOutsidePointer);
-    window.addEventListener("resize", close);
+    const closeOnResize = () => closeRef.current();
+    window.addEventListener("resize", closeOnResize);
     return () => {
       window.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("pointerdown", closeOnOutsidePointer);
-      window.removeEventListener("resize", close);
+      window.removeEventListener("resize", closeOnResize);
     };
-  }, [close, isOpen]);
+  }, [isOpen]);
 
   const contextStatus = props.contextError;
   const deviceStatus = props.error || (props.unavailableSelections.length > 0 ? props.labels.unavailable : "");

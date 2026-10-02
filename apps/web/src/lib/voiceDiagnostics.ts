@@ -74,8 +74,20 @@ export class VoiceDiagnostics {
 
 export const voiceDiagnostics = new VoiceDiagnostics();
 
-export function downloadVoiceDiagnostics() {
-  const blob = new Blob([JSON.stringify(voiceDiagnostics.report(), null, 2)], { type: "application/json" });
+declare global { interface Window { __VOXLY_DESKTOP_DIAGNOSTICS_V1__?: {
+  version: 1; save(report: string): Promise<"saved" | "cancelled">;
+} } }
+
+export async function downloadVoiceDiagnostics() {
+  const report = JSON.stringify(voiceDiagnostics.report(), null, 2);
+  const native = window.__VOXLY_DESKTOP_DIAGNOSTICS_V1__;
+  if (native?.version === 1) {
+    const result = await native.save(report);
+    if (result !== "saved" && result !== "cancelled") throw new Error("save_failed");
+    return;
+  }
+  if (window.__VOXLY_DESKTOP_V1__?.version === 1) throw new Error("save_unavailable");
+  const blob = new Blob([report], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

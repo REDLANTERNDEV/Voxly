@@ -22,11 +22,23 @@ export async function checkStreamHierarchy(tab, base='http://127.0.0.1:1422') {
   await tab.playwright.getByRole('button',{name:'Fullscreen',exact:true}).waitFor({state:'visible'});
   assert.match(await tab.playwright.getByRole('status').filter({hasText:'subscriptions:'}).textContent(),/subscriptions: 1/);
   await tab.playwright.getByRole('region',{name:'Stage',exact:true}).getByRole('button',{name:'Remove Alex from stage'}).click();
+  await tab.playwright.getByRole('button',{name:'Add Alex to stage'}).waitFor({state:'visible'});
+  assert.equal(await tab.playwright.getByRole('button',{name:'Watch stream — Alex'}).count(),0);
+  assert.match(await tab.playwright.getByRole('status').filter({hasText:'subscriptions:'}).textContent(),/subscriptions: 1/);
+  assert.equal(await tab.playwright.locator('audio').count(),1);
+  await tab.playwright.getByRole('button',{name:'Add Alex to stage'}).click();
+  await tab.playwright.getByRole('button',{name:'Return to stream box'}).click();
+  await tab.playwright.getByRole('button',{name:'Stream options — Alex'}).click();
+  await tab.playwright.getByRole('slider',{name:'Stream volume'}).waitFor({state:'visible'});
+  await tab.playwright.getByRole('button',{name:'Unwatch stream',exact:true}).click();
   await tab.playwright.getByRole('button',{name:'Watch stream — Alex'}).waitFor({state:'visible'});
+  assert.equal(await tab.playwright.locator('audio').count(),0);
+  assert.equal(await tab.playwright.locator('video').count(),0);
   assert.match(await tab.playwright.getByRole('status').filter({hasText:'subscriptions:'}).textContent(),/subscriptions: 0/);
   await tab.playwright.getByRole('button',{name:'Watch stream — Alex'}).click();
-  await tab.playwright.getByRole('button',{name:'Return to stream box'}).click();
-  await tab.playwright.getByRole('button',{name:'Watch stream — Alex'}).waitFor({state:'visible'});
+  await tab.playwright.getByRole('button',{name:'Add Alex to stage'}).click({button:'right'});
+  await tab.playwright.getByRole('button',{name:'Unwatch stream',exact:true}).click();
+  assert.equal(await tab.playwright.getByRole('region',{name:'Stage',exact:true}).count(),0);
   await tab.playwright.getByRole('button',{name:'Watch stream — Alex'}).click();
   await tab.playwright.getByRole('button',{name:'End source'}).click();
   await tab.playwright.getByRole('region',{name:'Stage',exact:true}).waitFor({state:'detached'});
@@ -36,7 +48,29 @@ export async function checkStreamHierarchy(tab, base='http://127.0.0.1:1422') {
   await tab.playwright.getByText('That source is no longer available.',{exact:true}).waitFor({state:'visible'});
   assert.equal(await tab.playwright.getByRole('region',{name:'Stage',exact:true}).count(),0);
   assert.match(await tab.playwright.getByRole('status').filter({hasText:'subscriptions:'}).textContent(),/Outside · subscriptions: 0/);
-  return 'Watch → stage → fullscreen → stage → box; Escape, volume, source removal, and failed joins';
+  await tab.goto(`${base}/implementation.html?screen=voice&failUnwatch`);
+  await tab.playwright.getByRole('button',{name:'Watch stream — Alex'}).click();
+  await tab.playwright.getByRole('region',{name:'Stage',exact:true}).getByRole('button',{name:'Stream options — Alex'}).click();
+  await tab.playwright.getByRole('button',{name:'Unwatch stream',exact:true}).click();
+  await tab.playwright.getByText('Playback stopped, but the subscription could not be removed. Try Unwatch again or leave voice.',{exact:true}).waitFor({state:'visible'});
+  assert.equal(await tab.playwright.locator('audio').count(),0);
+  assert.equal(await tab.playwright.locator('video').count(),0);
+  assert.equal(await tab.playwright.getByRole('region',{name:'Stage',exact:true}).count(),0);
+  return 'Persistent watched box; Escape, fullscreen, Unwatch via both menus, source removal, failed joins and failed unsubscribe';
+}
+
+export async function checkDeviceFocus(tab,base='http://127.0.0.1:1422') {
+  await tab.goto(`${base}/implementation.html?screen=settings`);
+  await tab.playwright.getByRole('combobox',{name:'Microphone',exact:true}).press('ArrowDown');
+  const before=Number((await tab.playwright.getByRole('status').textContent()).match(/\d+/)[0]);
+  await tab.playwright.getByRole('status').filter({hasText:`Updates: ${before+1}`}).waitFor({state:'visible'});
+  assert.equal(await tab.playwright.locator('select[name="audioInput"]').evaluate(el=>el===document.activeElement),true);
+  await tab.playwright.getByRole('combobox',{name:'Audio output',exact:true}).press('ArrowDown');
+  const next=Number((await tab.playwright.getByRole('status').textContent()).match(/\d+/)[0]);
+  await tab.playwright.getByRole('status').filter({hasText:`Updates: ${next+1}`}).waitFor({state:'visible'});
+  assert.equal(await tab.playwright.locator('select[name="audioOutput"]').evaluate(el=>el===document.activeElement),true);
+  assert.equal(await tab.playwright.getByRole('dialog').count(),1);
+  return 'Input and output focus survives settings updates';
 }
 
 export async function checkAccountEntry(tab,viewport,base='http://127.0.0.1:1422') {

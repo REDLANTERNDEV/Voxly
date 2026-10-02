@@ -25,6 +25,7 @@ pub(super) fn run() {
             }
         }))
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_dialog::init())
         // Handle browser opening in Rust. The plugin's default injected click
         // listener would consume remote links and invoke its forbidden IPC API.
         .plugin(
@@ -38,6 +39,7 @@ pub(super) fn run() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
+            super::diagnostics::save_voice_diagnostics,
             super::notification_commands::activate_installation,
             super::notification_commands::reset_notification_permission,
             super::notification_commands::reset_microphone_permission,

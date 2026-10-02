@@ -8,6 +8,13 @@ const screen = { key: "mina:screen", target: { publisherUserId: "mina", kind: "s
 const local = { key: "self:camera", target: null };
 
 describe("stage tile selection", () => {
+  it("retains watched screen reception while a camera opens, closes, or switches to local preview", () => {
+    for (const source of [camera, local]) {
+      const opened = stageTileSelection(new Set([screen.key]), source, [screen.target]);
+      assert.ok(opened.targets.includes(screen.target));
+      assert.deepEqual(stageTileSelection(new Set([screen.key, source.key]), source, [screen.target]).targets, [screen.target]);
+    }
+  });
   it("opens a camera and switches to a different live source without accumulating sources", () => {
     assert.deepEqual(stageTileSelection(new Set(), camera), { localKeys: [], targets: [camera.target], focusKey: camera.key });
     assert.deepEqual(stageTileSelection(new Set([camera.key]), screen), { localKeys: [], targets: [screen.target], focusKey: screen.key });

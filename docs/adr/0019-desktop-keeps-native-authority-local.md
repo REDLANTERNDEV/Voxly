@@ -35,7 +35,9 @@ explicit confirmation. Closing the window hides it; explicit Quit destroys it
 and exits. The local chooser remains available through the tray for recovery.
 
 Allow same-origin installation navigation. Send HTTP(S) new-window link
-requests to the system browser; refuse arbitrary protocols and native downloads.
+requests to the system browser; refuse arbitrary protocols and general native
+downloads. [ADR-0030](0030-desktop-diagnostics-save-requires-user-selection.md)
+adds a dedicated, validated diagnostics export with a user-selected destination.
 The local shell never navigates to installation content.
 
 After Windows media acceptance, a separately reviewed versioned bridge may

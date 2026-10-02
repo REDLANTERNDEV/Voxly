@@ -1,4 +1,5 @@
 import { stageClickAction } from "./stageTileSelection.js";
+import { StreamActions } from "./StreamActions.js";
 import type { VisualMediaKind,VisualTarget,VoiceMediaState,VoiceModerationState } from "@voxly/shared";
 import { useEffect,useRef,useState } from "react";
 import { voiceStatusItems } from "../../app/presentation.js";
@@ -125,6 +126,7 @@ export function VisualStage({
   outputVolume,
   onFocus,
   onDismiss,
+  onUnwatch,
   onScreenVolumeChange,
   t
 }: {
@@ -134,6 +136,7 @@ export function VisualStage({
   outputVolume: number;
   onFocus: (key: string) => void;
   onDismiss: (source: StageSource) => void;
+  onUnwatch?: (source: StageSource) => void;
   onScreenVolumeChange: (streamId: string, volume: number) => void;
   t: Translate;
 }) {
@@ -168,10 +171,9 @@ export function VisualStage({
     <section ref={stageRef} className={`screen-stage stage-count-${Math.min(orderedSources.length, 4)}`} aria-label={t("voice.stage")}>
       <div className="stage-grid">
         {orderedSources.map((source) => (
-          <button
+          <StreamActions key={source.key} name={source.ownerName} watched={source.kind === "screen" && !source.ownerIsLocal && Boolean(onUnwatch)} volume={source.stream?.getAudioTracks().length ? screenVolumes[source.stream.id] ?? DEFAULT_VOLUME_PERCENT : undefined} onVolume={source.stream ? (value) => onScreenVolumeChange(source.stream!.id, value) : undefined} onUnwatch={() => onUnwatch?.(source)} t={t}><button
             className={`stage-media ${source.key === focusedSource?.key ? "is-focused" : ""}`}
             type="button"
-            key={source.key}
             onClick={() => {
               const action = stageClickAction(document.fullscreenElement === stageRef.current, source.key === focusedSource?.key);
               if (action === "exit-fullscreen") { void document.exitFullscreen?.(); return; }
@@ -183,10 +185,9 @@ export function VisualStage({
           >
             {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span className="screen-stage-placeholder">{source.connectionStatus === "failed" ? t("voice.retry") : source.connectionStatus === "reconnecting" ? t("voice.reconnecting") : t("voice.connecting")}</span>}
             {source.key !== focusedSource?.key ? <span className="stage-media-label"><strong>{source.ownerName}</strong><span>{source.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}</span></span> : null}
-          </button>
+          </button></StreamActions>
         ))}
       </div>
-      {!focusedSource?.ownerIsLocal && focusedSource?.kind === "screen" && focusedStream && focusedHasAudio ? <RemoteAudio stream={focusedStream} muted={false} volume={combineOutputVolume(focusedVolume, outputVolume)} /> : null}
       <div className="screen-stage-bar">
         <button className="btn btn-ghost stage-back" type="button" onClick={() => {
           if (document.fullscreenElement === stageRef.current) { void document.exitFullscreen?.(); return; }

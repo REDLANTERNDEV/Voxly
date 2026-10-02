@@ -202,14 +202,19 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   out, and a stepped gain is a discontinuity, which is audible as a click.
 - The expander measures the filtered signal before its own gain, so its reading
   never chases the reduction it just applied.
-- Only a device change re-captures. It holds both captures at once, so a failed
+- A device change re-captures. It holds both captures at once, so a failed
   reopen always leaves the previous microphone to fall back to; record the
   device each graph was opened with so unchanged settings never reopen it.
   Preserve mute, deafen, and owner-mute on the replacement track.
 - If a selected microphone briefly disappears from the device list, retain its
   saved selection and show it as unavailable instead of silently selecting the
-  system default. An ended capture stays unpublished until the member explicitly
-  turns the microphone on; that action retries the selected input.
+  system default. Unexpected capture loss records the selected device and prior
+  microphone intent. Settled device scans permit single-flight automatic recovery
+  of that device, respecting current mute/deafen, owner/room and desktop hold gates.
+  Consume a recovery attempt per event, retain one event arriving during capture,
+  and dispose stale results after manual actions, replacement, device change or
+  departure. Healthy activation clears only resolved microphone errors and warnings;
+  failed recovery remains manually retryable. Silence never diagnoses capture failure.
 - Support means "can this browser build the graph", not "does it advertise the
   constraint". Probe for an audio context.
 - The preference is stored per account in local storage and defaults off: the
