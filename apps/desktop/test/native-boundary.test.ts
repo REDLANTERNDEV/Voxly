@@ -28,12 +28,12 @@ describe("desktop native trust boundary", () => {
     assert.match(build, /AppManifest::new\(\)\.commands/);
     const commands = [...native.matchAll(/#\[tauri::command\]\s*(?:pub\(super\) )?async fn (\w+)\((?:(?!#\[tauri::command\])[\s\S])*?\{\s*trusted_shell\(&window\)\?;/g)].map((match) => match[1]);
     const settingsCommands = [...native.matchAll(/#\[tauri::command\]\s*(?:pub\(super\) )?async fn (\w+)\((?:(?!#\[tauri::command\])[\s\S])*?\{\s*trusted_settings\(&window, &shell\)\.await\?;/g)].map((match) => match[1]);
-    assert.equal(commands.length + settingsCommands.length + 9, (native.match(/#\[tauri::command\]/g) ?? []).length);
+    assert.equal(commands.length + settingsCommands.length + 10, (native.match(/#\[tauri::command\]/g) ?? []).length);
     assert.match(native, /async fn report_call_state/);
     assert.match(native, /report_caller_matches\(/);
     assert.match(native, /same_origin\(origin, url\)/);
     assert.match(native, /shell.reports.receive\(generation, request, report\)/);
-    for (const name of ["reset_microphone_permission", "reset_notification_permission", "set_installation_theme", "show_desktop_notification", "close_desktop_notification", "read_desktop_update"]) {
+    for (const name of ["reset_notification_permission", "reset_microphone_permission", "reset_camera_permission", "set_installation_theme", "show_desktop_notification", "close_desktop_notification", "read_desktop_update"]) {
       const body = native.slice(native.indexOf(`async fn ${name}`)).split("#[tauri::command]")[0];
       assert.match(body, /report_caller_matches/);
       assert.ok(build.includes(`"${name}"`));

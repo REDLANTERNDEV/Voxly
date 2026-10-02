@@ -987,58 +987,91 @@ rerunning with that permission passed. Vite retains its existing large-chunk
 warning. No Windows NSIS compiler/runtime is present, so package/wizard artwork,
 protocol prompts, actual tray behavior and global registration remain pending.
 
-## Dock, microphone consent and close preference
+## Dock, original microphone permissions and close preference
 
-The composer fixture now renders the real chat panel and voice dock in the
-application shell. Pointer hit testing reproduced the disconnected overlap
-before removing the two desktop height extensions. General exposes the native
-close preference only on desktop, defaulting to off; older shells show an
-update-required disabled switch. Audio exposes the finite microphone reset
-bridge on supporting shells. These fixtures cannot certify Windows behavior.
+Quiet desktop chat retains its original bottom alignment. The empty middle dock
+is hidden and cannot intercept composer clicks; occupied connection/account
+cards and active voice controls keep their interactions. The fixture renders the
+real chat panel and voice dock and checks alignment as well as pointer focus.
+
+The custom microphone consent handler, reset command/bridge and Audio reset
+action have been removed after reports of repeated prompts. Joins and microphone
+tests use the original WebView2 permission flow in each Installation's isolated
+profile. Screen capture retains its original chooser and runtime sharing bar.
+The host sets the configured AppUserModelID before creating windows; grouping of
+Home and Installation windows requires installed Windows validation. The runtime
+sharing bar may still have its own icon/taskbar entry.
+
+General's device-wide close preference remains default-off, including older
+preference files; older shells show an update-required disabled switch.
 
 | Installed Windows/WebView2 gate | Result |
 | --- | --- |
-| Owned Voxly dialog in EN/TR identifies the Installation; Allow and Block persist across relaunch | Pending |
-| Dismissal rejects one request and asks again; reset clears only microphone for the current Installation | Pending |
-| Existing decisions, Installation isolation, concurrent requests, iframe rejection and navigation/replacement during the prompt | Pending |
-| Windows privacy denial, independent camera permission and unsupported-runtime prompt fallback | Pending |
-| Missing preference defaults off; saved preference survives relaunch | Pending |
+| Original microphone consent flow, repeated joins/actions and saved decisions across relaunch | Pending |
+| Windows privacy denial, separate camera permission and Installation profile isolation | Pending |
+| Home and Installation windows group with the installed Voxly shortcut, including hide/restore | Pending |
+| Existing screen chooser, stop sharing and runtime sharing bar | Pending |
+| Missing close preference defaults off; saved preference survives relaunch | Pending |
 | Home and Installation X/Alt+F4 hide with preference off and request Quit with it on | Pending |
 | Active-call cancellation preserves call; repeated close requests show one confirmation; explicit Home/tray Quit works with either value | Pending |
-| Composer edge/padding focus and Send across voice transitions, replies and multiline drafts at Windows display scaling | Pending |
+| Quiet composer bottom alignment, edge/padding focus and Send across voice transitions, replies and multiline drafts at Windows display scaling | Pending |
 
-Screen capture and the runtime sharing bar are retained. Rebuild the Windows
-shell and deploy the web client together before performing these gates.
+Rebuild the Windows shell and deploy the web client together before performing
+these gates. Local browser fixtures cannot certify Windows permission dialogs,
+sharing UI or taskbar behavior.
 
-Local verification for this change:
+Local verification after restoring the original behavior:
 
-- `npm run test -w @voxly/web` (864 passing), `npm run typecheck -w
-  @voxly/web`, and `npm run build -w @voxly/web`.
-- `npm run test -w @voxly/desktop` (64 desktop and 3 release tests),
+- `npm test`: 19 shared, 404 server, 882 web, 277 bot, 61 desktop and
+  3 release tests passed.
+- `npm run typecheck`, `npm run build`,
+  `npm run typecheck -w @voxly/web`, `npm run build -w @voxly/web`,
   `npm run typecheck -w @voxly/desktop`, and
-  `npm run build -w @voxly/desktop`.
-- `cargo test --locked` (54 passing; loopback tests required local-listen
-  access). Tests cover default and disk save/load, finite preference validation,
-  coalesced quit requests, cancellation, microphone bridge scoping and consent
-  persistence policy.
-- CUA pointer-hit/focus/Send checks in the real chat/dock fixture at 1280×720,
-  1024×480, 901×700, 900×700 and 390×700: disconnected, joined and left; empty
-  and multiline drafts; English/dark browser and Turkish/light desktop layouts.
-  Reply drafts also passed at 1024×480 and 390×700. General default-off, saved operation,
-  browser omission, older-shell fallback and Audio reset were checked.
-- Changed Rust files pass `rustfmt --check` with `skip_children=true`;
-  `git diff --check` passes. `cargo fmt --all -- --check` still reports existing
-  formatting drift in unchanged `shell/trust.rs`, `shell/update_commands.rs`,
-  `shell/voice.rs` and `update_installer.rs`.
-- `cargo clippy --locked --all-targets -- -D warnings` reports existing
+  `npm run build -w @voxly/desktop` passed.
+- `cargo test --locked`: 53 passed with local-listen access for integration
+  tests. Native commands used the installed Command Line Tools via
+  `DEVELOPER_DIR=/Library/Developer/CommandLineTools`; the Xcode application
+  currently requires license acceptance, which was not performed.
+- CUA hit/focus/Send checks passed at 1280×720, 1024×480, 901×700, 900×700
+  and 390×700 in English/dark browser and Turkish/light desktop layouts,
+  before joining voice, while joined and after leaving. Reply/multiline drafts
+  passed at 1024×480 and 390×700. The quiet panel bottom returned from 618px
+  to its original 710px in a 720px window; the hidden dock center now hits
+  the composer. Account settings and sign-out cancellation stayed reachable.
+- Changed native files passed `rustfmt --check` with `skip_children=true`,
+  and `git diff --check` passed. Full `cargo fmt --all -- --check` still
+  reports existing formatting drift in unchanged `shell/trust.rs`,
+  `shell/update_commands.rs`, `shell/voice.rs` and `update_installer.rs`.
+- `cargo clippy --locked --all-targets -- -D warnings` still reports existing
   `too_many_arguments` in `connect_installation` and
   `field_reassign_with_default` in a shortcut test. It passes with only those
   two lints allowed on the command line.
-- A Windows-target harness type-checks the microphone adapter against the pinned
-  WebView2/Windows COM dependencies, using Tauri window stubs. Full
-  `cargo check --target x86_64-pc-windows-gnu --locked` is blocked by the missing
-  `x86_64-w64-mingw32-gcc` compiler. This does not verify installed Windows UI.
+- A Windows-target harness compiled the exact taskbar helper against the pinned
+  `windows-sys` API using a minimal AppHandle stub. This checks API types,
+  without validating installed Windows UI. Full Windows packaging and
+  permission/taskbar acceptance remain pending in this macOS workspace.
 
-No remote deployment destination was supplied for this change. The local web and
-desktop frontend artifacts are built; Windows packaging and deployment remain
-outstanding. Vite retains its existing large-chunk warning.
+The web and desktop frontend artifacts were rebuilt locally. No publishing,
+staging, commit or push was performed. Vite retains its existing large-chunk
+warning.
+
+### Explicit media permission recovery
+
+Pending installed Windows/WebView2 verification after the reset-only actions were
+added: deny microphone and camera separately; use each Audio recovery action;
+confirm the next matching media action offers the ordinary permission prompt,
+while the other permission, login and other Installation profiles remain intact.
+Verify allowing persists without repeated prompts, reset failure is visible,
+older shells disable recovery, and Windows-level denial remains effective.
+Screen sharing and notification recovery keep their existing flows.
+
+Automated recovery checks: `npm test`, `npm run typecheck`,
+`npm run build -w @voxly/web`, `npm run build -w @voxly/desktop`,
+`cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked`,
+and `git diff --check`. The reset bridge tests cover top-level/origin guards,
+parameterless microphone/camera commands and native errors; web tests cover
+English/Turkish recovery controls and old-shell disabled states. Native Clippy
+passes with the two existing repository lint exceptions (`too_many_arguments`
+and `field_reassign_with_default`); formatting checks pass on changed Rust files.
+The WebView2 reset API compiles in a temporary Windows-target harness.
+Installed Windows recovery remains unverified on this macOS host.

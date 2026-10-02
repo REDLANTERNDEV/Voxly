@@ -65,9 +65,6 @@ export async function rememberCompletedDesktopAuthentication(
   catch { /* Local storage failure must not undo a successful sign-in. */ }
 }
 
-// Permission reset is a separate, parameterless native operation.
-declare global {
-  interface Window {
-    __VOXLY_DESKTOP_MICROPHONE_V1__?: { version: 1; resetPermission(): Promise<boolean> };
-  }
-}
+declare global { interface Window { __VOXLY_DESKTOP_MEDIA_PERMISSIONS_V1__?: {
+  version: 1; resetMicrophone(): Promise<boolean>; resetCamera(): Promise<boolean>;
+} } }

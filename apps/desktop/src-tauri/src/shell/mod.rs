@@ -104,13 +104,3 @@ pub(crate) fn close_requested(window: &tauri::WebviewWindow) {
         let _ = window.hide();
     }
 }
-
-#[cfg(windows)]
-impl Shell {
-    pub(crate) fn language(&self) -> Option<installations::Language> {
-        self.inner
-            .try_lock()
-            .ok()
-            .map(|inner| inner.preferences.language)
-    }
-}

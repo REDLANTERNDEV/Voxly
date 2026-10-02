@@ -1691,6 +1691,12 @@ select {
 }
 @media (min-width: 901px) {
   .app-shell > .rail, .app-shell > .member-panel { min-height: 0; }
+
+  /* Keep quiet chat at the bottom without an invisible dock blocking it. */
+  body:has(.dock-controls:empty) .app-shell > .main-panel { height: calc(100% + var(--dock) + 24px); }
+  .voice-dock { pointer-events: none; }
+  .voice-dock > * { pointer-events: auto; }
+  .voice-dock > .dock-controls:empty { visibility: hidden; pointer-events: none; }
 }
 
 @media (max-width: 900px) {

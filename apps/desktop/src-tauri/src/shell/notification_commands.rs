@@ -44,7 +44,12 @@ pub(super) async fn reset_notification_permission(
     ) {
         return Err("forbidden");
     }
-    platform::reset_notification_permission(&window, active.origin.clone()).await
+    platform::reset_permission(
+        &window,
+        active.origin.clone(),
+        platform::PermissionToReset::Notification,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -62,7 +67,35 @@ pub(super) async fn reset_microphone_permission(
     ) {
         return Err("forbidden");
     }
-    platform::reset_microphone_permission(&window, active.origin.clone()).await
+    platform::reset_permission(
+        &window,
+        active.origin.clone(),
+        platform::PermissionToReset::Microphone,
+    )
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn reset_camera_permission(
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+) -> Result<(), &'static str> {
+    let inner = shell.inner.lock().await;
+    let active = inner.active.as_ref().ok_or("forbidden")?;
+    if !report_caller_matches(
+        shell.voice_generation.load(Ordering::Acquire),
+        window.label(),
+        &active.origin,
+        &window.url().map_err(|_| "forbidden")?,
+    ) {
+        return Err("forbidden");
+    }
+    platform::reset_permission(
+        &window,
+        active.origin.clone(),
+        platform::PermissionToReset::Camera,
+    )
+    .await
 }
 
 #[tauri::command]

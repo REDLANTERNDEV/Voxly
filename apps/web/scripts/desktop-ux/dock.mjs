@@ -14,6 +14,29 @@ export async function checkDockComposer(tab, viewport, sizes, base = 'http://127
             await tab.playwright.getByRole('button', { name: state === 'joined' ? 'Fixture join voice' : 'Fixture leave voice', exact: true }).click();
             await tab.getAXState({ emit: false });
           }
+          if (size.width > 900) {
+            const geometry = await tab.playwright.evaluate(() => {
+              const panel = document.querySelector('.main-panel').getBoundingClientRect();
+              const dock = document.querySelector('.dock-controls');
+              return { bottom: panel.bottom, windowHeight: innerHeight, quiet: !dock.children.length,
+                hidden: getComputedStyle(dock).visibility === 'hidden' };
+            });
+            assert.equal(geometry.quiet, state !== 'joined');
+            assert.equal(geometry.hidden, state !== 'joined');
+            if (geometry.quiet) assert.ok(geometry.bottom >= geometry.windowHeight - 12, 'Quiet chat must retain its original bottom alignment');
+          }
+          if (state === 'idle') {
+            await tab.playwright.locator('.account-menu > summary').click();
+            await tab.getAXState({ emit: false });
+            assert.equal(await tab.playwright.locator('.account-settings-link').isVisible(), true);
+            const reachable = await tab.playwright.locator('.account-settings-link').evaluate(element => {
+              const r = element.getBoundingClientRect();
+              return element.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+            });
+            assert.equal(reachable, true, 'Quiet dock must keep account settings reachable');
+            await tab.playwright.locator('.account-menu > summary').click();
+            await tab.getAXState({ emit: false });
+          }
           if (extraQuery.includes('reply')) {
             await tab.playwright.locator('.message-reply-trigger').click();
             await tab.getAXState({ emit: false });

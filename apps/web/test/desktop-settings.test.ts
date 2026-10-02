@@ -16,6 +16,29 @@ describe("desktop-only settings", () => {
       assert.equal(renderToStaticMarkup(createElement(DesktopShortcutSettings, { t, onAudio() {} })), "");
     }
   });
+  it("offers separate media recovery actions and disables them on older shells", () => {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+    try {
+      for (const supported of [false, true]) {
+        Object.defineProperty(globalThis, "window", { configurable: true, value: {
+          __VOXLY_DESKTOP_SETTINGS_V1__: { version: 1, apply: async () => ({}) },
+          ...(supported ? { __VOXLY_DESKTOP_MEDIA_PERMISSIONS_V1__: { version: 1, resetMicrophone: async () => true, resetCamera: async () => true } } : {})
+        } });
+        for (const language of ["en", "tr"] as const) {
+          const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
+          const html = renderToStaticMarkup(createElement(DesktopMicrophoneSettings, { t, onShortcuts() {} }));
+          assert.ok(html.includes(t("desktopSettings.microphoneReset")));
+          assert.ok(html.includes(t("desktopSettings.cameraReset")));
+          assert.equal(html.includes(t("desktopSettings.updateRequired")), !supported);
+          const actions = html.split('desktop-permission-recovery')[1];
+          assert.equal((actions.match(/disabled=""/g) ?? []).length, supported ? 0 : 2);
+        }
+      }
+    } finally {
+      if (previous) Object.defineProperty(globalThis, "window", previous);
+      else Reflect.deleteProperty(globalThis, "window");
+    }
+  });
   it("records physical modified shortcuts without accepting typing or repeats", () => {
     const key = { code: "KeyM", ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, repeat: false };
     assert.equal(desktopKeyboardBinding(key), "Control+Shift+KeyM");

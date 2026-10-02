@@ -62,10 +62,20 @@ export function DesktopGeneralSettings({ t }: { t: Translate }) {
 
 export function DesktopMicrophoneSettings({ t, onShortcuts }: { t: Translate; onShortcuts: () => void }) {
   const { snapshot, pending, error, save } = useDesktopSettings();
-  const [resetting, setResetting] = useState(false);
-  const [resetResult, setResetResult] = useState<boolean | null>(null);
   const preferences = snapshot?.preferences;
   const [delay, setDelay] = useState(0);
+  const [resetting, setResetting] = useState(false);
+  const [resetStatus, setResetStatus] = useState<Parameters<Translate>[0] | "">("");
+  const mediaPermissions = typeof window !== "undefined" ? window.__VOXLY_DESKTOP_MEDIA_PERMISSIONS_V1__ : undefined;
+  async function resetMediaPermission(kind: "microphone" | "camera") {
+    if (resetting || !mediaPermissions) return;
+    setResetting(true); setResetStatus("");
+    try {
+      const ok = await (kind === "microphone" ? mediaPermissions.resetMicrophone() : mediaPermissions.resetCamera());
+      setResetStatus(ok ? `desktopSettings.${kind}ResetDone` : "desktopSettings.permissionResetFailed");
+    } catch { setResetStatus("desktopSettings.permissionResetFailed"); }
+    finally { setResetting(false); }
+  }
   useEffect(() => { setDelay(preferences?.pushToTalkReleaseDelayMs ?? 0); }, [preferences?.pushToTalkReleaseDelayMs]);
   if (typeof window === "undefined" || !desktopSettingsAvailable(window)) return null;
   return <div className="desktop-microphone-settings">
@@ -77,14 +87,12 @@ export function DesktopMicrophoneSettings({ t, onShortcuts }: { t: Translate; on
       <label className="audio-level-control"><span><span>{t("desktopSettings.delay")}</span><strong>{delay} ms</strong></span><input type="range" min={0} max={2000} step={10} value={delay} disabled={pending || delay === 0} aria-valuetext={`${delay} ms`} onChange={(event) => setDelay(Number(event.target.value))} onPointerUp={() => void save({ kind: "delay", milliseconds: delay })} onKeyUp={(event) => { if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) void save({ kind: "delay", milliseconds: delay }); }} /></label>
     </div> : null}
     {preferences?.microphoneMode !== "openMic" ? <button type="button" className="btn btn-ghost desktop-settings-link" onClick={onShortcuts}>{t("desktopSettings.editShortcuts")}</button> : null}
-    {window.__VOXLY_DESKTOP_MICROPHONE_V1__?.version === 1 ? <>
-      <button type="button" className="btn btn-ghost" disabled={resetting} onClick={() => {
-        setResetting(true); setResetResult(null);
-        void window.__VOXLY_DESKTOP_MICROPHONE_V1__!.resetPermission().then(setResetResult).catch(() => setResetResult(false)).finally(() => setResetting(false));
-      }}>{t("desktopSettings.resetMicrophone")}</button>
-      <p className="muted small">{t("desktopSettings.resetMicrophoneHint")}</p>
-      {resetResult !== null ? <p className={resetResult ? "muted small" : "error-text small"} role="status">{t(resetResult ? "desktopSettings.microphoneReset" : "desktopSettings.failed")}</p> : null}
-    </> : null}
+    <div className="desktop-permission-recovery">
+      <p className="muted small">{t("desktopSettings.permissionResetHint")}</p>
+      {(["microphone", "camera"] as const).map((kind) => <button key={kind} type="button" className="btn btn-ghost desktop-settings-link" disabled={resetting || mediaPermissions?.version !== 1} onClick={() => void resetMediaPermission(kind)}>{t(`desktopSettings.${kind}Reset`)}</button>)}
+      {mediaPermissions?.version !== 1 ? <p className="muted small">{t("desktopSettings.updateRequired")}</p> : null}
+      {resetStatus ? <p className={resetStatus === "desktopSettings.permissionResetFailed" ? "error-text small" : "muted small"} role="status">{t(resetStatus)}</p> : null}
+    </div>
     <Feedback error={error} t={t} />
   </div>;
 }

@@ -41,6 +41,7 @@ pub(super) fn run() {
             super::notification_commands::activate_installation,
             super::notification_commands::reset_notification_permission,
             super::notification_commands::reset_microphone_permission,
+            super::notification_commands::reset_camera_permission,
             super::notification_commands::set_installation_theme,
             super::notification_commands::show_desktop_notification,
             super::notification_commands::close_desktop_notification,
@@ -74,6 +75,7 @@ pub(super) fn run() {
             super::voice::set_push_to_talk_release_delay
         ])
         .setup(|app| {
+            crate::platform::configure_taskbar_identity(app.handle());
             if let Ok(cache) = app.path().app_cache_dir() {
                 update_installer::cleanup(&cache.join("updates"));
             }

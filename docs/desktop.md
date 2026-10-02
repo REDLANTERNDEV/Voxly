@@ -491,27 +491,34 @@ Then run `checkHomeMenus(tab, viewport)` from
 `apps/desktop/scripts/home-ux/check.mjs` through CUA at port 1423. This fixture
 aliases the native API only in its test configuration; production uses real IPC.
 
-## Windows microphone consent
+## Windows microphone permissions and taskbar identity
 
-Joining voice and testing a microphone retain their existing acquisition flow.
-On supported Windows/WebView2 runtimes, a dialog titled **Voxly** identifies the
-requesting Installation by its origin and offers **Allow microphone** or
-**Block** in the desktop shell's English/Turkish language. Explicit choices are
-saved in that Installation's WebView2 profile. Closing the dialog rejects only
-the current request. Existing decisions remain effective; Windows microphone
-privacy restrictions still apply, and camera permission remains separate.
+Voice joins and microphone tests use the original WebView2 permission flow in
+that Installation's isolated profile. The custom Voxly microphone dialog
+has been removed following repeated permission
+prompts in installed Windows use. Windows privacy restrictions and separate
+camera permission remain effective. Existing profiles and sign-in data are kept.
+See [ADR-0029](adr/0029-desktop-microphone-consent-stays-per-installation.md).
 
-**Settings → Audio → Reset microphone permission** clears only the current
-Installation's microphone decision. The next microphone request asks again.
-Other Installations, login, camera and notification permissions remain intact.
-The action requires an updated shell; it is absent in browser Settings.
+Screen capture uses the existing WebView2 chooser and runtime-owned sharing bar.
+Home and Installation windows use the configured `app.voxly.desktop` application
+identity before their creation so Windows can group Voxly's windows with its
+installed shortcut. The WebView2 sharing indicator may still show the runtime's
+own icon or taskbar entry; the host does not rewrite that runtime window.
+The Windows identity API is described in the [Microsoft reference](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-setcurrentprocessexplicitappusermodelid).
 
-Native consent is limited to the current Installation window and top-level
-origin. Frame requests are denied without persistence; concurrent requests and
-requests invalidated by navigation or replacement cannot save a grant. Runtime
-APIs unavailable for safely handling consent retain the ordinary permission
-prompt. Screen capture keeps its existing chooser and runtime-owned sharing
-bar. See [ADR-0029](adr/0029-desktop-microphone-consent-stays-per-installation.md).
-Deploy the updated web client and rebuild the Windows shell together. Installed
-Windows/WebView2 dialog, persistence and privacy-denial checks remain release
-gates in the [acceptance record](desktop-windows-acceptance.md).
+Rebuild the Windows shell and deploy the updated web client together. Verify
+permission reuse, Windows privacy denial and taskbar grouping in the
+[acceptance record](desktop-windows-acceptance.md).
+
+### Recovering accidentally blocked media permissions
+
+Desktop **Settings → Audio** offers **Ask for microphone permission again** and
+**Ask for camera permission again**. Each action clears only that permission for
+the current Installation's origin and WebView2 profile. It does not acquire media
+or grant access: the next microphone test, voice join or camera action uses the
+ordinary WebView2 permission flow. Other Installations, login data, notification
+permission and the other media permission are untouched. Older shells show
+disabled actions with an update-required explanation. Windows privacy restrictions
+remain effective. Notifications already have their own reset action; screen
+sharing opens its source picker again on each attempt.

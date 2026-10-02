@@ -10,6 +10,7 @@ fn main() {
             "activate_installation",
             "reset_notification_permission",
             "reset_microphone_permission",
+            "reset_camera_permission",
             "set_installation_theme",
             "show_desktop_notification",
             "close_desktop_notification",
