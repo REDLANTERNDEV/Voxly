@@ -26,6 +26,8 @@ export async function checkStreamHierarchy(tab, base='http://127.0.0.1:1422') {
   assert.equal(await tab.playwright.getByRole('button',{name:'Watch stream — Alex'}).count(),0);
   assert.match(await tab.playwright.getByRole('status').filter({hasText:'subscriptions:'}).textContent(),/subscriptions: 1/);
   assert.equal(await tab.playwright.locator('audio').count(),1);
+  assert.equal(await tab.playwright.locator('.voice-stream-tile video').evaluate(el=>getComputedStyle(el).filter),'none');
+  assert.equal(await tab.playwright.locator('.selected-stream-mark').count(),0);
   await tab.playwright.getByRole('button',{name:'Add Alex to stage'}).click();
   await tab.playwright.getByRole('button',{name:'Return to stream box'}).click();
   await tab.playwright.getByRole('button',{name:'Stream options — Alex'}).click();

@@ -1652,10 +1652,6 @@ select {
   .app-shell.drawer-channels > .workspace-rail, .app-shell.drawer-channels > .rail, .app-shell.drawer-members > .member-panel { visibility: visible; }
 }
 
-/* Selected streams keep a quiet thumbnail while the stage holds the video. */
-.voice-stream-tile.is-selected .call-video { filter: blur(6px) brightness(.45); }
-.selected-stream-mark { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
-.selected-stream-mark svg { width: 40px; height: 40px; color: var(--fg); }
 .stream-actions { position: relative; min-width: 0; min-height: 0; }
 .voice-stream-tile > .stream-actions { position: absolute; inset: 0; }
 .stage-grid > .stream-actions { display: grid; }

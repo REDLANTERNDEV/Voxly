@@ -698,8 +698,8 @@ tests complement that check; they do not replace it for geometry-sensitive UI.
 - Clicking focused stage video returns to the participant grid; clicking
   fullscreen video exits fullscreen while retaining the stage. Fullscreen and
   screen-volume controls retain their own actions. Unwatched screen thumbnails
-  use neutral CSS blur and Watch; selected thumbnails keep a blurred preview
-  and central share icon. Participant captions show mute/deafen only; the screen
+  use neutral CSS blur and Watch; watched boxes show clear live video without
+  a central share icon. Participant captions show mute/deafen only; the screen
   tile owns the share indicator.
 - The dock avatar menu owns Settings and Owner panel navigation. Do not duplicate
   those actions beside the avatar; the workspace rail keeps its Settings shortcut.
