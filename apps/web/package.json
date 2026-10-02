@@ -8,7 +8,8 @@
     "build": "vite build",
     "test": "npm run build:tests && node --test \"dist-test/test/*.test.js\"",
     "build:tests": "tsc -p tsconfig.test.json",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:ux-check": "vite --config scripts/desktop-ux/vite.config.mjs"
   },
   "dependencies": {
     "@voxly/shared": "file:../../packages/shared",

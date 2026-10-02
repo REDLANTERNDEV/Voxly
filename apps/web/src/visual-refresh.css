@@ -1776,3 +1776,10 @@ select {
 .desktop-launch-origin { color: var(--muted); }
 .workspace-rail-link.workspace-download { background: var(--success-soft); color: var(--success); border: 1px solid color-mix(in srgb, var(--success) 35%, transparent); }
 .workspace-rail-link.workspace-download:hover { background: var(--success); color: white; }
+
+/* Keep Settings headings readable after the shared presentation rules. */
+.settings-section-header h2 { white-space: normal; overflow-wrap: normal; }
+@media (max-width: 720px) {
+  .settings-section-header { padding: 18px 16px; }
+  .settings-section-header h2 { font-size: 20px; }
+}

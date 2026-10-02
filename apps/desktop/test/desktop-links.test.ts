@@ -30,9 +30,11 @@ describe("desktop link native boundary", () => {
     assert.ok(!capability.permissions.some((value: string) => value.startsWith("deep-link:")));
     const ui = readFileSync("src/main.ts", "utf8");
     assert.ok(ui.indexOf('await listen("shell:desktop-link"') < ui.lastIndexOf("await receiveDesktopLink()"));
-    const receive = ui.split("async function receiveDesktopLink()")[1].split('element("desktop-link-review")')[0];
+    const receive = ui.split("async function receiveDesktopLink()")[1].split("function localMediaActive")[0];
     const intake = receive.split("async function openDesktopLink")[0];
-    assert.match(intake, /state\?\.preferences\.installations\.some/);
+    assert.doesNotMatch(intake, /preferences\.installations\.some/);
+    assert.doesNotMatch(receive, /save_installation/);
+    assert.match(receive, /address: target\.origin/);
     assert.match(intake, /if \(busy\) deferredDesktopLink = target/);
     assert.match(ui, /const target = deferredDesktopLink; deferredDesktopLink = null/);
     assert.doesNotMatch(intake, /save_installation|stopMedia|location\./);

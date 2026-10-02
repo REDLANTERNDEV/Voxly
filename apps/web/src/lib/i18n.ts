@@ -8,8 +8,10 @@ const supportedLanguages = new Set<LanguageCode>(["en", "tr"]);
 
 const translations = {
   en: {
+    "common.retry": "Retry",
     "settings.desktop": "Desktop",
     "settings.shortcuts": "Shortcuts",
+    "desktopSettings.reset": "Reset shortcut",
     "desktopSettings.editKeybind": "Edit keybind",
     "desktopSettings.stopRecording": "Stop recording",
     "desktopSettings.recordingHint": "Press a shortcut, then stop to save. Esc cancels.",
@@ -20,7 +22,7 @@ const translations = {
     "desktopSettings.home": "Home",
     "desktopSettings.failed": "Could not save desktop settings. Try again.",
     "desktopSettings.duplicate": "Each action needs a different shortcut. Your previous binding is retained.",
-    "desktopSettings.required": "Assign and activate this mode’s shortcut first.",
+    "desktopSettings.required": "This microphone mode needs a shortcut. Switch to Open mic in Audio before clearing or resetting it.",
     "desktopSettings.conflict": "Shortcut unavailable. Another application may be using it; choose a different binding.",
     "desktopSettings.microphone": "Desktop microphone",
     "desktopSettings.modeHint": "Choose how your microphone works. Assign held shortcuts in Shortcuts.",
@@ -251,7 +253,7 @@ const translations = {
     "link.waitingTitle": "Waiting for approval",
     "link.waitingCopy": "Approve this on your other device. Check that it is showing this number.",
     "link.startOver": "Try another code",
-    "desktopSignIn.launchWaiting": "Continue in Voxly. If sign-in is needed, compare the code and approve it here.",
+    "desktopSignIn.launchWaiting": "Allow your browser to open Voxly. Then compare the code and approve it here.",
     "desktopSignIn.returnBrowser": "Approve this code in your browser.",
     "desktopSignIn.useCode": "Use a Link code instead",
     "desktopSignIn.expiredBrowser": "This request expired. Open Voxly again to retry.",
@@ -815,8 +817,10 @@ const translations = {
     "system.loadingVoxly": "Loading Voxly"
   },
   tr: {
+    "common.retry": "Yeniden dene",
     "settings.desktop": "Masaüstü",
     "settings.shortcuts": "Kısayollar",
+    "desktopSettings.reset": "Kısayolu sıfırla",
     "desktopSettings.editKeybind": "Kısayolu düzenle",
     "desktopSettings.stopRecording": "Kaydı durdur",
     "desktopSettings.recordingHint": "Kısayola bas, ardından durdurarak kaydet. Esc iptal eder.",
@@ -827,7 +831,7 @@ const translations = {
     "desktopSettings.home": "Ana sayfa",
     "desktopSettings.failed": "Masaüstü ayarları kaydedilemedi. Yeniden deneyin.",
     "desktopSettings.duplicate": "Her işlev farklı bir kısayol gerektirir. Önceki birleşiminiz korundu.",
-    "desktopSettings.required": "Önce bu modun kısayolunu atayıp etkinleştirin.",
+    "desktopSettings.required": "Bu mikrofon modu için kısayol gerekli. Silmeden veya sıfırlamadan önce Ses bölümünde Açık mikrofonu seçin.",
     "desktopSettings.conflict": "Kısayol kullanılamıyor. Başka bir uygulama kullanıyor olabilir; farklı bir birleşim seçin.",
     "desktopSettings.microphone": "Masaüstü mikrofonu",
     "desktopSettings.modeHint": "Mikrofonunuzun nasıl çalışacağını seçin. Basılı tutulan kısayolları Kısayollar bölümünden atayın.",
@@ -1058,7 +1062,7 @@ const translations = {
     "link.waitingTitle": "Onay bekleniyor",
     "link.waitingCopy": "Diğer cihazından onayla. Orada da bu numaranın göründüğünü kontrol et.",
     "link.startOver": "Başka bir kod dene",
-    "desktopSignIn.launchWaiting": "Voxly’de devam et. Giriş gerekiyorsa kodu karşılaştırıp burada onayla.",
+    "desktopSignIn.launchWaiting": "Tarayıcının Voxly’yi açmasına izin ver. Sonra kodu karşılaştırıp burada onayla.",
     "desktopSignIn.returnBrowser": "Bu kodu tarayıcında onayla.",
     "desktopSignIn.useCode": "Bağlama kodu kullan",
     "desktopSignIn.expiredBrowser": "İsteğin süresi doldu. Yeniden denemek için Voxly’yi tekrar aç.",

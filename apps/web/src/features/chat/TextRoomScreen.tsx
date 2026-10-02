@@ -192,7 +192,10 @@ export function TextRoomScreen(props: TextRoomProps) {
           ) : null}
         </div>
         <footer className="composer" onMouseDown={(event) => {
-          if (event.target === event.currentTarget || (event.target instanceof HTMLElement && event.target.tagName === "FORM")) {
+          if (event.button === 0 && event.target instanceof Element
+            && !event.target.closest("button, a, input, textarea, select, label, [role=button], .composer-reply")
+            && (!event.target.textContent?.trim() || ["FORM", "FOOTER"].includes(event.target.tagName))
+            && !window.getSelection()?.toString()) {
             event.preventDefault(); composerRef.current?.focus();
           }
         }}>

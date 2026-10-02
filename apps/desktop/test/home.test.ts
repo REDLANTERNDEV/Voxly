@@ -35,7 +35,10 @@ test("settings bridge refuses subframes and origin changes and contains no updat
 test("release packaging uses Program Files and explicit brand icons; diagnostics require a development entry", () => {
   const config = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
   assert.equal(config.bundle.windows.nsis.installMode, "perMachine");
-  for (const key of ["installerIcon", "uninstallerIcon"]) assert.equal(config.bundle.windows.nsis[key], "../branding/tauri/icons/setup-dark.ico");
+  assert.equal(config.bundle.windows.nsis.installerIcon, "../branding/tauri/icons/setup-package.ico");
+  assert.equal(config.bundle.windows.nsis.uninstallerIcon, "../branding/tauri/icons/setup-dark.ico");
+  assert.equal(config.bundle.windows.nsis.installerHooks, "windows/installer-hooks.nsh");
+  assert.match(readFileSync("src-tauri/windows/installer-hooks.nsh", "utf8"), /MUI_CUSTOMFUNCTION_GUIINIT/);
   const ui = readFileSync("src/main.ts", "utf8");
   assert.match(ui, /import.meta.env.DEV && new URLSearchParams\(location.search\).has\("diagnostics"\)/);
 });
@@ -57,6 +60,9 @@ test("startup reveals only ready installation windows, supports cancellation, an
   assert.doesNotMatch(tray, /CARGO_PKG_VERSION|Update and restart/);
   const update = readFileSync("src-tauri/src/shell/update_commands.rs", "utf8");
   const check = update.split("fn check_from_tray")[1].split("fn tray_check_needed")[0];
-  assert.match(check, /updates\.check\(&app\)\.await/);
+  assert.match(check, /check_requested\(&app\)\.await/);
+  assert.match(check, /request\.begin_pending\(\)/);
+  assert.match(update, /Err\("update_busy"\) => Ok\(updates\.snapshot\(\)\)/);
+  assert.match(readFileSync("src/main.ts", "utf8"), /take_tray_update_check/);
   assert.doesNotMatch(check, /install_shell_update|confirmed|destroy/);
 });

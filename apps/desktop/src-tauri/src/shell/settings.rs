@@ -62,6 +62,9 @@ pub(super) enum Operation {
         action: String,
         binding: Option<String>,
     },
+    ResetShortcut {
+        action: String,
+    },
     Microphone {
         mode: installations::MicrophoneMode,
     },
@@ -92,6 +95,16 @@ pub(super) async fn desktop_settings(
                 }
                 _ => Err("shortcut_invalid"),
             }
+        }
+        Operation::ResetShortcut { action } => {
+            let action = match action.as_str() {
+                "mute" => crate::shortcuts::Action::Mute,
+                "deafen" => crate::shortcuts::Action::Deafen,
+                "pushToTalk" => crate::shortcuts::Action::PushToTalk,
+                "pushToMute" => crate::shortcuts::Action::PushToMute,
+                _ => return Err("shortcut_invalid"),
+            };
+            return super::voice::reset_shortcut(app, window, shell, action).await;
         }
         Operation::Microphone { mode } => {
             return super::voice::set_microphone_mode(app, window, shell, mode).await
@@ -157,14 +170,7 @@ pub(super) async fn desktop_settings(
             return Ok(snapshot(&inner));
         }
         Operation::Default { id, enabled } => {
-            if id
-                .as_ref()
-                .is_some_and(|id| !next.installations.iter().any(|entry| &entry.id == id))
-            {
-                return Err("installation_missing");
-            }
-            next.open_on_startup = enabled && id.is_some();
-            next.default_installation_id = id;
+            next.select_default(id, enabled)?;
         }
         Operation::Rename { id, name } => {
             installations::validate_name(Some(&name))?;
@@ -204,6 +210,7 @@ mod tests {
     fn settings_accept_only_finite_intents_and_never_caller_supplied_authentication_origins() {
         for value in [
             r#"{"kind":"read"}"#,
+            r#"{"kind":"resetShortcut","action":"mute"}"#,
             r#"{"kind":"home"}"#,
             r#"{"kind":"authenticationCompleted"}"#,
             r#"{"kind":"microphone","mode":"pushToTalk"}"#,
@@ -215,6 +222,7 @@ mod tests {
             r#"{"kind":"authenticationCompleted","origin":"https://evil.example"}"#,
             r#"{"kind":"microphone","mode":"anything"}"#,
             r#"{"kind":"execute","command":"anything"}"#,
+            r#"{"kind":"resetShortcut","action":"mute","binding":"Alt+KeyK"}"#,
             r#"{"kind":"update","endpoint":"https://evil.example"}"#,
             r#"{"kind":"rename","id":"saved","name":"Name","path":"../profile"}"#,
         ] {

@@ -4,7 +4,7 @@ import { AudioDeviceSettings } from "../AudioDeviceSettings.js";
 import { DeviceSettings } from "../DeviceSettings.js";
 import { RecoverySettings } from "../RecoverySettings.js";
 import { PreferencesCard } from "../ui/Primitives.js";
-import { GearIcon, HeadsetIcon, ShieldIcon, UsersIcon, KeyboardIcon, BellIcon } from "../ui/Icons.js";
+import { GearIcon, HeadsetIcon, ShieldIcon, UsersIcon, KeyboardIcon, BellIcon, CloseIcon } from "../ui/Icons.js";
 import type { TranslationKey } from "../../lib/i18n.js";
 import { ExternalPreviewSettings } from "../ExternalPreviewSettings.js";
 import { AccountDeletionSettings } from "../AccountDeletionSettings.js";
@@ -49,12 +49,13 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
+    const returnFocus = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("dialog[open]")) props.onClose();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => { window.removeEventListener("keydown", onKeyDown); if (returnFocus?.isConnected) returnFocus.focus(); };
   }, [props.onClose]);
 
   return (
@@ -90,8 +91,8 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
         <div className="settings-body">
           <header className="settings-section-header">
             <div><span className="label">{props.t("settings.title")}</span><h2>{props.t(`settings.${section}`)}</h2></div>
-            <button className="settings-close btn btn-ghost" type="button" ref={closeRef} onClick={props.onClose}>
-              {props.t("common.close")}
+            <button className="settings-close icon-btn" type="button" title={props.t("common.close")} aria-label={props.t("common.close")} ref={closeRef} onClick={props.onClose}>
+              <CloseIcon />
             </button>
           </header>
           <div className="settings-content">

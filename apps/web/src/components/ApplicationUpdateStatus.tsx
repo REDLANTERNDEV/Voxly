@@ -16,7 +16,7 @@ export function ApplicationUpdateStatus({ t, menu = false, onSelect }: { t: Tran
   return <>
     {!menu ? <span className="sr-only" role="status" aria-live="polite">{label}</span> : null}
     {label ? <button type="button" className={menu ? "btn btn-ghost account-update-link" : "dock-update-link"} disabled={disabled} onClick={select} aria-label={[label, versions].filter(Boolean).join(" · ")} title={[label, versions].filter(Boolean).join(" · ")}>
-      <RefreshIcon /><span className="update-label">{label}</span>{versions ? <span className="update-version">{versions}</span> : null}
+      <RefreshIcon /><span className="update-label">{label}</span>
     </button> : null}
   </>;
 }

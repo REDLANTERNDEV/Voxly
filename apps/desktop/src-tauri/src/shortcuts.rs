@@ -22,6 +22,14 @@ pub enum Action {
 impl Action {
     pub const ALL: [Self; 4] = [Self::Mute, Self::Deafen, Self::PushToTalk, Self::PushToMute];
 
+    pub fn default_binding(self) -> Option<&'static str> {
+        match self {
+            Self::Mute => Some("Control+Shift+KeyM"),
+            Self::Deafen => Some("Control+Shift+KeyD"),
+            Self::PushToTalk | Self::PushToMute => None,
+        }
+    }
+
     pub fn index(self) -> usize {
         match self {
             Self::Mute => 0,

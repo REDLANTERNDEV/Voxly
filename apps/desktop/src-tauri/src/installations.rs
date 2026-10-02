@@ -72,6 +72,15 @@ impl Preferences {
         Ok(())
     }
 
+    pub fn select_default(&mut self, id: Option<String>, enabled: bool) -> Result<(), &'static str> {
+        if id.as_ref().is_some_and(|id| !self.installations.iter().any(|entry| &entry.id == id)) {
+            return Err("installation_missing");
+        }
+        self.open_on_startup = enabled && id.is_some();
+        self.default_installation_id = id;
+        Ok(())
+    }
+
     pub fn forget(&mut self, id: &str) {
         self.installations.retain(|entry| entry.id != id);
         if self.default_installation_id.as_deref() == Some(id) {
@@ -108,6 +117,17 @@ impl Preferences {
             Action::PushToTalk => self.push_to_talk_shortcut = binding,
             Action::PushToMute => self.push_to_mute_shortcut = binding,
         }
+    }
+
+    pub fn reset_shortcut(&mut self, action: crate::shortcuts::Action) -> Result<(), &'static str> {
+        use crate::shortcuts::Action;
+        if matches!((self.microphone_mode, action),
+            (MicrophoneMode::PushToTalk, Action::PushToTalk) |
+            (MicrophoneMode::PushToMute, Action::PushToMute)) {
+            return Err("shortcut_required");
+        }
+        self.set_binding(action, action.default_binding().map(str::to_owned));
+        self.validate_shortcuts()
     }
 
     pub fn validate_shortcuts(&self) -> Result<(), &'static str> {
@@ -182,8 +202,9 @@ pub fn load(path: &Path) -> Result<Preferences, &'static str> {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             let mut preferences = Preferences::default();
-            preferences.mute_shortcut = Some("Control+Shift+KeyM".into());
-            preferences.deafen_shortcut = Some("Control+Shift+KeyD".into());
+            for action in crate::shortcuts::Action::ALL {
+                preferences.set_binding(action, action.default_binding().map(str::to_owned));
+            }
             return Ok(preferences)
         }
         Err(_) => return Err("storage_failed"),
@@ -231,6 +252,46 @@ pub fn save(path: &Path, preferences: &Preferences) -> Result<(), &'static str> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn removing_default_preserves_saved_address_and_profile() {
+        let mut preferences = Preferences::default();
+        let active = installation("https://chat.example").unwrap();
+        preferences.remember_authenticated(&active).unwrap();
+        let before = preferences.installations.clone();
+        preferences.select_default(None, true).unwrap();
+        assert!(preferences.default_installation_id.is_none());
+        assert!(!preferences.open_on_startup);
+        assert_eq!(preferences.installations[0].id, before[0].id);
+        assert_eq!(preferences.installations[0].origin, before[0].origin);
+        assert_eq!(preferences.select_default(Some("missing".into()), true), Err("installation_missing"));
+    }
+
+    #[test]
+    fn resets_use_native_defaults_and_preserve_required_hold_modes() {
+        use crate::shortcuts::Action;
+        let mut preferences = Preferences::default();
+        preferences.mute_shortcut = Some("Alt+KeyK".into());
+        preferences.reset_shortcut(Action::Mute).unwrap();
+        assert_eq!(preferences.mute_shortcut.as_deref(), Some("Control+Shift+KeyM"));
+        preferences.reset_shortcut(Action::Deafen).unwrap();
+        assert_eq!(preferences.deafen_shortcut.as_deref(), Some("Control+Shift+KeyD"));
+        preferences.push_to_talk_shortcut = Some("Mouse4".into());
+        preferences.microphone_mode = MicrophoneMode::PushToTalk;
+        assert_eq!(preferences.reset_shortcut(Action::PushToTalk), Err("shortcut_required"));
+        assert_eq!(preferences.push_to_talk_shortcut.as_deref(), Some("Mouse4"));
+        assert!(preferences.microphone_mode == MicrophoneMode::PushToTalk);
+        preferences.microphone_mode = MicrophoneMode::OpenMic;
+        preferences.reset_shortcut(Action::PushToTalk).unwrap();
+        assert!(preferences.push_to_talk_shortcut.is_none());
+        preferences.push_to_mute_shortcut = Some("Mouse5".into());
+        preferences.microphone_mode = MicrophoneMode::PushToMute;
+        assert_eq!(preferences.reset_shortcut(Action::PushToMute), Err("shortcut_required"));
+        assert_eq!(preferences.push_to_mute_shortcut.as_deref(), Some("Mouse5"));
+        preferences.microphone_mode = MicrophoneMode::OpenMic;
+        preferences.reset_shortcut(Action::PushToMute).unwrap();
+        assert!(preferences.push_to_mute_shortcut.is_none());
+    }
 
     #[test]
     fn fresh_profiles_receive_discord_defaults_but_existing_cleared_bindings_stay_cleared() {

@@ -1,17 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Translate } from "../app/types.js";
 import { answerDesktopAuthorization, cancelDesktopLaunch, createDesktopLaunch, fetchDesktopAuthorization, fetchDesktopLaunch } from "../api.js";
 import { DesktopLaunchDialog } from "./DesktopLaunchDialog.js";
+import { DesktopLaunchPreparation, type PreparedDesktopLaunch } from "../lib/desktopLaunchPreparation.js";
 import { desktopOpenLink } from "../lib/desktopLinks.js";
 
 /** Launch ids are public correlation only. Approval never travels in the URI. */
 export function OpenInDesktop({ t, authenticated = false }: { t: Translate; authenticated?: boolean }) {
-  const [launch, setLaunch] = useState<{ id: string; account: string } | null>(null);
+  const [launch, setLaunch] = useState<PreparedDesktopLaunch | null>(null);
   const [waiting, setWaiting] = useState<{ id: string; confirmation: string; label: string; origin: string; expiresAt: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<"waiting" | "approved" | "failed" | "continue" | "expired">("waiting");
   const [showing, setShowing] = useState(false);
-  const current = useRef<string | null>(null);
+  const preparation = useRef<DesktopLaunchPreparation | null>(null);
+  if (!preparation.current) preparation.current = new DesktopLaunchPreparation(createDesktopLaunch, cancelDesktopLaunch);
+  const [preparing, setPreparing] = useState(true);
+  const [prepareFailed, setPrepareFailed] = useState(false);
   const mounted = useRef(false);
   const opener = useRef<HTMLButtonElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
@@ -22,17 +26,37 @@ export function OpenInDesktop({ t, authenticated = false }: { t: Translate; auth
     mounted.current = true;
     return () => {
       mounted.current = false;
-      if (current.current) void cancelDesktopLaunch(current.current).catch(() => undefined);
+      preparation.current?.clear();
     };
   }, []);
 
+  const prepare = useCallback(async () => {
+    setPreparing(true); setPrepareFailed(false);
+    try {
+      const next = await preparation.current!.prepare();
+      if (mounted.current) { if (next) setLaunch(next); else setPrepareFailed(true); }
+    } catch { if (mounted.current) setPrepareFailed(true); }
+    finally { if (mounted.current) setPreparing(false); }
+  }, []);
   useEffect(() => {
-    if (!launch || outcome !== "waiting" || waiting) return;
+    if (!authenticated || !href || waiting || (showing && outcome === "waiting") || outcome === "approved") return;
+    if (!launch) { void prepare(); return; }
+    const refresh = () => {
+      if (Date.now() < launch.expiresAt) return;
+      preparation.current!.clear(); setLaunch(null);
+    };
+    const timer = window.setTimeout(refresh, Math.max(0, launch.expiresAt - Date.now()));
+    window.addEventListener("focus", refresh);
+    return () => { window.clearTimeout(timer); window.removeEventListener("focus", refresh); };
+  }, [authenticated, Boolean(href), showing, outcome, waiting, launch, prepare]);
+
+  useEffect(() => {
+    if (!showing || !launch || outcome !== "waiting" || waiting) return;
     let live = true;
     let timer = 0;
-    const deadline = Date.now() + 180_000;
+    const deadline = launch.expiresAt;
     const poll = async () => {
-      if (Date.now() >= deadline) { if (live) setOutcome("continue"); return; }
+      if (Date.now() >= deadline) { if (live) { setOutcome("continue"); preparation.current!.clear(); setLaunch(null); } return; }
       try {
         const response = await fetchDesktopLaunch(launch.id);
         if (!live) return;
@@ -48,44 +72,33 @@ export function OpenInDesktop({ t, authenticated = false }: { t: Translate; auth
     };
     timer = window.setTimeout(() => void poll(), 1500);
     return () => { live = false; window.clearTimeout(timer); };
-  }, [launch, outcome, waiting]);
+  }, [showing, launch, outcome, waiting]);
 
   useEffect(() => { if (waiting) cancelButton.current?.focus(); }, [waiting]);
   useEffect(() => {
-    if (!waiting || outcome !== "waiting") return;
-    const timeout = window.setTimeout(() => setOutcome("expired"), Math.max(0, Date.parse(waiting.expiresAt) - Date.now()));
+    if (!waiting || outcome === "approved") return;
+    const timeout = window.setTimeout(() => {
+      preparation.current!.clear(); setLaunch(null); setWaiting(null); setOutcome("expired");
+    }, Math.max(0, Date.parse(waiting.expiresAt) - Date.now()));
     return () => window.clearTimeout(timeout);
   }, [waiting, outcome]);
 
   const cancel = () => {
     if (busy) return;
-    const id = current.current;
-    current.current = null;
-    setShowing(false); setLaunch(null);
+    preparation.current!.clear(outcome === "approved");
+    setShowing(false); setLaunch(null); setOutcome("waiting");
     setWaiting(null);
-    if (id) void cancelDesktopLaunch(id).catch(() => undefined);
     opener.current?.focus();
   };
 
-  const start = async () => {
-    if (busy) return;
-    setBusy(true); setShowing(true);
-    setOutcome("waiting");
-    try {
-      const created = await createDesktopLaunch();
-      if (!mounted.current) {
-        void cancelDesktopLaunch(created.id).catch(() => undefined);
-        return;
-      }
-      current.current = created.id;
-      setLaunch(created);
-      const link = desktopOpenLink(window.location.origin, false, created.id);
-      if (link) window.location.assign(link);
-    } catch {
-      if (mounted.current) setOutcome("failed");
-    } finally {
-      if (mounted.current) setBusy(false);
+  // Invoke directly from the click so the browser retains user activation.
+  const start = () => {
+    if (busy || !launch || !href) return;
+    if (Date.now() >= launch.expiresAt) {
+      preparation.current!.clear(); setLaunch(null); setOutcome("continue"); return;
     }
+    setShowing(true); setOutcome("waiting"); setWaiting(null);
+    window.location.assign(href);
   };
 
   const approve = async () => {
@@ -93,7 +106,7 @@ export function OpenInDesktop({ t, authenticated = false }: { t: Translate; auth
     setBusy(true);
     try {
       await answerDesktopAuthorization(waiting.id, true);
-      if (mounted.current) { current.current = null; setOutcome("approved"); setWaiting(null); }
+      if (mounted.current) { preparation.current!.clear(true); setOutcome("approved"); setWaiting(null); }
     } catch {
       if (mounted.current) setOutcome("failed");
     } finally {
@@ -104,7 +117,8 @@ export function OpenInDesktop({ t, authenticated = false }: { t: Translate; auth
   if (!href) return null;
   if (!authenticated) return <a className="btn btn-ghost" href={href} title={t("desktop.openHint")}>{t("desktop.open")}</a>;
   return <>
-    <button ref={opener} className="btn btn-ghost" type="button" disabled={busy || Boolean(launch)} onClick={() => void start()}>{t("desktop.open")}</button>
+    <button ref={opener} className="btn btn-ghost" type="button" disabled={busy || preparing || !launch || showing} onClick={start}>{t("desktop.open")}</button>
+    {prepareFailed ? <p className="small" role="alert">{t("desktopSignIn.failed")} <button type="button" className="btn btn-ghost" onClick={() => void prepare()}>{t("common.retry")}</button></p> : null}
     {showing ? <DesktopLaunchDialog title={t(waiting && outcome === "waiting" ? "desktopSignIn.approvalTitle" : "desktop.open")} onCancel={cancel}>
       <p className="desktop-launch-origin">{waiting?.origin ?? window.location.origin}</p>
       {outcome === "approved" ? <p role="status">{t("desktopSignIn.approved")}</p>
@@ -117,8 +131,9 @@ export function OpenInDesktop({ t, authenticated = false }: { t: Translate; auth
             </> : <p role="status">{t("desktopSignIn.launchWaiting")}</p>}
       <div className="confirm-actions">
         <button ref={cancelButton} className="btn btn-ghost" type="button" disabled={busy} onClick={cancel}>{t(outcome === "approved" || outcome === "continue" || !waiting ? "common.done" : "common.cancel")}</button>
-        {waiting && outcome === "waiting" ? <button className="btn btn-primary" type="button" disabled={busy} onClick={() => void approve()}>{t("link.approve")}</button> : null}
-        {!waiting && launch && outcome !== "approved" ? <a className="btn btn-primary" href={href}>{t("desktop.open")}</a> : null}
+        {waiting && (outcome === "waiting" || outcome === "failed") ? <button className="btn btn-primary" type="button" disabled={busy} onClick={() => void approve()}>{t(outcome === "failed" ? "common.retry" : "link.approve")}</button> : null}
+        {!waiting && outcome !== "approved" ? <button type="button" className="btn btn-primary" disabled={preparing || !launch} onClick={start}>{t("common.retry")}</button> : null}
+        {!waiting && outcome !== "approved" ? <a className="btn btn-ghost" href="https://github.com/REDLANTERNDEV/Voxly/releases" target="_blank" rel="noopener noreferrer">{t("desktop.download")}</a> : null}
       </div>
     </DesktopLaunchDialog> : null}
   </>;

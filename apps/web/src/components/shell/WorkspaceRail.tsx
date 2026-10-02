@@ -37,9 +37,11 @@ export function WorkspaceRail({ activeServerId, servers, rooms, roomHistory, t, 
           }}
         ><span aria-hidden="true">{Array.from(server.name.trim())[0]?.toLocaleUpperCase() ?? "V"}</span></button>)}
       </div>
-      {typeof window === "undefined" || window.__VOXLY_DESKTOP_V1__?.version !== 1 ? <a className="workspace-rail-link workspace-download" href="https://github.com/REDLANTERNDEV/Voxly/releases" target="_blank" rel="noopener noreferrer" title={t("desktop.download")} aria-label={t("desktop.download")}><DownloadIcon /></a> : null}
     </div>
     <span className="workspace-switch-error" role="status">{error}</span>
+    <div className="workspace-rail-bottom">
+      {typeof window === "undefined" || window.__VOXLY_DESKTOP_V1__?.version !== 1 ? <a className="workspace-rail-link workspace-download" href="https://github.com/REDLANTERNDEV/Voxly/releases" target="_blank" rel="noopener noreferrer" title={t("desktop.download")} aria-label={t("desktop.download")}><DownloadIcon /></a> : null}
     <button className="workspace-rail-link workspace-settings" type="button" title={t("settings.open")} aria-label={t("settings.open")} onClick={onOpenSettings}><GearIcon /></button>
+    </div>
   </nav>;
 }

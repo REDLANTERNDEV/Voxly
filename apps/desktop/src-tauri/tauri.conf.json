@@ -63,8 +63,9 @@
           "Turkish"
         ],
         "displayLanguageSelector": true,
-        "installerIcon": "../branding/tauri/icons/setup-dark.ico",
-        "uninstallerIcon": "../branding/tauri/icons/setup-dark.ico"
+        "installerIcon": "../branding/tauri/icons/setup-package.ico",
+        "uninstallerIcon": "../branding/tauri/icons/setup-dark.ico",
+        "installerHooks": "windows/installer-hooks.nsh"
       }
     }
   }

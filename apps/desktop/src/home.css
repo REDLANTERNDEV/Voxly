@@ -44,7 +44,7 @@ input[type=checkbox] { accent-color: #d1dae9; min-width: 0; min-height: 0; flex:
 .installation-menu { position: relative; }
 .installation-menu summary { cursor: pointer; list-style: none; border: 1px solid #3b424f; border-radius: 8px; padding: 10px 12px; }
 .installation-menu summary::-webkit-details-marker { display: none; }
-.installation-menu-items { position: absolute; z-index: 5; right: 0; top: calc(100% + 6px); width: 180px; display: grid; padding: 6px; background: #202630; border: 1px solid #434d5e; border-radius: 8px; box-shadow: 0 12px 30px #0007; }
+.installation-menu-items { position: fixed; z-index: 100; width: min(180px, calc(100vw - 16px)); overflow-y: auto; display: grid; padding: 6px; background: #202630; border: 1px solid #434d5e; border-radius: 8px; box-shadow: 0 12px 30px #0007; }
 .installation-menu-items button { border: 0; text-align: left; }
 .updater .hint { font-size: 12px; }
 .updater .actions button { width: 100%; }

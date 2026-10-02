@@ -6,6 +6,7 @@ import { createCaptureOwner, probeConstraints, screenConstraints, summarizeTrack
 import { performTransition, type CallState } from "./transitions.js";
 import "./styles.css";
 import "./home.css";
+import { installationMenus } from "./popover.js";
 import { startupInstallation } from "./home.js";
 import { installVerifiedUpdate, type UpdateSnapshot } from "./updates.js";
 import { mountShortcutSettings, type ShortcutSnapshot } from "./shortcuts.js";
@@ -182,10 +183,6 @@ element("update-install").addEventListener("click", () => {
 function renderInstallations() {
   renderUpdates();
   renderLoading();
-  element("desktop-link").hidden = !pendingDesktopLink;
-  element("desktop-link-origin").textContent = pendingDesktopLink?.origin ?? "";
-  element<HTMLButtonElement>("desktop-link-review").disabled = busy;
-  element<HTMLButtonElement>("desktop-link-dismiss").disabled = busy;
   const list = element("installation-list");
   const focused = document.activeElement as HTMLElement | null;
   const focusKey = focused && list.contains(focused) ? focused.dataset.focusKey : null;
@@ -210,19 +207,20 @@ function renderInstallations() {
     const add = (key: TranslationKey, action: () => void, parent: HTMLElement = actions) => {
       const button = document.createElement("button"); button.type = "button"; button.textContent = t(key);
       button.setAttribute("aria-label", `${t(key)}: ${name.textContent}`);
-      button.dataset.focusKey = `${saved.id}:${key}`; button.disabled = busy;
-      button.addEventListener("click", action); parent.append(button);
+      button.dataset.focusKey = `${saved.id}:${key === "makeDefault" || key === "removeDefault" ? "default" : key}`; button.disabled = busy;
+      button.addEventListener("click", () => { action(); }); if (parent !== actions) button.setAttribute("role", "menuitem"); parent.append(button);
     };
     add("launchDefault", () => void connect(saved));
     const menu = document.createElement("details"); menu.className = "installation-menu";
-    const trigger = document.createElement("summary"); trigger.textContent = "•••"; trigger.setAttribute("aria-label", `${t("moreActions")}: ${name.textContent}`); trigger.dataset.focusKey = `${saved.id}:menu`;
-    const menuItems = document.createElement("div"); menuItems.className = "installation-menu-items";
+    const trigger = document.createElement("summary"); trigger.textContent = "•••"; trigger.setAttribute("aria-label", `${t("moreActions")}: ${name.textContent}`); trigger.dataset.focusKey = `${saved.id}:menu`; trigger.setAttribute("aria-haspopup", "menu"); trigger.setAttribute("aria-expanded", "false");
+    const menuItems = document.createElement("div"); menuItems.className = "installation-menu-items"; menuItems.setAttribute("role", "menu");
     add("rename", () => {
       menu.open = false; renaming = saved; element<HTMLInputElement>("rename-name").value = saved.name ?? "";
       element("rename-status").textContent = ""; element<HTMLDialogElement>("rename-dialog").showModal(); element("rename-name").focus();
     }, menuItems);
-    add("makeDefault", () => void run(async () => {
-      state = await invoke<Snapshot>("desktop_settings", { operation: { kind: "default", id: saved.id, enabled: state?.preferences.openOnStartup ?? false } });
+    const isDefault = saved.id === state?.preferences.defaultInstallationId;
+    add(isDefault ? "removeDefault" : "makeDefault", () => void run(async () => {
+      state = await invoke<Snapshot>("desktop_settings", { operation: { kind: "default", id: isDefault ? null : saved.id, enabled: !isDefault && (state?.preferences.openOnStartup ?? false) } });
     }), menuItems);
     add("forget", () => void run(async () => { state = await invoke<Snapshot>("forget_installation", { id: saved.id }); status("forgotten"); }), menuItems);
     menu.append(trigger, menuItems); actions.append(menu);
@@ -231,7 +229,7 @@ function renderInstallations() {
   }
   if (focusKey) {
     const next = [...list.querySelectorAll<HTMLElement>("[data-focus-key]")].find((button) => button.dataset.focusKey === focusKey);
-    (next ?? element("address")).focus();
+    (next?.closest("details")?.querySelector<HTMLElement>("summary") ?? next ?? element("address")).focus();
   }
   const preferred = state?.preferences.installations.find((entry) => entry.id === state?.preferences.defaultInstallationId);
   element("default-panel").hidden = !preferred && !state?.preferences.installations.length;
@@ -274,41 +272,28 @@ function renderInstallations() {
 
 async function receiveDesktopLink() {
   const target = await invoke<DesktopLink | null>("take_desktop_link");
-  if (!target) return;
+  if (!target) return false;
   pendingDesktopLink = target;
   renderInstallations();
-  if (state?.preferences.installations.some((saved) => saved.id === target.id)) {
-    if (busy) deferredDesktopLink = target;
-    else await openDesktopLink(target);
-  }
+  if (busy) deferredDesktopLink = target;
+  else await openDesktopLink(target);
+  return true;
 }
 
-async function openDesktopLink(target: DesktopLink) {
+async function openDesktopLink(target: DesktopLink, reload = false) {
   await run(async () => {
-    state = await invoke<Snapshot>("save_installation", { address: target.origin });
     attemptedConnection = target;
     status("checking");
     const next = await transition((confirmed) => openConnection(target, {
-      id: target.id, confirmLeave: confirmed, reload: false, desktopLaunch: target.launchId
+      id: target.id, address: target.origin, confirmLeave: confirmed, reload, desktopLaunch: target.launchId
     }));
     if (next) {
       state = next; failedConnection = null;
-      if (pendingDesktopLink === target) pendingDesktopLink = null;
       element("status").textContent = "";
     }
+    if (pendingDesktopLink === target) pendingDesktopLink = null;
   });
 }
-
-element("desktop-link-review").addEventListener("click", () => {
-  if (busy || !pendingDesktopLink) return;
-  void openDesktopLink(pendingDesktopLink);
-});
-element("desktop-link-dismiss").addEventListener("click", () => {
-  if (busy) return;
-  pendingDesktopLink = null;
-  renderInstallations();
-  element("address").focus();
-});
 
 function localMediaActive(): boolean {
   return captures.isPending() || Boolean(captures.current()) || Boolean(toneContext && toneContext.state !== "closed");
@@ -587,10 +572,16 @@ async function start() {
       state = event.payload; receivedReady = event.payload; loadingTarget = null; booting = false; renderInstallations();
     });
     await listen("shell:show-home", () => { booting = false; loadingTarget = null; renderLoading(); });
-    await listen("shell:check-update", () => {
+    let trayUpdateRequested = false;
+    const showUpdater = () => {
+      trayUpdateRequested = true;
       booting = false; loadingTarget = null; renderLoading();
       element("updates-heading").scrollIntoView({ block: "center" });
       element("update-check").focus();
+    };
+    await listen("shell:check-update", () => {
+      showUpdater();
+      void invoke("take_tray_update_check");
     });
     await listen<Installation>("shell:load-failed", (event) => {
       loadingTarget = null; booting = false;
@@ -611,8 +602,10 @@ async function start() {
         if (next.phase === "ready" && !confirmPending) element("update-install").click();
       }).catch((error: unknown) => status(errorKey(error)));
     });
-    await receiveDesktopLink();
-    const preferred = startupInstallation(state, pendingDesktopLink);
+    const handoffReceived = await receiveDesktopLink();
+    const trayCheckRequested = await invoke<boolean>("take_tray_update_check");
+    if (trayCheckRequested) showUpdater();
+    const preferred = startupInstallation(state, handoffReceived || pendingDesktopLink || trayCheckRequested || trayUpdateRequested);
     if (preferred) await connect(preferred);
     booting = false; renderLoading();
     refreshReport();
@@ -650,8 +643,13 @@ for (const id of ["full-addresses", "compact-list", "installation-icons"]) {
     void run(async () => { state = await invoke<Snapshot>("desktop_settings", { operation: { kind: "display", display } }); });
   });
 }
-element("choose-another").addEventListener("click", () => { failedConnection = null; element("connection-recovery").hidden = true; element("status").textContent = ""; element("address").focus(); });
-element("retry-failed").addEventListener("click", () => { if (failedConnection) void connect(failedConnection, state?.active?.id === failedConnection.id); });
+element("choose-another").addEventListener("click", () => { failedConnection = null; pendingDesktopLink = null; element("connection-recovery").hidden = true; element("status").textContent = ""; element("address").focus(); });
+element("retry-failed").addEventListener("click", () => {
+  if (!failedConnection) return;
+  const reload = state?.active?.id === failedConnection.id;
+  if (pendingDesktopLink?.id === failedConnection.id) void openDesktopLink(pendingDesktopLink, reload);
+  else void connect(failedConnection, reload);
+});
 element("rename-cancel").addEventListener("click", () => element<HTMLDialogElement>("rename-dialog").close());
 element("rename-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -669,3 +667,5 @@ element("rename-dialog").addEventListener("close", () => {
   const trigger = [...element("installation-list").querySelectorAll<HTMLElement>("summary")].find((node) => node.dataset.focusKey === key);
   (trigger ?? element("address")).focus();
 });
+
+installationMenus(document, window);

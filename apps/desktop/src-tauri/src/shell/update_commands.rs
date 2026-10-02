@@ -4,7 +4,7 @@ use super::tray::show_shell;
 use super::trust::{report_caller_matches, trusted_shell};
 use super::Shell;
 use crate::{native_notifications, update_installer, updates};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager, WebviewWindow};
 
 #[tauri::command]
@@ -67,17 +67,69 @@ pub(crate) fn publish_update_state(app: &tauri::AppHandle) {
     }
 }
 
-/// Checking never grants installation consent and never tears down an active call.
+/// A tray request can arrive before Home's event subscriptions exist.
+#[derive(Default)]
+pub(super) struct TrayUpdateRequest {
+    review: AtomicBool,
+    deferred: AtomicBool,
+    initialized: AtomicBool,
+}
+
+impl TrayUpdateRequest {
+    fn request(&self) {
+        self.review.store(true, Ordering::Release);
+        self.deferred.store(true, Ordering::Release);
+    }
+    fn initialize(&self) { self.initialized.store(true, Ordering::Release); }
+    fn begin_pending(&self) -> bool {
+        self.initialized.load(Ordering::Acquire) && self.deferred.swap(false, Ordering::AcqRel)
+    }
+    fn take_review(&self) -> bool { self.review.swap(false, Ordering::AcqRel) }
+}
+
 pub(super) fn check_from_tray(app: &tauri::AppHandle) {
+    let request = app.state::<TrayUpdateRequest>();
+    request.request();
+    flush_tray_check(app);
+}
+
+pub(super) fn initialize_tray_check(app: &tauri::AppHandle) {
+    app.state::<TrayUpdateRequest>().initialize();
+    flush_tray_check(app);
+}
+
+fn flush_tray_check(app: &tauri::AppHandle) {
+    let request = app.state::<TrayUpdateRequest>();
+    if !request.begin_pending() {
+        return;
+    }
     show_shell(app);
     let _ = app.emit_to("shell", "shell:check-update", ());
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let updates = app.state::<updates::Updates>();
-        if tray_check_needed(updates.snapshot().phase) {
-            let _ = updates.check(&app).await;
-        }
+        let _ = check_requested(&app).await;
     });
+}
+
+#[tauri::command]
+pub(super) async fn take_tray_update_check(
+    window: WebviewWindow,
+    request: tauri::State<'_, TrayUpdateRequest>,
+) -> Result<bool, &'static str> {
+    trusted_shell(&window)?;
+    Ok(request.take_review())
+}
+
+// The button and tray share native authority; neither installs or resets a download.
+async fn check_requested(app: &tauri::AppHandle) -> Result<updates::Snapshot, &'static str> {
+    let updates = app.state::<updates::Updates>();
+    if !tray_check_needed(updates.snapshot().phase) {
+        return Ok(updates.snapshot());
+    }
+    match updates.check(app).await {
+        Err("update_busy") => Ok(updates.snapshot()),
+        result => result,
+    }
 }
 
 fn tray_check_needed(phase: &str) -> bool {
@@ -86,6 +138,22 @@ fn tray_check_needed(phase: &str) -> bool {
 
 #[cfg(test)]
 mod tray_tests {
+    #[test]
+    fn early_requests_remain_queued_and_repeated_requests_are_consumed_once() {
+        let request = super::TrayUpdateRequest::default();
+        request.request(); request.request();
+        assert!(!request.begin_pending());
+        request.initialize();
+        assert!(request.begin_pending());
+        assert!(!request.begin_pending());
+        assert!(request.take_review());
+        assert!(!request.take_review());
+        request.request();
+        assert!(request.begin_pending());
+        assert!(!request.begin_pending());
+        assert!(request.take_review());
+    }
+
     #[test]
     fn checks_only_idle_states_and_keeps_downloads_and_ready_installers() {
         for phase in ["idle", "current", "available", "error"] {
@@ -101,10 +169,9 @@ mod tray_tests {
 pub(super) async fn check_shell_update(
     app: tauri::AppHandle,
     window: WebviewWindow,
-    updates: tauri::State<'_, updates::Updates>,
 ) -> Result<updates::Snapshot, &'static str> {
     trusted_shell(&window)?;
-    updates.check(&app).await
+    check_requested(&app).await
 }
 
 #[tauri::command]

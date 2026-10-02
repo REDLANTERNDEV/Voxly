@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Translate } from "../app/types.js";
-import { HomeIcon, CloseIcon } from "./ui/Icons.js";
+import { HomeIcon, CloseIcon, RefreshIcon } from "./ui/Icons.js";
 import { applyDesktopSettings, desktopSettingsAvailable, desktopBindingLabel, desktopKeyboardBinding, desktopMouseBinding, type DesktopAction, type DesktopSettingsOperation, type DesktopSettingsSnapshot } from "../lib/desktopSettings.js";
 
 function useDesktopSettings() {
@@ -68,7 +68,6 @@ function ShortcutRow({ action, snapshot, pending, save, t, recording, onRecordin
   const [draft, setDraft] = useState<string>();
   const [invalid, setInvalid] = useState(false);
   const [recordError, setRecordError] = useState(false);
-  const row = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const edit = useRef<HTMLButtonElement>(null);
   const binding = snapshot?.preferences[`${action}Shortcut`];
@@ -102,23 +101,27 @@ function ShortcutRow({ action, snapshot, pending, save, t, recording, onRecordin
     };
   }, [recording, onRecording]);
   async function stop() {
+    if (invalid) { input.current?.focus(); return; }
     onRecording(null);
     if (draft) await save({ kind: "shortcut", action, binding: draft });
     edit.current?.focus();
   }
   const warning = recordError ? "desktopSettings.failed" : invalid && recording ? "desktopSettings.invalid" : binding && !registration ? "desktopSettings.conflict" : null;
-  return <div ref={row} className={`desktop-shortcut-row ${recording ? "is-recording" : ""}`} onBlur={(event) => { if (recording && !event.currentTarget.contains(event.relatedTarget as Node | null)) onRecording(null); }}>
+  return <div className={`desktop-shortcut-row ${recording ? "is-recording" : ""}`}>
     <div className="desktop-shortcut-description"><strong>{t(`desktopSettings.${action}`)}</strong>
-      {action === "pushToTalk" || action === "pushToMute" ? <button type="button" className="desktop-settings-link" onClick={onAudio}>{t("desktopSettings.editAudio")}</button> : null}
+      {action === "pushToTalk" || action === "pushToMute" ? <button type="button" className="btn btn-ghost desktop-audio-button" onClick={onAudio}>{t("desktopSettings.editAudio")}</button> : null}
     </div>
     <div className="desktop-shortcut-controls">
       <div className="desktop-shortcut-binding"><input ref={input} className="input" aria-label={t(`desktopSettings.${action}`)} readOnly value={recording ? draft ? desktopBindingLabel(draft) : t("desktopSettings.press") : binding ? desktopBindingLabel(binding) : t("desktopSettings.none")} />
         {binding && !recording ? <button type="button" className="icon-btn" disabled={pending} aria-label={`${t("desktopSettings.clear")}: ${t(`desktopSettings.${action}`)}`} title={t("desktopSettings.clear")} onClick={() => void save({ kind: "shortcut", action, binding: null })}><CloseIcon /></button> : null}
       </div>
+      <div className="desktop-shortcut-actions">
       <button ref={edit} type="button" className="btn desktop-record-button" disabled={!snapshot || pending} aria-pressed={recording} onClick={() => {
         if (recording) void stop();
         else { setDraft(undefined); setInvalid(false); setRecordError(false); onRecording(action); }
       }}>{t(recording ? "desktopSettings.stopRecording" : "desktopSettings.editKeybind")}</button>
+      <button type="button" className="icon-btn desktop-shortcut-reset" disabled={!snapshot || pending || recording} title={t("desktopSettings.reset")} aria-label={`${t("desktopSettings.reset")}: ${t(`desktopSettings.${action}`)}`} onClick={() => void save({ kind: "resetShortcut", action })}><RefreshIcon /></button>
+      </div>
     </div>
     <p className={`desktop-shortcut-status small ${warning ? "error-text" : "muted"}`} role="status">{warning ? t(warning) : recording ? t("desktopSettings.recordingHint") : registration ? t("desktopSettings.active") : ""}</p>
   </div>;

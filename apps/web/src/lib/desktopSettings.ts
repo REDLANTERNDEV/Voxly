@@ -23,6 +23,7 @@ export interface DesktopSettingsSnapshot {
 export type DesktopSettingsOperation =
   | { kind: "read" | "ready" | "home" | "authenticationCompleted" }
   | { kind: "default"; id: string | null; enabled: boolean }
+  | { kind: "resetShortcut"; action: DesktopAction }
   | { kind: "shortcut"; action: DesktopAction; binding: string | null }
   | { kind: "microphone"; mode: DesktopSettingsSnapshot["preferences"]["microphoneMode"] }
   | { kind: "delay"; milliseconds: number }

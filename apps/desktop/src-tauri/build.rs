@@ -22,6 +22,7 @@ fn main() {
             "acknowledge_tray",
             "quit_app",
             "shell_update_state",
+            "take_tray_update_check",
             "read_desktop_update",
             "review_desktop_update",
             "check_shell_update",

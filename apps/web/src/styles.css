@@ -6063,3 +6063,13 @@ button.reply-quote:focus-visible .reply-quote-body {
   .desktop-shortcut-controls { grid-template-columns: minmax(0, 1fr); }
   .desktop-record-button { justify-self: start; }
 }
+
+.workspace-rail-bottom { display: grid; gap: 8px; flex: 0 0 auto; }
+.settings-section-header > div { flex: 1; }
+.settings-section-header .settings-close { width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 10px; }
+.device-card .theme-card-head { min-width: 0; flex-wrap: wrap; }
+.device-card .theme-card-head .label { white-space: normal; overflow-wrap: anywhere; }
+.desktop-shortcut-actions { display: flex; align-items: center; gap: 8px; }
+.desktop-shortcut-reset { min-width: 44px; min-height: 44px; }
+.desktop-audio-button { justify-self: start; width: fit-content; min-height: 36px; font-size: 12px; padding: 8px 12px; }
+.language-switch select { cursor: pointer; border-radius: inherit; }

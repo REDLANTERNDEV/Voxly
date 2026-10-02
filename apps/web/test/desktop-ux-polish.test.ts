@@ -62,7 +62,8 @@ describe("desktop UX polish", () => {
     assert.match(auth, /request\.expiresInSeconds \* 1000/);
     const composer = readFileSync("src/features/chat/TextRoomScreen.tsx", "utf8");
     assert.match(composer, /<footer className="composer" onMouseDown/);
-    assert.match(composer, /event\.target === event\.currentTarget \|\| .*tagName === "FORM"/);
+    assert.match(composer, /!event\.target\.closest\("button, a, input, textarea, select, label, \[role=button\], \.composer-reply"\)/);
+    assert.match(composer, /!window\.getSelection\(\)\?\.toString\(\)/);
     assert.match(composer, /event\.preventDefault\(\); composerRef\.current\?\.focus\(\)/);
   });
 });

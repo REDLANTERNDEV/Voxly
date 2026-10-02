@@ -143,6 +143,16 @@ pub(super) async fn set_push_to_talk_release_delay(
     Ok(snapshot(&inner))
 }
 
+pub(super) async fn reset_shortcut(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    action: shortcuts::Action,
+) -> Result<ShellSnapshot, &'static str> {
+    trusted_settings(&window, &shell).await?;
+    change_shortcut(app, window, shell, None, action, true).await
+}
+
 async fn set_shortcut(
     app: tauri::AppHandle,
     window: WebviewWindow,
@@ -150,13 +160,28 @@ async fn set_shortcut(
     binding: Option<String>,
     action: shortcuts::Action,
 ) -> Result<ShellSnapshot, &'static str> {
+    change_shortcut(app, window, shell, binding, action, false).await
+}
+
+async fn change_shortcut(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    shell: tauri::State<'_, Shell>,
+    binding: Option<String>,
+    action: shortcuts::Action,
+    reset: bool,
+) -> Result<ShellSnapshot, &'static str> {
     if !cfg!(target_os = "windows") {
         return Err("unsupported_platform");
     }
     let mut inner = shell.inner.lock().await;
     validate_settings_caller(&window, &shell, &inner)?;
     let mut next = inner.preferences.clone();
-    next.set_binding(action, binding);
+    if reset {
+        next.reset_shortcut(action)?;
+    } else {
+        next.set_binding(action, binding);
+    }
     next.validate_shortcuts()?;
     let mut registration = inner.shortcuts[action.index()].clone();
     let current = registration.active.clone();

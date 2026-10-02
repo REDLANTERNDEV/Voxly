@@ -21,6 +21,7 @@
     "allow-set-language",
     "allow-acknowledge-tray",
     "allow-shell-update-state",
+    "allow-take-tray-update-check",
     "allow-check-shell-update",
     "allow-download-shell-update",
     "allow-cancel-shell-update",

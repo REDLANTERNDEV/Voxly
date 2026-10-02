@@ -70,13 +70,13 @@ export function PreferencesCard({
 
 export function LanguageSwitch({ language, t, onLanguageChange }: { language: LanguageCode; t: Translate; onLanguageChange: (language: LanguageCode) => void }) {
   return (
-    <div className="language-switch">
+    <label className="language-switch">
       <svg className="language-switch-globe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c-2.6 2.5-4 5.5-4 9s1.4 6.5 4 9c2.6-2.5 4-5.5 4-9s-1.4-6.5-4-9Z" /></svg>
       <select aria-label={t("common.language")} value={language} onChange={(event) => onLanguageChange(event.currentTarget.value as LanguageCode)}>
         {(["en", "tr"] as const).map((option) => <option key={option} value={option}>{languageLabel(option)}</option>)}
       </select>
       <svg className="language-switch-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-    </div>
+    </label>
   );
 }
 

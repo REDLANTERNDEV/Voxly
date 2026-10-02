@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 pub(super) fn run() {
     tauri::Builder::default()
         .manage(deep_links::PendingLink::default())
+        .manage(super::update_commands::TrayUpdateRequest::default())
         // Register first, before any other plugin initializes a webview.
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
             if let Some(target) = deep_links::from_args(&args) {
@@ -57,6 +58,7 @@ pub(super) fn run() {
             super::installation::acknowledge_tray,
             super::installation::quit_app,
             super::update_commands::shell_update_state,
+            super::update_commands::take_tray_update_check,
             super::update_commands::read_desktop_update,
             super::update_commands::review_desktop_update,
             super::update_commands::check_shell_update,
@@ -163,6 +165,7 @@ pub(super) fn run() {
                     }
                 }
             });
+            super::update_commands::initialize_tray_check(app.handle());
             // Validate the original, bounded URI rather than a plugin-normalized
             // URL. The same parser handles single-instance forwarded arguments.
             if cfg!(windows) {

@@ -8,7 +8,6 @@ import { NavLink } from "../../components/ui/Navigation.js";
 import { ControlButton } from "../../components/ui/Primitives.js";
 import { type TranslationKey } from "../../lib/i18n.js";
 import { ApplicationUpdateStatus } from "../ApplicationUpdateStatus.js";
-import { useApplicationUpdates } from "../../lib/applicationUpdates.js";
 import type { ConnectionHealth } from "../../lib/useConnectionHealth.js";
 import type { VoiceQuality } from "../../lib/useVoiceQuality.js";
 import { controlPresentation } from "../../lib/voiceControls.js";
@@ -22,7 +21,6 @@ type VoiceDockProps = Pick<ShellModel,
 > & { connectedCount: number; onOpenSettings: () => void };
 
 export function VoiceDock(props: VoiceDockProps) {
-  const { desktop } = useApplicationUpdates();
   const canManageServer = activeServerRole(props) === "owner";
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const roomName = props.activeVoiceRoomId
@@ -74,7 +72,6 @@ export function VoiceDock(props: VoiceDockProps) {
           </summary>
           <div className="account-menu-panel">
             <strong>{props.currentNickname}</strong>
-            {desktop ? <span className="account-app-version">Voxly v{desktop.currentVersion}</span> : null}
             <ApplicationUpdateStatus t={props.t} menu onSelect={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); }} />
             <button className="btn btn-ghost account-settings-link" type="button" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); props.onOpenSettings(); }}><GearIcon /><span>{props.t("settings.open")}</span></button>
             {canManageServer ? <NavLink className="btn btn-ghost account-owner-link" href={`/app/server/${encodeURIComponent(props.activeServerId)}/owner`} label={props.t("owner.panel")} onNavigate={props.onNavigate}><ShieldIcon /><span>{props.t("owner.panel")}</span></NavLink> : null}
