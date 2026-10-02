@@ -108,6 +108,7 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
             ) : null}
             {section === "audio" ? (
               <>
+              {props.microphoneHealthWarning ? <p className="microphone-health-warning" role="status">{props.t("audio.captureFault")}</p> : null}
               <AudioDeviceSettings
                 inline
                 showNotificationSounds={false}

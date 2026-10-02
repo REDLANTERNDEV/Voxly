@@ -6,6 +6,7 @@ import type {
   MusicControlAck,
   MusicQueueState,
   MusicSetLogAction,
+  VoiceSnapshot,
   VoiceMemberState
 } from "@voxly/shared";
 import { translate, type TranslationKey } from "../src/lib/i18n.js";
@@ -20,6 +21,7 @@ import {
   musicSetLogRows,
   musicTransport,
   requestMusicCommand,
+  requestJoinedMusicCommand,
   trackAddedMessage,
   trackLength,
   transportToggleCommand
@@ -149,6 +151,18 @@ describe("asking for music", () => {
       }
     };
   }
+
+  it("guards stale client command paths until this Device has confirmed voice membership", async () => {
+    const { sent, socket } = socketDouble();
+    const command = { kind: "play" } as const;
+    const snapshot = { roomId: "lobby", viewerInVoiceRoom: true, members: [bot] };
+    for (const [active, state] of [[null, snapshot], ["elsewhere", snapshot], ["lobby", { ...snapshot, viewerInVoiceRoom: false }], ["lobby", { ...snapshot, members: [] }]] as Array<[string | null, VoiceSnapshot]>) {
+      assert.deepEqual(await requestJoinedMusicCommand(socket, "lobby", command, active, state, bot.user.userId), { ok: false, error: "not_in_voice_room" });
+    }
+    assert.equal(sent.length, 0);
+    await requestJoinedMusicCommand(socket, "lobby", command, "lobby", snapshot, bot.user.userId);
+    assert.equal(sent.length, 1);
+  });
 
   it("sends the pasted link for the named room and resolves with the Track", async () => {
     const { sent, socket } = socketDouble({ ok: true, kind: "track", track });
@@ -880,7 +894,7 @@ describe("the control's placement", () => {
     // control there would be a button that only ever produces an error. The
     // leading `viewedRoomId &&` matters: without it two nulls compare equal and
     // the panel renders for no room at all.
-    assert.match(voiceRoom, /viewedRoomId && props\.activeVoiceRoomId === viewedRoomId \? \(\s*<MusicPanel/);
+    assert.match(voiceRoom, /inViewedVoiceRoom \? \(\s*<MusicPanel/);
   });
 
   it("reads playback from the published Queue rather than remembering a press", () => {

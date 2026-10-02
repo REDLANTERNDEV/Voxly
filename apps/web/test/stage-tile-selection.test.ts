@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { stageTileSelection } from "../src/features/voice/stageTileSelection.js";
+import { stageClickAction,stageTileSelection } from "../src/features/voice/stageTileSelection.js";
 
 const camera = { key: "alex:camera", target: { publisherUserId: "alex", kind: "camera" as const } };
 const screen = { key: "mina:screen", target: { publisherUserId: "mina", kind: "screen" as const } };
@@ -24,6 +24,10 @@ describe("stage tile selection", () => {
 
 const stageSource = readFileSync(new URL("../../src/features/voice/VoicePresentation.tsx", import.meta.url), "utf8");
 it("dismisses the focused stage through the same source toggle without covering volume or fullscreen controls", () => {
-  assert.match(stageSource, /source.key === focusedSource\?\.key \? onDismiss\(source\) : onFocus\(source.key\)/);
+  assert.equal(stageClickAction(true, true), "exit-fullscreen");
+  assert.equal(stageClickAction(true, false), "exit-fullscreen");
+  assert.equal(stageClickAction(false, true), "dismiss");
+  assert.equal(stageClickAction(false, false), "focus");
+  assert.match(stageSource, /stageClickAction\(document.fullscreenElement === stageRef.current/);
   assert.match(stageSource, /onClick=\{toggleFullscreen\}/);
 });

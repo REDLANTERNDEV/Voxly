@@ -1,8 +1,8 @@
+import { AuthEntryFrame } from "./AuthEntryFrame.js";
 import { useCallback, useState } from "react";
 import { redeemRecoveryCode } from "../../api.js";
 import type { Translate } from "../../app/types.js";
 import { TurnstileWidget } from "./InviteScreen.js";
-import { AuthPageHeader } from "../../components/ui/Primitives.js";
 import type { LanguageCode } from "../../lib/i18n.js";
 import { formatRecoveryCodeInput, isCompleteRecoveryCode } from "../../lib/linkCodeInput.js";
 import { readRecoverGuideDismissed, writeRecoverGuideDismissed } from "../../lib/linkGuide.js";
@@ -48,7 +48,7 @@ export function RecoverScreen({ language, t, onLanguageChange, onRecovered, turn
       onRecovered();
     } catch {
       // One answer for unknown, spent and superseded, matching the server.
-      setError(t("recovery.invalid"));
+      setError("recovery.invalid");
       if (turnstileSiteKey) {
         setTurnstileToken("");
         setTurnstileResetKey((value) => value + 1);
@@ -59,8 +59,8 @@ export function RecoverScreen({ language, t, onLanguageChange, onRecovered, turn
   }, [code, t]);
 
   return (
-    <main className="landing link-screen">
-      <AuthPageHeader language={language} t={t} onLanguageChange={onLanguageChange} />
+    <AuthEntryFrame language={language} t={t} onLanguageChange={onLanguageChange}>
+
       {guiding ? (
         <section className="link-panel">
           <strong>{t("recovery.guideTitle")}</strong>
@@ -122,7 +122,7 @@ export function RecoverScreen({ language, t, onLanguageChange, onRecovered, turn
               onUnavailable={() => setTurnstileToken("")}
             />
           ) : null}
-          {error ? <p className="small device-error" role="alert">{error}</p> : null}
+          {error ? <p className="small device-error" role="alert">{t("recovery.invalid")}</p> : null}
           <button className="btn btn-primary" type="submit" disabled={busy || !isCompleteRecoveryCode(code) || (Boolean(turnstileSiteKey) && !turnstileToken)}>
             {t("recovery.continue")}
           </button>
@@ -132,6 +132,6 @@ export function RecoverScreen({ language, t, onLanguageChange, onRecovered, turn
           </button>
         </form>
       )}
-    </main>
+    </AuthEntryFrame>
   );
 }

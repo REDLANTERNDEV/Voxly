@@ -1,9 +1,9 @@
+import { AuthEntryFrame } from "./AuthEntryFrame.js";
 import type { PublicUser } from "@voxly/shared";
 import { useEffect,useState } from "react";
 import { claimAccessLink,claimOwnerSession } from "../../api.js";
 import type { Translate } from "../../app/types.js";
 import { NavLink } from "../../components/ui/Navigation.js";
-import { AuthPageHeader } from "../../components/ui/Primitives.js";
 import { type LanguageCode } from "../../lib/i18n.js";
 export function OwnerClaimScreen({ token, language, t, onLanguageChange, onClaimed }: { token: string; language: LanguageCode; t: Translate; onLanguageChange: (language: LanguageCode) => void; onClaimed: (user: PublicUser) => void }) {
   const [status, setStatus] = useState<"loading" | "danger">("loading");
@@ -33,10 +33,10 @@ export function OwnerClaimScreen({ token, language, t, onLanguageChange, onClaim
   }, [onClaimed, token]);
 
   return (
-    <main className="invite-shell">
+    <AuthEntryFrame language={language} t={t} onLanguageChange={onLanguageChange}>
       <div className="invite-layout invite-layout-simple">
         <section className="invite-card">
-          <AuthPageHeader subtitle={t("ownerClaim.label")} language={language} t={t} onLanguageChange={onLanguageChange} />
+
           <div>
             <p className="label">{t("ownerClaim.label")}</p>
             <h1>{t("ownerClaim.title")}</h1>
@@ -48,7 +48,7 @@ export function OwnerClaimScreen({ token, language, t, onLanguageChange, onClaim
           </div>
         </section>
       </div>
-    </main>
+    </AuthEntryFrame>
   );
 }
 
@@ -74,15 +74,15 @@ export function AccessClaimScreen({ token, language, t, onLanguageChange, onNavi
   }, [onClaimed, token]);
 
   return (
-    <main className="invite-shell">
+    <AuthEntryFrame language={language} t={t} onLanguageChange={onLanguageChange}>
       <section className="invite-card">
-        <AuthPageHeader language={language} t={t} onLanguageChange={onLanguageChange} />
+
         <div className={`invite-status ${status === "danger" ? "is-danger" : "is-loading"}`} aria-live="polite">
           <strong>{status === "danger" ? t("accessClaim.invalid") : t("accessClaim.restoring")}</strong>
           <span className="muted small">{status === "danger" ? t("accessClaim.invalidCopy") : t("accessClaim.restoringCopy")}</span>
         </div>
         {status === "danger" ? <NavLink className="btn btn-primary full-width" href="/invite" onNavigate={onNavigate}><span>{t("landing.haveInvite")}</span></NavLink> : null}
       </section>
-    </main>
+    </AuthEntryFrame>
   );
 }

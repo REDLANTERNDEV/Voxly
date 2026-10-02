@@ -374,6 +374,20 @@ export function registerServerRoutes(context: RouteContext) {
     return { server: { id: serverId, name, role: "owner" as const, canInvite: true } };
   });
 
+  fastify.patch("/api/servers/:serverId/rooms/:roomId", async (request, reply) => {
+    const scope = requireOwnedServer(context, request, reply, { roomId: roomIdParam });
+    if (!scope) return;
+    const { owner, serverId, roomId } = scope;
+    const { name } = z.object({ name: roomNameSchema }).strict().parse(request.body);
+    const current = roomById(database.sqlite, roomId);
+    if (!current || current.serverId !== serverId) return reply.code(404).send({ error: "room_not_found" });
+    run(database.sqlite, "update rooms set name = ? where id = ? and server_id = ?", [name, roomId, serverId]);
+    audit(database, owner.id, "room.renamed", null, serverId);
+    database.save();
+    io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
+    return { room: { ...current, name } };
+  });
+
   fastify.delete("/api/servers/:serverId/rooms/:roomId", async (request, reply) => {
     const scope = requireOwnedServer(context, request, reply, { roomId: roomIdParam });
     if (!scope) return;

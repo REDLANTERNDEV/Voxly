@@ -18,7 +18,7 @@ import { joinVoiceWithAudioUnlock } from "./features/voice/voiceActions.js";
 import { combineOutputVolume } from "./lib/audioLevels.js";
 import { releaseUnusedSharedAudioOutput,unlockSharedAudioOutput } from "./lib/audioOutput.js";
 import { readRoomHistory,type RoomHistory } from "./lib/channelState.js";
-import { requestMusicCommand } from "./lib/musicBot.js";
+import { requestJoinedMusicCommand } from "./lib/musicBot.js";
 import { useMusicQueue } from "./lib/useMusicQueue.js";
 import { defaultServerId } from "./lib/navigation.js";
 import { DEFAULT_VOLUME_PERCENT } from "./lib/voiceVolume.js";
@@ -38,7 +38,6 @@ export function App() {
   forceLeaveNoticeRef.current = (reason) => setForceLeaveNotice((current) => ({ reason, revision: (current?.revision ?? 0) + 1 }));
   const checkStillSignedInRef = useRef<() => Promise<void>>(async () => undefined);
   const notifyMessageRef = useRef<(message: ChatMessage) => void>(() => undefined);
-
   const navigate = useCallback((path: string) => {
     window.history.pushState(null, "", path);
     const nextRoute = parseRoute(path);
@@ -149,7 +148,6 @@ export function App() {
     if (route.name === "voice") audio.voice.requestSnapshot(route.roomId);
   }, [route, audio.voice.requestSnapshot]);
   useEffect(() => { notifyMessageRef.current = audio.notifyMessage; }, [audio.notifyMessage]);
-
   const renderSurface = (surface: ReactNode) => session.user ? (
     <AuthenticatedAppSurface connectionHealth={audio.connectionHealth} t={t} audio={<>
       <GlobalVoiceAudio
@@ -165,7 +163,6 @@ export function App() {
       {surface}
     </AuthenticatedAppSurface>
   ) : surface;
-
   const user = session.user;
   const currentNickname = user
     ? workspace.serverMembers.find((member) => member.userId === user.id)?.nickname
@@ -192,7 +189,7 @@ export function App() {
     controls: audio.voice.controls,
     voiceModeration: audio.voice.voiceModeration,
     micLockedByRoom: Boolean(audio.voice.activeRoomId && workspace.afkRoomIds.includes(audio.voice.activeRoomId)),
-    appConfig: session.appConfig,
+    appConfig: session.appConfig, microphoneHealthWarning: audio.voice.microphoneHealthWarning,
     voiceError: audio.voice.error || session.rtcConfigError,
     voiceErrorRevision: audio.voice.error ? audio.voice.errorRevision : session.rtcConfigErrorRevision,
     voiceNotice: forceLeaveNotice ? forceLeaveNoticeKey(forceLeaveNotice.reason) : "",
@@ -232,6 +229,7 @@ export function App() {
     onCreateRoom: workspace.actions.createRoom,
     onCreateCategory: workspace.actions.createCategory, onRenameCategory: workspace.actions.renameCategory,
     onDeleteCategory: workspace.actions.deleteCategory, onSaveRoomLayout: workspace.actions.saveRoomLayout,
+    onRenameRoom: workspace.actions.renameRoom,
     onDeleteRoom: workspace.actions.deleteRoom,
     onDeleteServer: workspace.actions.deleteServer,
     onModerateMember: workspace.actions.moderateMember,
@@ -253,7 +251,8 @@ export function App() {
     onLiveWatchHandled: () => audio.setPendingLiveWatch(null),
     onRequestVoiceSnapshot: audio.voice.requestSnapshot,
     onSetVisualSubscriptions: audio.voice.setVisualSubscriptions,
-    onMusicControl: (roomId: string, command: MusicCommand) => requestMusicCommand(realtime.socket, roomId, command),
+    onMusicControl: (roomId: string, command: MusicCommand) => requestJoinedMusicCommand(realtime.socket, roomId, command,
+      audio.voice.activeRoomId, audio.voice.voiceSnapshots[roomId], user.id),
     onMemberVolumeChange: audio.changeMemberVolume,
     onScreenVolumeChange: audio.changeScreenVolume,
     onInputVolumeChange: (volume: number) => audio.changeAudioLevel("input", volume),
@@ -278,6 +277,7 @@ export function App() {
     user={user}
     authState={session.authState}
     rtcConfigReady={session.rtcConfigReady}
+    workspaceReady={workspace.workspaceReady} workspaceError={workspace.workspaceError}
     shellProps={shellProps}
     messages={route.name === "text" ? chat.messagesByRoom[route.roomId] ?? [] : []}
     language={language}

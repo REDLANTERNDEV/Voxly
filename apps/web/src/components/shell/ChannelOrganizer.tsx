@@ -467,8 +467,8 @@ export function ChannelOrganizer({
                       moveTo: (categoryId) => moveRoomTo(room.id, categoryId),
                       moveUp: () => { void persist(moveRoomBy(localGroups, room.id, -1)); },
                       moveDown: () => { void persist(moveRoomBy(localGroups, room.id, 1)); },
-                      canMoveUp: roomIndex > 0,
-                      canMoveDown: roomIndex < group.rooms.length - 1
+                      canMoveUp: roomIndex > 0 && (Boolean(category) || group.rooms[roomIndex - 1]?.kind === room.kind),
+                      canMoveDown: roomIndex < group.rooms.length - 1 && (Boolean(category) || group.rooms[roomIndex + 1]?.kind === room.kind)
                     })}
                   </div>
                 </Fragment>

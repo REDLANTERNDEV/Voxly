@@ -4,7 +4,7 @@ import { ApiError } from "../../api.js";
 import { serverPath } from "../../app/navigation.js";
 import { activeServerRole,canInviteToActiveServer,initial,voiceMembersForRoom } from "../../app/presentation.js";
 import type { MemberAction,ShellActions,ShellModel,Translate } from "../../app/types.js";
-import { ConfirmDialog } from "../../components/ui/Dialogs.js";
+import { ChannelNameDialog,ConfirmDialog } from "../../components/ui/Dialogs.js";
 import { CameraIcon, GearIcon, HeadsetIcon, MicIcon, ScreenIcon } from "../../components/ui/Icons.js";
 import { NavLink } from "../../components/ui/Navigation.js";
 import { canOwnerModeratePerson,canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
@@ -24,7 +24,7 @@ type ChannelRailProps = Pick<ShellModel,
   "servers" | "socketState" | "t" | "theme" | "unreadByRoom" | "user" |
   "voiceModeration" | "voiceSnapshots" | "micLockedByRoom"
 > & Pick<ShellActions,
-  "onCloseAudioSettings" | "onCreateRoom" | "onCreateCategory" | "onRenameCategory" | "onDeleteCategory" | "onSaveRoomLayout" | "onDeleteRoom" |
+  "onCloseAudioSettings" | "onCreateRoom" | "onCreateCategory" | "onRenameCategory" | "onDeleteCategory" | "onSaveRoomLayout" | "onRenameRoom" | "onDeleteRoom" |
   "onInputVolumeChange" | "onJoinVoice" | "onLanguageChange" |
   "onMemberVolumeChange" | "onNavigate" | "onNoiseSuppressionChange" |
   "onNotificationSoundsChange" | "onOutputVolumeChange" |
@@ -41,6 +41,7 @@ export function ChannelRail(props: ChannelRailProps) {
   const canManageServer = activeServerRole(props) === "owner";
   const canInvite = canInviteToActiveServer(props);
   const activeServer = props.servers.find((server) => server.id === props.activeServerId);
+  const [renameTarget, setRenameTarget] = useState<{ room: RoomSummary; trigger: HTMLButtonElement | null } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RoomSummary | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [moveTarget, setMoveTarget] = useState<RoomSummary | null>(null);
@@ -75,6 +76,7 @@ export function ChannelRail(props: ChannelRailProps) {
       categories={categoryChoices}
       actions={actions}
       disabled={props.rooms.text.length + props.rooms.voice.length <= 1}
+      onRename={(trigger) => setRenameTarget({ room, trigger })}
       onRequest={() => setDeleteTarget(room)}
       t={props.t}
     /> : null;
@@ -144,7 +146,7 @@ export function ChannelRail(props: ChannelRailProps) {
             const hasActions = isRemote || canRename || canModerate || canAssignRoles || !isRemote;
             const menuKey = `rail-member:${member.user.userId}`;
             return <div
-              className={`voice-channel-user ${member.media.speaking && member.media.mic && !member.media.deafened && !member.moderation.muted ? "is-speaking" : ""}`}
+              className={`voice-channel-user ${props.activeVoiceRoomId === room.id && props.voiceSnapshots[room.id]?.viewerInVoiceRoom && member.media.speaking && member.media.mic && !member.media.deafened && !member.moderation.muted ? "is-speaking" : ""}`}
               key={member.user.userId}
               tabIndex={hasActions ? 0 : undefined}
               onContextMenu={hasActions ? (event) => openSidebarMenuFromPointer(event, props.actionMenu, menuKey, 220, menuHeight) : undefined}
@@ -256,6 +258,8 @@ export function ChannelRail(props: ChannelRailProps) {
         <span>{props.t("settings.open")}</span>
       </button>
       {deleteError ? <p className="error-text" aria-live="polite">{deleteError}</p> : null}
+      {renameTarget ? <ChannelNameDialog key={renameTarget.room.id} name={renameTarget.room.name} returnFocus={renameTarget.trigger}
+        t={props.t} onCancel={() => setRenameTarget(null)} onSave={(name) => props.onRenameRoom(renameTarget.room.id, name)} /> : null}
       {deleteTarget ? <ConfirmDialog cancelLabel={props.t("common.cancel")}
         title={props.t("room.deleteTitle", { channel: deleteTarget.name })}
         copy={props.t("room.deleteCopy")}
@@ -300,7 +304,7 @@ export function ChannelRail(props: ChannelRailProps) {
 }
 
 function channelActionMenuHeight() {
-  return 194;
+  return 234;
 }
 
 export function ChannelDeleteControl({
@@ -310,6 +314,7 @@ export function ChannelDeleteControl({
   actions,
   disabled,
   onRequest,
+  onRename,
   t
 }: {
   actionMenu: SidebarActionMenuController;
@@ -318,6 +323,7 @@ export function ChannelDeleteControl({
   actions: ChannelRoomActions;
   disabled: boolean;
   onRequest: () => void;
+  onRename?: (trigger: HTMLButtonElement | null) => void;
   t: Translate;
 }) {
   const menuKey = `channel:${room.id}`;
@@ -328,6 +334,10 @@ export function ChannelDeleteControl({
       <SidebarMenuTrigger actionMenu={actionMenu} menuKey={menuKey} label={label} menuWidth={220} menuHeight={menuHeight} />
       {actionMenu.active?.key === menuKey ? (
         <ContextMenu descriptor={actionMenu.active} label={label} onClose={actionMenu.close}>
+          {onRename ? <button type="button" role="menuitem" onClick={() => {
+            const trigger = actionMenu.active?.trigger ?? null;
+            actionMenu.close(); onRename(trigger);
+          }}>{t("channel.rename")}</button> : null}
           <label className="channel-move-menu-field">
             <span>{t("channel.moveTo")}</span>
             <select className="input" aria-label={t("channel.moveTo")} value={room.categoryId ?? ""} onChange={(event) => {

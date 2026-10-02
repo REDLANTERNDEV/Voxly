@@ -1776,3 +1776,55 @@ select {
   .settings-section-header { padding: 18px 16px; }
   .settings-section-header h2 { font-size: 20px; }
 }
+
+/* Server creation and the selected server have independent action groups. */
+.owner-current-server, .owner-new-server { display: grid; gap: 20px; min-width: 0; }
+.owner-new-server h2 { font-size: 18px; line-height: 26px; }
+.owner-new-server { border-top: 1px solid var(--border); padding-top: 24px; }
+.owner-new-server h2, .owner-new-server p, .owner-server-danger h3, .owner-server-danger p { margin: 0; }
+.owner-server-danger { align-items: start; border-top: 1px solid var(--border-soft); display: flex; gap: 20px; justify-content: space-between; padding-top: 20px; }
+.owner-server-danger h3 { font-size: 14px; margin-bottom: 6px; }
+.owner-server-danger p { max-width: 60ch; }
+.owner-server-danger .btn { flex-shrink: 0; }
+.owner-current-server .owner-server-rename-form, .owner-new-server .owner-server-create-form { grid-column: auto; width: 100%; }
+
+.stream-unwatched-background { background: radial-gradient(ellipse at 28% 32%, var(--graphite-c), transparent 68%), radial-gradient(ellipse at 76% 68%, var(--preview-edge), transparent 62%), var(--preview-fill); filter: blur(14px); inset: -16px; position: absolute; pointer-events: none; }
+.stream-watch-label { background: var(--accent); border: 1px solid var(--border-strong); border-radius: 6px; color: var(--accent-on); font-size: 14px; font-weight: 600; padding: 10px 16px; position: relative; }
+.voice-stream-watch { overflow: hidden; position: relative; }
+.stage-back { flex-shrink: 0; }
+
+/* Account entry routes share one stable frame and surface vocabulary. */
+.account-entry { background: var(--bg); box-sizing: border-box; display: grid; min-height: 100dvh; align-items: center; justify-items: center; padding: 32px 20px; }
+.account-entry-shell { display: grid; gap: 24px; min-width: 0; width: min(100%, 480px); }
+.account-entry .auth-page-header { max-width: none; }
+.account-entry-content { min-width: 0; }
+.account-entry .invite-layout { display: block; width: 100%; }
+.account-entry .invite-card, .account-entry .link-panel { animation: none; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: none; box-sizing: border-box; display: grid; gap: 20px; margin: 0; max-width: none; min-width: 0; padding: 24px; width: 100%; }
+.account-entry h1 { font-size: 28px; letter-spacing: -0.03em; line-height: 1.2; }
+.account-entry h1, .account-entry p { margin: 0; }
+.account-entry .invite-status { border-radius: 6px; padding: 12px; }
+.account-entry .desktop-link-fallback { margin-top: 20px; }
+.account-entry .desktop-link-fallback > summary { margin-bottom: 12px; }
+.account-entry-loading { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--muted); padding: 24px; }
+
+.app-shell-skeleton { background: var(--bg); }
+.skeleton-workspaces { display: none; }
+@media (min-width: 901px) {
+  .app-shell-skeleton { grid-template-columns: 52px var(--sidebar) minmax(0, 1fr) var(--memberbar); padding: 10px 10px calc(var(--dock) + 10px); }
+  .skeleton-workspaces { display: grid; padding: 8px 4px; }
+  .skeleton-workspaces .skeleton-line { border-radius: 8px; height: 40px; }
+}
+@media (max-width: 900px) {
+  .app-shell-skeleton { grid-template-rows: 52px minmax(0, 1fr); min-height: 100dvh; }
+  .app-shell-skeleton::before { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; content: ""; }
+  .app-shell-skeleton .skeleton-main { grid-row: 2; }
+  .owner-server-danger { flex-direction: column; }
+}
+@media (max-width: 480px) {
+  .account-entry { padding: 24px 16px; }
+  .account-entry .invite-card, .account-entry .link-panel { padding: 20px; }
+  .screen-stage-bar { flex-wrap: wrap; }
+}
+
+.microphone-health-warning { color: var(--warn); display: flex; flex-wrap: wrap; font-size: 12px; gap: 4px 8px; line-height: 1.4; min-width: 0; }
+.microphone-health-warning .btn { font-size: inherit; padding: 0; min-height: 0; text-decoration: underline; }

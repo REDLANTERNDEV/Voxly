@@ -13,7 +13,7 @@ describe("desktop UX polish", () => {
     const html = renderToStaticMarkup(createElement(AppRoutes, {
       route: { name: "text", serverId: "fixture", roomId: "fixture" },
       user: { id: "fixture", nickname: "Mira", role: "member", bannedAt: null },
-      authState: "error", rtcConfigReady: false, shellProps: null, messages: [],
+      authState: "error", rtcConfigReady: false, workspaceReady: false, workspaceError: false, shellProps: null, messages: [],
       language: "en", timeFormat: "auto", t: (key, values) => translate("en", key, values),
       renderSurface: (surface) => surface, turnstileSiteKey: null, analytics: null, signedOutReason: "",
       completeAuthentication() {}, async loadAcceptedServer() {}, onOwnerClaimed() {}, onAccessClaimed() {},

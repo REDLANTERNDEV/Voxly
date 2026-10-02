@@ -1,3 +1,4 @@
+import { AuthEntryFrame } from "../features/auth/AuthEntryFrame.js";
 import type { ChatMessage,ChatMessageReply,PublicUser } from "@voxly/shared";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AppShellSkeleton } from "../components/AppShellSkeleton.js";
@@ -22,11 +23,13 @@ import { desktopLaunchFromSearch, desktopLaunchId } from "../lib/desktopLinks.js
 import { desktopSurfaceReady, startupSurface } from "../lib/startupSurface.js";
 import type { LoadState,Route,ShellActions,ShellModel,Translate } from "./types.js";
 
-export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, messages, language, timeFormat, t, renderSurface, turnstileSiteKey, analytics, signedOutReason, completeAuthentication, loadAcceptedServer, onOwnerClaimed, onAccessClaimed, navigate, changeLanguage, textRoomOutbox, textRoomActions }: {
+export function AppRoutes({ workspaceReady, workspaceError, route, user, authState, rtcConfigReady, shellProps, messages, language, timeFormat, t, renderSurface, turnstileSiteKey, analytics, signedOutReason, completeAuthentication, loadAcceptedServer, onOwnerClaimed, onAccessClaimed, navigate, changeLanguage, textRoomOutbox, textRoomActions }: {
   route: Route;
   user: PublicUser | null;
   authState: LoadState;
   rtcConfigReady: boolean;
+  workspaceReady: boolean;
+  workspaceError: boolean;
   shellProps: (ShellModel & ShellActions) | null;
   messages: ChatMessage[];
   language: LanguageCode;
@@ -70,17 +73,21 @@ export function AppRoutes({ route, user, authState, rtcConfigReady, shellProps, 
     if (existingDesktopSession) navigate("/");
   }, [existingDesktopSession, navigate]);
   useEffect(() => {
-    const usable = desktopSurfaceReady({ routeName: route.name, authState, desktopLaunch: arrivingDesktopLaunch, existingDesktopSession, authenticated: Boolean(user), rtcConfigReady });
+    const usable = desktopSurfaceReady({ routeName: route.name, authState, desktopLaunch: arrivingDesktopLaunch, existingDesktopSession, authenticated: Boolean(user), rtcConfigReady, workspaceReady, workspaceError });
     if (!reportedReady.current && usable && desktopSettingsAvailable(window)) {
       reportedReady.current = true;
       void applyDesktopSettings({ kind: "ready" }).catch(() => { reportedReady.current = false; });
     }
-  }, [authState, existingDesktopSession, arrivingDesktopLaunch, rtcConfigReady, route.name, user]);
+  }, [authState, existingDesktopSession, arrivingDesktopLaunch, rtcConfigReady, workspaceReady, workspaceError, route.name, user]);
+  if (startupSurface(route.name, authState, arrivingDesktopLaunch) === "entry-loading") return <AuthEntryFrame language={language} t={t} onLanguageChange={changeLanguage}><p className="account-entry-loading" role="status">{t("system.loadingVoxly")}</p></AuthEntryFrame>;
   if (existingDesktopSession) return renderSurface(<AppShellSkeleton t={t} />);
   if (startupSurface(route.name, authState, arrivingDesktopLaunch) === "shell-skeleton") return renderSurface(<AppShellSkeleton t={t} />);
   if (arrivingDesktopLaunch && authState === "error") return renderSurface(<FatalState t={t} />);
   if (authState === "error" && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<FatalState t={t} />);
+  const workspaceRoute = route.name === "text" || route.name === "voice" || route.name === "owner" || route.name === "landing";
+  if (user && workspaceRoute && workspaceError) return renderSurface(<FatalState t={t} />);
   if (user && !rtcConfigReady && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<AppShellSkeleton t={t} />);
+  if (user && workspaceRoute && !workspaceReady) return renderSurface(<AppShellSkeleton t={t} />);
   if (route.name === "owner-claim") {
     return renderSurface(<OwnerClaimScreen token={route.token} language={language} t={t} onLanguageChange={changeLanguage} onClaimed={onOwnerClaimed} />);
   }

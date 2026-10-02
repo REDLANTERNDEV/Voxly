@@ -16,7 +16,7 @@ function fixture(mic: boolean, manualMic = true) {
     route: { name: "voice", roomId: "room" }, rooms: { text: [], voice: [] },
     controls, socketState: "live", microphoneTestActive: false, micLockedByRoom: false,
     voiceModeration: { muted: false, deafened: false },
-    voiceSnapshots: { room: { roomId: "room", members: [{
+    voiceSnapshots: { room: { roomId: "room", viewerInVoiceRoom: true, members: [{
       user: { userId: "self", nickname: "Me", role: "member" },
       media: { mic, camera: false, screen: false, deafened: false, speaking: false },
       moderation: { muted: false, deafened: false }

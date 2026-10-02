@@ -176,6 +176,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           onRenameCategory={props.onRenameCategory}
           onDeleteCategory={props.onDeleteCategory}
           onSaveRoomLayout={props.onSaveRoomLayout}
+          onRenameRoom={props.onRenameRoom}
           onDeleteRoom={props.onDeleteRoom}
           onInputVolumeChange={props.onInputVolumeChange}
           onJoinVoice={props.onJoinVoice}
@@ -252,6 +253,8 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         connectionHealth={props.connectionHealth}
         voiceQuality={props.voiceQuality}
         voiceSnapshots={props.voiceSnapshots}
+        microphoneHealthWarning={props.microphoneHealthWarning}
+        onOpenAudioSettings={() => openSettings("audio")}
         onOpenSettings={() => openSettings()}
         controls={props.controls}
         currentNickname={props.currentNickname}

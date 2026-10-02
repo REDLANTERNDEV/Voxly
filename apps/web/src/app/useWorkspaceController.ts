@@ -1,6 +1,6 @@
 import type { AfkTimeoutMinutes,CategorySummary,PresenceStatus,PresenceUser,PublicUser,RoomSummary,ServerRoomLayout,VoiceModerationState } from "@voxly/shared";
 import { useCallback,useEffect,useMemo,useRef,useState,type RefObject } from "react";
-import { createServer,createServerCategory,createServerRoom,deleteServer,deleteServerCategory,deleteServerRoom,disconnectVoiceMember,fetchServerDirectory,fetchServerRooms,fetchServers,moderateServerMember,moveVoiceMember,renameServerCategory,updateServer,updateServerAfkTimeout,updateServerMemberNickname,updateServerMemberPermissions,updateServerRoomLayout,updateVoiceModeration } from "../api.js";
+import { createServer,createServerCategory,createServerRoom,deleteServer,deleteServerCategory,deleteServerRoom,disconnectVoiceMember,fetchServerDirectory,fetchServerRooms,fetchServers,moderateServerMember,moveVoiceMember,renameServerCategory,renameServerRoom,updateServer,updateServerAfkTimeout,updateServerMemberNickname,updateServerMemberPermissions,updateServerRoomLayout,updateVoiceModeration } from "../api.js";
 import { resolveRememberedRoom,roomsForServer,type RoomHistory } from "../lib/channelState.js";
 import { currentServerPresence } from "../lib/memberDirectory.js";
 import { replacePresenceUser,replaceServerPresenceUserIfPresent } from "../lib/memberIdentity.js";
@@ -23,6 +23,8 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
   const [servers, setServers] = useState<ServerSummary[]>([]);
 
   const [serverListReady, setServerListReady] = useState(false);
+  const [serverListError, setServerListError] = useState(false);
+  const [roomsLoad, setRoomsLoad] = useState<{ serverId: string; state: "loading" | "ready" | "error" }>({ serverId: "", state: "loading" });
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [categories, setCategories] = useState<CategorySummary[]>([]);
   const [uncategorizedPosition, setUncategorizedPosition] = useState(0);
@@ -128,36 +130,41 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
     }
     let mounted = true;
     setServerListReady(false);
+    setServerListError(false);
     fetchServers().then((response) => {
       if (!mounted) return;
       setServers(response.servers);
       setServerListReady(true);
-      if (route.name === "landing" && response.servers[0]) {
-        void fetchServerRooms(response.servers[0].id).then((result) => {
-          const target = result.rooms.find((room) => room.kind === "text") ?? result.rooms[0];
-          if (target && mounted) navigate(serverPath(response.servers[0].id, target.kind, target.id));
-        });
-      }
-    }).catch(() => { if (mounted) { setServers([]); setServerListReady(true); } });
+      if (response.servers.length === 0) navigate("/invite");
+    }).catch(() => { if (mounted) { setServers([]); setServerListReady(true); setServerListError(true); } });
     return () => { mounted = false; };
-  }, [navigate, route.name, user]);
+  }, [navigate, user?.id]);
 
   useEffect(() => {
-    if (!user || !activeServerId) return;
+    if (!user || !serverListReady || serverListError || !servers.some((server) => server.id === activeServerId)) return;
     let mounted = true;
+    setRoomsLoad({ serverId: activeServerId, state: "loading" });
     fetchServerRooms(activeServerId).then((response) => {
-      if (mounted) { indexRooms(response.rooms); setRooms(response.rooms); setCategories(response.categories); setUncategorizedPosition(response.uncategorizedPosition); }
-    }).catch(() => { if (mounted) { setRooms([]); setCategories([]); setUncategorizedPosition(0); } });
+      if (mounted) { indexRooms(response.rooms); setRooms(response.rooms); setCategories(response.categories); setUncategorizedPosition(response.uncategorizedPosition); setRoomsLoad({ serverId: activeServerId, state: "ready" });
+
+      }
+    }).catch(() => { if (mounted) { setRooms([]); setCategories([]); setUncategorizedPosition(0); setRoomsLoad({ serverId: activeServerId, state: "error" }); } });
     fetchServerDirectory(activeServerId).then((response) => {
       if (mounted) setServerMembersByServer((current) => ({ ...current, [activeServerId]: response.members }));
     }).catch(() => { if (mounted) setServerMembersByServer((current) => ({ ...current, [activeServerId]: [] })); });
     return () => { mounted = false; };
-  }, [activeServerId, indexRooms, user]);
+  }, [activeServerId, indexRooms, navigate, serverListReady, serverListError, user?.id]);
 
   useEffect(() => {
-    if (route.name !== "owner") return;
+    if (user && route.name === "landing" && serverListReady && roomsLoad.serverId === activeServerId && roomsLoad.state === "ready") {
+      navigate(activeRooms.length ? firstServerRoomPath(activeServerId, activeRooms) : "/invite");
+    }
+  }, [user?.id, route.name, serverListReady, roomsLoad, activeServerId, activeRooms, navigate]);
+
+  useEffect(() => {
+    if (route.name !== "owner" && route.name !== "text" && route.name !== "voice") return;
     const membership = servers.find((server) => server.id === route.serverId);
-    if (membership?.role === "owner" || !serverListReady) return;
+    if (!serverListReady || serverListError || (membership && (route.name !== "owner" || membership.role === "owner"))) return;
     let cancelled = false;
     const fallbackId = membership?.id ?? servers[0]?.id;
     if (!fallbackId) { navigate("/invite"); return; }
@@ -167,7 +174,7 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
       navigate(target ? serverPath(fallbackId, target.kind, target.id) : "/invite");
     }).catch(() => { if (!cancelled) navigate("/invite"); });
     return () => { cancelled = true; };
-  }, [navigate, route, serverListReady, servers]);
+  }, [navigate, route, serverListReady, serverListError, servers]);
 
   // A member update can flip the viewer's own invite grant, so the server list —
   // which gates every invite affordance in the shell — has to follow it live.
@@ -203,6 +210,11 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
       indexRooms([response.room]);
       setRooms((current) => [...current.filter((room) => room.id !== response.room.id), response.room].sort((a, b) => a.position - b.position));
       navigate(serverPath(activeServerId, response.room.kind, response.room.id));
+    },
+    renameRoom: async (roomId: string, name: string) => {
+      const serverId = activeServerId;
+      const response = await renameServerRoom(serverId, roomId, name);
+      setRooms((current) => current.map((room) => room.id === roomId && room.serverId === serverId ? response.room : room));
     },
     createCategory: async (name: string) => {
       const response = await createServerCategory(activeServerId, name);
@@ -252,6 +264,8 @@ export function useWorkspaceController({ user, route, navigate, roomHistory, roo
       const path = desktopNotificationPath(target, roomServerIdsRef.current, servers);
       if (user && path) navigate(path);
     },
+    workspaceReady: serverListReady && roomsLoad.serverId === activeServerId && roomsLoad.state === "ready",
+    workspaceError: serverListError || (roomsLoad.serverId === activeServerId && roomsLoad.state === "error"),
     servers, rooms, categories: categories.filter((category) => category.serverId === activeServerId), uncategorizedPosition, serverListReady, activeServerId, onlineUsers, serverMembers, activeRooms, currentRoom, roomGroups, voiceRoomIds, afkRoomIds,
     afkTimeoutsByServerRef,
     afkRoomIdsByServerRef,

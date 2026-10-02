@@ -9,3 +9,8 @@ export function stageTileSelection(selectedKeys: ReadonlySet<string>, source: { 
     focusKey: source.key
   };
 }
+
+/** Fullscreen is a view of the stage; leaving it must retain the subscription. */
+export function stageClickAction(fullscreen: boolean, focused: boolean) {
+  return fullscreen ? "exit-fullscreen" as const : focused ? "dismiss" as const : "focus" as const;
+}

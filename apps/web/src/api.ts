@@ -285,6 +285,13 @@ export async function updateServerRoomLayout(serverId: string, layout: ServerRoo
   });
 }
 
+export async function renameServerRoom(serverId: string, roomId: string, name: string) {
+  return request<{ room: RoomSummary }>(`/api/servers/${encodeURIComponent(serverId)}/rooms/${encodeURIComponent(roomId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name })
+  });
+}
+
 export async function deleteServerRoom(serverId: string, roomId: string) {
   await request<void>(`/api/servers/${encodeURIComponent(serverId)}/rooms/${encodeURIComponent(roomId)}`, {
     method: "DELETE"

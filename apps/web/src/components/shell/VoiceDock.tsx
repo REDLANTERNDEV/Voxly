@@ -15,10 +15,10 @@ type VoiceDockProps = Pick<ShellModel,
   "activeServerId" | "activeVoiceRoomId" | "connectionHealth" | "controls" |
   "currentNickname" | "currentRoom" | "microphoneTestActive" | "route" |
   "rooms" | "servers" | "socketState" | "t" | "user" | "voiceModeration" | "micLockedByRoom" |
-  "voiceQuality" | "voiceSnapshots"
+  "voiceQuality" | "voiceSnapshots" | "microphoneHealthWarning"
 > & Pick<ShellActions,
   "onJoinVoice" | "onLeaveVoice" | "onLogout" | "onNavigate" | "onToggleControl"
-> & { connectedCount: number; onOpenSettings: () => void };
+> & { connectedCount: number; onOpenSettings: () => void; onOpenAudioSettings?: () => void };
 
 export function VoiceDock(props: VoiceDockProps) {
   const canManageServer = activeServerRole(props) === "owner";
@@ -43,6 +43,10 @@ export function VoiceDock(props: VoiceDockProps) {
         <ConnectionSignal health={props.connectionHealth} quality={props.voiceQuality} inCall={Boolean(props.activeVoiceRoomId)} t={props.t} />
         <span className="dock-status"><strong>{roomName}</strong></span>
         </div>
+        {props.microphoneHealthWarning ? <span className="microphone-health-warning" role="status">
+          <span>{props.t("audio.captureFault")}</span>
+          <button className="btn btn-ghost" type="button" onClick={props.onOpenAudioSettings ?? props.onOpenSettings}>{props.t("audio.openSettings")}</button>
+        </span> : null}
         <ApplicationUpdateStatus t={props.t} />
       </div>
       <div className="dock-controls">

@@ -219,6 +219,12 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   preference to its own graph; a shared monitor branch inherits the voice
   graph, including its suppression stage, and must not open a second device.
 
+- Automatic capture-health warnings observe raw track availability and processing
+  state on the existing graph. Ordinary silence and zero samples never imply a
+  fault. Debounce temporary failures for five seconds, exclude intentional
+  publication gates and background suspension, and reset on graph replacement.
+  An ended source remains unpublished until explicitly restarted.
+
 ## Speaking Detection
 
 - Speaking detection reads float time-domain samples, never the 8-bit view: one

@@ -37,7 +37,6 @@ export function OwnerServerContext({
   const [afkStatus, setAfkStatus] = useState("");
   const [name, setName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
-  const [showCreate, setShowCreate] = useState(false);
   const [error, setError] = useState("");
   const [renameName, setRenameName] = useState("");
   const [renameStatus, setRenameStatus] = useState("");
@@ -51,16 +50,11 @@ export function OwnerServerContext({
   }, [activeServer?.id, activeServer?.name]);
 
   return (
-    <section className="owner-server-context" aria-labelledby="ownerServerContextTitle">
+    <div className="owner-server-context">
+      <section className="owner-current-server" aria-labelledby="ownerServerContextTitle">
       <div className="owner-server-context-copy">
-        <h2 id="ownerServerContextTitle">{t("owner.serverContextTitle")}</h2>
-      </div>
-      <div className="owner-server-actions">
-        <button className="btn btn-primary" type="button" aria-expanded={showCreate} aria-controls="owner-server-create-form" onClick={() => {
-          setShowCreate((current) => !current);
-          setError("");
-        }}><PlusIcon /><span>{t("server.create")}</span></button>
-        <button className="btn btn-danger" type="button" disabled={ownerServers.length <= 1} onClick={onRequestDelete}><TrashIcon /><span>{t("server.delete")}</span></button>
+        <h2 id="ownerServerContextTitle">{t("server.current", { server: activeServer?.name ?? "" })}</h2>
+        <p className="muted small">{t("server.currentCopy")}</p>
       </div>
       <form className="owner-server-rename-form" onSubmit={(event) => {
         event.preventDefault();
@@ -120,11 +114,19 @@ export function OwnerServerContext({
         <span className="muted small">{t("owner.afkTimeoutHint")}</span>
         <span className="small" aria-live="polite">{afkStatus}</span>
       </label>
-      {showCreate ? <form className="owner-server-create-form" id="owner-server-create-form" onSubmit={(event) => {
+      <div className="owner-server-danger">
+        <div><h3>{t("server.delete")}</h3><p className="muted small">{t("server.deleteCopy")}</p></div>
+        <button className="btn btn-danger" type="button" disabled={ownerServers.length <= 1} onClick={onRequestDelete}><TrashIcon /><span>{t("server.delete")}</span></button>
+      </div>
+      </section>
+      <section className="owner-new-server" aria-labelledby="ownerServerCreateTitle">
+      <h2 id="ownerServerCreateTitle">{t("server.createNew")}</h2>
+      <p className="muted small">{t("server.createCopy")}</p>
+      <form className="owner-server-create-form" id="owner-server-create-form" onSubmit={(event) => {
         event.preventDefault();
         const nextName = name.trim();
-        if (!nextName) {
-          setError(t("server.nameRequired"));
+        if (nextName.length < 2 || nextName.length > 64) {
+          setError(t("server.nameLength"));
           return;
         }
         setIsCreating(true);
@@ -132,15 +134,15 @@ export function OwnerServerContext({
         void onCreate(nextName)
           .then(() => {
             setName("");
-            setShowCreate(false);
           })
           .catch(() => setError(t("server.createFailed")))
           .finally(() => setIsCreating(false));
       }}>
         <label className="form-field" htmlFor="ownerServerName"><span>{t("server.name")}</span><input className="input" id="ownerServerName" name="ownerServerName" value={name} onChange={(event) => setName(event.currentTarget.value)} autoComplete="off" maxLength={64} /></label>
-        <button className="btn btn-primary" type="submit" disabled={isCreating}><span>{isCreating ? t("server.creating") : t("server.create")}</span></button>
+        <button className="btn btn-primary" type="submit" disabled={isCreating}><PlusIcon /><span>{isCreating ? t("server.creating") : t("server.create")}</span></button>
         {error ? <p className="error-text" aria-live="polite">{error}</p> : null}
-      </form> : null}
-    </section>
+      </form>
+      </section>
+    </div>
   );
 }

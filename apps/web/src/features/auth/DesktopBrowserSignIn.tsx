@@ -1,3 +1,4 @@
+import { AuthEntryFrame } from "./AuthEntryFrame.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PublicUser } from "@voxly/shared";
 import {
@@ -9,7 +10,6 @@ import {
   type DesktopAuthorization
 } from "../../api.js";
 import type { Translate } from "../../app/types.js";
-import { AuthPageHeader } from "../../components/ui/Primitives.js";
 import { rememberCompletedDesktopAuthentication } from "../../lib/desktopSettings.js";
 import { desktopLaunchFromSearch } from "../../lib/desktopLinks.js";
 import type { LanguageCode } from "../../lib/i18n.js";
@@ -178,8 +178,8 @@ export function DesktopBrowserApproval({ id, user, authState, language, t, onLan
   };
 
   return (
-    <main className="landing link-screen">
-      <AuthPageHeader language={language} t={t} onLanguageChange={onLanguageChange} />
+    <AuthEntryFrame language={language} t={t} onLanguageChange={onLanguageChange}>
+
       <section className="link-panel">
         <strong>{t("desktopSignIn.approvalTitle")}</strong>
         {loading ? <p className="muted small">{t("common.checking")}</p>
@@ -199,6 +199,6 @@ export function DesktopBrowserApproval({ id, user, authState, language, t, onLan
               ) : <p className="muted small">{t("desktopSignIn.expired")}</p>}
         {error ? <p className="device-error small" role="alert">{t("desktopSignIn.failed")}</p> : null}
       </section>
-    </main>
+    </AuthEntryFrame>
   );
 }

@@ -1,3 +1,4 @@
+import { stepMicrophoneHealth,type MicrophoneHealthState } from "./microphoneHealth.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isRtcRecoveryRequest } from "@voxly/shared";
 import type {
@@ -121,6 +122,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const [remoteStreams, setRemoteStreams] = useState<RemoteStreamState[]>([]);
   const [peerConnectionStates, setPeerConnectionStates] = useState<Record<string, PeerConnectionState>>({});
   const [localPreviews, setLocalPreviews] = useState<LocalPreviewState[]>([]);
+  const [microphoneHealthWarning, setMicrophoneHealthWarning] = useState(false);
   const [microphoneMonitorStream, setMicrophoneMonitorStream] = useState<MediaStream | null>(null);
   const [error, setErrorState] = useState<VoiceErrorKey | "">("");
   const [errorRevision, setErrorRevision] = useState(0);
@@ -894,6 +896,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   // Reached when the capture is gone and no replacement is coming: the device
   // was unplugged, or a reopen failed after the previous capture was released.
   const handleMicrophoneLost = useCallback((message: VoiceErrorKey) => {
+    const shouldWarn = Boolean(roomRef.current && controlsRef.current.mic.on && !controlsRef.current.deafen.on
+      && !moderationRef.current.muted && !micLockedByRoom() && document.visibilityState === "visible");
     desktopMicrophone.resetHolds();
     desktopMicrophoneTransitionRef.current += 1;
     speakingRef.current = false;
@@ -907,6 +911,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     };
     controlsRef.current = nextControls;
     setControls(nextControls);
+    setMicrophoneHealthWarning(shouldWarn);
     setError(message);
     void emitMediaState({ mic: false, speaking: false });
     persistVoiceResume();
@@ -918,6 +923,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     desktopMicrophone.apply(input.voiceStream.getAudioTracks(), requested
       && !controlsRef.current.deafen.on && !moderationRef.current.muted && !micLockedByRoom());
     microphoneInputRef.current = input;
+    setMicrophoneHealthWarning(false);
     localStreamsRef.current.mic = input.voiceStream;
     setMicrophoneMonitorStream(input.monitorStream);
     microphoneEndedCleanupRef.current = watchMicrophoneStreamEnd(input.rawStream, () => {
@@ -927,13 +933,15 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     startSpeakingMonitor(input);
   }, [handleMicrophoneLost, startSpeakingMonitor]);
 
+  const visualSubscriptionRequest = useRef(0);
   const setVisualSubscriptions = useCallback(async (targets: VisualTarget[]) => {
     if (!socket || !roomRef.current) {
       return { ok: false, error: "not_in_voice_room" } as const;
     }
     const roomId = roomRef.current;
+    const request = ++visualSubscriptionRequest.current;
     const response = await requestVisualSubscriptions(socket, { roomId, targets });
-    if (response.ok && roomRef.current === roomId) {
+    if (response.ok && roomRef.current === roomId && request === visualSubscriptionRequest.current) {
       visualTargetsRef.current = response.targets;
       setVisualTargets(response.targets);
       persistVoiceResume(response.targets);
@@ -1189,6 +1197,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   }, [activateMicrophoneInput, activeRoomId, microphoneDeviceId, prepareMicrophoneInput, stopStream]);
 
   const leave = useCallback(() => {
+    visualSubscriptionRequest.current += 1;
+    setMicrophoneHealthWarning(false);
     desktopMicrophone.resetHolds();
     desktopMicrophoneTransitionRef.current += 1;
     if (roomRef.current) voiceDiagnostics.end();
@@ -1247,12 +1257,28 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       await emitMediaState({ mic: false, speaking: false });
     }
     if (!stream) {
+      const roomId = roomRef.current;
+      if (!roomId) return;
+      const requestId = ++microphoneSwitchRef.current;
+      const joinAttempt = joinAttemptRef.current;
+      const deviceId = microphoneDeviceIdRef.current;
+      let expectedInput = microphoneInputRef.current;
+      const isCurrentCapture = () => requestId === microphoneSwitchRef.current
+        && joinAttempt === joinAttemptRef.current && roomRef.current === roomId
+        && microphoneDeviceIdRef.current === deviceId && microphoneInputRef.current === expectedInput
+        && !controlsRef.current.deafen.on && !moderationRef.current.muted && !micLockedByRoom();
       setError("");
       try {
-        const rawStream = await pendingCaptures.run(() => openMicrophoneCapture({ deviceId: microphoneDeviceIdRef.current }));
+        const rawStream = await pendingCaptures.run(() => openMicrophoneCapture({ deviceId }));
+        // Permission prompts can outlive leave, a new join, or a device change.
+        if (!isCurrentCapture()) {
+          rawStream.getTracks().forEach((track) => track.stop());
+          return;
+        }
         const input = prepareMicrophoneInput(rawStream);
         stream = input.voiceStream;
         activateMicrophoneInput(input, true);
+        expectedInput = input;
         const requestedControls: VoiceControls = {
           ...controlsRef.current,
           mic: { ...controlsRef.current.mic, on: true }
@@ -1266,9 +1292,12 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         controlsRef.current = nextControls;
         setControls(nextControls);
         await emitMediaState({ mic: media.mic, speaking: false });
+        if (!isCurrentCapture()) return;
         persistVoiceResume();
         renegotiatePeers();
       } catch {
+        if (!isCurrentCapture()) return;
+        setMicrophoneHealthWarning(document.visibilityState === "visible");
         setError("voiceError.microphonePermissionDenied");
       }
       return;
@@ -1784,6 +1813,38 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     }
   }, [leave, user]);
 
+  useEffect(() => {
+    let observedInput: MicrophoneInput | null = null;
+    let state: MicrophoneHealthState = { faultSince: null, warning: false };
+    let unwatch = () => {};
+    const check = () => {
+      const input = microphoneInputRef.current;
+      if (!input || !roomRef.current) { unwatch(); observedInput = null; return; }
+      if (input !== observedInput) {
+        unwatch(); observedInput = input; state = { faultSince: null, warning: false };
+        const tracks = [...input.rawStream.getAudioTracks(), ...input.voiceStream.getAudioTracks()];
+        const changed = () => { if (microphoneInputRef.current === input) check(); };
+        for (const track of tracks) { track.addEventListener("mute", changed); track.addEventListener("unmute", changed); track.addEventListener("ended", changed); }
+        unwatch = () => { for (const track of tracks) { track.removeEventListener("mute", changed); track.removeEventListener("unmute", changed); track.removeEventListener("ended", changed); } };
+      }
+      const track = input.rawStream.getAudioTracks()[0];
+      const publication = input.voiceStream.getAudioTracks()[0];
+      state = stepMicrophoneHealth(state, {
+        expected: controlsRef.current.mic.on && !controlsRef.current.deafen.on
+          && !moderationRef.current.muted && !micLockedByRoom() && desktopMicrophone.allows()
+          && !pendingCaptures.isPending() && !pendingJoin.isPending() && publication?.enabled !== false,
+        visible: document.visibilityState === "visible",
+        live: track?.readyState === "live" && publication?.readyState === "live",
+        unavailable: track?.muted === true,
+        contextState: input.diagnostics?.().contextState ?? "running",
+        now: Date.now()
+      });
+      setMicrophoneHealthWarning(state.warning);
+    };
+    const timer = window.setInterval(check, 1_000);
+    return () => { window.clearInterval(timer); unwatch(); };
+  }, []);
+
   const getDesktopCallState = useCallback(() => {
     const report = desktopCallState({
       inVoice: Boolean(roomRef.current),
@@ -1808,6 +1869,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     leave,
     localPreviews,
     microphoneMonitorStream,
+    microphoneHealthWarning,
     peerConnections,
     recoverPeer,
     confirmPeerAudioRecovered,

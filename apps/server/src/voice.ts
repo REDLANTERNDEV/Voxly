@@ -130,6 +130,8 @@ export interface VoiceRealtime {
    * from a caller's own copy of it.
    */
   isVoiceMember: (roomId: string, userId: string) => boolean;
+  /** Whether this connection holds the current call, rather than another Device. */
+  isVoiceSocketMember: (roomId: string, userId: string, socket: VoxlySocket) => boolean;
   /** Drop the voice membership a disconnecting socket still holds. */
   leaveAllRooms: (socket: VoxlySocket, userId: string) => void;
   /** Owner-initiated disconnect of one member from one voice room. */
@@ -172,6 +174,9 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
     },
     isVoiceMember(roomId, userId) {
       return context.membership.get(roomId)?.has(userId) === true;
+    },
+    isVoiceSocketMember(roomId, userId, socket) {
+      return isVoiceSocketMember(context, roomId, userId, socket);
     },
     leaveAllRooms(socket, userId) {
       // Only the Device holding the call may end it by going away. A laptop
@@ -394,7 +399,7 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
       callAck(ack, { roomId: parsed.data, viewerInVoiceRoom: false, members: [] });
       return;
     }
-    const viewerInVoiceRoom = socket.rooms.has(`voice:${parsed.data}`);
+    const viewerInVoiceRoom = isVoiceSocketMember(context, parsed.data, user.userId, socket);
     callAck(ack, voiceSnapshot(parsed.data, context.membership.get(parsed.data), viewerInVoiceRoom, viewerInVoiceRoom));
   }));
 
@@ -411,7 +416,7 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
     }
     const members = context.membership.get(parsed.data.roomId);
     const current = members?.get(user.userId);
-    if (!members || !current) {
+    if (!members || !current || !isVoiceSocketMember(context, parsed.data.roomId, user.userId, socket)) {
       callAck(ack, { ok: false, error: "not_in_voice_room" });
       return;
     }
@@ -439,6 +444,10 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
       callAck(ack, { ok: false, error: "invalid_payload" });
       return;
     }
+    if (!isVoiceSocketMember(context, parsed.data.roomId, user.userId, socket)) {
+      callAck(ack, { ok: false, error: "not_in_voice_room" });
+      return;
+    }
     callAck(ack, setVisualSubscriptions(context, user.userId, parsed.data));
   }));
 
@@ -448,13 +457,21 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
       callAck(ack, { ok: false, error: "room_not_found" });
       return;
     }
-    if (!socket.rooms.has(`voice:${parsed.data.roomId}`)
-      || context.membership.get(parsed.data.roomId)?.get(user.userId)?.mediaInstanceId !== socket.data.voiceMediaInstanceId) {
+    if (!isVoiceSocketMember(context, parsed.data.roomId, user.userId, socket)) {
       callAck(ack, { ok: false, error: "not_in_voice_room" });
       return;
     }
     callAck(ack, forwardRtcSignal(context, user.userId, parsed.data));
   }));
+}
+
+function isVoiceSocketMember(context: VoiceContext, roomId: string, userId: string, socket: VoxlySocket): boolean {
+  const holder = context.holders.get(userId);
+  const member = context.membership.get(roomId)?.get(userId);
+  return Boolean(member && holder?.roomId === roomId
+    && holder.sessionId === socket.data.sessionId
+    && socket.rooms.has(`voice:${roomId}`)
+    && member.mediaInstanceId === socket.data.voiceMediaInstanceId);
 }
 
 /**

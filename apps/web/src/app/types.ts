@@ -54,6 +54,7 @@ export interface ShellModel {
   voiceModeration: VoiceModerationState;
   /** The active voice room closes the microphone for everyone in it. */
   micLockedByRoom: boolean;
+  microphoneHealthWarning?: boolean;
   appConfig: AppConfigResponse;
   voiceError: VoiceErrorKey | "";
   voiceErrorRevision: number;
@@ -106,6 +107,7 @@ export interface ShellActions {
   onRenameCategory: (categoryId: string, name: string) => Promise<void>;
   onDeleteCategory: (categoryId: string) => Promise<void>;
   onSaveRoomLayout: (layout: ServerRoomLayout) => Promise<void>;
+  onRenameRoom: (roomId: string, name: string) => Promise<void>;
   onDeleteRoom: (roomId: string) => Promise<void>;
   onDeleteServer: () => Promise<void>;
   onModerateMember: (userId: string, action: "ban" | "unban" | "kick") => Promise<void>;

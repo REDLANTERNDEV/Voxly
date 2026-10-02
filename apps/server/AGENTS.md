@@ -346,6 +346,11 @@ reaches the bot, and nothing more. What the bot then does goes back through
 `voice:join`, `voice:setMediaState` and `rtc:signal`, where the ordinary checks
 apply to it unchanged.
 
+- Voice commands authenticate the requesting connection through
+  `VoiceRealtime.isVoiceSocketMember`: room, holder session, joined socket room,
+  and media instance must match. Another Device on the same Account is an
+  observer until it joins. Apply this check to music, media updates, visual
+  subscriptions, direct snapshot detail, and RTC signaling.
 - `music:control` is authorized against *live voice membership*, not server
   membership. Being in the room is the permission — it is what makes it the
   asker's room to change — and the answer comes from `VoiceRealtime` rather than
@@ -441,6 +446,9 @@ before changing it.
   and counted by the last-room floor. The server enforces nothing about who may
   be in it and needs no dedicated move endpoint — being parked is a normal
   `voice:join`, which already handles leaving the previous room atomically.
+- Channel renaming uses owner-scoped PATCH, the existing 2–64 character name
+  contract, in-place persistence, and an audit event. Preserve room IDs,
+  category/order, messages, AFK status, and live membership.
 - Every change to a server's room list is announced on `server:roomsChanged` to
   that server's room, creation included. Members hold a cached room list, so a
   route that mutates rooms and stays silent leaves a new channel invisible until

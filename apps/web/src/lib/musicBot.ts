@@ -15,6 +15,7 @@ import type {
   MusicSearchResult,
   MusicSetLogAction,
   MusicTrackSummary,
+  VoiceSnapshot,
   VoiceMemberState
 } from "@voxly/shared";
 import type { TranslationKey } from "./i18n.js";
@@ -127,6 +128,15 @@ export function requestMusicCommand(
   return new Promise((resolve) => {
     socket.emit("music:control", { roomId, command }, resolve);
   });
+}
+
+/** Only the confirmed voice connection may send room controls. */
+export function requestJoinedMusicCommand(socket: MusicSocket | null, roomId: string, command: MusicCommand,
+  activeRoomId: string | null, snapshot: VoiceSnapshot | undefined, userId: string): Promise<MusicControlAck> {
+  if (activeRoomId !== roomId || !snapshot?.viewerInVoiceRoom || !snapshot.members.some((member) => member.user.userId === userId)) {
+    return Promise.resolve({ ok: false, error: "not_in_voice_room" });
+  }
+  return requestMusicCommand(socket, roomId, command);
 }
 
 /**
