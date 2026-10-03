@@ -86,7 +86,7 @@ jobs:
           if (!$env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Updater signing secret is required' }
           node apps/desktop/scripts/release.mjs prepare
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run bundle -w @voxly/desktop -- --locked --config $env:VOXLY_DESKTOP_RELEASE_CONFIG
+          npm run bundle -w @voxly/desktop -- --config $env:VOXLY_DESKTOP_RELEASE_CONFIG
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify selected Windows signing mode
         run: |
