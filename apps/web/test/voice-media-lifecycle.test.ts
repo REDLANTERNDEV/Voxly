@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { readFileSync } from "node:fs";
+import { readFileSync as readFileSyncRaw } from "node:fs";
 import { createElement, type ComponentType, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AuthenticatedAppSurface } from "../src/app/AuthenticatedAppSurface.js";
 import { joinVoiceWithAudioUnlock } from "../src/features/voice/voiceActions.js";
 import { ensureOfferableAudioSection } from "../src/lib/voiceMedia.js";
 import { readAppSource } from "./app-source.js";
+
+function readSource(path: string) {
+  // Source-contract assertions should not depend on the checkout's line endings.
+  return readFileSyncRaw(path, "utf8").replace(/\r\n/g, "\n");
+}
 
 describe("voice snapshot reconciliation", () => {
   it("moves a LIVE card selection into voice without a second confirmation", () => {
@@ -19,7 +24,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("supports receive-only joins and lazily opens the microphone", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
 
     assert.match(source, /interface VoiceJoinOptions[\s\S]*?microphoneEnabled\?: boolean/);
     assert.match(source, /options\.microphoneEnabled\s*\?\?\s*true/);
@@ -79,7 +84,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("releases unused audio playback in the canonical voice leave path", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
     const leave = source.match(/const leave = useCallback\(\(\) => \{[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
 
     assert.match(leave, /releaseUnusedSharedAudioOutput\(\)/);
@@ -101,7 +106,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("handles Back/Forward as route changes without leaving or remounting voice", () => {
-    const app = readFileSync("src/App.tsx", "utf8");
+    const app = readSource("src/App.tsx");
     const pop = app.match(/const handlePop = \(\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
     assert.match(pop, /parseRoute\(window.location.pathname\)/);
     assert.match(pop, /setRoute\(nextRoute\)/);
@@ -141,7 +146,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("runs peer reconciliation for acknowledged and pushed snapshots", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
     const acknowledgedSnapshots = source.match(/socket\.emit\("voice:snapshot"[\s\S]{0,240}applyVoiceSnapshot\(nextSnapshot\)/g) ?? [];
 
     assert.equal(acknowledgedSnapshots.length, 2);
@@ -149,7 +154,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("closes stale media peers when signaling disconnects", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
 
     const disconnect = source.match(/const onDisconnect = \(\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
     assert.match(disconnect, /closePeers\(\)/);
@@ -157,7 +162,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("cancels failed-peer recovery after an authoritative member leave", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
 
     assert.match(source, /activeVoiceMemberUserIdsRef\.current = activeMemberUserIds/);
     assert.match(source, /\.\.\.peerRecoveryTimersRef\.current\.keys\(\)/);
@@ -165,13 +170,13 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("preserves visual subscriptions during transient peer recovery", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
 
     assert.match(source, /removePeer\(peerUserId, \{[\s\S]*?preserveVisualSubscriptions: true,[\s\S]*?preserveRecoveryState: true/);
   });
 
   it("rejoins with effective media before requesting reconnect snapshots", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
     const recovery = source.match(/const attemptRecovery = async \(\) => \{([\s\S]*?)\n    \};\n    const onConnect/)?.[1] ?? "";
 
     const effectiveStateIndex = recovery.indexOf("effectiveVoiceMediaState(");
@@ -187,7 +192,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("retries connected recovery until join and visual subscriptions are acknowledged", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
 
     assert.match(source, /const recoveryRetryTimerRef = useRef<number \| null>\(null\)/);
     assert.match(source, /const recoveryAttemptInFlightRef = useRef\(false\)/);
@@ -199,7 +204,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("uses the acknowledged atomic join for explicit room entry", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
     const join = source.match(/const join = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
 
     assert.match(join, /effectiveVoiceMediaState\(/);
@@ -210,7 +215,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("derives undeafen and ended microphone state from live tracks", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
     const setDeafened = source.match(/const setDeafened = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
 
     assert.match(source, /watchMicrophoneStreamEnd\(/);
@@ -219,7 +224,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("preserves only the pre-deafen microphone preference through undeafen", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
     const toggleMic = source.match(/const toggleMic = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
     const setDeafened = source.match(/const setDeafened = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
 
@@ -237,7 +242,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("retains microphone intent for recovery while a lost microphone stays unpublished", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
     const handleMicrophoneLost = source.match(/const handleMicrophoneLost = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
     const activateMicrophoneInput = source.match(/const activateMicrophoneInput = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
 
@@ -249,7 +254,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("does not treat a microphone selection as a socket reconnect", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
     const join = source.match(/const join = useCallback[\s\S]*?\n  }, \[([^\]]*)\]\);/) ?? [];
 
     assert.match(source, /const microphoneDeviceIdRef = useRef\(microphoneDeviceId\)/);
@@ -262,7 +267,7 @@ describe("voice snapshot reconciliation", () => {
     // Regression: the preference used to release the device and reopen it,
     // which took seconds, published silence in between, and could end with no
     // microphone at all if the reopen failed.
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
     const effect = source.match(/useEffect\(\(\) => \{\n    noiseSuppressionRef\.current = noiseSuppression;[\s\S]*?\n  }, \[([^\]]*)\]\);/) ?? [];
 
     assert.match(source, /const noiseSuppressionRef = useRef\(noiseSuppression\)/);
@@ -272,13 +277,13 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("initializes the optional worklet with the current preference", () => {
-    const source = readFileSync("src/lib/microphoneInput.ts", "utf8");
+    const source = readSource("src/lib/microphoneInput.ts");
 
     assert.match(source, /processorOptions: \{ enabled: noiseSuppression \}/);
   });
 
   it("reopens the capture for a device change and for nothing else", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
     const effect = source.match(/useEffect\(\(\) => \{\n    const previousStream = localStreamsRef\.current\.mic;[\s\S]*?\n  }, \[([^\]]*)\]\);/) ?? [];
 
     assert.doesNotMatch(effect[1] ?? "", /\bnoiseSuppression\b/, "the preference no longer drives a re-capture");
@@ -291,7 +296,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("keeps both captures alive across a device switch so one can be kept", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
     const effect = source.match(/useEffect\(\(\) => \{\n    const previousStream = localStreamsRef\.current\.mic;[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
 
     // Nothing releases the running capture any more, so a failed reopen always
@@ -303,14 +308,14 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("still reports a microphone that genuinely disappeared", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
 
     assert.match(source, /const handleMicrophoneLost = useCallback\(\(message: VoiceErrorKey\) => \{/);
     assert.match(source, /handleMicrophoneLost\("voiceError\.microphoneDisconnected"\)/);
   });
 
   it("applies refreshed ICE servers to active peer connections", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
 
     assert.match(source, /const iceServersRef = useRef\(iceServers\)/);
     assert.match(source, /new RTCPeerConnection\(\{ iceServers: iceServersRef\.current \}\)/);
@@ -319,7 +324,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("recovers disconnected ICE peers before rebuilding them", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
 
     assert.match(source, /oniceconnectionstatechange/);
     assert.match(source, /advancePeerRecovery/);
@@ -338,7 +343,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("routes quality recovery through the guarded peer recovery owner", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
 
     assert.match(source, /type: expectedPeer \? "quality_degraded" : "recovery_requested"/);
     assert.match(source, /transition\.action !== "restart_ice"/);
@@ -347,7 +352,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("invalidates an in-flight local offer before accepting a colliding offer", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
 
     assert.match(source, /const offerGenerationsRef = useRef<Map<string, number>>/);
     assert.match(source, /offerGenerationsRef\.current\.get\(peerUserId\) !== offerGeneration/);
@@ -355,7 +360,7 @@ describe("voice snapshot reconciliation", () => {
   });
 
   it("keeps answer cleanup generation-safe after candidate flushing", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
     const answer = source.match(/if \(signal\.type === "answer"\) \{([\s\S]*?)\n    \}/)?.[1] ?? "";
 
     assert.match(answer, /await flushPendingCandidates/);
@@ -421,7 +426,7 @@ describe("offers from a member who sends no audio", () => {
   });
 
   it("runs on the one path every offer goes through", () => {
-    const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
+    const source = readSource("src/lib/useVoiceMedia.ts");
 
     assert.equal(source.match(/createOffer\(\)/g)?.length, 1);
     assert.match(source, /ensureOfferableAudioSection\(peer\);[\s\S]{0,160}await peer\.createOffer\(\)/);

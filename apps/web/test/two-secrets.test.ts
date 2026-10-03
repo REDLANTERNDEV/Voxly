@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync as readFileSyncRaw } from "node:fs";
 import { describe, it } from "node:test";
 import { translate, type LanguageCode } from "../src/lib/i18n.js";
 import { parsePathRoute } from "../src/lib/navigation.js";
+
+function readSource(path: string) {
+  // Source-contract assertions should not depend on the checkout's line endings.
+  return readFileSyncRaw(path, "utf8").replace(/\r\n/g, "\n");
+}
 
 /**
  * A member now holds a code worth ninety seconds and a code worth their account.
@@ -13,10 +18,10 @@ import { parsePathRoute } from "../src/lib/navigation.js";
  * what it costs *before* it is taken.
  */
 describe("the two secrets", () => {
-  const linkDialog = () => readFileSync("src/features/auth/LinkDeviceDialog.tsx", "utf8");
-  const recoveryReveal = () => readFileSync("src/features/auth/RecoveryCode.tsx", "utf8");
-  const recoverScreen = () => readFileSync("src/features/auth/RecoverScreen.tsx", "utf8");
-  const styles = () => readFileSync("src/styles.css", "utf8");
+  const linkDialog = () => readSource("src/features/auth/LinkDeviceDialog.tsx");
+  const recoveryReveal = () => readSource("src/features/auth/RecoveryCode.tsx");
+  const recoverScreen = () => readSource("src/features/auth/RecoverScreen.tsx");
+  const styles = () => readSource("src/styles.css");
 
   it("shows and receives a code in the same face", () => {
     // They had drifted: the same characters read clearly in the settings dialog
@@ -24,7 +29,7 @@ describe("the two secrets", () => {
     // member checks one against the other. The alphabet has no O, I, L or U at
     // all, so an ambiguous glyph can only be the digit; a slashed zero says so
     // rather than leaving the member to know it.
-    const styles = readFileSync("src/styles.css", "utf8");
+    const styles = readSource("src/styles.css");
     assert.match(styles, /\.code-face \{[\s\S]{0,300}slashed-zero/);
 
     for (const [path, count] of [
@@ -33,7 +38,7 @@ describe("the two secrets", () => {
       ["src/features/auth/RecoverScreen.tsx", 1],
       ["src/features/auth/RecoveryCode.tsx", 1]
     ] as const) {
-      const source = readFileSync(path, "utf8");
+      const source = readSource(path);
       assert.equal(source.split("code-face").length - 1, count, `${path} code surfaces`);
     }
   });
@@ -89,7 +94,7 @@ describe("the two secrets", () => {
     // The case neither the app shell nor the invite screen can serve.
     assert.deepEqual(parsePathRoute("/link-device"), { name: "link-device" });
     assert.deepEqual(parsePathRoute("/recover"), { name: "recover" });
-    const landing = readFileSync("src/features/auth/AuthScreens.tsx", "utf8");
+    const landing = readSource("src/features/auth/AuthScreens.tsx");
     assert.match(landing, /href="\/link-device"/);
     assert.match(landing, /href="\/recover"/);
   });
@@ -97,13 +102,13 @@ describe("the two secrets", () => {
   it("puts the cheap path before the expensive one", () => {
     // Linking costs nothing and recovery signs every other Device out, so a
     // member has to meet linking first.
-    const landing = readFileSync("src/features/auth/AuthScreens.tsx", "utf8");
+    const landing = readSource("src/features/auth/AuthScreens.tsx");
 
     assert.ok(landing.indexOf('href="/link-device"') < landing.indexOf('href="/recover"'));
   });
 
   it("says how a device arrived, so 'was that me?' has an answer", () => {
-    const list = readFileSync("src/components/DeviceSettings.tsx", "utf8");
+    const list = readSource("src/components/DeviceSettings.tsx");
 
     assert.match(list, /devices\.arrivedByRecovery/);
     assert.match(list, /devices\.arrivedByLink/);
