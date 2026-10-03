@@ -392,7 +392,7 @@ fn event(window: &WebviewWindow, id: &str, event: &'static str) {
             event
         };
         let detail = serde_json::json!({ "id": id, "event": event });
-        let _ = window.eval(&format!("window.dispatchEvent(new CustomEvent('voxly:native-notification', {{detail:{detail}}}));"));
+        let _ = window.eval(format!("window.dispatchEvent(new CustomEvent('voxly:native-notification', {{detail:{detail}}}));"));
     });
 }
 #[cfg(windows)]
