@@ -5938,22 +5938,16 @@ button.reply-quote:focus-visible .reply-quote-body {
    A textarea-shaped input wraps instead, so the whole code stays visible while
    it is typed. */
 .recovery-input {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  resize: none;
   font-size: 16px;
   line-height: 1.8;
-  /* A textarea is user-resizable by default, and a member who catches the grip
-     can drag this one over the whole page. It exists to wrap twenty-nine
-     characters, not to be adjustable. */
-  resize: none;
   height: 78px;
   max-width: 100%;
-  /* Breaks at the dashes rather than mid-group. `break-all` split
-     `…-64XY2-H05 / SY`, which is the one place a member is checking character
-     by character against something written down. */
-  overflow-wrap: break-word;
   padding: 10px 12px;
   text-align: center;
   text-transform: uppercase;
-  white-space: normal;
 }
 
 /* Signing a device out is a destructive act and now looks like one. */
