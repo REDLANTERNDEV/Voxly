@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchConfig } from "../api.js";
 
 export const clientUpdatePollMs = 5 * 60_000;
@@ -19,6 +19,11 @@ export function clientUpdateRequired(current: string | null, latest: string | nu
   return Boolean(current && latest && current !== latest);
 }
 
+export function clientUpdateDisposition(current: string | null, latest: string | null, mediaBusy: boolean, alreadyPending: boolean) {
+  if (!clientUpdateRequired(current, latest)) return "none";
+  return mediaBusy || alreadyPending ? "defer" : "reload";
+}
+
 export function clientUpdateUrl(currentUrl: string, latest: string) {
   const url = new URL(currentUrl);
   url.searchParams.set("voxly-client", latest);
@@ -34,14 +39,36 @@ export function claimClientUpdateAttempt(storage: Pick<Storage, "getItem" | "set
 
 /**
  * An installed window can stay alive for weeks, so navigation is the update
- * boundary rather than waiting for the member to close it. `pagehide` saves
- * voice resume state before this navigation and the new client rejoins.
+ * boundary rather than waiting for the member to close it. A deployment must
+ * never interrupt live media. Once deferred, keep the update explicit even
+ * after the call ends instead of surprising the member on the next poll.
  */
-export function useClientUpdate(latestAtStartup: string | null) {
+export function useClientUpdate(latestAtStartup: string | null, mediaBusy = false, operationPending: () => boolean = () => false) {
+  const [pendingVersion, setPendingVersion] = useState<string | null>(null);
+  const pendingRef = useRef<string | null>(null);
+  const busyRef = useRef(mediaBusy);
+  busyRef.current = mediaBusy;
+  const operationRef = useRef(operationPending);
+  operationRef.current = operationPending;
+  const reloadWhenSafe = useCallback(() => {
+    if (busyRef.current || operationRef.current() || !pendingRef.current) return;
+    window.location.replace(clientUpdateUrl(window.location.href, pendingRef.current));
+  }, []);
   useEffect(() => {
     const current = loadedClientVersion(document, window.location.href);
     const apply = (latest: string | null) => {
-      if (clientUpdateRequired(current, latest)) {
+      const disposition = clientUpdateDisposition(current, latest, busyRef.current || operationRef.current(), pendingRef.current !== null);
+      if (disposition === "none" && current && latest === current) {
+        // A deployment rollback can make an earlier pending version obsolete.
+        pendingRef.current = null;
+        setPendingVersion(null);
+      }
+      if (disposition === "defer") {
+        pendingRef.current = latest;
+        setPendingVersion(latest);
+        return false;
+      }
+      if (disposition === "reload") {
         try {
           if (!claimClientUpdateAttempt(window.sessionStorage, current as string, latest as string)) return false;
         } catch {
@@ -83,4 +110,5 @@ export function useClientUpdate(latestAtStartup: string | null) {
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [latestAtStartup]);
+  return { pendingVersion, reloadWhenSafe };
 }

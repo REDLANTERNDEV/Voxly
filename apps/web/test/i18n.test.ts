@@ -86,7 +86,7 @@ describe("frontend localization", () => {
     assert.equal(translate("en", "invite.remainingUses", { count: 5 }), "5 uses remaining");
     assert.equal(translate("tr", "invite.expiry30d"), "30 gün");
     assert.equal(translate("en", "connection.retryAttempt", { count: 3 }), "Reconnect attempt 3");
-    assert.equal(translate("tr", "connection.browserOffline"), "Tarayıcının internet bağlantısı yok.");
+    assert.equal(translate("tr", "connection.browserOffline"), "Çevrimdışısınız. Bağlantınızı kontrol edin.");
   });
 
   it("translates voice room move confirmation", () => {

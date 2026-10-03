@@ -1,3 +1,4 @@
+import { hasActiveServerMembership } from "./members.js";
 /**
  * The Music bot's control plane: how a member's request reaches the bot.
  *
@@ -181,12 +182,12 @@ export interface MusicRealtime {
 export function createMusicRealtime(
   io: VoxlyIoServer,
   database: VoxlyDatabase,
-  voice: Pick<VoiceRealtime, "isVoiceMember">
+  voice: Pick<VoiceRealtime, "isVoiceMember" | "isVoiceSocketMember">
 ): MusicRealtime {
   return {
     registerHandlers(socket, user) {
       socket.on("music:control", safeSocketHandler("music:control", (payload, ack) => {
-        void forwardMusicCommand(io, database, voice, user.userId, payload)
+        void forwardMusicCommand(io, database, voice, user.userId, socket, payload)
           .then((response) => callAck(ack, response))
           // The request is now in flight to another process, so a fault here is
           // not something the asker can be left hanging on.
@@ -205,8 +206,9 @@ export function createMusicRealtime(
 async function forwardMusicCommand(
   io: VoxlyIoServer,
   database: VoxlyDatabase,
-  voice: Pick<VoiceRealtime, "isVoiceMember">,
+  voice: Pick<VoiceRealtime, "isVoiceMember" | "isVoiceSocketMember">,
   requestedByUserId: string,
+  socket: VoxlySocket,
   payload: unknown
 ): Promise<MusicControlAck> {
   const parsed = musicControlPayloadSchema.safeParse(payload);
@@ -221,7 +223,7 @@ async function forwardMusicCommand(
   // Being in the room is the whole permission: it is what makes this the
   // asker's room to change, and it is checked against live voice membership
   // rather than server membership, which everyone in the server has.
-  if (!voice.isVoiceMember(room.id, requestedByUserId)) {
+  if (!hasActiveServerMembership(database.sqlite, room.serverId, requestedByUserId) || !voice.isVoiceSocketMember(room.id, requestedByUserId, socket)) {
     return { ok: false, error: "not_in_voice_room" };
   }
   // The AFK room mutes everyone in it, the server included, so a bot summoned
@@ -294,7 +296,7 @@ async function askBot(
 function publishQueue(
   io: VoxlyIoServer,
   database: VoxlyDatabase,
-  voice: Pick<VoiceRealtime, "isVoiceMember">,
+  voice: Pick<VoiceRealtime, "isVoiceMember" | "isVoiceSocketMember">,
   publisherUserId: string,
   payload: unknown
 ): MusicPublishAck {

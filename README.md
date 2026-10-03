@@ -42,10 +42,15 @@ For self-hosting:
 
 ## Local development
 
+The experimental Windows-first Tauri client has a separate
+[desktop development guide](docs/desktop.md) and
+[Windows acceptance procedure](docs/desktop-windows-acceptance.md). It does not
+change the requirements for self-hosting the application.
+
 ```sh
 npm install
 npm run build -w @voxly/server
-DATABASE_PATH=./voxly.sqlite VOXLY_PUBLIC_URL=http://127.0.0.1:3000 \
+DATABASE_PATH=./voxly.sqlite VOXLY_PUBLIC_URL=http://127.0.0.1:5173 \
   npm run start -w @voxly/server
 ```
 
@@ -58,7 +63,7 @@ npm run dev -w @voxly/web
 Create the first owner and open the one-use URL printed by the command:
 
 ```sh
-DATABASE_PATH=./voxly.sqlite VOXLY_PUBLIC_URL=http://127.0.0.1:3000 \
+DATABASE_PATH=./voxly.sqlite VOXLY_PUBLIC_URL=http://127.0.0.1:5173 \
   npm run owner:create -w @voxly/server -- --nickname "Owner"
 ```
 

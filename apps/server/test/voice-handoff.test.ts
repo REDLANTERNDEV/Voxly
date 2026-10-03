@@ -39,6 +39,29 @@ describe("voice follows the newest Device", () => {
     await app.close();
   });
 
+  for (const displaced of [false, true]) {
+    it(`refuses music and media commands from a ${displaced ? "displaced" : "non-voice"} Device`, async () => {
+      const owner = await bootstrapOwner(app);
+      const laptop = await connect(owner.cookies.voxly_session);
+      const phone = await connect(linkAnotherDevice(app, owner.user.id));
+      await joinVoice(laptop, "lobby");
+      if (displaced) await joinVoice(phone, "lobby");
+      const observer = displaced ? laptop : phone;
+      const ask = (event: string, payload: unknown): Promise<unknown> => new Promise((resolve, reject) => {
+        observer.timeout(2_000).emit(event, payload, (error: Error | null, result: unknown) => error ? reject(error) : resolve(result));
+      });
+      for (const command of [{ kind: "play" }, { kind: "add", input: "A Track" }, { kind: "stop" }, { kind: "leave" }, { kind: "skip", entryId: "entry" }, { kind: "remove", entryId: "entry" }]) {
+        assert.deepEqual(await ask("music:control", { roomId: "lobby", command }), { ok: false, error: "not_in_voice_room" });
+      }
+      assert.deepEqual(await ask("voice:setMediaState", { roomId: "lobby", media: { mic: false } }), { ok: false, error: "not_in_voice_room" });
+      assert.deepEqual(await ask("voice:setVisualSubscriptions", { roomId: "lobby", targets: [] }), { ok: false, error: "not_in_voice_room" });
+      assert.deepEqual(await ask("rtc:signal", { roomId: "lobby", toUserId: owner.user.id, signal: { type: "recovery-request" } }), { ok: false, error: "not_in_voice_room" });
+      const snapshot = await snapshotOf(observer, "lobby");
+      assert.equal(snapshot.viewerInVoiceRoom, false);
+      assert.equal(snapshot.members[0]?.media.mic, true, "the observer must not mute the holding Device");
+    });
+  }
+
   it("tells the first Device it was displaced, and says why", async () => {
     const owner = await bootstrapOwner(app);
     const laptop = await connect(owner.cookies.voxly_session);

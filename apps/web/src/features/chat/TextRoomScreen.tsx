@@ -191,7 +191,14 @@ export function TextRoomScreen(props: TextRoomProps) {
             </button>
           ) : null}
         </div>
-        <footer className="composer">
+        <footer className="composer" onClick={(event) => {
+          if (event.button === 0 && event.target instanceof Element
+            && !event.target.closest("button, a, input, textarea, select, [role=button], .composer-reply")) {
+            // A click on the surrounding box also starts typing. Wait for the
+            // click so an earlier text selection cannot block this gesture.
+            composerRef.current?.focus();
+          }
+        }}>
           {replyTarget ? (
             <div className="composer-reply">
               <span className="composer-reply-label" aria-hidden="true"><ReplyIcon /></span>

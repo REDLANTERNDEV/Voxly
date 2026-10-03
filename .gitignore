@@ -1,13 +1,51 @@
+# JavaScript dependencies and generated output
 node_modules/
 dist/
 dist-test/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Rust build output, profiling data and rustfmt backups
+# Keep Cargo.lock and shared .cargo configuration in version control.
+target/
+*.profraw
+*.profdata
+*.rs.bk
+
+# Local databases and configuration
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
-.DS_Store
 .env
 .env.*
 !.env.example
+# Local release signing material; public keys and signatures remain trackable
+*.pfx
+*.p12
+/apps/desktop/*.key
+/apps/desktop/src-tauri/*.key
+
+# Local OS files and runtime diagnostics
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log
+*.har
+*.heapsnapshot
+
+# Local design imports, scratch work and tool output
 Voxly-App-UI/
 voxly-web-logo-pack-v3-centered/
+voxly-brand-pack/
+voxly-monochrome-logo-bundle/
 /docs/superpowers/
+sast/
+.scratch/
+/docs/agents/
+/.claude/
+
+# Voice lab: synthetic captures, disposable profiles, and test results
+/voice-lab-results/
+/test-results/
+/playwright-report/

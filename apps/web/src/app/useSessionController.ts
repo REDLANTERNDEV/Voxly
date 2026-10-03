@@ -4,7 +4,6 @@ import { ApiError,fetchConfig,fetchMe,fetchRtcConfig } from "../api.js";
 import { createAuthRequestGate } from "../lib/authRequestGate.js";
 import type { VoiceErrorKey } from "../lib/i18n.js";
 import { getInviteTokenFromPath,resolveInitialRoute } from "../lib/navigation.js";
-import { useClientUpdate } from "../lib/useClientUpdate.js";
 import type { AppConfigResponse,RtcConfigResponse } from "../types.js";
 import { rtcConfigAfterFetchFailure,rtcConfigRetryMs } from "./rtcConfig.js";
 import type { LoadState,Route } from "./types.js";
@@ -21,7 +20,6 @@ export function useSessionController(route: Route, navigate: (path: string) => v
   const [rtcConfigErrorRevision, setRtcConfigErrorRevision] = useState(0);
   const authRequestGateRef = useRef(createAuthRequestGate());
   const authenticatedUserIdRef = useRef<string | null>(null);
-  useClientUpdate(appConfig.clientVersion);
 
   const completeAuthentication = useCallback((nextUser: PublicUser) => {
     authRequestGateRef.current.invalidate();
@@ -137,7 +135,7 @@ export function useSessionController(route: Route, navigate: (path: string) => v
         // difference (ADR-0015).
         setSignedOutReason(error.code === "session_reused" ? "reused" : "");
         setAuthState("ready");
-        if (!new Set(["landing", "invite", "owner-claim", "access-claim", "link-device", "recover"]).has(route.name)) {
+        if (!new Set(["landing", "invite", "owner-claim", "access-claim", "link-device", "desktop-verify", "recover"]).has(route.name)) {
           navigate(resolveInitialRoute({ isAuthenticated: false, inviteToken: getInviteTokenFromPath(window.location.pathname) || null }));
         }
       } else setAuthState("error");

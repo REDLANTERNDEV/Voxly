@@ -10,6 +10,7 @@ export type PathRoute =
   | { name: "invite"; token: string }
   | { name: "owner-claim" }
   | { name: "link-device" }
+  | { name: "desktop-verify"; id: string }
   | { name: "recover" }
   | { name: "access-claim"; token: string }
   | { name: "text"; serverId: string; roomId: string }
@@ -49,6 +50,8 @@ export function parsePathRoute(pathname: string): PathRoute {
   // short form stays valid because it may have been written down or scanned
   // before the rename, and an address that used to work should keep working.
   if (pathname === "/link-device" || pathname === "/link") return { name: "link-device" };
+  const desktopVerification = pathname.match(/^\/desktop\/verify\/([^/]+)$/);
+  if (desktopVerification) return { name: "desktop-verify", id: decodeURIComponent(desktopVerification[1]) };
   if (pathname === "/recover") return { name: "recover" };
   if (pathname === "/access/claim") return { name: "access-claim", token: getAccessClaimTokenFromHash(window.location.hash) };
   const serverRoute = pathname.match(/^\/app\/server\/([^/]+)\/(text|voice)\/([^/]+)$/);

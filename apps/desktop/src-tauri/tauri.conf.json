@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Voxly",
+  "version": "0.1.0",
+  "identifier": "app.voxly.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev:shell",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "shell",
+        "create": false,
+        "title": "Voxly",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 380,
+        "minHeight": 520,
+        "useHttpsScheme": true
+      }
+    ],
+    "security": {
+      "capabilities": [
+        "local-shell"
+      ],
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src ipc: http://ipc.localhost https://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "voxly"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "../branding/tauri/icons/32x32.png",
+      "../branding/tauri/icons/128x128.png",
+      "../branding/tauri/icons/128x128@2x.png",
+      "../branding/tauri/icons/icon.icns",
+      "../branding/tauri/icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "perMachine",
+        "languages": [
+          "English",
+          "Turkish"
+        ],
+        "displayLanguageSelector": true,
+        "installerIcon": "../branding/tauri/icons/setup-package.ico",
+        "uninstallerIcon": "../branding/tauri/icons/setup-dark.ico",
+        "installerHooks": "windows/installer-hooks.nsh"
+      }
+    }
+  }
+}

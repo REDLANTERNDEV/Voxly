@@ -1040,8 +1040,7 @@ h3 {
   padding: 4px;
   pointer-events: none;
   position: fixed;
-  transform: translateX(-3px) scale(0.98);
-  transition: opacity 120ms ease, transform 120ms ease;
+  transition: opacity 120ms ease;
   visibility: hidden;
   width: 184px;
   z-index: var(--layer-popover);
@@ -1050,7 +1049,6 @@ h3 {
 .voice-live-popover.is-open .voice-live-card {
   opacity: 1;
   pointer-events: auto;
-  transform: translateX(0) scale(1);
   visibility: visible;
 }
 
@@ -5546,6 +5544,15 @@ button.reply-quote:focus-visible .reply-quote-body {
   min-width: 0;
 }
 
+.desktop-browser-sign-in {
+  gap: 10px;
+}
+
+.desktop-browser-address {
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 .device-link-action {
   justify-self: start;
 }
@@ -5648,7 +5655,8 @@ button.reply-quote:focus-visible .reply-quote-body {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  /* Leave room for the translated labels in every platform's fallback font. */
+  grid-template-columns: minmax(220px, max-content) minmax(0, 1fr);
   /*
    * The row has to be constrained as well as the columns. Without it the body
    * grows to whatever the tallest section needs, the dialog overflows its own
@@ -5972,3 +5980,97 @@ button.reply-quote:focus-visible .reply-quote-body {
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }
+/* Update discovery is quiet and shares the dock's reserved space. */
+.voice-dock .dock-room { flex-direction: column; align-items: stretch; justify-content: center; gap: 2px; }
+.dock-connection { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 20px; }
+.dock-update-link { display: grid; grid-template-columns: 14px minmax(0, 1fr) minmax(0, auto); align-items: center; gap: 0 5px; width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--fg-2); text-align: start; font: inherit; font-size: 12px; cursor: pointer; }
+.dock-update-link .update-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dock-update-link .ui-icon { height: 14px; width: 14px; }
+.dock-update-link .update-version { grid-column: 3; max-width: 130px; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dock-update-link:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.dock-update-link:disabled { cursor: default; }
+.account-app-version { display: block; padding: 0 10px 8px; color: var(--muted); font-size: 12px; }
+.account-update-link { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; text-align: start; }
+.account-update-link .update-label { overflow-wrap: anywhere; }
+.account-update-link .update-version { flex-basis: 100%; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.application-version-settings { min-width: 0; }
+.application-version-settings h3 { margin-top: 0; }
+.application-version-settings dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+.application-version-settings dt { color: var(--muted); }
+.application-version-settings dd { margin: 0; overflow-wrap: anywhere; max-width: 160px; text-align: end; }
+@media (max-width: 979px) {
+  body:has(.dock-update-link) { --dock: 118px; --dock-quiet: 76px; }
+  .dock-update-link .update-version { display: none; }
+  .dock-update-link { min-height: 18px; }
+}
+@media (pointer: coarse) {
+  .dock-room:has(.dock-update-link) { position: relative; }
+  .dock-update-link::after { content: ""; position: absolute; inset: 0; }
+}
+@media (max-width: 440px) {
+  .application-version-settings dl { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .application-version-settings dd { text-align: start; margin-bottom: 10px; max-width: none; }
+}
+
+/* Desktop preferences share the same Settings geometry as browser controls. */
+.settings-nav { display: flex; flex-direction: column; }
+.settings-nav-item { flex: 0 0 auto; min-width: 0; }
+.settings-nav-item > span:last-child { min-width: 0; white-space: nowrap; }
+.settings-home-label { display: inline-flex; align-items: center; gap: 6px; }
+.settings-home-label .ui-icon { flex: none; width: 12px; height: 12px; }
+.settings-nav-footer { display: grid; gap: 10px; margin-top: auto; padding-top: 24px; }
+.settings-version-link { background: none; border: 0; cursor: pointer; font: inherit; font-size: 11px; line-height: 1.5; padding: 6px 10px; text-align: start; }
+.settings-section-header { gap: 16px; }
+.settings-section-header > div { min-width: 0; }
+.settings-section-header h2 { overflow-wrap: anywhere; line-height: 1.25; }
+.settings-section-header .settings-close { flex: 0 0 auto; }
+.desktop-shortcut-list { display: grid; margin-top: 22px; }
+.desktop-shortcut-row { display: grid; grid-template-columns: minmax(120px, .8fr) minmax(0, 1.4fr); align-items: center; gap: 12px 24px; padding: 22px 0; }
+.desktop-shortcut-description { display: grid; gap: 8px; min-width: 0; }
+.desktop-shortcut-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; min-width: 0; }
+.desktop-shortcut-binding { display: flex; align-items: center; position: relative; min-width: 0; border-radius: 7px; }
+.desktop-shortcut-binding .input { min-width: 0; width: 100%; padding-right: 40px; min-height: 44px; }
+.desktop-shortcut-binding .icon-btn { position: absolute; right: 2px; width: 36px; height: 40px; }
+.desktop-record-button { min-height: 44px; }
+.desktop-shortcut-status { grid-column: 1 / -1; margin: 0; }
+.desktop-shortcut-status:empty { display: none; }
+.desktop-settings-link { align-self: start; background: none; border: 0; cursor: pointer; font: inherit; font-size: 12px; text-align: start; padding: 4px 0; width: fit-content; }
+.desktop-microphone-settings { display: grid; gap: 14px; padding: 4px 0 12px; }
+.desktop-release-delay { display: grid; gap: 14px; }
+.notification-settings-card .notification-sound-section { display: grid; gap: 18px; margin-top: 18px; }
+.desktop-launch-dialog { width: min(440px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; padding: 28px; border-radius: 12px; }
+.desktop-launch-dialog h2 { margin: 0; font-size: 20px; }
+.desktop-launch-dialog > p { margin-top: 16px; }
+.desktop-launch-dialog .confirm-actions { margin-top: 24px; gap: 12px; flex-wrap: wrap; }
+.desktop-launch-origin { font-size: 13px; overflow-wrap: anywhere; }
+.desktop-launch-dialog .link-confirmation, .desktop-browser-sign-in .link-confirmation { display: block; text-align: center; margin: 24px 0; }
+.desktop-link-fallback { width: min(100%, 460px); margin-inline: auto; }
+.desktop-link-fallback > summary { cursor: pointer; padding: 12px 0; font-size: 13px; }
+.desktop-link-fallback .link-panel { margin-top: 12px; }
+.language-switch { position: relative; min-width: 8rem; height: 44px; }
+.language-switch select { position: absolute; inset: 0; width: 100%; padding: 0 28px 0 34px; }
+.language-switch svg { position: absolute; left: 10px; z-index: 1; pointer-events: none; }
+.language-switch .language-switch-chevron { left: auto; right: 10px; }
+
+@media (max-width: 720px) {
+  .settings-nav { flex-direction: row; align-items: center; }
+  .settings-nav-item > span:last-child { overflow-wrap: normal; }
+  .settings-nav-footer { display: flex; align-items: center; margin-top: 0; padding-top: 0; flex: 0 0 auto; }
+  .desktop-shortcut-row { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .settings-section-header { padding: 18px 16px; }
+  .settings-section-header h2 { font-size: 20px; }
+}
+@media (max-width: 430px) {
+  .desktop-shortcut-controls { grid-template-columns: minmax(0, 1fr); }
+  .desktop-record-button { justify-self: start; }
+}
+
+.workspace-rail-bottom { display: grid; gap: 8px; flex: 0 0 auto; }
+.settings-section-header > div { flex: 1; }
+.settings-section-header .settings-close { width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 10px; }
+.device-card .theme-card-head { min-width: 0; flex-wrap: wrap; }
+.device-card .theme-card-head .label { white-space: normal; overflow-wrap: anywhere; }
+.desktop-shortcut-actions { display: flex; align-items: center; gap: 8px; }
+.desktop-shortcut-reset { min-width: 44px; min-height: 44px; }
+.desktop-audio-button { justify-self: start; width: fit-content; min-height: 36px; font-size: 12px; padding: 8px 12px; }
+.language-switch select { cursor: pointer; border-radius: inherit; }

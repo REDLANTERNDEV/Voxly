@@ -2,6 +2,8 @@ import type { PublicUser } from "@voxly/shared";
 import { useCallback,useEffect,useRef,useState } from "react";
 import { DEFAULT_AUDIO_LEVELS,readAudioLevels,writeAudioLevels,type AudioLevels } from "../lib/audioLevels.js";
 import { subscribeBlockedAudioOutputs } from "../lib/audioOutput.js";
+import { subscribeDesktopCallState } from "../lib/desktopCallState.js";
+import { createDesktopDeafenReceiver,subscribeDesktopDeafen } from "../lib/desktopVoice.js";
 import { claimMicrophoneTestDeafen,shouldRestoreMicrophoneTestDeafen,type MicrophoneTestDeafenLease } from "../lib/microphoneTestIsolation.js";
 import { browserSupportsNoiseSuppression,DEFAULT_NOISE_SUPPRESSION,readNoiseSuppression,writeNoiseSuppression } from "../lib/noiseSuppression.js";
 import { useAudioDevices } from "../lib/useAudioDevices.js";
@@ -13,8 +15,9 @@ import { clampVolumePercent,pruneVolumes,readUserVolumes,setVolume,writeUserVolu
 import type { VoxlySocket } from "../socket.js";
 import type { LiveWatchRequest } from "./types.js";
 import { useNotificationSounds } from "./useNotificationSounds.js";
+import type { DesktopNotificationTarget } from "../lib/desktopNotifications.js";
 
-export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRoomIds, activeVoiceRoomRef, leaveVoiceRef, activeTextRoomIdRef }: {
+export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRoomIds, activeVoiceRoomRef, leaveVoiceRef, activeTextRoomIdRef, onNotificationActivate }: {
   socket: VoxlySocket | null;
   user: PublicUser | null;
   iceServers: RTCIceServer[];
@@ -23,6 +26,7 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
   activeVoiceRoomRef: React.RefObject<string | null>;
   leaveVoiceRef: React.RefObject<() => void>;
   activeTextRoomIdRef: React.RefObject<string | null>;
+  onNotificationActivate(target: DesktopNotificationTarget): void;
 }) {
   const audioDevices = useAudioDevices({ userId: user?.id });
   const [audioLevels, setAudioLevels] = useState<AudioLevels>(DEFAULT_AUDIO_LEVELS);
@@ -35,6 +39,8 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
     voiceRoomIds,
     afkRoomIds,
     microphoneDeviceId: audioDevices.selectedInputId,
+    microphoneDevices: audioDevices.inputs,
+    microphoneDeviceRevision: audioDevices.deviceRevision,
     microphoneVolume: audioLevels.input,
     noiseSuppression
   });
@@ -42,7 +48,8 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
   // Only while there is a call to measure. Outside a voice room the signalling
   // round trip is the only connection a member has, and reporting on it is
   // exactly right; inside one it is the wrong path to be looking at.
-  const voiceQuality = useVoiceQuality(voice.activeRoomId ? voice.peerConnections : null);
+  const measuredQuality = useVoiceQuality(voice.activeRoomId ? voice.peerConnections : null);
+  const voiceQuality = { ...measuredQuality, recovering: Object.values(voice.peerConnectionStates).some(state => state === "reconnecting") };
   useEffect(() => {
     for (const request of voiceQuality.recoveryRequests) {
       voice.recoverPeer(request.peerUserId, request.peer);
@@ -58,10 +65,16 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
     controls: voice.controls,
     deafened: voice.controls.deafen.on || voice.voiceModeration.deafened,
     connectionInterrupted: connectionHealth.overlayVisible,
-    activeTextRoomIdRef
+    activeTextRoomIdRef,
+    onNotificationActivate
   });
   const microphoneTest = useMicrophoneTest(audioDevices.selectedInputId, audioLevels.input, voice.microphoneMonitorStream, noiseSuppression);
   const microphoneTestDeafenRef = useRef<MicrophoneTestDeafenLease | null>(null);
+  const microphoneTestStartingRef = useRef(false);
+  useEffect(() => subscribeDesktopCallState(window, () => ({
+    ...voice.getDesktopCallState(),
+    microphoneTest: microphoneTest.isBusy() || microphoneTestStartingRef.current || Boolean(microphoneTestDeafenRef.current)
+  })), [voice.getDesktopCallState, microphoneTest.isBusy]);
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
   const [screenVolumes, setScreenVolumes] = useState<Record<string, number>>({});
   const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
@@ -112,19 +125,28 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
   const stopMicrophoneTest = useCallback(async () => {
     microphoneTest.stop();
     const lease = microphoneTestDeafenRef.current;
-    microphoneTestDeafenRef.current = null;
     if (shouldRestoreMicrophoneTestDeafen(lease, voice.activeRoomId)) await voice.setDeafened(false);
+    if (microphoneTestDeafenRef.current === lease) microphoneTestDeafenRef.current = null;
   }, [microphoneTest.stop, voice.activeRoomId, voice.setDeafened]);
 
   const startMicrophoneTest = useCallback(async () => {
-    if (!(await isolateMicrophoneTest())) return;
-    if (!(await microphoneTest.start())) await stopMicrophoneTest();
+    microphoneTestStartingRef.current = true;
+    try {
+      if (!(await isolateMicrophoneTest())) return;
+      if (!(await microphoneTest.start())) await stopMicrophoneTest();
+    } finally { microphoneTestStartingRef.current = false; }
   }, [isolateMicrophoneTest, microphoneTest.start, stopMicrophoneTest]);
 
   const toggleMicrophoneTest = useCallback(async () => {
     if (microphoneTest.active) await stopMicrophoneTest();
     else await startMicrophoneTest();
   }, [microphoneTest.active, startMicrophoneTest, stopMicrophoneTest]);
+
+  useEffect(() => subscribeDesktopDeafen(window, createDesktopDeafenReceiver(() => ({
+    inVoice: Boolean(voice.activeRoomId), connected: Boolean(socket?.connected),
+    ownerDeafened: voice.voiceModeration.deafened,
+    microphoneTest: microphoneTest.active || microphoneTestStartingRef.current || Boolean(microphoneTestDeafenRef.current)
+  }), voice.toggleDeafen)), [socket, voice.activeRoomId, voice.voiceModeration.deafened, voice.toggleDeafen, microphoneTest.active]);
 
   useEffect(() => {
     if (!microphoneTest.active) return;

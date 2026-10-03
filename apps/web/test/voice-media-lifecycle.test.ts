@@ -100,6 +100,16 @@ describe("voice snapshot reconciliation", () => {
     }
   });
 
+  it("handles Back/Forward as route changes without leaving or remounting voice", () => {
+    const app = readFileSync("src/App.tsx", "utf8");
+    const pop = app.match(/const handlePop = \(\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
+    assert.match(pop, /parseRoute\(window.location.pathname\)/);
+    assert.match(pop, /setRoute\(nextRoute\)/);
+    assert.doesNotMatch(pop, /leave|reload|location\.(?:assign|replace)|joinVoice/);
+    assert.match(app, /window.addEventListener\("popstate", handlePop\)/);
+    assert.doesNotMatch(app, /<AuthenticatedAppSurface[^>]*key=/);
+  });
+
   it("keeps the native remote audio element mounted as the only hardware sink", () => {
     const source = readAppSource();
     const remoteAudio = source.match(/function RemoteAudio[\s\S]*?\n}\n\nfunction GlobalVoiceAudio/)?.[0] ?? "";
@@ -109,14 +119,15 @@ describe("voice snapshot reconciliation", () => {
     assert.match(remoteAudio, /return <audio[^>]*ref=\{audioRef\}/);
   });
 
-  it("keeps focused screen-share audio audible while participant audio is deafened", () => {
+  it("keeps watched screen-share audio independent of stage and participant deafen", () => {
     const source = readAppSource();
     const globalVoiceAudio = source.match(/function GlobalVoiceAudio[\s\S]*?\n}\n\nfunction VisualStage/)?.[0] ?? "";
     const visualStage = source.match(/function VisualStage[\s\S]*?\n}\n\nfunction StatusPill/)?.[0] ?? "";
     const voiceRoom = source.match(/function VoiceRoomScreen[\s\S]*?\n}\n\nfunction OwnerPanel/)?.[0] ?? "";
 
     assert.match(globalVoiceAudio, /<RemoteAudio[\s\S]*?muted=\{muted \|\| mutedUserIds\.has\(item\.userId\)\}/);
-    assert.match(visualStage, /<RemoteAudio stream=\{focusedStream\} muted=\{false\}/);
+    assert.doesNotMatch(visualStage, /<RemoteAudio/);
+    assert.match(voiceRoom, /<RemoteAudio key=\{source.key\} stream=\{source.stream!\} muted=\{false\}/);
     assert.doesNotMatch(visualStage, /^\s*muted:\s*boolean;/m);
     assert.doesNotMatch(voiceRoom, /<VisualStage[\s\S]*?muted=\{props\.controls\.deafen\.on\}/);
   });
@@ -140,7 +151,9 @@ describe("voice snapshot reconciliation", () => {
   it("closes stale media peers when signaling disconnects", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
 
-    assert.match(source, /const onDisconnect = \(\) => \{[\s\S]{0,900}closePeers\(\)/);
+    const disconnect = source.match(/const onDisconnect = \(\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
+    assert.match(disconnect, /closePeers\(\)/);
+    assert.match(disconnect, /desktopMicrophone\.suspend\(\)/);
   });
 
   it("cancels failed-peer recovery after an authoritative member leave", () => {
@@ -214,7 +227,7 @@ describe("voice snapshot reconciliation", () => {
     assert.match(source, /const deafenTransitionRef = useRef\(0\)/);
     assert.match(setDeafened, /microphoneOnBeforeDeafenRef\.current = moderationRef\.current\.muted[\s\S]*?microphoneOnBeforeModerationMuteRef\.current[\s\S]*?: controlsRef\.current\.mic\.on/);
     assert.match(setDeafened, /const restoreMicrophoneOn = !moderationRef\.current\.muted[\s\S]*?&& microphoneOnBeforeDeafenRef\.current/);
-    assert.match(setDeafened, /track\.enabled = restoreMicrophoneOn && track\.readyState === "live"/);
+    assert.match(setDeafened, /desktopMicrophone\.apply\(\[track\], restoreMicrophoneOn && track\.readyState === "live"\)/);
     assert.match(setDeafened, /restoreMicrophoneOn/);
     assert.match(setDeafened, /effectiveVoiceMediaState\(nextControls, localStreamsRef\.current\)/);
     assert.match(setDeafened, /const response = await emitMediaState/);
@@ -223,12 +236,14 @@ describe("voice snapshot reconciliation", () => {
     assert.doesNotMatch(toggleMic, /microphoneOnBeforeDeafenRef/);
   });
 
-  it("invalidates deafen mic restoration when the microphone is lost", () => {
+  it("retains microphone intent for recovery while a lost microphone stays unpublished", () => {
     const source = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
     const handleMicrophoneLost = source.match(/const handleMicrophoneLost = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
     const activateMicrophoneInput = source.match(/const activateMicrophoneInput = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
 
-    assert.match(handleMicrophoneLost, /microphoneOnBeforeDeafenRef\.current = false/);
+    assert.match(handleMicrophoneLost, /microphoneRecoveryRef.current =/);
+    assert.match(handleMicrophoneLost, /controlsRef.current.deafen.on && microphoneOnBeforeDeafenRef.current/);
+    assert.match(handleMicrophoneLost, /mic: \{ \.\.\.controlsRef.current.mic, on: false \}/);
     // Only the input that is still current may report itself as lost.
     assert.match(activateMicrophoneInput, /if \(microphoneInputRef\.current !== input\) return;\s*\n\s*handleMicrophoneLost\(/);
   });
@@ -269,7 +284,7 @@ describe("voice snapshot reconciliation", () => {
     assert.doesNotMatch(effect[1] ?? "", /\bnoiseSuppression\b/, "the preference no longer drives a re-capture");
     assert.match(effect[0] ?? "", /openMicrophoneCapture\(\{ deviceId: microphoneDeviceId \}\)/);
     // The replacement track must inherit mute, deafen, and owner-mute state.
-    assert.match(effect[0] ?? "", /nextTrack\.enabled = controlsRef\.current\.mic\.on && !controlsRef\.current\.deafen\.on/);
+    assert.match(effect[0] ?? "", /desktopMicrophone\.apply\(\[nextTrack\], controlsRef\.current\.mic\.on && !controlsRef\.current\.deafen\.on/);
     assert.match(effect[0] ?? "", /replaceMicrophoneTrack\(peersRef\.current\.values\(\), nextTrack, previousTrack\)/);
     // An unchanged capture must not reopen the device on unrelated churn.
     assert.match(effect[0] ?? "", /if \(change === "none"\) return/);

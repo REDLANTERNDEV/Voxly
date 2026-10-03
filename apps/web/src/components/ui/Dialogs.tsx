@@ -110,3 +110,54 @@ export function NicknameDialog({ user, returnFocus, t, onCancel, onSave }: {
     </div>
   );
 }
+
+export function ChannelNameDialog({ name: initialName, returnFocus, t, onCancel, onSave }: {
+  name: string; returnFocus: HTMLButtonElement | null; t: Translate;
+  onCancel: () => void; onSave: (name: string) => Promise<void>;
+}) {
+  const [name, setName] = useState(initialName);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const form = useRef<HTMLFormElement>(null);
+  const close = useCallback(() => {
+    onCancel();
+    window.setTimeout(() => returnFocus?.focus(), 0);
+  }, [onCancel, returnFocus]);
+  useEffect(() => { input.current?.focus(); input.current?.select(); }, []);
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saving) { event.preventDefault(); close(); }
+      if (event.key !== "Tab") return;
+      const controls = form.current?.querySelectorAll<HTMLElement>("input:not(:disabled), button:not(:disabled)");
+      if (!controls?.length) { event.preventDefault(); return; }
+      const first = controls[0], last = controls[controls.length - 1];
+      if (!form.current?.contains(document.activeElement)) { event.preventDefault(); first?.focus(); }
+      else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, [close, saving]);
+  return <div className="confirm-backdrop" onMouseDown={() => { if (!saving) close(); }}>
+    <form ref={form} noValidate className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="channelRenameTitle" aria-busy={saving}
+      onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => {
+        event.preventDefault();
+        const next = name.trim();
+        if (next.length < 2 || next.length > 64) { setError(t("channel.nameLength")); return; }
+        setSaving(true); setError("");
+        void onSave(next).then(close).catch(() => setError(t("channel.renameFailed"))).finally(() => setSaving(false));
+      }}>
+      <h2 id="channelRenameTitle">{t("channel.rename")}</h2>
+      <label className="form-field" htmlFor="channelRenameName"><span>{t("channel.name")}</span>
+        <input ref={input} className="input" id="channelRenameName" aria-invalid={Boolean(error)} aria-describedby="channelRenameError" value={name} minLength={2} maxLength={64}
+          autoComplete="off" disabled={saving} onChange={(event) => setName(event.currentTarget.value)} />
+      </label>
+      <p id="channelRenameError" className="error-text" aria-live="polite">{error}</p>
+      <div className="confirm-actions">
+        <button className="btn btn-ghost" type="button" disabled={saving} onClick={close}>{t("common.cancel")}</button>
+        <button className="btn btn-primary" type="submit" disabled={saving || name.trim() === initialName}>{t("common.save")}</button>
+      </div>
+    </form>
+  </div>;
+}

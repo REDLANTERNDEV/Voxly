@@ -21,6 +21,7 @@ export type Route =
   | { name: "invite"; token: string }
   | { name: "owner-claim"; token: string }
   | { name: "link-device" }
+  | { name: "desktop-verify"; id: string }
   | { name: "recover" }
   | { name: "access-claim"; token: string }
   | { name: "text"; serverId: string; roomId: string }
@@ -53,6 +54,7 @@ export interface ShellModel {
   voiceModeration: VoiceModerationState;
   /** The active voice room closes the microphone for everyone in it. */
   micLockedByRoom: boolean;
+  microphoneHealthWarning?: boolean;
   appConfig: AppConfigResponse;
   voiceError: VoiceErrorKey | "";
   voiceErrorRevision: number;
@@ -105,6 +107,7 @@ export interface ShellActions {
   onRenameCategory: (categoryId: string, name: string) => Promise<void>;
   onDeleteCategory: (categoryId: string) => Promise<void>;
   onSaveRoomLayout: (layout: ServerRoomLayout) => Promise<void>;
+  onRenameRoom: (roomId: string, name: string) => Promise<void>;
   onDeleteRoom: (roomId: string) => Promise<void>;
   onDeleteServer: () => Promise<void>;
   onModerateMember: (userId: string, action: "ban" | "unban" | "kick") => Promise<void>;

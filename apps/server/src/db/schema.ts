@@ -76,6 +76,34 @@ export const deviceLinks = sqliteTable("device_links", {
   refusedAt: text("refused_at")
 });
 
+/** Public launch correlation only; the browser session authorizes approval. */
+export const desktopLaunches = sqliteTable("desktop_launches", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  sessionId: text("session_id").notNull(),
+  origin: text("origin").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  authorizationId: text("authorization_id").unique(),
+  cancelledAt: text("cancelled_at")
+});
+
+/** A short browser approval request; only the arriving Device holds the secret. */
+export const desktopAuthorizations = sqliteTable("desktop_authorizations", {
+  id: text("id").primaryKey(),
+  secretHash: text("secret_hash").notNull().unique(),
+  origin: text("origin").notNull(),
+  label: text("label").notNull(),
+  confirmation: text("confirmation").notNull(),
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  approvedUserId: text("approved_user_id"),
+  approvedSessionId: text("approved_session_id"),
+  approvedAt: text("approved_at"),
+  refusedAt: text("refused_at"),
+  cancelledAt: text("cancelled_at"),
+  consumedAt: text("consumed_at")
+});
+
 /**
  * The durable secret a member holds so they can reach their account with no
  * signed-in Device left. One live row per account: regenerating replaces it,

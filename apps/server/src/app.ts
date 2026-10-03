@@ -66,6 +66,7 @@ import {
   type RouteContext
 } from "./http.js";
 import { registerDeviceLinkRoutes } from "./deviceLinks.js";
+import { registerDesktopAuthorizationRoutes } from "./desktopAuthorization.js";
 import { registerDeviceRoutes } from "./devices.js";
 import { registerRecoveryRoutes } from "./recovery.js";
 import { registerInviteRoutes, revokeInvitesCreatedBy } from "./invites.js";
@@ -183,6 +184,7 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
   // Fastify instance; see `http.ts` for what they are handed and why.
   registerDeviceRoutes(context);
   registerDeviceLinkRoutes(context);
+  registerDesktopAuthorizationRoutes(context);
   registerRecoveryRoutes(context);
   registerServerRoutes(context);
   registerInviteRoutes(context);

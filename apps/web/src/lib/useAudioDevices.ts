@@ -31,6 +31,7 @@ export interface UseAudioDevicesResult extends AudioDeviceCollection {
   errorRevision: number;
   unavailableSelections: AudioDevicePreferenceKind[];
   outputSelectionSupported: boolean;
+  deviceRevision: number;
   refresh(requestPermission?: boolean): Promise<AudioDeviceCollection>;
   selectInput(deviceId: string): void;
   selectOutput(deviceId: string, mediaElements?: readonly HTMLMediaElement[]): Promise<void>;
@@ -57,6 +58,7 @@ export function useAudioDevices({
   storage = defaultStorage()
 }: UseAudioDevicesOptions): UseAudioDevicesResult {
   const [devices, setDevices] = useState<AudioDeviceCollection>(emptyDevices);
+  const [deviceRevision, setDeviceRevision] = useState(0);
   const [selectedInputId, setSelectedInputId] = useState("");
   const [selectedOutputId, setSelectedOutputId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -106,8 +108,7 @@ export function useAudioDevices({
       const nextDevices = await enumerateAudioDevices(mediaDevices, { requestPermission });
       // Device lists can briefly omit a Bluetooth input while the headset
       // changes profiles. Keep the member's selection so a later devicechange
-      // can find the same input again; an ended capture still stays muted
-      // until the member explicitly turns the microphone back on.
+      // can find the same input again and recover its interrupted capture.
       const nextInput = selectedInputRef.current && !nextDevices.inputs.some(
         (device) => device.deviceId === selectedInputRef.current
       ) ? selectedInputRef.current : reconcileAudioDevicePreference(selectedInputRef.current, nextDevices.inputs);
@@ -125,6 +126,7 @@ export function useAudioDevices({
       setUnavailableSelections(unavailable);
       devicesRef.current = nextDevices;
       setDevices(nextDevices);
+      setDeviceRevision((revision) => revision + 1);
 
       if (userId && storage) {
         if (unavailable.includes("output")) writeAudioDevicePreference(storage, userId, "output", "");
@@ -188,6 +190,7 @@ export function useAudioDevices({
   return {
     ...devices,
     selectedInputId,
+    deviceRevision,
     selectedOutputId,
     loading,
     error,

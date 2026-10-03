@@ -43,6 +43,6 @@ export function ContextMenu({
     >
       {children}
     </div>,
-    document.body
+    document.fullscreenElement ?? document.body
   );
 }

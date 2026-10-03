@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { Translate } from "../../app/types.js";
 import { ArrowIcon } from "../../components/ui/Icons.js";
+import { OpenInDesktop } from "../../components/OpenInDesktop.js";
 import { BrandLockup,NavLink } from "../../components/ui/Navigation.js";
 import { AuthPageHeader,LanguageSwitch } from "../../components/ui/Primitives.js";
 import { trackLandingView,type AnalyticsSettings } from "../../lib/analytics.js";
@@ -44,6 +45,7 @@ export function LandingPage({ language, analytics, signedOutReason = "", t, onLa
           <h1>{t("landing.title")}</h1>
           <p className="landing-copy">{t("landing.copy")}</p>
           <div className="landing-actions">
+            <OpenInDesktop t={t} />
             <NavLink className="btn btn-primary" href="/invite" onNavigate={onNavigate}>
               <ArrowIcon />
               <span>{t("landing.inviteCta")}</span>

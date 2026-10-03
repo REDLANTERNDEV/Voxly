@@ -1,3 +1,4 @@
+import { AuthEntryFrame } from "./AuthEntryFrame.js";
 import type { PublicUser } from "@voxly/shared";
 import type { FormEvent } from "react";
 import { useCallback,useEffect,useRef,useState } from "react";
@@ -5,8 +6,7 @@ import { acceptInvite,ApiError,previewInvite } from "../../api.js";
 import { extractInviteToken,inviteAvailabilityCopy,inviteStatusTitle,statusClass } from "../../app/presentation.js";
 import type { Translate } from "../../app/types.js";
 import { ArrowIcon } from "../../components/ui/Icons.js";
-import { AuthPageHeader } from "../../components/ui/Primitives.js";
-import { type LanguageCode } from "../../lib/i18n.js";
+import { type TranslationKey,type LanguageCode } from "../../lib/i18n.js";
 import { loadTurnstile } from "../../lib/turnstile.js";
 import type { TimeFormatPreference } from "../../lib/timeFormat.js";
 export function InviteScreen({ initialToken, existingUser, currentUser, turnstileSiteKey, onAccepted, language, timeFormat, t, onLanguageChange }: { initialToken: string; existingUser: boolean; currentUser: PublicUser | null; turnstileSiteKey: string | null; onAccepted: (user: PublicUser, serverId: string) => void; language: LanguageCode; timeFormat: TimeFormatPreference; t: Translate; onLanguageChange: (language: LanguageCode) => void }) {
@@ -15,7 +15,7 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
   const [invitePreview, setInvitePreview] = useState<{ expiresAt: string | null; remainingUses: number | null } | null>(null);
   const [nickname, setNickname] = useState("");
   const [status, setStatus] = useState<"ready" | "loading" | "valid" | "danger">("ready");
-  const [fieldError, setFieldError] = useState("");
+  const [fieldError, setFieldError] = useState<TranslationKey | "">("");
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const onTurnstileToken = useCallback((token: string) => {
@@ -24,7 +24,7 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
   }, []);
   const onTurnstileUnavailable = useCallback(() => {
     setTurnstileToken("");
-    setFieldError(t("invite.turnstileUnavailable"));
+    setFieldError("invite.turnstileUnavailable");
   }, [t]);
 
   useEffect(() => {
@@ -56,15 +56,15 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!existingUser && !nickname.trim()) {
-      setFieldError(t("invite.chooseNicknameError"));
+      setFieldError("invite.chooseNicknameError");
       return;
     }
     if (!inviteToken.trim()) {
-      setFieldError(t("invite.pasteError"));
+      setFieldError("invite.pasteError");
       return;
     }
     if (turnstileSiteKey && !existingUser && !turnstileToken) {
-      setFieldError(t("invite.turnstileRequired"));
+      setFieldError("invite.turnstileRequired");
       return;
     }
 
@@ -81,27 +81,27 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
         setTurnstileResetKey((current) => current + 1);
       }
       if (error instanceof ApiError && error.code === "turnstile_failed") {
-        setFieldError(t("invite.turnstileFailed"));
+        setFieldError("invite.turnstileFailed");
       } else if (error instanceof ApiError && error.code === "already_server_member") {
         const serverId = error.data?.serverId;
         if (currentUser && typeof serverId === "string") {
           onAccepted(currentUser, serverId);
           return;
         }
-        setFieldError(t("invite.alreadyMember"));
+        setFieldError("invite.alreadyMember");
       } else if (error instanceof ApiError && error.code === "server_banned") {
-        setFieldError(t("invite.serverBanned"));
+        setFieldError("invite.serverBanned");
       } else {
-        setFieldError(t("invite.unavailable"));
+        setFieldError("invite.unavailable");
       }
     }
   }
 
   return (
-    <main className="invite-shell">
+    <AuthEntryFrame language={language} t={t} onLanguageChange={onLanguageChange}>
       <div className="invite-layout invite-layout-simple">
         <section className="invite-card">
-          <AuthPageHeader subtitle={t("landing.brandSubtitle")} language={language} t={t} onLanguageChange={onLanguageChange} />
+
           <div>
             <p className="label">{t("invite.privateInvite")}</p>
             <h1>{serverName ? t("invite.joinServerTitle", { server: serverName }) : t("invite.joinTitle")}</h1>
@@ -131,12 +131,12 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
                 />
               </div>
             ) : null}
-            <p className="error-text" aria-live="polite">{fieldError}</p>
+            <p className="error-text" aria-live="polite">{fieldError ? t(fieldError) : ""}</p>
             <button className="btn btn-primary full-width" type="submit" disabled={status === "loading"}><ArrowIcon /><span>{status === "loading" ? t("common.checking") : t("invite.join")}</span></button>
           </form>
         </section>
       </div>
-    </main>
+    </AuthEntryFrame>
   );
 }
 

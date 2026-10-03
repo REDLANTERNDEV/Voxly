@@ -90,6 +90,7 @@ function deleteAccount(
     revokeSessionsForUser(database.sqlite, userId, now);
     run(database.sqlite, "delete from session_tokens where session_id in (select id from sessions where user_id = ?)", [userId]);
     run(database.sqlite, "delete from device_links where user_id = ?", [userId]);
+    run(database.sqlite, "update desktop_authorizations set cancelled_at = coalesce(cancelled_at, ?) where approved_user_id = ? and consumed_at is null", [now, userId]);
     run(database.sqlite, "update recovery_codes set replaced_at = coalesce(replaced_at, ?) where user_id = ?", [now, userId]);
     run(database.sqlite, "update invites set revoked_at = coalesce(revoked_at, ?) where created_by_user_id = ?", [now, userId]);
     run(database.sqlite, "update access_claims set revoked_at = coalesce(revoked_at, ?) where user_id = ? or created_by_user_id = ?", [now, userId, userId]);

@@ -31,6 +31,9 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   `VoiceMemberState`; do not report a join as complete on timeout or rejection.
 - Voice-join and visual-subscription requests use deterministic five-second
   timeouts and settle once even if a late ACK arrives.
+- Pending joins hold the deployment reload guard before capture or ACK awaits.
+  Cancellation invalidates the attempt; stale completions cannot release a
+  replacement's guard or publish newly acquired capture.
 - Receive-only joins must not request microphone permission. Intentional normal
   and LIVE joins may start mic-on only after a live enabled track is ready.
 - Keep voice-channel activation as a deterministic transition: disconnected
@@ -78,6 +81,10 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   live-track state and the stored microphone preference.
 
 ## Deafen and Microphone State
+
+- Desktop mute intent uses the existing microphone action only for a connected
+  call with a live microphone track. Preserve deafen, owner, and room locks;
+  shortcuts do not join voice or request microphone permission (ADR-0020).
 
 - Deafen immediately disables local microphone tracks and publishes
   `deafened: true`, `mic: false`, and `speaking: false`.
@@ -176,7 +183,8 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
 - Capture processing is fixed, not preference-driven: noise suppression, gain
   control, and echo cancellation are all requested on, as plain booleans so an
   unsupported device degrades instead of rejecting the capture. Never send an
-  `exact` form. Screen-share audio stays unspecified and untouched.
+  `exact` form. Screen audio uses its own capture policy below rather than
+  microphone noise suppression, gain control, or echo cancellation.
 - The browser constraint cannot carry the user's suppression preference. Chrome
   runs one processing module per capture, echo cancellation engages it, and
   `noiseSuppression: false` does not reliably disengage the suppressor inside
@@ -194,14 +202,19 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   out, and a stepped gain is a discontinuity, which is audible as a click.
 - The expander measures the filtered signal before its own gain, so its reading
   never chases the reduction it just applied.
-- Only a device change re-captures. It holds both captures at once, so a failed
+- A device change re-captures. It holds both captures at once, so a failed
   reopen always leaves the previous microphone to fall back to; record the
   device each graph was opened with so unchanged settings never reopen it.
   Preserve mute, deafen, and owner-mute on the replacement track.
 - If a selected microphone briefly disappears from the device list, retain its
   saved selection and show it as unavailable instead of silently selecting the
-  system default. An ended capture stays unpublished until the member explicitly
-  turns the microphone on; that action retries the selected input.
+  system default. Unexpected capture loss records the selected device and prior
+  microphone intent. Settled device scans permit single-flight automatic recovery
+  of that device, respecting current mute/deafen, owner/room and desktop hold gates.
+  Consume a recovery attempt per event, retain one event arriving during capture,
+  and dispose stale results after manual actions, replacement, device change or
+  departure. Healthy activation clears only resolved microphone errors and warnings;
+  failed recovery remains manually retryable. Silence never diagnoses capture failure.
 - Support means "can this browser build the graph", not "does it advertise the
   constraint". Probe for an audio context.
 - The preference is stored per account in local storage and defaults off: the
@@ -210,6 +223,12 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   microphone test. A microphone test that owns its capture applies the
   preference to its own graph; a shared monitor branch inherits the voice
   graph, including its suppression stage, and must not open a second device.
+
+- Automatic capture-health warnings observe raw track availability and processing
+  state on the existing graph. Ordinary silence and zero samples never imply a
+  fault. Debounce temporary failures for five seconds, exclude intentional
+  publication gates and background suspension, and reset on graph replacement.
+  An ended source remains unpublished until explicitly restarted.
 
 ## Speaking Detection
 
@@ -317,6 +336,12 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
 
 ## Screen Sharing
 
+- Request `restrictOwnAudio: true` as an optional screen-audio constraint to
+  exclude playback from the sharing Voxly document. Keep it non-exact so an
+  unsupported runtime can still capture. Treat exclusion as unverified until
+  returned track settings and an audible peer test establish the behavior;
+  receiver-side playback cannot reliably unmix call audio already captured by
+  another member. Preserve local call playback while sharing.
 - Capture screen video at an ideal and maximum 1280x720 and 30 FPS.
 - Set screen video `contentHint` to `motion` and apply
   `degradationPreference = "maintain-framerate"` only to the sender carrying

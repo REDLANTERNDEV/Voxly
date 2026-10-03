@@ -56,6 +56,13 @@ requirement.
 
 ## Authentication and Navigation
 
+- Resolve session-dependent entry forms before mounting them. Protected startup
+  keeps the current shell geometry until session, RTC, and server/room loading
+  have resolved; recoverable errors must remain reachable. Desktop readiness
+  follows that same boundary. Apply saved theme before mounting React.
+- Invite, claim, Device-link, recovery, and desktop approval routes share the
+  account-entry frame while retaining their separate authentication lifecycles.
+
 - Route initial session lookup and successful invite/access/owner claims
   through the authentication request gate. A stale bootstrap response must not
   overwrite a newly authenticated user.
@@ -173,6 +180,12 @@ requirement.
   Server switching uses letter avatars in the workspace rail; on phones, it
   opens alongside the channel drawer with an explicit close control. The active server
   name remains visible in the channel rail header.
+- Keep selected-server settings and destructive actions separate from the new
+  server creation section. Creation fields affect only the new server.
+- Owners rename text and voice channels through the shared channel action menu
+  and focused dialog. Acknowledged names update in place; IDs and calls survive.
+- Uncategorized channels render under one text heading and one voice heading,
+  preserving saved order within each type. Layout moves use that displayed order.
 - The selected owner-server context also owns server renaming. Trim and enforce
   the server's 2–64 character contract, update local navigation from the HTTP
   acknowledgement, and apply scoped realtime name updates to the matching
@@ -390,18 +403,29 @@ requirement.
   a media fact rather than a moderation state.
 - The LIVE trigger remains a compact, high-contrast red badge. Its accessible
   hover/focus/touch card opens beside the trigger, is not clipped by the rail,
-  and uses no captured or fabricated thumbnail.
+  and uses no captured or fabricated thumbnail. Keep its icon and nickname
+  stationary during opening; animate opacity only.
 - The card stays open across pointer travel using the cancellable grace period
   and closes on focus exit, outside input, Escape, or source removal.
 - Watch is one action: if necessary, join or move to the target voice room with
   `microphoneEnabled: true`, subscribe to that user's screen, and focus it on
   the stage. When already in that room, do not rejoin.
-- Remote screen tiles reuse this same
-  `pendingLiveWatch` path when the viewed room is not the active voice room.
-  The complete tile is the action; clicking the selected camera or screen tile
-  clears the stage, and clicking another selects that source alone. Do not add eye
-  buttons or a separate
-  `Watch` / `İzle` label or a second confirmation step.
+- Unwatched remote LIVE tiles use a neutral blurred CSS background with a
+  localized Watch Stream action. The background carries neither an avatar nor
+  captured stream imagery. Watch reuses `pendingLiveWatch` outside the active
+  voice room and acknowledged subscription selection inside it.
+- Stream viewing follows box, stage, fullscreen. Clicking fullscreen video or
+  exiting fullscreen retains the stage and subscription; clicking stage video
+  returns to a watched box with preview and audio continuing. Keep acknowledged
+  subscriptions separate from stage presentation. Only Unwatch removes the
+  subscription and restores Watch. Provide matching right-click and ellipsis
+  menus with stream volume and icon-labelled Unwatch on boxes and stage surfaces.
+  Unwatch suppresses playback immediately, including after a failed acknowledgement;
+  show recoverable feedback and reject late Watch acknowledgements. Keep an
+  explicit return control and volume/fullscreen controls independent of video clicks.
+- Media previews, speaking rings, selected stages, and Music controls require
+  confirmed membership in the viewed voice room. Observers see identities and
+  public camera/LIVE status only.
 - When the middle screen source already belongs to the active voice room,
   subscribe and focus directly. Keep the existing local camera/source
   selection behavior separate and unchanged.
@@ -434,7 +458,8 @@ requirement.
   `musicSearchResultsMax` — rather than reaching for a height.
 - Allow the stage to contract on short viewports without covering later
   sections. Fullscreen remains exempt from in-panel height bounds.
-- The Music panel is shown only when the viewed room is the active voice room.
+- The Music panel requires the viewed room to be active and its authoritative
+  snapshot to confirm this Device is in that room.
   Being in the channel is what entitles a member to summon, the server enforces
   that, and a control that could only ever be refused is worse than no control.
 - Read whether the music is playing from the published Queue
@@ -588,6 +613,13 @@ requirement.
 - Menus, popovers, dialogs, sliders, and custom controls must remain keyboard
   and touch operable, correctly labeled, focus-managed, and usable with reduced
   motion.
+- Initialize settings focus once per opening and read current close handlers
+  through refs. Device enumeration and voice updates preserve native selector
+  nodes and focus; outside input and explicit close controls still dismiss.
+- Voice diagnostics export stays local and anonymous. Browsers download JSON;
+  desktop uses the dedicated Save As bridge defined in
+  [ADR-0030](../../docs/adr/0030-desktop-diagnostics-save-requires-user-selection.md).
+  Cancellation is quiet and save failures have bilingual recoverable feedback.
 - General input and output levels are listener-account preferences shared across
   that user's servers and clamped to 0–200%. Input gain affects both published
   microphone audio and microphone monitoring. General output composes with
@@ -663,9 +695,11 @@ For styling or interaction changes, also inspect desktop, short-viewport, and
 narrow/coarse-pointer behavior when a browser is available. Structural source
 tests complement that check; they do not replace it for geometry-sensitive UI.
 
-- The focused stage video also toggles back to the participant grid on click;
-  fullscreen and screen-volume controls retain their own actions. Selected
-  screen thumbnails use a blurred preview with one central share icon. Participant
-  captions show mute/deafen only; the screen tile owns the share indicator.
+- Clicking focused stage video returns to the participant grid; clicking
+  fullscreen video exits fullscreen while retaining the stage. Fullscreen and
+  screen-volume controls retain their own actions. Unwatched screen thumbnails
+  use neutral CSS blur and Watch; watched boxes show clear live video without
+  a central share icon. Participant captions show mute/deafen only; the screen
+  tile owns the share indicator.
 - The dock avatar menu owns Settings and Owner panel navigation. Do not duplicate
   those actions beside the avatar; the workspace rail keeps its Settings shortcut.

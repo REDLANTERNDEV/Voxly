@@ -31,6 +31,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
   const [activeActionMenu, dispatchActionMenu] = useReducer(contextMenuReducer, null);
   const notifications = useNotificationCenter();
   const deletionRequestRevisionRef = useRef(props.deletionRequestRevision);
+  const previousVoiceErrorRef = useRef(props.voiceError);
   const closeActionMenu = useCallback(() => dispatchActionMenu({ type: "close" }), []);
   const openSettings = useCallback((section: SettingsSection = "account", contextError: TranslationKey | "" = "") => {
     setSettingsSection(section);
@@ -75,6 +76,12 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
   }, [openSettings]);
 
   useEffect(() => {
+    const previous = previousVoiceErrorRef.current;
+    previousVoiceErrorRef.current = props.voiceError;
+    if (previous.startsWith("voiceError.microphone") && previous !== props.voiceError) {
+      notifications.dismiss(`voice-error:${previous}`);
+      setSettingsContextError((current) => current === previous ? "" : current);
+    }
     if (!props.voiceError) return;
     notifications.push({
       id: `voice-error:${props.voiceError}`,
@@ -84,7 +91,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
       timeoutMs: null,
       action: props.voiceError === "voiceError.microphoneDisconnected" ? undefined : "open-audio-settings"
     });
-  }, [notifications.push, props.voiceError, props.voiceErrorRevision]);
+  }, [notifications.push, notifications.dismiss, props.voiceError, props.voiceErrorRevision]);
 
   useEffect(() => {
     if (!props.voiceNotice) return;
@@ -176,6 +183,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           onRenameCategory={props.onRenameCategory}
           onDeleteCategory={props.onDeleteCategory}
           onSaveRoomLayout={props.onSaveRoomLayout}
+          onRenameRoom={props.onRenameRoom}
           onDeleteRoom={props.onDeleteRoom}
           onInputVolumeChange={props.onInputVolumeChange}
           onJoinVoice={props.onJoinVoice}
@@ -251,6 +259,9 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         activeVoiceRoomId={props.activeVoiceRoomId}
         connectionHealth={props.connectionHealth}
         voiceQuality={props.voiceQuality}
+        voiceSnapshots={props.voiceSnapshots}
+        microphoneHealthWarning={props.microphoneHealthWarning}
+        onOpenAudioSettings={() => openSettings("audio")}
         onOpenSettings={() => openSettings()}
         controls={props.controls}
         currentNickname={props.currentNickname}

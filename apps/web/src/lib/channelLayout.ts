@@ -18,7 +18,7 @@ export function channelGroups(categories: CategorySummary[], rooms: RoomSummary[
   ].sort((a, b) => a.position - b.position)
     .map(({ category, rooms: groupedRooms }) => ({
       category,
-      rooms: groupedRooms.sort((a, b) => a.position - b.position)
+      rooms: groupedRooms.sort((a, b) => (category ? 0 : Number(a.kind === "voice") - Number(b.kind === "voice")) || a.position - b.position)
     }));
 }
 
@@ -65,7 +65,7 @@ export function moveRoomBy(groups: ChannelGroup[], roomId: string, offset: -1 | 
   const group = groups[groupIndex];
   const roomIndex = group.rooms.findIndex((room) => room.id === roomId);
   const targetIndex = roomIndex + offset;
-  if (targetIndex < 0 || targetIndex >= group.rooms.length) return groups;
+  if (targetIndex < 0 || targetIndex >= group.rooms.length || (!group.category && group.rooms[roomIndex]?.kind !== group.rooms[targetIndex]?.kind)) return groups;
   const rooms = [...group.rooms];
   [rooms[roomIndex], rooms[targetIndex]] = [rooms[targetIndex], rooms[roomIndex]];
   const next = [...groups];
@@ -86,7 +86,7 @@ function normalizeGroups(groups: ChannelGroup[]): ChannelGroup[] {
   let position = 10;
   return groups.map((group, groupIndex) => {
     const category = group.category ? { ...group.category, position: groupIndex * 10 } : null;
-    const rooms = group.rooms.map((room) => {
+    const rooms = [...group.rooms].sort((a, b) => group.category ? 0 : Number(a.kind === "voice") - Number(b.kind === "voice")).map((room) => {
       const next = { ...room, categoryId: category?.id ?? null, position };
       position += 10;
       return next;

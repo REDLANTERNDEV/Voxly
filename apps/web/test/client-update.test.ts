@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   clientUpdatePollMs,
   clientUpdateRequired,
+  clientUpdateDisposition,
   clientUpdateUrl,
   claimClientUpdateAttempt,
   loadedClientVersion
@@ -31,6 +32,14 @@ describe("long-lived client updates", () => {
     assert.equal(clientUpdateRequired("/assets/index-a.js", "/assets/index-b.js"), true);
     assert.equal(clientUpdateRequired(null, "/assets/index-b.js"), false);
     assert.equal(clientUpdateRequired("/assets/index-a.js", null), false);
+  });
+
+  it("defers during media and retains the explicit action after media ends", () => {
+    assert.equal(clientUpdateDisposition("old", "new", true, false), "defer");
+    assert.equal(clientUpdateDisposition("old", "new", false, true), "defer");
+    assert.equal(clientUpdateDisposition("old", "new", false, false), "reload");
+    assert.equal(clientUpdateDisposition("old", null, true, true), "none");
+    assert.equal(clientUpdateDisposition("old", "old", false, true), "none");
   });
 
   it("preserves the route and adds a cache-busting deployment version", () => {

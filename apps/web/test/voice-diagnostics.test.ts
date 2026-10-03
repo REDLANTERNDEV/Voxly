@@ -1,9 +1,48 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
-import { safeAudioStats, VoiceDiagnostics } from "../src/lib/voiceDiagnostics.js";
+import { downloadVoiceDiagnostics, safeAudioStats, VoiceDiagnostics } from "../src/lib/voiceDiagnostics.js";
 
 describe("voice diagnostics", () => {
+  it("uses the dedicated desktop bridge and treats cancellation quietly", async (t) => {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+    t.after(() => { if (previous) Object.defineProperty(globalThis, "window", previous); else Reflect.deleteProperty(globalThis, "window"); });
+    for (const result of ["saved", "cancelled"] as const) {
+      let received = "";
+      Object.defineProperty(globalThis, "window", { configurable: true, value: {
+        __VOXLY_DESKTOP_DIAGNOSTICS_V1__: { version: 1, save: async (report: string) => { received = report; return result; } }
+      } });
+      await downloadVoiceDiagnostics();
+      assert.equal(JSON.parse(received).version, 1);
+    }
+    Object.defineProperty(globalThis, "window", { configurable: true, value: { __VOXLY_DESKTOP_V1__: { version: 1 } } });
+    await assert.rejects(downloadVoiceDiagnostics(), /save_unavailable/);
+    Object.defineProperty(globalThis, "window", { configurable: true, value: {
+      __VOXLY_DESKTOP_DIAGNOSTICS_V1__: { version: 1, save: async () => { throw new Error("save_failed"); } }
+    } });
+    await assert.rejects(downloadVoiceDiagnostics(), /save_failed/);
+  });
+
+  it("keeps browser JSON download and releases the temporary URL", async (t) => {
+    const priorWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+    const priorDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+    t.after(() => {
+      for (const [key, descriptor] of [["window", priorWindow], ["document", priorDocument]] as const) {
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key);
+      }
+    });
+    let downloaded = false, removed = false, revoked = "";
+    let cleanup!: () => void;
+    const link = { href: "", download: "", click() { downloaded = true; }, remove() { removed = true; } };
+    Object.defineProperty(globalThis, "window", { configurable: true, value: { setTimeout: (callback: () => void) => { cleanup = callback; } } });
+    Object.defineProperty(globalThis, "document", { configurable: true, value: { createElement: () => link, body: { append: () => undefined } } });
+    t.mock.method(URL, "createObjectURL", (blob: Blob) => { assert.equal(blob.type, "application/json"); return "blob:diagnostics"; });
+    t.mock.method(URL, "revokeObjectURL", (url: string) => { revoked = url; });
+    await downloadVoiceDiagnostics();
+    assert.equal(link.download, "voxly-voice-diagnostics.json");
+    assert.equal(downloaded && removed, true);
+    cleanup(); assert.equal(revoked, "blob:diagnostics");
+  });
   it("exports only allowlisted numeric audio measurements", () => {
     const audio = safeAudioStats([
       { type: "inbound-rtp", kind: "audio", id: "private-id", ssrc: 42, packetsReceived: 20,
@@ -58,7 +97,7 @@ describe("voice diagnostics", () => {
   it("offers an accessible local download without uploading or persisting the report", () => {
     const dock = readFileSync("src/components/shell/VoiceDock.tsx", "utf8");
     const recorder = readFileSync("src/lib/voiceDiagnostics.ts", "utf8");
-    assert.match(dock, /onClick=\{downloadVoiceDiagnostics\}/);
+    assert.match(dock, /void downloadVoiceDiagnostics\(\)\.catch/);
     assert.match(dock, /aria-label=\{t\("voiceQuality.downloadDiagnostics"\)\}/);
     assert.doesNotMatch(recorder, /fetch\(|localStorage|sessionStorage|MediaRecorder/);
   });

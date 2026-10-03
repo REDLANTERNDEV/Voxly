@@ -8,7 +8,7 @@ describe("general output volume integration", () => {
     const source = readAppSource();
 
     assert.match(source, /combineOutputVolume\(memberVolumes\[item\.userId\] \?\? DEFAULT_VOLUME_PERCENT, outputVolume\)/);
-    assert.match(source, /combineOutputVolume\(focusedVolume, outputVolume\)/);
+    assert.match(source, /combineOutputVolume\(props.screenVolumes\[source.stream!.id\] \?\? DEFAULT_VOLUME_PERCENT, props.audioLevels.output\)/);
     assert.match(source, /audio\.microphoneTest\.monitorStream[\s\S]*combineOutputVolume\(DEFAULT_VOLUME_PERCENT, audio\.audioLevels\.output\)/);
   });
 });

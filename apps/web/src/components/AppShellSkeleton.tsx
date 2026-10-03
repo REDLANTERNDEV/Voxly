@@ -3,6 +3,7 @@ import type { Translate } from "../app/types.js";
 export function AppShellSkeleton({ t }: { t: Translate }) {
   return (
     <main className="app-shell-skeleton" aria-label={t("system.loadingApp")} aria-busy="true">
+      <aside className="skeleton-panel skeleton-workspaces" aria-hidden="true"><span className="skeleton-line" /><span className="skeleton-line" /></aside>
       <aside className="skeleton-panel skeleton-rail">
         <span className="skeleton-line skeleton-brand" />
         <span className="skeleton-line skeleton-control" />

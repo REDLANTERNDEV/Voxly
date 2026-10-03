@@ -11,7 +11,7 @@ describe("AFK microphone lock", () => {
   it("holds the local track closed, not just the server's record", () => {
     // Audio flows peer to peer, so a server that records `mic: false` stops the
     // indicator and nothing else. The member would still be heard.
-    assert.match(voiceMedia, /const micLockedByRoom = \(\) => Boolean\(roomRef\.current && afkRoomIdsRef\.current\.includes\(roomRef\.current\)\)/);
+    assert.match(voiceMedia, /const micLockedByRoom = useCallback\(\(\) => Boolean\(roomRef\.current && afkRoomIdsRef\.current\.includes\(roomRef\.current\)\)/);
     assert.match(voiceMedia, /moderationRef\.current\.muted \|\| micLockedByRoom\(\)\) return;/);
   });
 

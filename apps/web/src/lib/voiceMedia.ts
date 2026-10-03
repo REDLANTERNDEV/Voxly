@@ -64,13 +64,18 @@ export function createInitialMediaState(): VoiceMediaUiState {
 
 export function mediaConstraintsFor(kind: Exclude<MediaKind, "mic">): MediaStreamConstraints {
   if (kind === "screen") {
+    // Request exclusion of this Voxly page's playback from system capture.
+    // A plain boolean leaves unsupported runtimes free to ignore the request.
+    const audio: MediaTrackConstraints & { restrictOwnAudio: boolean } = {
+      restrictOwnAudio: true
+    };
     return {
       video: {
         width: { ideal: 1280, max: 1280 },
         height: { ideal: 720, max: 720 },
         frameRate: { ideal: 30, max: 30 }
       },
-      audio: true
+      audio
     };
   }
 
@@ -90,16 +95,18 @@ export const micConstraints: MediaStreamConstraints = {
 };
 
 export function configureScreenTrack(track: MediaStreamTrack) {
-  if (track.kind === "video") track.contentHint = "detail";
+  if (track.kind === "video") track.contentHint = "motion";
 }
 
-export async function preferScreenSenderResolution(sender: RTCRtpSender, screenTrack: MediaStreamTrack) {
+export async function preferScreenSenderFramerate(sender: RTCRtpSender, screenTrack: MediaStreamTrack) {
   if (screenTrack.kind !== "video" || sender.track !== screenTrack) return false;
-  const parameters = sender.getParameters() as RTCRtpSendParameters & {
-    degradationPreference?: "maintain-resolution";
-  };
-  parameters.degradationPreference = "maintain-resolution";
   try {
+    // Let resolution adapt before frame rate so motion stays readable under
+    // congestion. This preference belongs only to the screen-video sender.
+    const parameters = sender.getParameters() as RTCRtpSendParameters & {
+      degradationPreference?: "maintain-framerate";
+    };
+    parameters.degradationPreference = "maintain-framerate";
     await sender.setParameters(parameters);
     return true;
   } catch {

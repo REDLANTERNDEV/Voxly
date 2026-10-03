@@ -1,0 +1,37 @@
+[package]
+name = "voxly-desktop"
+version = "0.1.0"
+description = "Windows-first Voxly desktop feasibility client"
+edition = "2021"
+rust-version = "1.98"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "~2.6", features = [] }
+
+[dependencies]
+tauri = { version = "~2.11", features = ["tray-icon"] }
+tauri-plugin-opener = "~2.5"
+tauri-plugin-dialog = "=2.7.0"
+tauri-plugin-single-instance = { version = "~2.4", features = ["deep-link"] }
+tauri-plugin-deep-link = "=2.4.10"
+tauri-plugin-global-shortcut = "=2.3.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+url = "2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"] }
+tokio = { version = "1", features = ["sync", "time", "macros"] }
+tauri-plugin-updater = "=2.10.1"
+base64 = "0.22"
+minisign-verify = "=0.2.5"
+semver = "1"
+tempfile = "3"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_LibraryLoader", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "=0.61.3", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Data_Xml_Dom", "Foundation", "UI_Notifications", "Win32_UI_Accessibility", "Win32_UI_WindowsAndMessaging"] }
+webview2-com = "=0.38.2"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

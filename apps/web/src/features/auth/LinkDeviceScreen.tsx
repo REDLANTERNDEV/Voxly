@@ -1,11 +1,12 @@
+import { AuthEntryFrame } from "./AuthEntryFrame.js";
 import { useCallback, useEffect, useState } from "react";
 import { claimDeviceLink, collectDeviceLink, type DeviceLinkOutcome } from "../../api.js";
 import type { Translate } from "../../app/types.js";
 import { TurnstileWidget } from "./InviteScreen.js";
 import { formatLinkCodeInput, isCompleteLinkCode } from "../../lib/linkCodeInput.js";
 import { scannedLinkCode } from "../../lib/linkGuide.js";
-import { AuthPageHeader } from "../../components/ui/Primitives.js";
 import type { LanguageCode } from "../../lib/i18n.js";
+import { DesktopBrowserSignIn } from "./DesktopBrowserSignIn.js";
 
 /**
  * The arriving Device's half of linking: type the code, then wait to be let in.
@@ -44,7 +45,7 @@ export function LinkDeviceScreen({ language, t, onLanguageChange, onLinked, turn
     } catch {
       // One answer for unknown, expired and already-used, matching the server.
       // Telling a guesser which half was wrong is the whole thing to avoid.
-      setError(t("link.codeInvalid"));
+      setError("link.codeInvalid");
       if (turnstileSiteKey) {
         // A spent challenge cannot be presented twice, so a retry needs a fresh
         // one or the member's second attempt fails for a reason they cannot see.
@@ -77,10 +78,8 @@ export function LinkDeviceScreen({ language, t, onLanguageChange, onLinked, turn
     return () => window.clearInterval(timer);
   }, [claimToken, onLinked, outcome]);
 
-  return (
-    <main className="landing link-screen">
-      <AuthPageHeader language={language} t={t} onLanguageChange={onLanguageChange} />
-      {claimToken ? (
+  const desktop = window.__VOXLY_DESKTOP_V1__?.version === 1;
+  const codeSurface = (claimToken ? (
         <section className="link-panel">
           <strong>{t("link.waitingTitle")}</strong>
           <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>{confirmation}</span>
@@ -121,7 +120,7 @@ export function LinkDeviceScreen({ language, t, onLanguageChange, onLinked, turn
               onUnavailable={() => setTurnstileToken("")}
             />
           ) : null}
-          {error ? <p className="small device-error" role="alert">{error}</p> : null}
+          {error ? <p className="small device-error" role="alert">{t("link.codeInvalid")}</p> : null}
           <button className="btn btn-primary" type="submit" disabled={busy || !isCompleteLinkCode(code) || (Boolean(turnstileSiteKey) && !turnstileToken)}>
             {t("link.continue")}
           </button>
@@ -129,7 +128,14 @@ export function LinkDeviceScreen({ language, t, onLanguageChange, onLinked, turn
               code from. Offered plainly, because that is what Recovery is for. */}
           <a className="small muted recovery-link" href="/recover">{t("recovery.lostDevice")}</a>
         </form>
-      )}
-    </main>
+      ));
+
+  return (
+    <AuthEntryFrame language={language} t={t} onLanguageChange={onLanguageChange}>
+
+      {desktop ? <DesktopBrowserSignIn t={t} onLinked={onLinked} /> : null}
+      {desktop ? <details className="desktop-link-fallback"><summary>{t("desktopSignIn.useCode")}</summary>{codeSurface}</details> : codeSurface}
+
+    </AuthEntryFrame>
   );
 }

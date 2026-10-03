@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { audioDeviceDisplayName, type AudioDevicePreferenceKind } from "../lib/audioDevices.js";
 import { clampContextMenuPosition } from "../lib/contextMenu.js";
-import { MAX_NOTIFICATION_VOLUME_PERCENT, type NotificationSoundPreferences } from "../lib/notificationSounds.js";
+import { type NotificationSoundPreferences } from "../lib/notificationSounds.js";
 import type { MicrophoneTestError } from "../lib/useMicrophoneTest.js";
+import { AudioLevelControl } from "./AudioControls.js";
+import { NotificationSoundControls } from "./NotificationSoundSettings.js";
 import { InlineAlert } from "./ui/Notifications.js";
 
 interface AudioDeviceSettingsProps {
@@ -70,34 +72,7 @@ interface AudioDeviceSettingsProps {
   onToggleMicrophoneTest(): Promise<void>;
 }
 
-function AudioLevelControl({ label, value, max = 200, onChange }: { label: string; value: number; max?: number; onChange: (value: number) => void }) {
-  return (
-    <label className="audio-level-control">
-      <span><span>{label}</span><strong>{value}%</strong></span>
-      <input aria-label={label} type="range" min="0" max={max} step="1" value={value} onChange={(event) => onChange(Number(event.currentTarget.value))} />
-    </label>
-  );
-}
-
-function AudioSwitchControl({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  const labelId = useId();
-  return (
-    <div className="audio-toggle-control">
-      <span id={labelId}>{label}</span>
-      <button
-        className={`audio-switch ${checked ? "is-on" : ""}`}
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-labelledby={labelId}
-        onClick={() => onChange(!checked)}
-      ><span aria-hidden="true" /></button>
-      {hint ? <span className="muted small">{hint}</span> : null}
-    </div>
-  );
-}
-
-export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?: boolean }) {
+export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?: boolean; microphoneControls?: ReactNode; showNotificationSounds?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [testPending, setTestPending] = useState(false);
   const [dismissedStatus, setDismissedStatus] = useState("");
@@ -107,12 +82,14 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const closeRef = useRef<() => void>(() => undefined);
 
   const close = useCallback(() => {
     props.onClose();
     setIsOpen(false);
     window.setTimeout(() => triggerRef.current?.focus(), 0);
   }, [props.onClose]);
+  closeRef.current = close;
 
   const open = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
@@ -148,21 +125,22 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
     if (!isOpen) return;
     closeButtonRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape") closeRef.current();
     };
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!popoverRef.current?.contains(target) && !triggerRef.current?.contains(target)) close();
+      if (!popoverRef.current?.contains(target) && !triggerRef.current?.contains(target)) closeRef.current();
     };
     window.addEventListener("keydown", closeOnEscape);
     window.addEventListener("pointerdown", closeOnOutsidePointer);
-    window.addEventListener("resize", close);
+    const closeOnResize = () => closeRef.current();
+    window.addEventListener("resize", closeOnResize);
     return () => {
       window.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("pointerdown", closeOnOutsidePointer);
-      window.removeEventListener("resize", close);
+      window.removeEventListener("resize", closeOnResize);
     };
-  }, [close, isOpen]);
+  }, [isOpen]);
 
   const contextStatus = props.contextError;
   const deviceStatus = props.error || (props.unavailableSelections.length > 0 ? props.labels.unavailable : "");
@@ -194,6 +172,8 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
 
   const fields = (
           <div className="audio-device-fields">
+            <h3 className="audio-microphone-heading">{props.labels.microphone}</h3>
+            {props.microphoneControls}
             <label className="form-field">
               <span>{props.labels.microphone}</span>
               <select className="input" name="audioInput" value={props.selectedInputId} onChange={(event) => props.onSelectInput(event.currentTarget.value)}>
@@ -248,27 +228,7 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
               </select>
             </label>
             <AudioLevelControl label={props.labels.outputVolume} value={props.outputVolume} onChange={props.onOutputVolumeChange} />
-            <div className="notification-sound-section">
-              <AudioSwitchControl
-                label={props.labels.notificationSounds}
-                hint={props.labels.notificationSoundsHint}
-                checked={props.notificationSounds.enabled}
-                onChange={(enabled) => props.onNotificationSoundsChange({ enabled })}
-              />
-              {props.notificationSounds.enabled ? (
-                <>
-                  <AudioLevelControl
-                    label={props.labels.notificationVolume}
-                    value={props.notificationSounds.volume}
-                    max={MAX_NOTIFICATION_VOLUME_PERCENT}
-                    onChange={(volume) => props.onNotificationSoundsChange({ volume })}
-                  />
-                  <AudioSwitchControl label={props.labels.notificationVoice} checked={props.notificationSounds.voice} onChange={(voice) => props.onNotificationSoundsChange({ voice })} />
-                  <AudioSwitchControl label={props.labels.notificationMessage} checked={props.notificationSounds.message} onChange={(message) => props.onNotificationSoundsChange({ message })} />
-                  <AudioSwitchControl label={props.labels.notificationConnection} checked={props.notificationSounds.connection} onChange={(connection) => props.onNotificationSoundsChange({ connection })} />
-                </>
-              ) : null}
-            </div>
+            {props.showNotificationSounds !== false ? <NotificationSoundControls preferences={props.notificationSounds} labels={props.labels} onChange={props.onNotificationSoundsChange} /> : null}
             <button className="btn btn-ghost" type="button" disabled={props.loading} onClick={() => {
               setLastAction("device");
               void props.onRefresh();

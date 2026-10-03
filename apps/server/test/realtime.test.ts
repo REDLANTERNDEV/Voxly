@@ -51,6 +51,31 @@ describe("Voxly realtime MVP", () => {
     assert.deepEqual(await memberNotice, { serverId: "the-basement" });
   });
 
+  it("broadcasts channel renames without changing voice membership or message history", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Rename member");
+    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    sockets.push(ownerSocket, memberSocket);
+    const joined = await joinVoice(memberSocket, "lobby");
+    assert.ok(joined.ok);
+    const message = await app.server.inject({ method: "POST", url: "/api/rooms/general/messages", cookies: member.cookies, payload: { body: "History survives a rename" } });
+    assert.equal(message.statusCode, 201);
+    for (const roomId of ["general", "lobby"]) {
+      const ownerNotice = onceEvent<{ serverId: string }>(ownerSocket, "server:roomsChanged");
+      const memberNotice = onceEvent<{ serverId: string }>(memberSocket, "server:roomsChanged");
+      const renamed = await app.server.inject({ method: "PATCH", url: `/api/servers/the-basement/rooms/${roomId}`, cookies: owner.cookies, payload: { name: `Renamed ${roomId}` } });
+      assert.equal(renamed.statusCode, 200);
+      assert.deepEqual(await ownerNotice, { serverId: "the-basement" });
+      assert.deepEqual(await memberNotice, { serverId: "the-basement" });
+    }
+    const snapshot = await new Promise<VoiceSnapshot>(resolve => memberSocket.emit("voice:snapshot", "lobby", resolve));
+    assert.equal(snapshot.viewerInVoiceRoom, true);
+    assert.equal(snapshot.members[0]?.mediaInstanceId, joined.state.mediaInstanceId);
+    const history = await app.server.inject({ method: "GET", url: "/api/rooms/general/messages", cookies: member.cookies });
+    assert.equal(history.json().messages[0]?.id, message.json().message.id);
+  });
+
   it("emits presence and voice room membership for authenticated sessions", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ece");
