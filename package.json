@@ -11,11 +11,13 @@
     "packages/shared"
   ],
   "scripts": {
-    "test": "npm run test -w @voxly/shared && npm run test -w @voxly/server && npm run test -w @voxly/web && npm run test -w @voxly/bot && npm run test -w @voxly/desktop",
+    "test": "npm run test -w @voxly/shared && npm run test -w @voxly/server && npm run test -w @voxly/web && npm run test -w @voxly/bot && npm run test -w @voxly/desktop && npm run test:voice:metrics",
     "typecheck": "npm run typecheck -w @voxly/server && npm run typecheck -w @voxly/web && npm run typecheck -w @voxly/bot && npm run typecheck -w @voxly/shared && npm run typecheck -w @voxly/desktop",
     "build": "npm run build -w @voxly/server && npm run build -w @voxly/web && npm run build -w @voxly/bot",
     "desktop:dev": "npm run dev -w @voxly/desktop",
-    "desktop:build": "npm run bundle -w @voxly/desktop -- -- --locked"
+    "desktop:build": "npm run bundle -w @voxly/desktop -- -- --locked",
+    "test:voice:browser": "node scripts/voice-lab/run.mjs",
+    "test:voice:metrics": "node --test scripts/voice-lab/audio.test.mjs"
   },
   "engines": {
     "node": ">=22"

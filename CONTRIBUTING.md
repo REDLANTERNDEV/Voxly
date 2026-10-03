@@ -60,6 +60,13 @@ platform or a small local helper. If a dependency is necessary, explain why its
 correctness or maintenance benefit outweighs its long-term cost and commit the
 updated lockfile.
 
+## Voice audio regressions
+
+Run `npm run test:voice:browser` after building to compare synthetic audio
+through two authenticated clients with native WebRTC. See the
+[engineer lab guide](scripts/voice-lab/README.md) for fixtures, isolated UDP
+impairment, self-hosted TURN, and required Windows headset checks.
+
 ## Verification
 
 From the repository root:

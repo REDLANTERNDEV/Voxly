@@ -1,3 +1,5 @@
+import { VoicePeerOwner } from "./voicePeerOwner.js";
+import { MicrophoneOwner } from "./microphoneOwner.js";
 import { stepMicrophoneHealth,type MicrophoneHealthState } from "./microphoneHealth.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isRtcRecoveryRequest } from "@voxly/shared";
@@ -133,7 +135,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (next) setErrorRevision((current) => current + 1);
   }, []);
   const localStreamsRef = useRef<Partial<Record<LocalStreamKind, MediaStream>>>({});
-  const microphoneInputRef = useRef<MicrophoneInput | null>(null);
+  const [microphoneInputRef] = useState(() => new MicrophoneOwner());
+  const [peerOwner] = useState(() => new VoicePeerOwner());
   const iceServersRef = useRef(iceServers);
   const microphoneDeviceIdRef = useRef(microphoneDeviceId);
   const microphoneVolumeRef = useRef(microphoneVolume);
@@ -142,7 +145,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const mediaInstanceIdRef = useRef<string | null>(null);
   const remoteMediaInstancesRef = useRef(new Map<string, string>());
   const offeredPeersRef = useRef(new Set<RTCPeerConnection>());
-  const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const peersRef = useRef(peerOwner.peers);
   const remoteStreamKindsRef = useRef<Map<string, Map<string, RemoteMediaKind>>>(new Map());
   const viewerVisualSubscriptionsRef = useRef<Map<string, Set<VisualMediaKind>>>(new Map());
   const visualTargetsRef = useRef<VisualTarget[]>([]);
@@ -151,7 +154,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const pendingOfferPeersRef = useRef<Set<string>>(new Set());
   const peerRecoveryTimersRef = useRef<Map<string, number>>(new Map());
   const peerConnectionTimeoutsRef = useRef<Map<string, number>>(new Map());
-  const peerGenerationsRef = useRef<Map<string, number>>(new Map());
+  const peerGenerationsRef = useRef(peerOwner.generations);
   const peerRecoveryStatesRef = useRef<Map<string, PeerRecoveryState>>(new Map());
   const activeVoiceMemberUserIdsRef = useRef<Set<string>>(new Set());
   const pendingCandidatesRef = useRef<Map<string, { generation: number; candidates: RTCIceCandidateInit[] }>>(new Map());
@@ -365,10 +368,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     if (kind === "mic") {
       microphoneEndedCleanupRef.current?.();
       microphoneEndedCleanupRef.current = null;
-      const input = microphoneInputRef.current;
-      microphoneInputRef.current = null;
       desktopMicrophone.forget(stream?.getAudioTracks() ?? []);
-      input?.dispose();
+      microphoneInputRef.release();
       setMicrophoneMonitorStream(null);
     } else {
       stream?.getTracks().forEach((track) => track.stop());
@@ -383,10 +384,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   }, [stopSpeakingMonitor]);
 
   const closePeers = useCallback(() => {
-    for (const peer of peersRef.current.values()) {
-      peer.close();
-    }
-    peersRef.current.clear();
+    peerOwner.clear();
     mediaInstanceIdRef.current = null;
     remoteMediaInstancesRef.current.clear();
     offeredPeersRef.current.clear();
@@ -415,10 +413,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const removePeer = useCallback((peerUserId: string, options: PeerRemovalOptions = {}) => {
     const peer = peersRef.current.get(peerUserId);
     if (options.expectedPeer && peer !== options.expectedPeer) return false;
-    const peerGeneration = peerGenerationsRef.current.get(peerUserId) ?? 0;
-    peerGenerationsRef.current.set(peerUserId, peerGeneration + 1);
     if (peer) offeredPeersRef.current.delete(peer);
-    peer?.close();
+    peerOwner.release(peerUserId, peer);
     const connectionTimeout = peerConnectionTimeoutsRef.current.get(peerUserId);
     if (connectionTimeout !== undefined) window.clearTimeout(connectionTimeout);
     peerConnectionTimeoutsRef.current.delete(peerUserId);
@@ -633,6 +629,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       if (!isCurrentPeer(peerUserId, peer, peerGeneration)) return;
       const stream = mediaStreamForTrack(event.track, event.streams);
       const kind = remoteStreamKindsRef.current.get(peerUserId)?.get(stream.id) ?? (event.track.kind === "audio" ? "audio" : "camera");
+      peerOwner.noteTrack(peer, event.track, kind);
       setRemoteStreams((current) => {
         return upsertRemoteStream(current, peerUserId, kind, stream);
       });
@@ -877,6 +874,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     return [...peersRef.current.entries()].map(([userId, peer]) => ({
       userId,
       peer,
+      microphoneTrackIds: peerOwner.microphoneTrackIds(peer),
+      activeAudioTrackIds: peerOwner.activeAudioTrackIds(peer),
+      recovering: ["restarting", "rebuilding"].includes(peerRecoveryStatesRef.current.get(userId)?.phase ?? ""),
       expectingAudio: members.get(userId) === true
     }));
   }, []);
@@ -935,7 +935,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     microphoneEndedCleanupRef.current?.();
     desktopMicrophone.apply(input.voiceStream.getAudioTracks(), requested
       && !controlsRef.current.deafen.on && !moderationRef.current.muted && !micLockedByRoom());
-    microphoneInputRef.current = input;
+    microphoneInputRef.adopt(input);
     setMicrophoneHealthWarning(false);
     microphoneRecoveryRef.current = null;
     setErrorState((current) => current.startsWith("voiceError.microphone") ? "" : current);

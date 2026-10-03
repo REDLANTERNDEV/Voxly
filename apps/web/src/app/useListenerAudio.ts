@@ -48,7 +48,8 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
   // Only while there is a call to measure. Outside a voice room the signalling
   // round trip is the only connection a member has, and reporting on it is
   // exactly right; inside one it is the wrong path to be looking at.
-  const voiceQuality = useVoiceQuality(voice.activeRoomId ? voice.peerConnections : null);
+  const measuredQuality = useVoiceQuality(voice.activeRoomId ? voice.peerConnections : null);
+  const voiceQuality = { ...measuredQuality, recovering: Object.values(voice.peerConnectionStates).some(state => state === "reconnecting") };
   useEffect(() => {
     for (const request of voiceQuality.recoveryRequests) {
       voice.recoverPeer(request.peerUserId, request.peer);

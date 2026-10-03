@@ -19,3 +19,7 @@ npm-debug.log*
 *.sqlite-wal
 
 Voxly-App-UI
+
+voice-lab-results
+test-results
+playwright-report

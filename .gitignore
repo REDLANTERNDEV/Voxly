@@ -44,3 +44,8 @@ sast/
 .scratch/
 /docs/agents/
 /.claude/
+
+# Voice lab: synthetic captures, disposable profiles, and test results
+/voice-lab-results/
+/test-results/
+/playwright-report/

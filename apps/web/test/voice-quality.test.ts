@@ -7,6 +7,7 @@ import {
   updateVoiceQualityRecovery,
   voiceMediaStalled,
   voiceQualityReading,
+  voiceQualityNeedsRecovery,
   worstVoiceTransport,
   worstVoiceQuality,
   type VoiceCounters,
@@ -36,7 +37,7 @@ function clean(overrides: Partial<VoiceCounters> = {}) {
   return counters({
     packetsReceived: 50,
     jitterBufferEmittedCount: SECOND,
-    jitterBufferDelay: 0.04,
+    jitterBufferDelay: SECOND * 0.04,
     ...overrides
   });
 }
@@ -105,6 +106,29 @@ describe("voice quality counters", () => {
 });
 
 describe("voice quality reading", () => {
+  for (const field of ["removedSamplesForAcceleration", "insertedSamplesForDeceleration"] as const) {
+    it(`grades severe ${field} at the boundary and makes it eligible only during speech`, () => {
+      const reading = voiceQualityReading(counters(), clean({ [field]: SAMPLE_RATE * 0.06 }));
+      assert.ok(reading);
+      assert.equal(reading.grade, "breaking");
+      assert.equal(voiceQualityNeedsRecovery(reading, true), true);
+      assert.equal(voiceQualityNeedsRecovery(reading, false), false);
+      const below = voiceQualityReading(counters(), clean({ [field]: SAMPLE_RATE * 0.059 }));
+      assert.ok(below);
+      assert.equal(below.grade, "unstable");
+      assert.equal(voiceQualityNeedsRecovery(below, true), false);
+    });
+  }
+
+  it("calculates buffer delay from accumulated sample delay across a four-second interval", () => {
+    const reading = voiceQualityReading(clean(), clean({
+      packetsReceived: 250, jitterBufferEmittedCount: SECOND * 5,
+      jitterBufferDelay: SECOND * 0.04 + SECOND * 4 * 0.08
+    }));
+    assert.ok(reading);
+    assert.equal(reading.bufferMs, 80);
+  });
+
   it("detects silent concealment while the sender says it is speaking", () => {
     assert.equal(voiceMediaStalled(
       counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND }),
@@ -142,7 +166,7 @@ describe("voice quality reading", () => {
   it("grades an ordinary second as clear", () => {
     const reading = voiceQualityReading(
       clean(),
-      clean({ packetsReceived: 100, jitterBufferEmittedCount: SECOND * 2, jitterBufferDelay: 0.08 })
+      clean({ packetsReceived: 100, jitterBufferEmittedCount: SECOND * 2, jitterBufferDelay: SECOND * 0.08 })
     );
 
     assert.ok(reading);
@@ -274,10 +298,10 @@ describe("worst voice quality", () => {
 
 describe("voice quality recovery", () => {
   const degraded = {
-    grade: "unstable" as const,
+    grade: "breaking" as const,
     symptom: "jitter" as const,
     lossPercent: 0,
-    concealedMs: 20,
+    concealedMs: 60,
     spedUpMs: 0,
     slowedDownMs: 0,
     bufferMs: 40
@@ -327,9 +351,9 @@ describe("voice quality recovery", () => {
   });
 
   it("keeps recovery requests per peer and leaves execution to the media owner", () => {
-    const sampler = readFileSync("src/lib/useVoiceQuality.ts", "utf8");
+    const sampler = readFileSync("src/lib/voiceQualityController.ts", "utf8");
 
-    assert.match(sampler, /voiceMediaStalled/);
+    assert.match(sampler, /VoiceQualityController/);
     assert.doesNotMatch(sampler, /updateVoiceQualityRecovery\(previousRecovery, reading/);
     assert.match(sampler, /userId/);
     assert.match(sampler, /recoveryRequests/);

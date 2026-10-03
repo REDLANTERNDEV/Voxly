@@ -50,6 +50,15 @@ function quality(overrides: Partial<VoiceQuality> = {}): VoiceQuality {
 }
 
 describe("dock connection signal", () => {
+  it("distinguishes an active recovery attempt in both languages", () => {
+    for (const language of ["en", "tr"] as const) {
+      const result = voiceSignalPresentation(health(), quality({ recovering: true }), true, translator(language));
+      assert.equal(result.value, translator(language)("voiceQuality.recovering"));
+      assert.equal(result.tone, "fair");
+      const requestOnly = voiceSignalPresentation(health(), quality(), true, translator(language));
+      assert.notEqual(requestOnly.value, result.value);
+    }
+  });
   it("reports the server round trip when there is no call to measure", () => {
     const signal = voiceSignalPresentation(health(), measuring, false, t);
 

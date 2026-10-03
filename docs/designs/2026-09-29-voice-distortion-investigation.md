@@ -2,6 +2,10 @@
 
 ## Outcome
 
+Implementation follow-up: the two numerical defects below are corrected in the
+[voice reliability overhaul](2026-10-03-voice-reliability-overhaul.md). The
+original investigation and its unreproduced audible symptoms remain distinct.
+
 The reported robotic, fast, squeaky voice has not been reproduced on an affected
 device. No microphone, codec, playback, or recovery behavior was changed. Leaving
 and rejoining resets several parts of the audio path together, so its success

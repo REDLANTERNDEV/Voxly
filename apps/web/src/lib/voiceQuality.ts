@@ -40,10 +40,10 @@ export type VoiceQualityGrade = "measuring" | "clear" | "unstable" | "breaking";
 
 /**
  * The dominant thing the member hears, named as they would describe it. Loss
- * and jitter both surface as crackle, and separating them is the whole point:
- * one is packets that never arrived, the other packets that arrived too late.
+ * and decoder concealment can both sound like crackle. Concealment alone does
+ * not establish whether packets were lost or arrived late.
  */
-export type VoiceQualitySymptom = "none" | "loss" | "jitter" | "speedUp" | "slowDown";
+export type VoiceQualitySymptom = "none" | "loss" | "jitter" | "speedUp" | "slowDown" | "gaps";
 
 export interface VoiceCounters {
   packetsReceived: number;
@@ -204,9 +204,15 @@ export function worstVoiceTransport(readings: readonly VoiceTransportReading[]):
 export function updateVoiceQualityRecovery(
   state: VoiceQualityRecoveryState,
   reading: VoiceQualityReading,
-  now: number
+  now: number,
+  expectingAudio = false,
+  stalled = false
 ) {
-  if (reading.grade === "clear" || reading.grade === "measuring") {
+  return updateVoiceRecoveryEligibility(state, stalled || voiceQualityNeedsRecovery(reading, expectingAudio), now);
+}
+
+export function updateVoiceRecoveryEligibility(state: VoiceQualityRecoveryState, eligible: boolean, now: number) {
+  if (!eligible) {
     return {
       state: { ...state, consecutiveDegradedSamples: 0 },
       recover: false
@@ -247,7 +253,7 @@ function samplesToMs(samples: number, perSecond: number) {
 }
 
 function gradeFor(lossPercent: number, concealedMs: number, resyncMs: number): VoiceQualityGrade {
-  if (lossPercent >= breakingPercent || concealedMs >= breakingMsPerSecond) return "breaking";
+  if (lossPercent >= breakingPercent || concealedMs >= breakingMsPerSecond || resyncMs >= breakingMsPerSecond) return "breaking";
   if (lossPercent >= lossyPercent || concealedMs >= audibleMsPerSecond || resyncMs >= audibleMsPerSecond) {
     return "unstable";
   }
@@ -297,7 +303,7 @@ export function voiceQualityReading(previous: VoiceCounters, next: VoiceCounters
     delta(previous.insertedSamplesForDeceleration, next.insertedSamplesForDeceleration),
     perSecond
   );
-  const bufferMs = (delta(previous.jitterBufferDelay, next.jitterBufferDelay) / perSecond) * 1000;
+  const bufferMs = (delta(previous.jitterBufferDelay, next.jitterBufferDelay) / emitted) * 1000;
 
   return {
     grade: gradeFor(lossPercent, concealedMs, Math.max(spedUpMs, slowedDownMs)),

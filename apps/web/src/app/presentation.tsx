@@ -78,6 +78,10 @@ export function voiceSignalPresentation(
     };
   }
 
+  if (quality.recovering) {
+    return { tone: "fair", value: t("voiceQuality.recovering"), label: t("voiceQuality.recoveringDetail") };
+  }
+
   if (quality.grade === "measuring") {
     return {
       tone: "fair",
