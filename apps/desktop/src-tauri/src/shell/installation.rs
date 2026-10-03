@@ -192,7 +192,6 @@ async fn check_health(origin: &str) -> Result<(), &'static str> {
 
 #[tauri::command]
 pub(super) async fn connect_installation(
-    app: tauri::AppHandle,
     window: WebviewWindow,
     shell: tauri::State<'_, Shell>,
     id: String,
@@ -202,6 +201,7 @@ pub(super) async fn connect_installation(
     address: Option<String>,
 ) -> Result<ShellSnapshot, &'static str> {
     trusted_shell(&window)?;
+    let app = window.app_handle().clone();
     if !cfg!(target_os = "windows") {
         return Err("unsupported_platform");
     }

@@ -26,15 +26,28 @@ impl Prepared {
             // ShellExecuteW returns only after UAC is accepted or cancelled.
             use std::os::windows::ffi::OsStrExt;
             let verb: Vec<u16> = "runas\0".encode_utf16().collect();
-            let path: Vec<u16> = self.0.path().join("update.exe").as_os_str().encode_wide().chain(Some(0)).collect();
+            let path: Vec<u16> = self
+                .0
+                .path()
+                .join("update.exe")
+                .as_os_str()
+                .encode_wide()
+                .chain(Some(0))
+                .collect();
             let arguments: Vec<u16> = "/P /R /UPDATE\0".encode_utf16().collect();
             let result = unsafe {
                 windows_sys::Win32::UI::Shell::ShellExecuteW(
-                    std::ptr::null_mut(), verb.as_ptr(), path.as_ptr(), arguments.as_ptr(),
-                    std::ptr::null(), 1,
+                    std::ptr::null_mut(),
+                    verb.as_ptr(),
+                    path.as_ptr(),
+                    arguments.as_ptr(),
+                    std::ptr::null(),
+                    1,
                 )
             };
-            if result as isize <= 32 { return Err("update_install_failed"); }
+            if result as isize <= 32 {
+                return Err("update_install_failed");
+            }
             // NSIS must be able to read its executable after this parent exits.
             let _ = self.0.keep();
             Ok(())

@@ -25,7 +25,12 @@ pub(super) fn shell_navigation(url: &url::Url) -> bool {
         || (cfg!(debug_assertions) && origin == "http://127.0.0.1:1420")
 }
 
-pub(crate) fn report_caller_matches(generation: u64, label: &str, origin: &str, url: &url::Url) -> bool {
+pub(crate) fn report_caller_matches(
+    generation: u64,
+    label: &str,
+    origin: &str,
+    url: &url::Url,
+) -> bool {
     label == platform::installation_label(generation) && installations::same_origin(origin, url)
 }
 

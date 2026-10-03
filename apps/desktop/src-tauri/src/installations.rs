@@ -326,8 +326,10 @@ mod tests {
     #[test]
     fn resets_use_native_defaults_and_preserve_required_hold_modes() {
         use crate::shortcuts::Action;
-        let mut preferences = Preferences::default();
-        preferences.mute_shortcut = Some("Alt+KeyK".into());
+        let mut preferences = Preferences {
+            mute_shortcut: Some("Alt+KeyK".into()),
+            ..Preferences::default()
+        };
         preferences.reset_shortcut(Action::Mute).unwrap();
         assert_eq!(
             preferences.mute_shortcut.as_deref(),

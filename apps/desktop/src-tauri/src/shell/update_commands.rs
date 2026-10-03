@@ -80,11 +80,15 @@ impl TrayUpdateRequest {
         self.review.store(true, Ordering::Release);
         self.deferred.store(true, Ordering::Release);
     }
-    fn initialize(&self) { self.initialized.store(true, Ordering::Release); }
+    fn initialize(&self) {
+        self.initialized.store(true, Ordering::Release);
+    }
     fn begin_pending(&self) -> bool {
         self.initialized.load(Ordering::Acquire) && self.deferred.swap(false, Ordering::AcqRel)
     }
-    fn take_review(&self) -> bool { self.review.swap(false, Ordering::AcqRel) }
+    fn take_review(&self) -> bool {
+        self.review.swap(false, Ordering::AcqRel)
+    }
 }
 
 pub(super) fn check_from_tray(app: &tauri::AppHandle) {
@@ -141,7 +145,8 @@ mod tray_tests {
     #[test]
     fn early_requests_remain_queued_and_repeated_requests_are_consumed_once() {
         let request = super::TrayUpdateRequest::default();
-        request.request(); request.request();
+        request.request();
+        request.request();
         assert!(!request.begin_pending());
         request.initialize();
         assert!(request.begin_pending());

@@ -1,9 +1,9 @@
 //! Shortcut settings and ordered native voice-intent delivery.
-use super::{persist, snapshot, Inner, Shell, ShellSnapshot};
 use super::installation::remote_window;
 use super::settings::{trusted_settings, validate_settings_caller};
-use crate::{installations, shortcuts};
+use super::{persist, snapshot, Inner, Shell, ShellSnapshot};
 use crate::installations::Installation;
+use crate::{installations, shortcuts};
 use std::sync::atomic::Ordering;
 use tauri::{Manager, WebviewWindow};
 
@@ -297,8 +297,15 @@ fn deliver_voice_action(
     if !installations::same_origin(&target.origin, &url) {
         return;
     }
-    if pressed && remote.is_focused().unwrap_or(false)
-        && app.state::<Shell>().recording_shortcut.load(Ordering::Acquire) { return; }
+    if pressed
+        && remote.is_focused().unwrap_or(false)
+        && app
+            .state::<Shell>()
+            .recording_shortcut
+            .load(Ordering::Acquire)
+    {
+        return;
+    }
     // Fixed actions and booleans, never script supplied by the installation.
     let talk_release =
         format!("window.__VOXLY_DESKTOP_V1__?.dispatchPushToTalk?.(false, {release_delay_ms});");
@@ -358,17 +365,14 @@ pub(super) fn start_delivery(
                 continue;
             };
             match delivery {
-                VoiceDelivery::TalkReleaseExpired(_) => {
-                    expire_talk_release(&event_app, &target)
-                }
+                VoiceDelivery::TalkReleaseExpired(_) => expire_talk_release(&event_app, &target),
                 VoiceDelivery::Input(event) => {
                     let mut delay_ms = 0;
                     if event.action == shortcuts::Action::PushToTalk {
                         // A fresh press replaces any pending cutoff. Binding resets bypass delay.
                         release = None;
                         if !event.pressed && event.allow_release_delay {
-                            delay_ms =
-                                shell.push_to_talk_release_delay_ms.load(Ordering::Acquire);
+                            delay_ms = shell.push_to_talk_release_delay_ms.load(Ordering::Acquire);
                         }
                     } else if event.pressed
                         && matches!(
