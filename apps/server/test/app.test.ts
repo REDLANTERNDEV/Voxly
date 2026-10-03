@@ -11,6 +11,14 @@ import { createOwnerClaim, createOwnerLoginClaim } from "../src/auth/ownerClaims
 import { defaultServerId, one, openDatabase, run } from "../src/db/database.js";
 import { createRtcConfigProvider } from "../src/rtcConfig.js";
 
+const closedApps = new WeakSet<VoxlyApp>();
+
+async function closeTestApp(app: VoxlyApp) {
+  if (closedApps.has(app)) return;
+  await app.close();
+  closedApps.add(app);
+}
+
 describe("Voxly HTTP MVP", () => {
   let app: VoxlyApp;
 
@@ -25,7 +33,7 @@ describe("Voxly HTTP MVP", () => {
   });
 
   afterEach(async () => {
-    await app.close();
+    await closeTestApp(app);
   });
 
   it("migrates legacy SQLite data into the default server without discarding it", async () => {
@@ -246,7 +254,7 @@ describe("Voxly HTTP MVP", () => {
   });
 
   it("exchanges a shell-created owner claim once without storing the raw token", async () => {
-    await app.close();
+    await closeTestApp(app);
     const databaseDir = await mkdtemp(join(tmpdir(), "voxly-owner-claim-"));
     const databasePath = join(databaseDir, "voxly.sqlite");
     const claim = await createOwnerClaim({
@@ -280,6 +288,7 @@ describe("Voxly HTTP MVP", () => {
       });
       assert.equal(reuseResponse.statusCode, 404);
     } finally {
+      await closeTestApp(app);
       await rm(databaseDir, { force: true, recursive: true });
     }
   });
@@ -314,7 +323,7 @@ describe("Voxly HTTP MVP", () => {
   });
 
   it("rejects expired owner claim tokens", async () => {
-    await app.close();
+    await closeTestApp(app);
     const databaseDir = await mkdtemp(join(tmpdir(), "voxly-expired-owner-"));
     const databasePath = join(databaseDir, "voxly.sqlite");
     const claim = await createOwnerClaim({
@@ -338,12 +347,13 @@ describe("Voxly HTTP MVP", () => {
       assert.equal(response.statusCode, 404);
       assert.equal(response.cookies.length, 0);
     } finally {
+      await closeTestApp(app);
       await rm(databaseDir, { force: true, recursive: true });
     }
   });
 
   it("creates a shell-only login claim for an existing owner without adding another owner", async () => {
-    await app.close();
+    await closeTestApp(app);
     const databaseDir = await mkdtemp(join(tmpdir(), "voxly-owner-login-"));
     const databasePath = join(databaseDir, "voxly.sqlite");
     const firstClaim = await createOwnerClaim({
@@ -376,6 +386,7 @@ describe("Voxly HTTP MVP", () => {
       const tables = app.dumpTables() as { users: Array<{ role: string }> };
       assert.equal(tables.users.filter((user) => user.role === "owner").length, 1);
     } finally {
+      await closeTestApp(app);
       await rm(databaseDir, { force: true, recursive: true });
     }
   });
