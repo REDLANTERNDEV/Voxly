@@ -69,9 +69,9 @@ try {
     assert.ok(response.ok(), `${path}: HTTP ${response.status()}`);
     return response.json();
   }
-  await post(a.context, '/api/bootstrap/owner', { bootstrapToken: secret, nickname: 'Lab speaker A' });
+  const owner = await post(a.context, '/api/bootstrap/owner', { bootstrapToken: secret, nickname: 'Lab speaker A' });
   const invitation = await post(a.context, '/api/owner/invites', { label: 'Voice lab' });
-  await post(b.context, '/api/invites/accept', { inviteToken: invitation.invite.token, nickname: 'Lab speaker B' });
+  const member = await post(b.context, '/api/invites/accept', { inviteToken: invitation.invite.token, nickname: 'Lab speaker B' });
   const rooms = await (await a.context.request.get(`${base}/api/rooms`)).json();
   const room = rooms.rooms.find(room => room.kind === 'voice' && !room.isAfk);
   assert.ok(room, 'Fresh installation must contain a voice room');
@@ -135,7 +135,20 @@ try {
     if (cycle % 2 === 0) await Promise.all(pages.map(joinCall));
     else { await joinCall(a.page); await joinCall(b.page); }
     await ready();
-    if (cycle === 0) await capture('voxly-startup');
+    if (cycle === 0 || process.env.VOICE_LAB_CAPTURE_EACH_JOIN === '1') {
+      const result = await capture(cycle === 0 ? 'voxly-startup' : `voxly-startup-${cycle}`);
+      if (process.env.VOICE_LAB_CAPTURE_EACH_JOIN === '1') {
+        const comparisons = summary.comparisons.at(-1).comparisons;
+        for (let side = 0; side < 2; side++) {
+          const before = result[side].statsBefore[0].audio[0];
+          const after = result[side].stats[0].audio[0];
+          const emittedSeconds = (after.jitterBufferEmittedCount - before.jitterBufferEmittedCount) / 48000;
+          assert.ok(emittedSeconds >= seconds * 0.9, `Fresh join ${cycle}, side ${side}: receiver emitted only ${emittedSeconds.toFixed(2)} seconds`);
+          assert.ok(comparisons[side].comparisonAvailable && comparisons[side].envelopeCorrelation >= 0.8,
+            `Fresh join ${cycle}, direction ${side}: received speech did not follow the published fixture`);
+        }
+      }
+    }
     await Promise.all(pages.map(leaveCall));
     summary.cyclesCompleted++;
     if ((cycle + 1) % 10 === 0) console.log(`Voice lab: ${cycle + 1}/${cycles} fresh joins passed`);
@@ -143,89 +156,115 @@ try {
   await Promise.all(pages.map(joinCall)); await ready();
   for (const page of pages) { await leaveCall(page); await joinCall(page); await ready(); }
   summary.scenarios.push('individual-rejoin');
-  await a.page.locator('.voice-dock').getByRole('button', { name: 'Mute mic', exact: true }).click();
-  await expect.poll(() => a.page.evaluate(() => window.voiceLab.state().captures)).toBe(1);
-  const muted = await capture('voxly-muted');
-  assert.ok(muted[0].recordings.find(recording => recording.stage === 'published').metrics.rms < 0.0001, 'UI mute leaked publication audio');
-  await a.page.locator('.voice-dock').getByRole('button', { name: 'Unmute mic', exact: true }).click();
-  await a.page.locator('.voice-dock').getByRole('button', { name: 'Deafen', exact: true }).click();
-  await expect.poll(() => a.page.evaluate(() => [...document.querySelectorAll('audio.remote-audio')].every(audio => audio.muted || audio.volume === 0))).toBe(true);
-  await a.page.locator('.voice-dock').getByRole('button', { name: 'Enable sound', exact: true }).click();
-  summary.scenarios.push('mute', 'deafen');
-  const background = await a.context.newPage(); await background.goto('about:blank'); await background.bringToFront();
-  await capture('voxly-background'); await background.close();
-  summary.scenarios.push('background-tab');
-  if (process.env.VOICE_LAB_NETWORK && process.env.VOICE_LAB_NETWORK !== 'clean') await capture('voxly-network');
-  await a.page.locator('.account-menu summary').click();
-  await a.page.locator('.account-menu').getByRole('button', { name: 'Settings', exact: true }).click();
-  await a.page.getByRole('button', { name: 'Voice & audio', exact: true }).click();
-  const suppression = a.page.getByRole('switch', { name: 'Noise suppression', exact: true });
-  await suppression.click();
-  await expect(suppression).toHaveAttribute('aria-checked', 'true');
-  await ready(); await capture('voxly-suppression');
-  await suppression.click();
-  const device = a.page.getByRole('combobox', { name: 'Microphone', exact: true });
-  const devices = await device.locator('option').evaluateAll(options => options.map(option => option.value));
-  const alternate = devices.find(value => value && value !== 'default');
-  if (alternate) { await device.selectOption(alternate); await ready(); summary.scenarios.push('device-replacement'); }
-  else summary.limitations.push('Browser exposed no alternate fake microphone; device replacement needs the Windows headset run.');
-  await a.page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
-  summary.scenarios.push('suppression-toggle');
-  await a.page.locator('.voice-dock').getByRole('button', { name: 'Share screen', exact: true }).click();
-  await b.page.getByRole('button', { name: 'Watch stream — Lab speaker A', exact: true }).click();
-  await expect.poll(() => b.page.evaluate(() => window.voiceLab.state()), { timeout: 15000 }).toMatchObject({ outputs: 2, playing: 2 });
-  await b.page.locator('.voice-dock').getByRole('button', { name: 'Deafen', exact: true }).click();
-  await expect.poll(() => b.page.evaluate(() => [...document.querySelectorAll('audio.remote-audio')].filter(audio => !audio.muted && audio.volume > 0).length)).toBe(1);
-  await b.page.locator('.voice-dock').getByRole('button', { name: 'Enable sound', exact: true }).click();
-  await a.page.locator('.voice-dock').getByRole('button', { name: 'Stop sharing', exact: true }).click();
-  await ready();
-  summary.scenarios.push('screen-audio', 'screen-audio-under-deafen');
-  await Promise.all(pages.map(leaveCall));
-  const rtc = await (await a.context.request.get(`${base}/api/rtc/config`)).json();
-  async function nativeReference(label) {
-    // Same capture constraints, browser, ICE configuration and network profile.
-    await Promise.all(pages.map(page => page.evaluate(servers => window.voiceLab.referenceStart(servers), rtc.iceServers)));
-    const offer = await a.page.evaluate(() => window.voiceLab.referenceOffer());
-    const answer = await b.page.evaluate(offer => window.voiceLab.referenceAnswer(offer), offer);
-    await a.page.evaluate(answer => window.voiceLab.referenceAccept(answer), answer);
+  if (process.env.VOICE_LAB_STALLED_MEDIA === '1') {
+    const offerer = owner.user.userId < member.user.userId ? a.page : b.page;
+    const answerer = offerer === a.page ? b.page : a.page;
+    for (const [role, receiver, sender] of [
+      ['offerer', offerer, answerer], ['answerer', answerer, offerer]
+    ]) {
+      const oldSenderPeer = await sender.evaluate(() => window.voiceLab.dropPublishedAudio());
+      const oldReceiverStats = (await receiver.evaluate(() => window.voiceLab.stats()))[0];
+      const before = oldReceiverStats.audio[0].packetsReceived;
+      await expect.poll(async () => {
+        const [senderStats, receiverStats] = await Promise.all([
+          sender.evaluate(() => window.voiceLab.stats()), receiver.evaluate(() => window.voiceLab.stats())
+        ]);
+        const current = receiverStats[0];
+        return Boolean(senderStats[0] && senderStats[0].peerAlias !== oldSenderPeer
+          && current?.connection === 'connected'
+          && current.audio.some(audio => audio.packetsReceived > (current.peerAlias === oldReceiverStats.peerAlias ? before + 20 : 20)));
+      }, { timeout: 45000, intervals: [1000] }).toBe(true);
+      await ready();
+      summary.scenarios.push(`${role}-recovers-stalled-remote-sender`);
+    }
+  }
+  if (process.env.VOICE_LAB_RECOVERY_ONLY === '1') {
+    assert.equal(process.env.VOICE_LAB_STALLED_MEDIA, '1', 'Recovery-only run must inject stalled media');
+  } else {
+    await a.page.locator('.voice-dock').getByRole('button', { name: 'Mute mic', exact: true }).click();
+    await expect.poll(() => a.page.evaluate(() => window.voiceLab.state().captures)).toBe(1);
+    const muted = await capture('voxly-muted');
+    assert.ok(muted[0].recordings.find(recording => recording.stage === 'published').metrics.rms < 0.0001, 'UI mute leaked publication audio');
+    await a.page.locator('.voice-dock').getByRole('button', { name: 'Unmute mic', exact: true }).click();
+    await a.page.locator('.voice-dock').getByRole('button', { name: 'Deafen', exact: true }).click();
+    await expect.poll(() => a.page.evaluate(() => [...document.querySelectorAll('audio.remote-audio')].every(audio => audio.muted || audio.volume === 0))).toBe(true);
+    await a.page.locator('.voice-dock').getByRole('button', { name: 'Enable sound', exact: true }).click();
+    summary.scenarios.push('mute', 'deafen');
+    const background = await a.context.newPage(); await background.goto('about:blank'); await background.bringToFront();
+    await capture('voxly-background'); await background.close();
+    summary.scenarios.push('background-tab');
+    if (process.env.VOICE_LAB_NETWORK && process.env.VOICE_LAB_NETWORK !== 'clean') await capture('voxly-network');
+    await a.page.locator('.account-menu summary').click();
+    await a.page.locator('.account-menu').getByRole('button', { name: 'Settings', exact: true }).click();
+    await a.page.getByRole('button', { name: 'Voice & audio', exact: true }).click();
+    const suppression = a.page.getByRole('switch', { name: 'Noise suppression', exact: true });
+    await suppression.click();
+    await expect(suppression).toHaveAttribute('aria-checked', 'true');
+    await ready(); await capture('voxly-suppression');
+    await suppression.click();
+    const device = a.page.getByRole('combobox', { name: 'Microphone', exact: true });
+    const devices = await device.locator('option').evaluateAll(options => options.map(option => option.value));
+    const alternate = devices.find(value => value && value !== 'default');
+    if (alternate) { await device.selectOption(alternate); await ready(); summary.scenarios.push('device-replacement'); }
+    else summary.limitations.push('Browser exposed no alternate fake microphone; device replacement needs the Windows headset run.');
+    await a.page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+    summary.scenarios.push('suppression-toggle');
+    await a.page.locator('.voice-dock').getByRole('button', { name: 'Share screen', exact: true }).click();
+    await b.page.getByRole('button', { name: 'Watch stream — Lab speaker A', exact: true }).click();
+    await expect.poll(() => b.page.evaluate(() => window.voiceLab.state()), { timeout: 15000 }).toMatchObject({ outputs: 2, playing: 2 });
+    await b.page.locator('.voice-dock').getByRole('button', { name: 'Deafen', exact: true }).click();
+    await expect.poll(() => b.page.evaluate(() => [...document.querySelectorAll('audio.remote-audio')].filter(audio => !audio.muted && audio.volume > 0).length)).toBe(1);
+    await b.page.locator('.voice-dock').getByRole('button', { name: 'Enable sound', exact: true }).click();
+    await a.page.locator('.voice-dock').getByRole('button', { name: 'Stop sharing', exact: true }).click();
     await ready();
-    const recordings = await capture(label);
-    if (process.env.VOICE_LAB_NETWORK && process.env.VOICE_LAB_NETWORK !== 'clean') await capture(`${label}-network`);
-    await Promise.all(pages.map(page => page.evaluate(() => window.voiceLab.referenceStop())));
-    return recordings;
-  }
-  await nativeReference('native-reference');
-  const baseline = summary.comparisons.find(result => result.label === 'native-reference');
-  const production = summary.comparisons.find(result => result.label === 'voxly-startup');
-  for (let index = 0; index < 2; index++) {
-    const actual = production.comparisons[index], reference = baseline.comparisons[index];
-    assert.ok(reference.comparisonAvailable && reference.envelopeCorrelation >= 0.8, 'Native reference did not provide usable speech');
-    assert.ok(actual.comparisonAvailable && actual.envelopeCorrelation >= 0.8, 'Received speech is not following the published fixture');
-    assert.ok(actual.missingSpeechFraction <= reference.missingSpeechFraction + 0.05, 'Voxly loses substantially more speech than native WebRTC');
-    assert.ok(actual.longestMissingSpeechMs <= Math.max(150, reference.longestMissingSpeechMs + 100), 'Voxly introduces a long speech interruption');
-  }
-  const states = await Promise.all([a.context.storageState(), b.context.storageState()]);
-  for (const kind of (process.env.VOICE_LAB_FIXTURES ?? 'silence,noise').split(',').filter(Boolean)) {
-    assert.ok(['silence', 'noise'].includes(kind));
-    activeKind = kind;
-    for (const [index, client] of [a, b].entries()) {
-      await client.browser.close();
-      Object.assign(client, await launch(kind));
-      await client.context.addCookies(states[index].cookies);
-      pages[index] = client.page;
-      await client.page.goto(path);
-    }
-    await Promise.all(pages.map(joinCall)); await ready();
-    const voxly = await capture(`voxly-${kind}`);
+    summary.scenarios.push('screen-audio', 'screen-audio-under-deafen');
     await Promise.all(pages.map(leaveCall));
-    const native = await nativeReference(`native-${kind}`);
-    if (kind === 'silence') {
-      for (let side = 0; side < 2; side++) {
-        const received = result => result[side].recordings.find(recording => recording.stage === 'received').metrics.rms;
-        assert.ok(received(voxly) <= received(native) + 0.0001, 'Voxly adds noise to digital silence compared with native WebRTC');
-      }
+    const rtc = await (await a.context.request.get(`${base}/api/rtc/config`)).json();
+    async function nativeReference(label) {
+      // Same capture constraints, browser, ICE configuration and network profile.
+      await Promise.all(pages.map(page => page.evaluate(servers => window.voiceLab.referenceStart(servers), rtc.iceServers)));
+      const offer = await a.page.evaluate(() => window.voiceLab.referenceOffer());
+      const answer = await b.page.evaluate(offer => window.voiceLab.referenceAnswer(offer), offer);
+      await a.page.evaluate(answer => window.voiceLab.referenceAccept(answer), answer);
+      await ready();
+      const recordings = await capture(label);
+      if (process.env.VOICE_LAB_NETWORK && process.env.VOICE_LAB_NETWORK !== 'clean') await capture(`${label}-network`);
+      await Promise.all(pages.map(page => page.evaluate(() => window.voiceLab.referenceStop())));
+      return recordings;
     }
-    summary.scenarios.push(kind);
+    await nativeReference('native-reference');
+    const baseline = summary.comparisons.find(result => result.label === 'native-reference');
+    const production = summary.comparisons.find(result => result.label === 'voxly-startup');
+    for (let index = 0; index < 2; index++) {
+      const actual = production.comparisons[index], reference = baseline.comparisons[index];
+      assert.ok(reference.comparisonAvailable && reference.envelopeCorrelation >= 0.8, 'Native reference did not provide usable speech');
+      assert.ok(actual.comparisonAvailable && actual.envelopeCorrelation >= 0.8, 'Received speech is not following the published fixture');
+      assert.ok(actual.missingSpeechFraction <= reference.missingSpeechFraction + 0.05, 'Voxly loses substantially more speech than native WebRTC');
+      assert.ok(actual.longestMissingSpeechMs <= Math.max(150, reference.longestMissingSpeechMs + 100), 'Voxly introduces a long speech interruption');
+    }
+    const states = await Promise.all([a.context.storageState(), b.context.storageState()]);
+    for (const kind of (process.env.VOICE_LAB_FIXTURES ?? 'silence,noise').split(',').filter(Boolean)) {
+      assert.ok(['silence', 'noise'].includes(kind));
+      activeKind = kind;
+      for (const [index, client] of [a, b].entries()) {
+        await client.browser.close();
+        Object.assign(client, await launch(kind));
+        await client.context.addCookies(states[index].cookies);
+        pages[index] = client.page;
+        await client.page.goto(path);
+      }
+      await Promise.all(pages.map(joinCall)); await ready();
+      const voxly = await capture(`voxly-${kind}`);
+      await Promise.all(pages.map(leaveCall));
+      const native = await nativeReference(`native-${kind}`);
+      if (kind === 'silence') {
+        for (let side = 0; side < 2; side++) {
+          const received = result => result[side].recordings.find(recording => recording.stage === 'received').metrics.rms;
+          assert.ok(received(voxly) <= received(native) + 0.0001, 'Voxly adds noise to digital silence compared with native WebRTC');
+        }
+      }
+      summary.scenarios.push(kind);
+    }
   }
   assert.equal(errors.length, 0, `Browser raised ${errors.length} unhandled errors`);
   summary.status = summary.incompleteMeasurements?.length ? 'measurement-incomplete' : 'passed';

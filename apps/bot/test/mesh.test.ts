@@ -271,6 +271,31 @@ describe("more than one Listener", () => {
       await bot.close();
     }
   });
+
+  it("rebuilds an answerer's sender and asks the Listener to offer again", async () => {
+    const bot = startBot(botAbove);
+    const listener = new FakeListener({ relay: bot.relay, userId: listenerMiddle, peerUserId: botAbove });
+    bot.listeners.push(listener);
+    let requests = 0;
+    bot.relay.endpointFor(listenerMiddle).on(({ signal }) => {
+      if (signal.type === "recovery-request") requests += 1;
+    });
+
+    try {
+      bot.mesh.applySnapshot(snapshotOf(botAbove, listenerMiddle));
+      await listener.announce();
+      bot.player.start();
+      await until(() => listener.received.length > 20, "audio before answerer recovery");
+      bot.relay.endpointFor(listenerMiddle).emit({
+        roomId,
+        toUserId: botAbove,
+        signal: { type: "recovery-request" }
+      });
+      await until(() => bot.removed.includes(listenerMiddle) && requests > 0, "answerer requests a new offer");
+    } finally {
+      await bot.close();
+    }
+  });
 });
 
 describe("the mesh's own bookkeeping", () => {

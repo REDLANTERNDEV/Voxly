@@ -32,6 +32,7 @@ function harness() {
   let sequence = 0;
   let requests = 0;
   let rebuilds = 0;
+  const mediaRequests: boolean[] = [];
   const dependencies = {
     voiceDiagnostics: { record: () => undefined },
     peersRef, peerRecoveryStatesRef, peerConnectionTimeoutsRef,
@@ -43,7 +44,9 @@ function harness() {
     peerGenerationsRef: { current: new Map([["member", 1]]) },
     isCurrentPeer: (id: string, expected: unknown) => peersRef.current.get(id) === expected,
     setPeerConnectionStates: () => undefined,
-    requestPeerRecovery: () => { requests += 1; return true; },
+    requestPeerRecovery: (_id: string, _peer: unknown, recoverMedia = false) => {
+      requests += 1; mediaRequests.push(recoverMedia); return true;
+    },
     schedulePeerRecovery: () => { rebuilds += 1; },
     window: {
       setTimeout: (fn: () => void) => { timers.set(++sequence, fn); return sequence; },
@@ -51,7 +54,7 @@ function harness() {
     }
   };
   return {
-    peer, peersRef, peerRecoveryStatesRef, timers, dependencies,
+    peer, peersRef, peerRecoveryStatesRef, timers, dependencies, mediaRequests,
     recover: callback("recoverPeer", dependencies),
     get requests() { return requests; },
     get rebuilds() { return rebuilds; },
@@ -60,6 +63,22 @@ function harness() {
 }
 
 describe("connected peer audio recovery", () => {
+  it("asks the remote sender to rebuild when an offerer's inbound audio stalls", () => {
+    const peer = { restartIce: () => assert.fail("ICE restart cannot restore a stalled remote sender") };
+    const signals: unknown[] = [];
+    const request = callback("requestPeerRecovery", {
+      socket: { emit: (_event: string, payload: unknown) => signals.push(payload) },
+      roomRef: { current: "room" }, userIdRef: { current: "a" },
+      peerGenerationsRef: { current: new Map([["b", 1]]) },
+      isCurrentPeer: () => true,
+      shouldInitiatePeerConnection: () => true,
+      sendOffer: () => assert.fail("an ICE-only offer leaves the remote sender untouched"),
+      schedulePeerRecoveryRef: { current: () => undefined }
+    });
+    request("b", peer, true);
+    assert.deepEqual(signals, [{ roomId: "room", toUserId: "b", signal: { type: "recovery-request" } }]);
+  });
+
   it("does not treat ICE connectivity as a completed media connection", () => {
     assert.equal(isPeerConnectionReady("connecting"), false);
     assert.equal(isPeerConnectionReady("connected"), true);
@@ -70,6 +89,7 @@ describe("connected peer audio recovery", () => {
     h.recover("member", h.peer);
     h.recover("member", h.peer);
     assert.equal(h.requests, 1, "recovery remains single-flight");
+    assert.deepEqual(h.mediaRequests, [true], "quality recovery requests fresh remote media");
     h.expire();
     assert.equal(h.rebuilds, 1, "connected transport is not proof of recovered audio");
   });
@@ -127,6 +147,7 @@ describe("recovery event ordering", () => {
   it("settles a connected remote transport request without waiting for local audio", () => {
     const h = harness();
     h.recover("member");
+    assert.deepEqual(h.mediaRequests, [false], "transport recovery keeps the ICE path");
     callback("confirmPeerAudioRecovered", h.dependencies)("member", h.peer);
     assert.equal(h.peerRecoveryStatesRef.current.get("member")?.phase, "restarting");
     h.expire();
@@ -166,6 +187,23 @@ describe("recovery cancellation", () => {
 });
 
 describe("initial negotiation and media instance lifecycle", () => {
+  it("rebuilds an answerer when its remote listener requests media recovery", async () => {
+    const peer = {};
+    let rebuilds = 0;
+    const handle = callback("handleSignal", {
+      remoteMediaInstancesRef: { current: new Map() },
+      ensurePeer: () => peer,
+      peerGenerationsRef: { current: new Map([["a", 1]]) },
+      isCurrentPeer: () => true,
+      isRtcRecoveryRequest: (signal: { type: string }) => signal.type === "recovery-request",
+      userIdRef: { current: "b" },
+      shouldInitiatePeerConnection: (a: string, b: string) => a < b,
+      schedulePeerRecovery: () => { rebuilds++; }
+    });
+    await handle({ fromUserId: "a", signal: { type: "recovery-request" } });
+    assert.equal(rebuilds, 1);
+  });
+
   it("offers a peer created by an early candidate exactly once", () => {
     const peer = {};
     const offeredPeersRef = { current: new Set<unknown>() };

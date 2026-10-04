@@ -574,10 +574,12 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     }
   }, [isCurrentPeer, localStreamDescriptors, socket]);
 
-  const requestPeerRecovery = useCallback((peerUserId: string, peer: RTCPeerConnection) => {
+  const requestPeerRecovery = useCallback((peerUserId: string, peer: RTCPeerConnection, recoverMedia = false) => {
     if (!socket || !roomRef.current || !userIdRef.current) return false;
     if (!isCurrentPeer(peerUserId, peer, peerGenerationsRef.current.get(peerUserId) ?? -1)) return false;
-    if (shouldInitiatePeerConnection(userIdRef.current, peerUserId)) {
+    // A connected ICE route can still carry no audio. In that case the remote
+    // sender must rebuild; restarting only this listener's ICE cannot do it.
+    if (shouldInitiatePeerConnection(userIdRef.current, peerUserId) && !recoverMedia) {
       try {
         peer.restartIce();
         void sendOffer(peerUserId, peer).catch(() => schedulePeerRecoveryRef.current(peerUserId, peer, { type: "restart_failed" }));
@@ -776,7 +778,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     voiceDiagnostics.record("recovery", { reason: expectedPeer ? "quality" : "transport" }, peer);
     setPeerConnectionStates((current) => ({ ...current, [peerUserId]: "reconnecting" }));
     try {
-      requestPeerRecovery(peerUserId, peer);
+      requestPeerRecovery(peerUserId, peer, Boolean(expectedPeer));
     } catch {
       schedulePeerRecovery(peerUserId, peer, { type: "restart_failed" });
       return;
@@ -1588,7 +1590,6 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     const peerGeneration = peerGenerationsRef.current.get(payload.fromUserId);
     if (peerGeneration === undefined || !isCurrentPeer(payload.fromUserId, peer, peerGeneration)) return;
     if (isRtcRecoveryRequest(signal)) {
-      if (!userIdRef.current || !shouldInitiatePeerConnection(userIdRef.current, payload.fromUserId)) return;
       // The remote decoder requested media recovery. ICE may still look
       // connected while the RTP pipeline is stalled, so replace this peer
       // instead of restarting the same transport in place.

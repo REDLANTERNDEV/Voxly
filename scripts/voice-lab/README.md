@@ -33,6 +33,25 @@ A short development pass (POSIX shell):
 VOICE_LAB_CYCLES=2 VOICE_LAB_SECONDS=8 VOICE_LAB_FIXTURES= npm run test:voice:browser
 ```
 
+To check stalled audio recovery between two real browser peers in both offerer
+roles, run:
+
+```sh
+VOICE_LAB_CYCLES=1 VOICE_LAB_STALLED_MEDIA=1 VOICE_LAB_RECOVERY_ONLY=1 npm run test:voice:browser
+```
+
+The lab removes a
+sender's audio track without leaving the room, then requires the sender peer to
+be replaced, inbound RTP to resume, and normal playback to return. This is a
+targeted recovery test; the full suite still checks startup audio and the
+native reference separately.
+
+For intermittent first-join audio, set `VOICE_LAB_CAPTURE_EACH_JOIN=1` with
+`VOICE_LAB_CYCLES` set to the desired repeat count. Each fresh join then saves
+sender RTP counters, receiver buffer counters, and fixture audio, and fails if
+the receiver emits less than 90% of the recording window or speech continuity
+falls below the lab threshold.
+
 An empty `VOICE_LAB_FIXTURES` skips additional silence/noise comparisons, **not**
 the speech reference. `VOICE_LAB_SECONDS` defaults to 8 and must cover at least one complete speech
 fixture; the runner rejects shorter windows. `VOICE_LAB_OUTPUT` selects a results directory

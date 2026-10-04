@@ -61,11 +61,16 @@ export function installProbe({ relay = false, bufferTarget = null } = {}) {
       networkFamily: typeof address === 'string' && address.includes(':') ? 'ipv6' : typeof address === 'string' && /^[0-9.]+$/.test(address) ? 'ipv4' : 'unknown',
       peerAlias: peerAliases.get(peer), connection: peer.connectionState, route: candidate?.candidateType === 'relay' || remote?.candidateType === 'relay' ? 'relay' : pair ? 'direct' : 'unknown',
       bufferTargetSupported: peer.getReceivers().some(receiver => 'jitterBufferTarget' in receiver),
+      outboundAudio: entries.filter(entry => entry.type === 'outbound-rtp' && entry.kind === 'audio').map(entry => ({
+        packetsSent: entry.packetsSent, bytesSent: entry.bytesSent, totalSamplesSent: entry.totalSamplesSent,
+        framesEncoded: entry.framesEncoded
+      })),
       audio: entries.filter(entry => entry.type === 'inbound-rtp' && entry.kind === 'audio').map(entry => ({
         streamAlias: alias(entry), totalAudioEnergy: entry.totalAudioEnergy, packetsReceived: entry.packetsReceived, packetsLost: entry.packetsLost, concealedSamples: entry.concealedSamples,
         silentConcealedSamples: entry.silentConcealedSamples, removedSamplesForAcceleration: entry.removedSamplesForAcceleration,
         insertedSamplesForDeceleration: entry.insertedSamplesForDeceleration, jitterBufferDelay: entry.jitterBufferDelay,
-        jitterBufferEmittedCount: entry.jitterBufferEmittedCount
+        jitterBufferEmittedCount: entry.jitterBufferEmittedCount, jitterBufferTargetDelay: entry.jitterBufferTargetDelay,
+        jitterBufferMinimumDelay: entry.jitterBufferMinimumDelay
       })) };
   }));
   async function record(seconds = 6) {
@@ -123,6 +128,14 @@ export function installProbe({ relay = false, bufferTarget = null } = {}) {
   let reference = null;
   window.voiceLab = {
     record, stats,
+    async dropPublishedAudio() {
+      const peer = livePeers()[0];
+      if (!peer) throw new Error('No live peer to stall');
+      const sender = peer.getSenders().find(sender => sender.track?.kind === 'audio');
+      if (!sender) throw new Error('No published audio sender to stall');
+      await sender.replaceTrack(null);
+      return peerAliases.get(peer);
+    },
     state: () => ({ captures: liveCaptures().length, peers: livePeers().length,
       receivers: livePeers().flatMap(peer => peer.getReceivers()).filter(receiver => receiver.track.kind === 'audio' && receiver.track.readyState === 'live').length,
       outputs: outputElements().length, playing: outputElements().filter(element => !element.paused).length }),
