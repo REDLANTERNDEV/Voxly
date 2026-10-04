@@ -25,6 +25,16 @@ A cold/new webview uses the fixed `/link-device?desktopLaunch=<UUID>` route.
 Neither the browser nor launch URI controls arbitrary web paths. An existing
 desktop Account is preserved rather than silently replaced by the browser's.
 
+Once a signed-out desktop window has created its authorization and confirmation
+number, a browser-correlated launch minimizes that window so the browser's
+approval remains accessible. Manual desktop sign-in yields when the member
+chooses Open browser. Approval, refusal and expiry restore a successfully
+minimized window; stale attempts cannot change focus. The optional,
+parameterless `minimize_installation` action uses the same exact-origin,
+window-label and generation checks as `activate_installation` (ADR-0024).
+It changes only that window's presentation and carries no authentication data.
+Older desktop builds retain their existing sign-in flow.
+
 A saved Installation can open directly when no Installation is active. New
 addresses and cross-Installation switches retain a local Open action. That
 action combines reviewing, remembering, and opening through health checking and

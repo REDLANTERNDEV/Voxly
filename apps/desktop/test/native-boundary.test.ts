@@ -28,12 +28,12 @@ describe("desktop native trust boundary", () => {
     assert.match(build, /AppManifest::new\(\)\.commands/);
     const commands = [...native.matchAll(/#\[tauri::command\]\s*(?:pub\(super\) )?async fn (\w+)\((?:(?!#\[tauri::command\])[\s\S])*?\{\s*trusted_shell\(&window\)\?;/g)].map((match) => match[1]);
     const settingsCommands = [...native.matchAll(/#\[tauri::command\]\s*(?:pub\(super\) )?async fn (\w+)\((?:(?!#\[tauri::command\])[\s\S])*?\{\s*trusted_settings\(&window, &shell\)\.await\?;/g)].map((match) => match[1]);
-    assert.equal(commands.length + settingsCommands.length + 11, (native.match(/#\[tauri::command\]/g) ?? []).length);
+    assert.equal(commands.length + settingsCommands.length + 12, (native.match(/#\[tauri::command\]/g) ?? []).length);
     assert.match(native, /async fn report_call_state/);
     assert.match(native, /report_caller_matches\(/);
     assert.match(native, /same_origin\(origin, url\)/);
     assert.match(native, /shell.reports.receive\(generation, request, report\)/);
-    for (const name of ["reset_notification_permission", "reset_microphone_permission", "reset_camera_permission", "set_installation_theme", "show_desktop_notification", "close_desktop_notification", "read_desktop_update", "save_voice_diagnostics"]) {
+    for (const name of ["minimize_installation", "reset_notification_permission", "reset_microphone_permission", "reset_camera_permission", "set_installation_theme", "show_desktop_notification", "close_desktop_notification", "read_desktop_update", "save_voice_diagnostics"]) {
       const body = native.slice(native.indexOf(`async fn ${name}`)).split("#[tauri::command]")[0];
       assert.match(body, /report_caller_matches/);
       assert.ok(build.includes(`"${name}"`));
@@ -44,6 +44,10 @@ describe("desktop native trust boundary", () => {
     assert.ok(build.includes('"review_desktop_update"'));
     assert.match(native, /async fn activate_installation/);
     assert.match(native, /window\.unminimize\(\)/);
+    const minimize = native.slice(native.indexOf("async fn minimize_installation")).split("#[tauri::command]")[0];
+    assert.match(minimize, /inner\.loading/);
+    assert.match(minimize, /window\.minimize\(\)/);
+    assert.doesNotMatch(minimize, /destroy\(|hide\(|open_url\(|set_focus\(/);
     const capability = JSON.parse(readFileSync("src-tauri/capabilities/shell.json", "utf8"));
     for (const command of [...commands, ...settingsCommands]) {
       assert.ok(build.includes(`"${command}"`));
@@ -63,6 +67,7 @@ describe("desktop native trust boundary", () => {
     assert.match(source, /\.webview\(&label\)/);
     assert.match(source, /\.permission\("allow-report-call-state"\)/);
     assert.match(source, /\.permission\("allow-activate-installation"\)/);
+    assert.match(source, /\.permission\("allow-minimize-installation"\)/);
     assert.match(source, /installation_label\(generation\)/);
     assert.doesNotMatch(source, /permission\(".*(?:updater|opener|shortcut|filesystem)/);
     assert.match(source, /initialization_script\(&bootstrap\)/);

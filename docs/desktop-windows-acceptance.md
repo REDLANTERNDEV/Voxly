@@ -110,7 +110,8 @@ all consequential cases inside the real remote interface.
 | Single instance | Second launch restores first instance, no second media runtime | not run |
 | Global mute shortcuts | Keyboard and Mouse 3/4/5 combinations persist; one press toggles once with another app/game focused or tray hidden; keyboard conflicts reported and owner mute cannot be bypassed | Keyboard shortcut initial contributor pass; mouse support requires installed Windows test |
 | Global deafen shortcut | Separate binding persists; toggles existing self-deafen with game focus or tray hiding; preserves owner locks, microphone-test isolation, receive-only and microphone restoration rules | Implemented; installed Windows test not run |
-| Browser sign-in | Signed-in browser approves the matching number; desktop profile gains its own session, browser remains signed in; refusal/expiry/cancellation/revocation stay safe | Implemented; installed Windows test not run |
+| Browser sign-in | Desktop minimizes once its matching number is ready (or Open browser is selected for manual sign-in); browser approval gains the desktop profile its own session; desktop restores after approval/refusal/expiry; older shells, cancellation and revocation stay safe | Implemented; installed Windows test not run |
+| Account menu update failures | Failed checks/downloads show no error or retry action in the account menu; available/ready updates remain visible; recovery stays in Home and Settings | Implemented; installed Windows test not run |
 | Device revocation | Existing Account & devices revocation signs desktop out and ends room access | not run |
 | Deployment update | Active voice/capture/media check delays reload; idle pending notice reloads only on explicit action | not run |
 | Update network failure | Current interface stays usable; polling retries without forced reload | not run |

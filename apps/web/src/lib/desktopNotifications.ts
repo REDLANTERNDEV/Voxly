@@ -27,7 +27,7 @@ export interface NativeNotificationBridge {
   create(kind: DesktopNotificationKind, language: LanguageCode): NativeNotificationHandle;
 }
 interface NotificationPermissionBridge { version: 1; resetPermission(): Promise<boolean> }
-interface ActivationBridge { version: 1; show(): Promise<boolean> }
+export interface ActivationBridge { version: 1; show(): Promise<boolean>; minimize?(): Promise<boolean> }
 declare global {
   interface Window { __VOXLY_DESKTOP_TOASTS_V1__?: NativeNotificationBridge; __VOXLY_DESKTOP_ACTIVATION_V1__?: ActivationBridge; __VOXLY_DESKTOP_NOTIFICATIONS_V1__?: NotificationPermissionBridge }
 }

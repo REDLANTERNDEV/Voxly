@@ -10,6 +10,11 @@
         if (window !== window.top || window.location.origin !== origin || typeof invoke !== "function") return false;
         try { await invoke("activate_installation"); return true; }
         catch { return false; }
+      },
+      async minimize() {
+        if (window !== window.top || window.location.origin !== origin || typeof invoke !== "function") return false;
+        try { await invoke("minimize_installation"); return true; }
+        catch { return false; }
       }
     })
   });

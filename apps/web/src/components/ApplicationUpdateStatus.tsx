@@ -4,9 +4,11 @@ import { useApplicationUpdates, webReleaseVersion } from "../lib/applicationUpda
 import { desktopUpdateNotice } from "../lib/desktopUpdates.js";
 import { RefreshIcon } from "./ui/Icons.js";
 
-export function ApplicationUpdateStatus({ t, menu = false, onSelect }: { t: Translate; menu?: boolean; onSelect?: (event: MouseEvent<HTMLButtonElement>) => void }) {
+export function ApplicationUpdateStatus({ t, surface = "dock", onSelect }: { t: Translate; surface?: "dock" | "account" | "settings"; onSelect?: (event: MouseEvent<HTMLButtonElement>) => void }) {
   const update = useApplicationUpdates();
-  const notice = desktopUpdateNotice(update.desktop);
+  const desktopNotice = desktopUpdateNotice(update.desktop);
+  const notice = surface === "account" && (desktopNotice === "error" || desktopNotice === "invalid" || desktopNotice === "reviewError") ? null : desktopNotice;
+  const menu = surface !== "dock";
   const version = update.desktop?.currentVersion;
   const next = update.desktop?.version;
   const label = notice ? t(`desktopUpdate.${notice}`) : update.pendingClient ? t(update.clientBusy ? "clientUpdate.afterCall" : "clientUpdate.ready") : null;
@@ -26,7 +28,7 @@ export function ApplicationVersionSettings({ t }: { t: Translate }) {
   return <section className="application-version-settings" aria-label={t("settings.about")}>
     <h3>{t("settings.about")}</h3>
     <dl>{desktop ? <><dt>{t("settings.desktopVersion")}</dt><dd>v{desktop.currentVersion}</dd></> : null}<dt>{t("settings.webVersion")}</dt><dd>{webReleaseVersion ? `v${webReleaseVersion}` : "—"}</dd></dl>
-    <ApplicationUpdateStatus t={t} menu />
+    <ApplicationUpdateStatus t={t} surface="settings" />
     {desktop && desktop.phase !== "disabled" && !desktopUpdateNotice(desktop) ? <button type="button" className="btn" onClick={() => void reviewDesktop()}>{t("desktopUpdate.manage")}</button> : null}
   </section>;
 }

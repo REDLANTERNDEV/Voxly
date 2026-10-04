@@ -12,7 +12,7 @@ function boot(origin = "https://chat.example", top = true, fail = false) {
       calls.push(args);
       return fail ? Promise.reject(Error("denied")) : Promise.resolve();
     } },
-    __VOXLY_DESKTOP_ACTIVATION_V1__: undefined as { version: number; show(...args: unknown[]): Promise<boolean> } | undefined
+    __VOXLY_DESKTOP_ACTIVATION_V1__: undefined as { version: number; show(...args: unknown[]): Promise<boolean>; minimize(...args: unknown[]): Promise<boolean> } | undefined
   };
   window.top = top ? window : {};
   runInNewContext(`${source}("https://chat.example");`, { window });
@@ -37,5 +37,20 @@ describe("desktop activation boundary", () => {
   });
   it("contains native denial without pretending focus succeeded", async () => {
     assert.equal(await boot("https://chat.example", true, true).window.__VOXLY_DESKTOP_ACTIVATION_V1__!.show(), false);
+  });
+  it("minimizes only its own window without a caller-supplied payload", async () => {
+    const { window, calls } = boot();
+    assert.equal(await window.__VOXLY_DESKTOP_ACTIVATION_V1__!.minimize({ command: "quit_app", origin: "https://evil.example" }), true);
+    assert.deepEqual(calls, [["minimize_installation"]]);
+  });
+  it("contains minimize denial and refuses navigation away or a subframe", async () => {
+    assert.equal(await boot("https://chat.example", true, true).window.__VOXLY_DESKTOP_ACTIVATION_V1__!.minimize(), false);
+    const { window, calls } = boot();
+    window.location.origin = "https://evil.example";
+    assert.equal(await window.__VOXLY_DESKTOP_ACTIVATION_V1__!.minimize(), false);
+    window.location.origin = "https://chat.example";
+    window.top = {};
+    assert.equal(await window.__VOXLY_DESKTOP_ACTIVATION_V1__!.minimize(), false);
+    assert.equal(calls.length, 0);
   });
 });

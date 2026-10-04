@@ -76,7 +76,7 @@ export function VoiceDock(props: VoiceDockProps) {
           </summary>
           <div className="account-menu-panel">
             <strong>{props.currentNickname}</strong>
-            <ApplicationUpdateStatus t={props.t} menu onSelect={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); }} />
+            <ApplicationUpdateStatus t={props.t} surface="account" onSelect={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); }} />
             <button className="btn btn-ghost account-settings-link" type="button" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); props.onOpenSettings(); }}><GearIcon /><span>{props.t("settings.open")}</span></button>
             {canManageServer ? <NavLink className="btn btn-ghost account-owner-link" href={`/app/server/${encodeURIComponent(props.activeServerId)}/owner`} label={props.t("owner.panel")} onNavigate={props.onNavigate}><ShieldIcon /><span>{props.t("owner.panel")}</span></NavLink> : null}
             <button className="btn btn-danger" type="button" onClick={() => setConfirmingLogout(true)}>{props.t("common.logout")}</button>

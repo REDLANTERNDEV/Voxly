@@ -82,6 +82,7 @@ pub fn open_installation(
             .webview(&label)
             .permission("allow-report-call-state")
             .permission("allow-activate-installation")
+            .permission("allow-minimize-installation")
             .permission("allow-reset-notification-permission")
             .permission("allow-reset-microphone-permission")
             .permission("allow-reset-camera-permission")

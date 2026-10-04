@@ -419,7 +419,9 @@ configuration is supplied only at build time by the distributor.
 Configured Windows builds check at application startup and hourly while open
 or hidden to tray, and quietly download and verify available updates. The
 bottom-left connection area and account menu show update actions without visible
-version numbers. Home and Settings retain version details. The native tray menu is **Show Voxly**, **Home**, **Check for
+version numbers. Home and Settings retain version details. Update failures and
+retry actions remain available in Home and Settings and are omitted from the
+account menu. The native tray menu is **Show Voxly**, **Home**, **Check for
 updates**, a separator, then **Quit**. It contains no version row. Checking
 opens Home's updater and immediately runs the same native check as Home's button;
 early requests are queued until startup initializes, and repeated clicks reuse an
@@ -457,6 +459,9 @@ workspace rail. The authenticated Open in desktop button prepares its public
 correlation before enabling, renews expired preparation, and invokes the URI
 directly from the click. Opening and matching-code approval share one dialog;
 the browser's application-opening prompt and explicit approval remain required.
+The desktop window minimizes once its confirmation code is ready, leaving the
+browser approval accessible, and restores after approval, refusal or expiry.
+Manual desktop sign-in minimizes when **Open browser** is selected.
 Unused preparations are cancelled on close or unmount.
 
 Settings uses a translated 44px X close button with Escape and focus restoration.

@@ -12,6 +12,7 @@ import {
 import type { Translate } from "../../app/types.js";
 import { rememberCompletedDesktopAuthentication } from "../../lib/desktopSettings.js";
 import { desktopLaunchFromSearch } from "../../lib/desktopLinks.js";
+import { createDesktopApprovalWindow } from "../../lib/desktopApprovalWindow.js";
 import type { LanguageCode } from "../../lib/i18n.js";
 
 /** The private collection secret lives only in this desktop webview's memory. */
@@ -23,6 +24,7 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
   const current = useRef<DesktopAuthorization | null>(null);
   const mounted = useRef(false);
   const revision = useRef(0);
+  const approvalWindow = useRef<ReturnType<typeof createDesktopApprovalWindow> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [outcome, setOutcome] = useState<"pending" | "refused" | "expired">("pending");
@@ -45,6 +47,7 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
     const deadline = Date.now() + request.expiresInSeconds * 1000;
     const poll = async () => {
       if (Date.now() >= deadline) {
+        void approvalWindow.current?.restore();
         current.current = null; setOutcome("expired"); return;
       }
       try {
@@ -54,10 +57,13 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
           current.current = null;
           await rememberCompletedDesktopAuthentication(window, response.status, () => live && revision.current === requestRevision);
           if (!live || revision.current !== requestRevision) return;
+          await approvalWindow.current?.restore();
+          if (!live || revision.current !== requestRevision) return;
           onLinked();
           return;
         }
         if (response.status !== "pending") {
+          void approvalWindow.current?.restore();
           current.current = null;
           setOutcome(response.status);
           return;
@@ -88,6 +94,9 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
       current.current = created;
       setRequest(created);
       setOutcome("pending");
+      const nativeWindow = createDesktopApprovalWindow(window, () => mounted.current && revision.current === startingRevision);
+      approvalWindow.current = nativeWindow;
+      if (automaticLaunchId) void nativeWindow.minimize();
     } catch {
       if (mounted.current && revision.current === startingRevision) setError(true);
     } finally {
@@ -120,7 +129,7 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
           <p className="muted small">{t(usingLaunch ? "desktopSignIn.returnBrowser" : "desktopSignIn.compare")}</p>
           <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>{request.confirmation}</span>
           {!usingLaunch ? <>
-            <a className="btn btn-primary" href={address} target="_blank" rel="noopener noreferrer">{t("desktopSignIn.openBrowser")}</a>
+            <a className="btn btn-primary" href={address} target="_blank" rel="noopener noreferrer" onClick={() => void approvalWindow.current?.minimize()}>{t("desktopSignIn.openBrowser")}</a>
           </> : null}
           <p className="muted small" role="status">{t("desktopSignIn.waiting")}</p>
           <button className="btn btn-ghost" type="button" onClick={cancel}>{t("common.cancel")}</button>

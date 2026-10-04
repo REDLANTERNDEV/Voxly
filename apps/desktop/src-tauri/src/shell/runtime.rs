@@ -41,6 +41,7 @@ pub(super) fn run() {
         .invoke_handler(tauri::generate_handler![
             super::diagnostics::save_voice_diagnostics,
             super::notification_commands::activate_installation,
+            super::notification_commands::minimize_installation,
             super::notification_commands::reset_notification_permission,
             super::notification_commands::reset_microphone_permission,
             super::notification_commands::reset_camera_permission,

@@ -9,6 +9,7 @@ fn main() {
             "transition_state",
             "report_call_state",
             "activate_installation",
+            "minimize_installation",
             "reset_notification_permission",
             "reset_microphone_permission",
             "reset_camera_permission",
