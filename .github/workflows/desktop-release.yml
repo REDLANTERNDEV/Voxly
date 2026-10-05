@@ -103,7 +103,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: voxly-windows-candidate-${{ inputs.windows_signing }}-${{ inputs.version }}
           path: ${{ env.VOXLY_DESKTOP_RELEASE_OUTPUT }}/*
