@@ -49,6 +49,7 @@ export interface ShellModel {
   socketState: "connecting" | "live" | "reconnecting" | "offline";
   connectionHealth: ConnectionHealth;
   voiceQuality: VoiceQuality;
+  screenConnectionWarnings: Record<string, boolean>;
   activeVoiceRoomId: string | null;
   controls: VoiceControls;
   voiceModeration: VoiceModerationState;
@@ -75,6 +76,9 @@ export interface ShellModel {
   memberVolumes: Record<string, number>;
   screenVolumes: Record<string, number>;
   unreadByRoom: Record<string, number>;
+  serverNotificationState: import("@voxly/shared").NotificationStateResponse | null;
+  serverNotificationTime: number;
+  serverNotificationError: boolean;
   roomHistory: RoomHistory;
   pendingLiveWatch: LiveWatchRequest | null;
   audioDevices: UseAudioDevicesResult;
@@ -97,6 +101,7 @@ export interface ShellModel {
 }
 
 export interface ShellActions {
+  onServerNotificationSettingsChange(serverId: string, setting: import("@voxly/shared").NotificationMuteRequest): Promise<void>;
   onNavigate: (path: string) => void;
   onSelectServer: (serverId: string) => Promise<void>;
   onCreateServer: (name: string) => Promise<void>;

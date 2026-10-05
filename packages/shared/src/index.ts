@@ -107,6 +107,8 @@ export interface ChatMessageReply {
 export const replyExcerptMaxLength = 160;
 
 export interface ChatMessage {
+  serverId: string;
+  sequence: number;
   id: string;
   roomId: string;
   userId: string;
@@ -709,6 +711,7 @@ export interface ServerToClientEvents {
   "presence:serverOnline": (payload: { serverId: string; user: PresenceUser }) => void;
   "presence:serverOffline": (payload: { serverId: string; userId: string }) => void;
   "presence:serverStatus": (payload: { serverId: string; userId: string; status: PresenceStatus }) => void;
+  "notifications:changed": (event: { serverId: string }) => void;
   "message:new": (message: ChatMessage) => void;
   "message:updated": (message: ChatMessage) => void;
   "message:deleted": (payload: { roomId: string; messageId: string }) => void;
@@ -807,3 +810,10 @@ export interface ClientToServerEvents {
     ack?: (response: MusicPublishAck) => void
   ) => void;
 }
+
+/** Personal message notifications; unrelated to owner-enforced voice moderation. */
+export type ServerNotificationMute = { mode: "enabled" } | { mode: "until"; until: string } | { mode: "indefinite" };
+export type NotificationMuteRequest = { mode: "enabled" } | { mode: "timed"; durationMinutes: 15 | 60 | 180 | 480 | 1440 } | { mode: "indefinite" };
+export interface RoomUnreadState { roomId: string; unreadCount: number; lastReadSequence: number; latestSequence: number; }
+export interface ServerNotificationState { serverId: string; mute: ServerNotificationMute; rooms: RoomUnreadState[]; }
+export interface NotificationStateResponse { serverTime: string; servers: ServerNotificationState[]; }

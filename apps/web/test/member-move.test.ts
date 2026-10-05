@@ -11,8 +11,10 @@ const styles = readFileSync("src/styles.css", "utf8");
 
 describe("owner member move", () => {
   it("opens the channel list from the row, on hover and on focus alike", () => {
-    assert.match(menus, /\.menu-submenu|menu-submenu-panel/);
-    assert.match(styles, /\.menu-submenu:hover \.menu-submenu-panel,\s*\n\s*\.menu-submenu:focus-within \.menu-submenu-panel \{[\s\S]*?display: grid;/);
+    assert.match(menus, /<MenuSubmenu/);
+    const submenu = readFileSync("src/components/MenuSubmenu.tsx", "utf8");
+    assert.match(submenu, /useHover/);
+    assert.match(submenu, /useListNavigation/);
   });
 
   it("lists every voice room except the one the member already occupies", () => {

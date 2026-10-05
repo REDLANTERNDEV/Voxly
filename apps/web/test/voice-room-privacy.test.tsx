@@ -8,7 +8,7 @@ const room = { id: "voice", name: "Voice", serverId: "server", kind: "voice" as 
 const publisher = { user: { userId: "publisher", nickname: "Publisher", role: "member" as const }, media: { mic: true, camera: true, screen: true, speaking: true, deafened: false }, moderation: { muted: false, deafened: false }, mediaInstanceId: "publisher-instance" };
 const stream = { id: "screen", getAudioTracks: () => [] } as unknown as MediaStream;
 it("renders no video, stage, speaking activity, or Music panel outside the channel even with stale streams", () => {
-  const html = renderToStaticMarkup(<VoiceRoomScreen user={{ id: "self", nickname: "Self", role: "member", bannedAt: null }} currentNickname="Self"
+  const html = renderToStaticMarkup(<VoiceRoomScreen screenConnectionWarnings={{}} user={{ id: "self", nickname: "Self", role: "member", bannedAt: null }} currentNickname="Self"
     route={{ name: "voice", roomId: room.id, serverId: room.serverId }} activeServerId="server" rooms={{ text: [], voice: [room] }} currentRoom={room}
     socketState="live" activeVoiceRoomId="elsewhere" controls={createInitialVoiceControls()} visualTargets={[{ publisherUserId: "publisher", kind: "screen" }]}
     voiceSnapshots={{ voice: { roomId: "voice", viewerInVoiceRoom: false, members: [publisher] } }} musicQueues={{}}

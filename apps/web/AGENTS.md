@@ -124,9 +124,8 @@ requirement.
 - Presence is three states in the member panel — online, idle, offline — each
   with its own colour and an accessible name. Offline is the absence of a
   presence entry, so a status update may only modify a member already listed.
-- Unread counts are browser-session state only. Ignore the current user's
-  messages, increment only for inactive text rooms, and clear a room when it is
-  opened. Do not add persistent read receipts without a separate design.
+- Unread state follows Server Message Notifications below. Its persistent
+  private cursors do not expose read receipts to other members.
 
 ## Browser Compatibility Gate
 
@@ -357,8 +356,11 @@ requirement.
   one column; a menu with no marks at all keeps its plain padding.
 - Only one sidebar menu may be mounted at a time. Opening another replaces the
   current descriptor before the next overlay renders.
+- Measure root menus and submenus against the viewport with Floating UI. Prefer
+  a right submenu, then left, below, or above; constrain oversized panels and
+  scroll inside them. Treat portalled submenu panels as part of their parent.
 - Outside pointer input, Escape, navigation, drawer changes, and action
-  selection close the menu. Escape restores focus to the ellipsis trigger when
+  selection close the menu. Escape in a submenu closes that submenu first. Escape restores focus to the ellipsis trigger when
   that trigger opened it.
 - Keep the ellipsis keyboard- and touch-accessible, visible for coarse pointers,
   and exposed on hover/focus for fine pointers.
@@ -703,3 +705,14 @@ tests complement that check; they do not replace it for geometry-sensitive UI.
   tile owns the share indicator.
 - The dock avatar menu owns Settings and Owner panel navigation. Do not duplicate
   those actions beside the avatar; the workspace rail keeps its Settings shortcut.
+
+## Server Message Notifications
+
+- Read cursors are private Account-wide state persisted by the server. Clear
+  only a successfully loaded channel in a visible, focused window, through its
+  delivered sequence watermark. Reconnect snapshots never replay message cues.
+- Server badges sum channel unread counts and display at most `9+`; accessible
+  labels expose the full count. Notification mutes hide the Server badge and
+  suppress message sounds/desktop alerts while preserving channel counts.
+- Timed mutes use server time. Expiry/unmute restores unread badges without
+  replaying alerts. Personal notification mutes do not change voice moderation.

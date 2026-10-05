@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
 import { musicBotNickname, musicIdentifierMaxLength, musicSetLogMaxLines } from "@voxly/shared";
 import type { MusicCommand, MusicCommandAck, MusicControlAck, MusicPublishAck, MusicQueueState, VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck, VoiceSnapshot } from "@voxly/shared";
+import { createSession } from "../src/auth/sessions.js";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 
 describe("Voxly realtime MVP", () => {
@@ -25,6 +26,27 @@ describe("Voxly realtime MVP", () => {
     sockets.forEach((socket) => socket.disconnect());
     sockets = [];
     await app.close();
+  });
+
+  it("synchronizes personal reads and mutes across Devices without notifying other members", async () => {
+    const owner = await bootstrapOwner(app), member = await acceptInvite(app, owner.cookies, "Reader");
+    const secondToken = createSession({ sqlite: app.sqlite, save() {}, close() {} }, member.user.id, "Notification test Device");
+    const first = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const second = await connectSocket(baseUrl, secondToken);
+    const unrelated = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    sockets.push(first, second, unrelated);
+    for (const request of [
+      { method: "PUT" as const, url: "/api/rooms/general/read-state", payload: { throughSequence: 0 } },
+      { method: "PATCH" as const, url: "/api/servers/the-basement/notification-settings", payload: { mode: "indefinite" } }
+    ]) {
+      const notices = [onceEvent(first, "notifications:changed"), onceEvent(second, "notifications:changed")];
+      const quiet = expectNoEvent(unrelated, "notifications:changed");
+      assert.equal((await app.server.inject({ ...request, cookies: member.cookies })).statusCode, 200);
+      assert.deepEqual(await Promise.all(notices), [{ serverId: "the-basement" }, { serverId: "the-basement" }]);
+      await quiet;
+    }
+    const state = await app.server.inject({ method: "GET", url: "/api/notifications", cookies: { voxly_session: secondToken } });
+    assert.equal(state.json().servers[0].mute.mode, "indefinite");
   });
 
   it("rejects socket connections without a valid session", async () => {

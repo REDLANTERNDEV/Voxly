@@ -8,6 +8,20 @@ const supportedLanguages = new Set<LanguageCode>(["en", "tr"]);
 
 const translations = {
   en: {
+    "server.unread": "{server}, {count} unread messages",
+    "server.notificationMenu": "Message notifications for {server}",
+    "server.muteNotifications": "Mute message notifications",
+    "server.unmuteNotifications": "Unmute message notifications",
+    "server.mute15m": "For 15 minutes",
+    "server.mute1h": "For 1 hour",
+    "server.mute3h": "For 3 hours",
+    "server.mute8h": "For 8 hours",
+    "server.mute24h": "For 24 hours",
+    "server.muteIndefinite": "Until I turn them back on",
+    "server.notificationSaveFailed": "Notification settings could not be saved. Try again.",
+    "server.notificationLoadFailed": "Unread state could not be refreshed. Retrying.",
+    "voice.screenConnectionWarning": "Connection loss or delay is limiting this stream. Quality will recover automatically when the connection improves.",
+
     "server.current": "Current server: {server}",
     "server.currentCopy": "These settings apply to the selected server.",
     "server.createNew": "Create a new server",
@@ -844,6 +858,20 @@ const translations = {
     "system.loadingVoxly": "Loading Voxly"
   },
   tr: {
+    "server.unread": "{server}, {count} okunmamış mesaj",
+    "server.notificationMenu": "{server} mesaj bildirimleri",
+    "server.muteNotifications": "Mesaj bildirimlerini sessize al",
+    "server.unmuteNotifications": "Mesaj bildirimlerini aç",
+    "server.mute15m": "15 dakika boyunca",
+    "server.mute1h": "1 saat boyunca",
+    "server.mute3h": "3 saat boyunca",
+    "server.mute8h": "8 saat boyunca",
+    "server.mute24h": "24 saat boyunca",
+    "server.muteIndefinite": "Ben tekrar açana kadar",
+    "server.notificationSaveFailed": "Bildirim ayarları kaydedilemedi. Tekrar deneyin.",
+    "server.notificationLoadFailed": "Okunmamış mesaj durumu yenilenemedi. Tekrar deneniyor.",
+    "voice.screenConnectionWarning": "Bağlantı kaybı veya gecikme bu yayını sınırlıyor. Bağlantı iyileştiğinde kalite otomatik olarak düzelecek.",
+
     "server.current": "Mevcut sunucu: {server}",
     "server.currentCopy": "Bu ayarlar seçili sunucuya uygulanır.",
     "server.createNew": "Yeni sunucu oluştur",

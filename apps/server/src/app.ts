@@ -70,6 +70,7 @@ import { registerDesktopAuthorizationRoutes } from "./desktopAuthorization.js";
 import { registerDeviceRoutes } from "./devices.js";
 import { registerRecoveryRoutes } from "./recovery.js";
 import { registerInviteRoutes, revokeInvitesCreatedBy } from "./invites.js";
+import { registerNotificationRoutes } from "./notifications.js";
 import { registerMessageRoutes } from "./messages.js";
 import { registerOwnerPanelRoutes } from "./ownerPanel.js";
 import { registerAccountDeletionRoutes } from "./accountDeletion.js";
@@ -189,6 +190,7 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
   registerServerRoutes(context);
   registerInviteRoutes(context);
   registerMessageRoutes(context);
+  registerNotificationRoutes(context);
   registerOwnerPanelRoutes(context);
   registerAccountDeletionRoutes(context);
   if (options.webDistPath) {

@@ -1,6 +1,7 @@
 export interface ContextMenuDescriptor {
   key: string;
   position: { x: number; y: number };
+  anchor?: { x: number; y: number };
   trigger: HTMLButtonElement | null;
 }
 
@@ -37,6 +38,7 @@ export function createContextMenuDescriptor(input: Parameters<typeof clampContex
 }): ContextMenuDescriptor {
   return {
     key: input.key,
+    anchor: { x: input.x, y: input.y },
     trigger: input.trigger,
     position: clampContextMenuPosition(input)
   };

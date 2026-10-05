@@ -33,8 +33,8 @@ describe("server member identity updates", () => {
 
   it("renames loaded messages only in the target server", () => {
     const messages = {
-      roomA: [{ id: "a", roomId: "roomA", userId: "u1", nickname: "Old", authorDeleted: false, body: "A", createdAt: "now", editedAt: null, suppressedEmbedKeys: [], replyToMessageId: null, replyTo: null }],
-      roomB: [{ id: "b", roomId: "roomB", userId: "u1", nickname: "Old", authorDeleted: false, body: "B", createdAt: "now", editedAt: null, suppressedEmbedKeys: [], replyToMessageId: null, replyTo: null }]
+      roomA: [{ id: "a", serverId: "alpha", sequence: 1, roomId: "roomA", userId: "u1", nickname: "Old", authorDeleted: false, body: "A", createdAt: "now", editedAt: null, suppressedEmbedKeys: [], replyToMessageId: null, replyTo: null }],
+      roomB: [{ id: "b", serverId: "beta", sequence: 1, roomId: "roomB", userId: "u1", nickname: "Old", authorDeleted: false, body: "B", createdAt: "now", editedAt: null, suppressedEmbedKeys: [], replyToMessageId: null, replyTo: null }]
     };
     const renamed = renameMessagesForServer(messages, { roomA: "server-a", roomB: "server-b" }, "server-a", {
       userId: "u1",
@@ -48,8 +48,8 @@ describe("server member identity updates", () => {
 
   it("anonymizes loaded messages and reply authors only in the affected server", () => {
     const messages = {
-      roomA: [{ id: "a", roomId: "roomA", userId: "u1", nickname: "Old", authorDeleted: false, body: "A", createdAt: "now", editedAt: null, suppressedEmbedKeys: [], replyToMessageId: "b", replyTo: { messageId: "b", userId: "u1", nickname: "Old", authorDeleted: false, body: "B" } }],
-      roomB: [{ id: "b", roomId: "roomB", userId: "u1", nickname: "Old", authorDeleted: false, body: "B", createdAt: "now", editedAt: null, suppressedEmbedKeys: [], replyToMessageId: null, replyTo: null }]
+      roomA: [{ id: "a", serverId: "alpha", sequence: 1, roomId: "roomA", userId: "u1", nickname: "Old", authorDeleted: false, body: "A", createdAt: "now", editedAt: null, suppressedEmbedKeys: [], replyToMessageId: "b", replyTo: { messageId: "b", userId: "u1", nickname: "Old", authorDeleted: false, body: "B" } }],
+      roomB: [{ id: "b", serverId: "beta", sequence: 1, roomId: "roomB", userId: "u1", nickname: "Old", authorDeleted: false, body: "B", createdAt: "now", editedAt: null, suppressedEmbedKeys: [], replyToMessageId: null, replyTo: null }]
     };
 
     const anonymized = anonymizeMessagesForServer(messages, { roomA: "server-a", roomB: "server-b" }, "server-a", "u1");

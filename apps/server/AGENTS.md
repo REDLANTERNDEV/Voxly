@@ -525,3 +525,17 @@ sandboxes instead of treating `listen EPERM` as an assertion failure.
 
 Add migration coverage for schema evolution, HTTP tests for authorization and
 response shape, and realtime tests for authoritative state and audience scope.
+
+## Personal Message Notifications
+
+- Notification settings and private room read cursors belong to the authenticated
+  Account, with active Membership required for every scoped read or write.
+- Assign monotonic room message sequences in the message insertion transaction.
+  Advance read cursors with `max`, bounded by the room's latest sequence.
+- Introduce sequences and baseline existing histories exactly once. Baseline
+  membership activation/reactivation in its transaction; restart never clears
+  unread messages. Count only live messages by other Accounts past the cursor.
+- Publish personal read/settings invalidations only to that Account's authorized
+  sockets after persistence. Message deletion invalidates the Server's summaries.
+- Notification mutes are separate from owner voice mute/deafen. Store expiration
+  using server time; expiry preserves unread messages and replays no alerts.

@@ -12,6 +12,8 @@ function messageRow(overrides: Partial<MessageRow> = {}): MessageRow {
   return {
     id: "message-1",
     roomId: "general",
+    serverId: "the-basement",
+    sequence: 1,
     userId: "user-1",
     nickname: "Deniz",
     authorDeleted: 0,

@@ -164,6 +164,7 @@ export function AppRoutes({ workspaceReady, workspaceError, route, user, authSta
     onUpdateMemberPermissions={shellProps.onUpdateMemberPermissions}
   />);
   if (route.name === "voice") return renderSurface(<AppChrome {...shellProps} mobileTitle={shellProps.currentRoom?.name ?? t("room.lobbyVoice")}><VoiceRoomScreen
+    screenConnectionWarnings={shellProps.screenConnectionWarnings}
     user={shellProps.user}
     currentNickname={shellProps.currentNickname}
     route={shellProps.route}

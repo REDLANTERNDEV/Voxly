@@ -148,7 +148,7 @@ describe("notification sound wiring", () => {
   it("plays message cues from the realtime handler without reordering chat state", () => {
     const app = readFileSync("src/App.tsx", "utf8");
 
-    assert.match(app, /messageNew: \(message\) => \{ chat\.applyNewMessage\(message\); notifyMessageRef\.current\(message\); \}/);
+    assert.match(app, /messageNew: \(message\) => \{ chat\.applyNewMessage\(message\);[\s\S]*?if \(serverNotifications\.messageAllowed\(message\)\) notifyMessageRef\.current\(message\); \}/);
     assert.match(app, /notifyMessageRef\.current = audio\.notifyMessage/);
   });
 

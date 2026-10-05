@@ -5,6 +5,7 @@ import type { MemberAction,Translate } from "../../app/types.js";
 import { HeadsetIcon,MicIcon,MoreIcon } from "../../components/ui/Icons.js";
 import { VolumeControl } from "../../components/ui/Primitives.js";
 import { type ContextMenuDescriptor } from "../../lib/contextMenu.js";
+import { MenuSubmenu } from "../MenuSubmenu.js";
 import { ContextMenu } from "../ContextMenu.js";
 export interface SidebarActionMenuController {
   active: ContextMenuDescriptor | null;
@@ -238,32 +239,8 @@ export function MemberActionMenu({
   );
 }
 
-/**
- * A flyout of voice rooms, opened by hovering or focusing the row it hangs off.
- *
- * It is not a nested portal menu: the parent is already viewport-clamped, and a
- * second layer of clamping against a moving anchor is a great deal of machinery
- * for one list. Anchoring it to the row instead keeps it correct while the
- * parent menu moves, and CSS flips it to the other side when it would overflow.
- */
 export function MemberMoveSubmenu({ label, rooms, onSelect }: {
-  label: string;
-  rooms: RoomSummary[];
-  onSelect: (roomId: string) => void;
+  label: string; rooms: RoomSummary[]; onSelect: (roomId: string) => void;
 }) {
-  return (
-    <div className="menu-submenu">
-      <button type="button" className="menu-submenu-trigger" aria-haspopup="menu" aria-expanded={undefined}>
-        <span>{label}</span>
-        <span className="menu-submenu-caret" aria-hidden="true">›</span>
-      </button>
-      <div className="menu-submenu-panel" role="menu" aria-label={label}>
-        {rooms.map((room) => (
-          <button key={room.id} role="menuitem" type="button" onClick={() => onSelect(room.id)}>
-            {room.name}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+  return <MenuSubmenu label={label} items={rooms.map(room => ({ id: room.id, label: room.name }))} onSelect={onSelect} />;
 }

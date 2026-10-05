@@ -12,6 +12,7 @@
     "dev:ux-check": "vite --config scripts/desktop-ux/vite.config.mjs"
   },
   "dependencies": {
+    "@floating-ui/react": "^0.27.20",
     "@vitejs/plugin-react": "^5.0.0",
     "@voxly/shared": "file:../../packages/shared",
     "react": "^19.0.0",

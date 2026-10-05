@@ -137,6 +137,11 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
       </div>
       <div className={`app-shell ${props.route.name === "voice" ? "is-voice-stage" : ""} drawer-${props.drawer ?? "none"}`}>
         <WorkspaceRail
+          actionMenu={actionMenu}
+          serverNotificationState={props.serverNotificationState}
+          serverNotificationTime={props.serverNotificationTime}
+          serverNotificationError={props.serverNotificationError}
+          onServerNotificationSettingsChange={props.onServerNotificationSettingsChange}
           activeServerId={props.activeServerId}
           rooms={props.rooms}
           roomHistory={props.roomHistory}

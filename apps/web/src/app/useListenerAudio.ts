@@ -10,6 +10,7 @@ import { useAudioDevices } from "../lib/useAudioDevices.js";
 import { useConnectionHealth } from "../lib/useConnectionHealth.js";
 import { useMicrophoneTest } from "../lib/useMicrophoneTest.js";
 import { useVoiceMedia } from "../lib/useVoiceMedia.js";
+import { useScreenConnectionQuality } from "../lib/useScreenConnectionQuality.js";
 import { useVoiceQuality } from "../lib/useVoiceQuality.js";
 import { clampVolumePercent,pruneVolumes,readUserVolumes,setVolume,writeUserVolumes } from "../lib/voiceVolume.js";
 import type { VoxlySocket } from "../socket.js";
@@ -48,6 +49,7 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
   // Only while there is a call to measure. Outside a voice room the signalling
   // round trip is the only connection a member has, and reporting on it is
   // exactly right; inside one it is the wrong path to be looking at.
+  const screenConnectionWarnings = useScreenConnectionQuality(voice.activeRoomId ? voice.screenReceivers : null);
   const measuredQuality = useVoiceQuality(voice.activeRoomId ? voice.peerConnections : null);
   const voiceQuality = { ...measuredQuality, recovering: Object.values(voice.peerConnectionStates).some(state => state === "reconnecting") };
   useEffect(() => {
@@ -171,7 +173,7 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
   }, []);
 
   return {
-    voice, connectionHealth, voiceQuality, audioDevices, audioLevels, microphoneTest,
+    voice, connectionHealth, voiceQuality, screenConnectionWarnings, audioDevices, audioLevels, microphoneTest,
     noiseSuppression, noiseSuppressionSupported,
     notificationSounds: notifications.notificationSounds,
     notifyMessage: notifications.notifyMessage,

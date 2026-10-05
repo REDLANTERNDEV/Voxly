@@ -1,3 +1,4 @@
+import { ScreenQualityOwner } from "./screenQualityController.js";
 import { VoicePeerOwner } from "./voicePeerOwner.js";
 import { MicrophoneOwner } from "./microphoneOwner.js";
 import { stepMicrophoneHealth,type MicrophoneHealthState } from "./microphoneHealth.js";
@@ -25,7 +26,6 @@ import {
   effectiveVoiceMediaState,
   ensureOfferableAudioSection,
   mediaConstraintsFor,
-  preferScreenSenderFramerate,
   replaceMicrophoneTrack,
   watchMicrophoneStreamEnd
 } from "./voiceMedia.js";
@@ -136,6 +136,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   }, []);
   const localStreamsRef = useRef<Partial<Record<LocalStreamKind, MediaStream>>>({});
   const [microphoneInputRef] = useState(() => new MicrophoneOwner());
+  const [screenQualityOwner] = useState(() => new ScreenQualityOwner());
   const [peerOwner] = useState(() => new VoicePeerOwner());
   const iceServersRef = useRef(iceServers);
   const microphoneDeviceIdRef = useRef(microphoneDeviceId);
@@ -365,6 +366,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
 
   const stopStream = useCallback((kind: LocalStreamKind) => {
     const stream = localStreamsRef.current[kind];
+    if (kind === "screen") screenQualityOwner.clear();
     if (kind === "mic") {
       microphoneEndedCleanupRef.current?.();
       microphoneEndedCleanupRef.current = null;
@@ -384,6 +386,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   }, [stopSpeakingMonitor]);
 
   const closePeers = useCallback(() => {
+    screenQualityOwner.clear();
     peerOwner.clear();
     mediaInstanceIdRef.current = null;
     remoteMediaInstancesRef.current.clear();
@@ -413,6 +416,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const removePeer = useCallback((peerUserId: string, options: PeerRemovalOptions = {}) => {
     const peer = peersRef.current.get(peerUserId);
     if (options.expectedPeer && peer !== options.expectedPeer) return false;
+    screenQualityOwner.release(peerUserId);
     if (peer) offeredPeersRef.current.delete(peer);
     peerOwner.release(peerUserId, peer);
     const connectionTimeout = peerConnectionTimeoutsRef.current.get(peerUserId);
@@ -506,6 +510,8 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
 
   const syncLocalTracks = useCallback((peer: RTCPeerConnection, peerUserId: string) => {
     const currentTracks = new Set<MediaStreamTrack>();
+    let screenSender: RTCRtpSender | null = null;
+    let screenTrack: MediaStreamTrack | null = null;
     const subscribedKinds = viewerVisualSubscriptionsRef.current.get(peerUserId) ?? new Set<VisualMediaKind>();
     const streams: Array<[LocalStreamKind, MediaStream | undefined]> = [
       ["mic", localStreamsRef.current.mic],
@@ -519,11 +525,12 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
         const existingSender = peer.getSenders().find((sender) => sender.track === track);
         const sender = existingSender ?? peer.addTrack(track, stream);
         if (kind === "screen" && track.kind === "video") {
-          void preferScreenSenderFramerate(sender, track);
+          screenSender = sender; screenTrack = track;
         }
       }
     }
 
+    screenQualityOwner.sync(peerUserId, peer, screenSender, screenTrack);
     for (const sender of peer.getSenders()) {
       if (sender.track && !currentTracks.has(sender.track)) {
         peer.removeTrack(sender);
@@ -882,6 +889,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       expectingAudio: members.get(userId) === true
     }));
   }, []);
+
+  const screenReceivers = useCallback(() => [...peersRef.current].flatMap(([userId, peer]) =>
+    peerOwner.screenReceivers(peer).map(receiver => ({ userId, peer, receiver }))), []);
 
   const renegotiatePeers = useCallback(() => {
     for (const [peerUserId, peer] of peersRef.current) {
@@ -1938,6 +1948,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     microphoneMonitorStream,
     microphoneHealthWarning,
     peerConnections,
+    screenReceivers,
     recoverPeer,
     confirmPeerAudioRecovered,
     requestSnapshot,

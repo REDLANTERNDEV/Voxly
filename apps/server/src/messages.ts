@@ -35,6 +35,8 @@ import { messageLimit, roomIdParam, type RouteContext } from "./http.js";
 export type MessageRow = {
   id: string;
   roomId: string;
+  serverId: string;
+  sequence: number;
   userId: string;
   nickname: string;
   authorDeleted: number;
@@ -91,7 +93,8 @@ export function registerMessageRoutes(context: RouteContext) {
     ).reverse().map(publicMessage);
 
     return {
-      messages
+      messages,
+      readThroughSequence: one<{ sequence: number }>(database.sqlite, "select message_sequence as sequence from rooms where id = ?", [roomId])!.sequence
     };
   });
 
@@ -136,6 +139,8 @@ export function registerMessageRoutes(context: RouteContext) {
     if (!sender) return reply.code(403).send({ error: "server_forbidden" });
     const message: ChatMessage = {
       id: crypto.randomUUID(),
+      serverId: room.serverId,
+      sequence: 0,
       roomId,
       userId: user.id,
       nickname: sender.nickname,
@@ -156,11 +161,15 @@ export function registerMessageRoutes(context: RouteContext) {
         : null
     };
 
-    run(
-      database.sqlite,
-      "insert into messages (id, room_id, user_id, body, created_at, reply_to_message_id) values (?, ?, ?, ?, ?, ?)",
-      [message.id, message.roomId, message.userId, message.body, message.createdAt, message.replyToMessageId]
-    );
+    database.sqlite.exec("BEGIN IMMEDIATE");
+    try {
+      run(database.sqlite, "update rooms set message_sequence = message_sequence + 1 where id = ?", [roomId]);
+      message.sequence = one<{ sequence: number }>(database.sqlite, "select message_sequence as sequence from rooms where id = ?", [roomId])!.sequence;
+      run(database.sqlite,
+        "insert into messages (id, room_id, user_id, body, created_at, reply_to_message_id, sequence) values (?, ?, ?, ?, ?, ?, ?)",
+        [message.id, message.roomId, message.userId, message.body, message.createdAt, message.replyToMessageId, message.sequence]);
+      database.sqlite.exec("COMMIT");
+    } catch (error) { database.sqlite.exec("ROLLBACK"); throw error; }
     database.save();
     // Every active server member needs the lightweight notification so clients
     // can maintain unread counts for text rooms they have not opened yet.
@@ -256,6 +265,7 @@ export function registerMessageRoutes(context: RouteContext) {
     ]);
     database.save();
     io.to(`room:${roomId}`).emit("message:deleted", { roomId, messageId });
+    io.to(`server:${room.serverId}`).emit("notifications:changed", { serverId: room.serverId });
     return reply.code(204).send();
   });
 }
@@ -322,6 +332,8 @@ export function publicMessage(row: MessageRow): ChatMessage {
   return {
     id: row.id,
     roomId: row.roomId,
+    serverId: row.serverId,
+    sequence: row.sequence,
     userId: row.userId,
     nickname: row.nickname,
     authorDeleted: Boolean(row.authorDeleted),
@@ -382,7 +394,7 @@ const replyJoinClause = `left join messages quoted
  * the single-row lookup cannot come to disagree about what a message is. Only
  * the where clause and the ordering differ between the two.
  */
-const messageColumns = `messages.id, messages.room_id as roomId, messages.user_id as userId,
+const messageColumns = `rooms.server_id as serverId, messages.sequence, messages.id, messages.room_id as roomId, messages.user_id as userId,
       case when users.deleted_at is null then coalesce(server_members.nickname, users.nickname) else '' end as nickname,
       users.deleted_at is not null as authorDeleted,
       messages.body, messages.created_at as createdAt,

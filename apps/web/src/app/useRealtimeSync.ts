@@ -15,6 +15,8 @@ interface RealtimeHandlers {
   afkUpdated(serverId: string, afkTimeoutMinutes: AfkTimeoutMinutes): void;
   roomsChanged(serverId: string, deletedRoomId: string | undefined): void;
   serverDeleted(serverId: string): void;
+  notificationsChanged(serverId: string): void;
+  connected(): void;
   messageNew(message: ChatMessage): void;
   messageUpdated(message: ChatMessage): void;
   messageDeleted(roomId: string, messageId: string): void;
@@ -46,7 +48,7 @@ export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, lea
     const next = createVoxlySocket();
     setSocket(next);
     setSocketState("connecting");
-    next.on("connect", () => setSocketState("live"));
+    next.on("connect", () => { setSocketState("live"); handlersRef.current.connected(); });
     next.io.on("reconnect_attempt", () => setSocketState("reconnecting"));
     next.on("disconnect", () => {
       setSocketState("offline");
@@ -68,6 +70,7 @@ export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, lea
     next.on("server:afkUpdated", ({ serverId, afkTimeoutMinutes }) => handlersRef.current.afkUpdated(serverId, afkTimeoutMinutes));
     next.on("server:roomsChanged", ({ serverId, deletedRoomId }) => handlersRef.current.roomsChanged(serverId, deletedRoomId));
     next.on("server:deleted", ({ serverId }) => handlersRef.current.serverDeleted(serverId));
+    next.on("notifications:changed", ({ serverId }) => handlersRef.current.notificationsChanged(serverId));
     next.on("message:new", (message) => handlersRef.current.messageNew(message));
     next.on("message:updated", (message) => handlersRef.current.messageUpdated(message));
     next.on("message:deleted", ({ roomId, messageId }) => handlersRef.current.messageDeleted(roomId, messageId));

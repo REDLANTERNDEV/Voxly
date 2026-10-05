@@ -16,11 +16,11 @@ import { StreamActions } from "./StreamActions.js";
 import { combineOutputVolume } from "../../lib/audioLevels.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
 import { MusicPanel } from "./MusicPanel.js";
-import { RemoteAudio,RemoteVideo,VisualStage,VoiceStatusBadges,type StageSource } from "./VoicePresentation.js";
+import { RemoteAudio,RemoteVideo,VisualStage,VoiceStatusBadges,ScreenConnectionWarning,type StageSource } from "./VoicePresentation.js";
 
 type VoiceRoomProps = Pick<ShellModel,
   "user" | "currentNickname" | "route" | "activeServerId" | "rooms" | "socketState" |
-  "roomHistory" | "t" | "currentRoom"
+  "roomHistory" | "t" | "currentRoom" | "screenConnectionWarnings"
 > & Pick<VoiceChromeModel,
   "activeVoiceRoomId" | "controls" | "visualTargets" | "voiceSnapshots" | "musicQueues" | "remoteStreams" |
   "peerConnectionStates" | "localPreviews" | "memberVolumes" | "screenVolumes" |
@@ -82,6 +82,7 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
         ownerId: participant.userId,
         ownerName: participant.nickname,
         ownerIsLocal: participant.userId === props.user.id,
+        connectionWarning: inViewedVoiceRoom && kind === "screen" && participant.userId !== props.user.id && props.screenConnectionWarnings[participant.userId],
         stream: streamByKey.get(remoteStreamKey(participant.userId, kind)) ?? null,
         target: participant.userId === props.user.id ? null : { publisherUserId: participant.userId, kind },
         connectionStatus: participant.userId === props.user.id
@@ -296,7 +297,7 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
                     <span className="tile-live">{props.t("common.live")}</span>
                     <span className="voice-tile-caption"><strong>{source.ownerName}</strong><VoiceStatusBadges media={mediaFor(source.ownerId)} moderation={moderationByUser.get(source.ownerId)} t={props.t} showVisual={false} />{!selected ? <ScreenIcon off={false} /> : null}</span>
                   </button></StreamActions>
-
+                  {source.connectionWarning ? <ScreenConnectionWarning t={props.t} /> : null}
                 </li>;
               })}
             </ul>

@@ -1941,56 +1941,11 @@ button.reply-quote:focus-visible .reply-quote-body {
    row's own layout and reads at a glance: green present, amber away, hollow
    grey gone. The ring matches the panel background so the dot never merges
    into the avatar behind it. */
-/* Flyout anchored to its row rather than portalled: the parent menu is already
-   viewport-clamped and moves with the pointer, so a second clamped layer would
-   have to track it. `right: 100%` flips it to the left when the parent sits
-   near the right edge, which is where these menus usually open. */
-.menu-submenu {
-  position: relative;
-}
-
-.menu-submenu-trigger {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-}
-
-.menu-submenu-caret {
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1;
-}
-
-.menu-submenu-panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
-  display: none;
-  gap: 3px;
-  left: 100%;
-  max-height: 260px;
-  min-width: 160px;
-  overflow-y: auto;
-  padding: 5px;
-  position: absolute;
-  top: -5px;
-  z-index: 1;
-}
-
-.menu-submenu:hover .menu-submenu-panel,
-.menu-submenu:focus-within .menu-submenu-panel {
-  display: grid;
-}
-
-/* Near the right edge the parent menu is itself flipped, so the flyout follows. */
-@media (max-width: 720px) {
-  .menu-submenu-panel {
-    left: auto;
-    right: 100%;
-  }
-}
+.menu-submenu { position: relative; }
+.menu-submenu-trigger { align-items: center; display: flex; justify-content: space-between; width: 100%; }
+.menu-submenu-caret { color: var(--muted); font-size: 15px; line-height: 1; }
+.menu-submenu-panel { display: grid; gap: 3px; width: 180px; min-width: 0; overflow: auto; box-sizing: border-box; }
+.sidebar-context-menu { overflow-y: auto; box-sizing: border-box; }
 
 .presence-dot {
   border: 2px solid var(--surface);
@@ -6068,3 +6023,9 @@ button.reply-quote:focus-visible .reply-quote-body {
 .desktop-shortcut-reset { min-width: 44px; min-height: 44px; }
 .desktop-audio-button { justify-self: start; width: fit-content; min-height: 36px; font-size: 12px; padding: 8px 12px; }
 .language-switch select { cursor: pointer; border-radius: inherit; }
+
+.screen-connection-warning { position: relative; color: var(--warning, #c58a20); }
+.screen-connection-warning button { cursor: pointer; border: 1px solid currentColor; border-radius: 50%; width: 24px; height: 24px; display: grid; place-items: center; font-weight: 700; }
+.screen-connection-warning > span { display: none; position: absolute; right: 0; bottom: 100%; width: min(260px, calc(100vw - 24px)); background: var(--surface); color: var(--fg); border: 1px solid var(--border); padding: 10px; border-radius: var(--radius-sm); z-index: var(--layer-menu); }
+.screen-connection-warning:has(button:hover) > span, .screen-connection-warning:focus-within > span, .screen-connection-warning.is-open > span { display: block; }
+.screen-connection-mark { position: absolute; top: 8px; right: 8px; color: var(--warning, #c58a20); background: var(--surface); border-radius: 50%; width: 22px; height: 22px; display: grid; place-items: center; }

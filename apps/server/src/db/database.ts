@@ -344,6 +344,7 @@ function migrate(sqlite: DatabaseSync) {
       );
     }
   }
+  migrateNotificationState(sqlite);
 }
 
 function seedRooms(sqlite: DatabaseSync) {
@@ -408,4 +409,30 @@ function addColumnIfMissing(sqlite: DatabaseSync, table: string, column: string,
     return true;
   }
   return false;
+}
+
+/** Backfill once, in the same transaction as introducing the read cursors. */
+function migrateNotificationState(sqlite: DatabaseSync) {
+  sqlite.exec("BEGIN IMMEDIATE");
+  try {
+    const introduced = addColumnIfMissing(sqlite, "messages", "sequence", "integer not null default 0");
+    addColumnIfMissing(sqlite, "rooms", "message_sequence", "integer not null default 0");
+    addColumnIfMissing(sqlite, "server_members", "message_notifications_muted", "integer not null default 0");
+    addColumnIfMissing(sqlite, "server_members", "message_notifications_mute_until", "text");
+    sqlite.exec(`create table if not exists room_read_cursors (
+      user_id text not null, room_id text not null, last_read_sequence integer not null default 0,
+      primary key (user_id, room_id)
+    );`);
+    if (introduced) {
+      sqlite.exec(`with ordered as (
+        select id, row_number() over (partition by room_id order by created_at, rowid) as sequence from messages
+      ) update messages set sequence = (select sequence from ordered where ordered.id = messages.id);
+      update rooms set message_sequence = coalesce((select max(sequence) from messages where room_id = rooms.id), 0);
+      insert into room_read_cursors (user_id, room_id, last_read_sequence)
+      select server_members.user_id, rooms.id, rooms.message_sequence from rooms
+      join server_members on server_members.server_id = rooms.server_id where rooms.kind = 'text';`);
+    }
+    sqlite.exec(`create unique index if not exists idx_messages_room_sequence on messages(room_id, sequence) where sequence > 0;
+      create index if not exists idx_room_read_cursors_room on room_read_cursors(room_id); COMMIT;`);
+  } catch (error) { sqlite.exec("ROLLBACK"); throw error; }
 }

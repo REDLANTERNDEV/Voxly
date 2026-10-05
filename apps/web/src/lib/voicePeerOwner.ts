@@ -24,6 +24,15 @@ export class VoicePeerOwner {
     ).map(transceiver => transceiver.receiver.track.id);
   }
 
+  screenReceivers(peer: RTCPeerConnection) {
+    const kinds = this.trackKinds.get(peer);
+    return peer.getTransceivers().filter(transceiver =>
+      (transceiver.currentDirection === "sendrecv" || transceiver.currentDirection === "recvonly")
+      && transceiver.receiver.track.readyState === "live" && kinds?.get(transceiver.receiver.track.id) === "screen"
+      && transceiver.receiver.track.kind === "video"
+    ).map(transceiver => transceiver.receiver);
+  }
+
   release(userId: string, expected?: RTCPeerConnection) {
     const peer = this.peers.get(userId);
     if (expected && expected !== peer) return false;

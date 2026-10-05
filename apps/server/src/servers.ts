@@ -399,6 +399,7 @@ export function registerServerRoutes(context: RouteContext) {
 
     database.sqlite.exec("begin immediate");
     try {
+      run(database.sqlite, "delete from room_read_cursors where room_id = ?", [roomId]);
       run(database.sqlite, "delete from messages where room_id = ?", [roomId]);
       run(database.sqlite, "delete from rooms where id = ? and server_id = ?", [roomId, serverId]);
       audit(database, owner.id, "room.deleted", null, serverId);
@@ -430,6 +431,7 @@ export function registerServerRoutes(context: RouteContext) {
     const affectedUserIds = all<{ user_id: string }>(database.sqlite, "select user_id from server_members where server_id = ?", [serverId]).map((membership) => membership.user_id);
     database.sqlite.exec("begin immediate");
     try {
+      run(database.sqlite, "delete from room_read_cursors where room_id in (select id from rooms where server_id = ?)", [serverId]);
       run(database.sqlite, "delete from messages where room_id in (select id from rooms where server_id = ?)", [serverId]);
       run(database.sqlite, "delete from invite_uses where invite_id in (select id from invites where server_id = ?)", [serverId]);
       run(database.sqlite, "delete from invites where server_id = ?", [serverId]);

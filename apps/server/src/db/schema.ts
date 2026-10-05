@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { primaryKey, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
@@ -151,6 +151,7 @@ export const categories = sqliteTable("categories", {
 });
 
 export const rooms = sqliteTable("rooms", {
+  messageSequence: integer("message_sequence").notNull().default(0),
   id: text("id").primaryKey(),
   serverId: text("server_id").notNull(),
   name: text("name").notNull(),
@@ -168,6 +169,8 @@ export const servers = sqliteTable("servers", {
 });
 
 export const serverMembers = sqliteTable("server_members", {
+  messageNotificationsMuted: integer("message_notifications_muted", { mode: "boolean" }).notNull().default(false),
+  messageNotificationsMuteUntil: text("message_notifications_mute_until"),
   serverId: text("server_id").notNull(),
   userId: text("user_id").notNull(),
   role: text("role", { enum: ["owner", "member"] }).notNull(),
@@ -193,6 +196,7 @@ export const accessClaims = sqliteTable("access_claims", {
 });
 
 export const messages = sqliteTable("messages", {
+  sequence: integer("sequence").notNull().default(0),
   id: text("id").primaryKey(),
   roomId: text("room_id").notNull(),
   userId: text("user_id").notNull(),
@@ -211,3 +215,8 @@ export const auditEvents = sqliteTable("audit_events", {
   targetUserId: text("target_user_id"),
   createdAt: text("created_at").notNull()
 });
+
+export const roomReadCursors = sqliteTable("room_read_cursors", {
+  userId: text("user_id").notNull(), roomId: text("room_id").notNull(),
+  lastReadSequence: integer("last_read_sequence").notNull().default(0)
+}, (table) => [primaryKey({ columns: [table.userId, table.roomId] })]);

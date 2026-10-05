@@ -39,7 +39,7 @@ describe("desktop UX polish", () => {
     const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
     const target = { __VOXLY_DESKTOP_V1__: undefined as { version: number } | undefined };
     Object.defineProperty(globalThis, "window", { configurable: true, value: target });
-    const props = { activeServerId: "", servers: [], rooms: { text: [], voice: [] }, roomHistory: {}, t: (key: Parameters<typeof translate>[1]) => translate("en", key), onNavigate() {}, async onSelectServer() {}, onOpenSettings() {}, onCloseDrawer() {} };
+    const props = { serverNotificationState: null, serverNotificationTime: 0, serverNotificationError: false, actionMenu: { active: null, open() {}, close() {} }, async onServerNotificationSettingsChange() {}, activeServerId: "", servers: [], rooms: { text: [], voice: [] }, roomHistory: {}, t: (key: Parameters<typeof translate>[1]) => translate("en", key), onNavigate() {}, async onSelectServer() {}, onOpenSettings() {}, onCloseDrawer() {} };
     try {
       const html = renderToStaticMarkup(createElement(WorkspaceRail, props));
       assert.match(html, /href="https:\/\/github.com\/REDLANTERNDEV\/Voxly\/releases"/);

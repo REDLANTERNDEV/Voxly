@@ -50,7 +50,7 @@ export class VoiceDiagnostics {
     this.sequence = 0;
   }
 
-  record(event: "sample" | "input-output" | "recovery" | "leave", data: unknown, peer?: object) {
+  record(event: "sample" | "input-output" | "recovery" | "leave" | "screen", data: unknown, peer?: object) {
     if (!this.active) return;
     let peerNumber: number | undefined;
     if (peer) {
@@ -96,4 +96,15 @@ export async function downloadVoiceDiagnostics() {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+/** Explicit allowlist: no SDP, track/stream identity, candidate address, or content. */
+export function safeScreenStats(entries: readonly Record<string, unknown>[]) {
+  const fields = ["frameWidth", "frameHeight", "framesPerSecond", "framesEncoded", "framesDecoded", "bytesSent", "bytesReceived", "packetsSent", "packetsReceived", "packetsLost", "roundTripTime", "fractionLost", "timestamp"];
+  return entries.filter(entry => ["inbound-rtp", "outbound-rtp", "remote-inbound-rtp"].includes(String(entry.type)) && (entry.kind === "video" || entry.mediaType === "video")).map(entry => {
+    const sample: Record<string, number | string> = { type: String(entry.type) };
+    for (const field of fields) if (typeof entry[field] === "number" && Number.isFinite(entry[field])) sample[field] = entry[field] as number;
+    if (["none", "cpu", "bandwidth", "other"].includes(String(entry.qualityLimitationReason))) sample.qualityLimitationReason = String(entry.qualityLimitationReason);
+    return sample;
+  });
 }

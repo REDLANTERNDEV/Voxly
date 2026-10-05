@@ -1835,3 +1835,12 @@ select {
 
 .microphone-health-warning { color: var(--warn); display: flex; flex-wrap: wrap; font-size: 12px; gap: 4px 8px; line-height: 1.4; min-width: 0; }
 .microphone-health-warning .btn { font-size: inherit; padding: 0; min-height: 0; text-decoration: underline; }
+
+.workspace-server { position: relative; flex: 0 0 auto; }
+.server-unread-badge { position: absolute; top: -5px; right: -6px; background: var(--danger); color: white; border: 2px solid var(--rail-bg, var(--surface)); border-radius: 999px; min-width: 20px; height: 20px; padding: 0 3px; display: grid; place-items: center; font-size: 10px; font-weight: 700; line-height: 1; pointer-events: none; }
+.workspace-server > .sidebar-menu-trigger { position: absolute; right: -9px; bottom: -6px; width: 24px; height: 24px; opacity: 0; }
+.workspace-server:hover > .sidebar-menu-trigger, .workspace-server:focus-within > .sidebar-menu-trigger { opacity: 1; }
+@media (pointer: coarse) {
+  .workspace-server { padding-bottom: 28px; }
+  .workspace-server > .sidebar-menu-trigger { opacity: 1; width: 36px; height: 36px; bottom: -5px; right: 2px; }
+}

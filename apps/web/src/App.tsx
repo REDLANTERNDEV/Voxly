@@ -5,6 +5,7 @@ import { AppRoutes } from "./app/AppRoutes.js";
 import { AuthenticatedAppSurface } from "./app/AuthenticatedAppSurface.js";
 import { parseRoute,serverPath } from "./app/navigation.js";
 import type { Drawer,LiveWatchRequest,Route,ShellActions,ShellModel,VoiceJoinRequest } from "./app/types.js";
+import { useServerNotifications } from "./app/useServerNotifications.js";
 import { useListenerAudio } from "./app/useListenerAudio.js";
 import { forceLeaveNoticeKey } from "./app/presentation.js";
 import { useRealtimeSync } from "./app/useRealtimeSync.js";
@@ -75,8 +76,9 @@ export function App() {
     session.completeAuthentication(claimed);
     void workspace.loadAcceptedServer(serverId).catch(() => navigate("/"));
   }, [navigate, session.completeAuthentication, workspace.loadAcceptedServer]);
+  const serverNotifications = useServerNotifications(session.user, workspace.servers.map(server => server.id).join("|"));
   const chat = useChatController({
-    user: session.user,
+    markRead: serverNotifications.markRead, user: session.user,
     route,
     currentRoom: workspace.currentRoom,
     roomServerIds: roomServerIdsRef,
@@ -91,6 +93,7 @@ export function App() {
     forceLeaveNoticeRef,
     checkStillSignedInRef,
     handlers: {
+      connected: serverNotifications.refresh, notificationsChanged: serverNotifications.refresh,
       presenceSnapshot: workspace.applyPresenceSnapshot,
       presenceOnline: workspace.applyPresenceOnline,
       presenceOffline: workspace.applyPresenceOffline,
@@ -103,12 +106,12 @@ export function App() {
       memberDeleted: (serverId, userId) => chat.applyMemberDeletion(serverId, userId),
       serverUpdated: workspace.applyServerName,
       afkUpdated: workspace.applyAfkTimeout,
-      roomsChanged: (serverId, roomId) => { void workspace.refreshRooms(serverId, roomId).catch(() => undefined); },
-      serverDeleted: (serverId) => { void workspace.refreshServersAfterDeletion(serverId).catch(() => undefined); },
-      messageNew: (message) => { chat.applyNewMessage(message); notifyMessageRef.current(message); },
+      roomsChanged: (serverId, roomId) => { serverNotifications.refresh(); void workspace.refreshRooms(serverId, roomId).catch(() => undefined); },
+      serverDeleted: (serverId) => { serverNotifications.refresh(); void workspace.refreshServersAfterDeletion(serverId).catch(() => undefined); },
+      messageNew: (message) => { chat.applyNewMessage(message); roomServerIdsRef.current[message.roomId] = message.serverId; serverNotifications.refresh(); if (serverNotifications.messageAllowed(message)) notifyMessageRef.current(message); },
       messageUpdated: chat.applyUpdatedMessage,
       messageDeleted: chat.applyDeletedMessage,
-      accessRevoked: workspace.revokeAccess,
+      accessRevoked: (serverId) => { workspace.revokeAccess(serverId); serverNotifications.refresh(); },
       accountDeleted: session.finishDeletedAccount,
       deletionRequestCreated: () => setDeletionRequestRevision((current) => current + 1)
     }
@@ -137,7 +140,6 @@ export function App() {
     speaking: localVoiceSpeaking,
     reportStatus: (status) => realtime.socket?.emit("presence:setStatus", status)
   });
-
   // The move arrives as an instruction, not a state change, so it runs through
   // the same join the member would have performed themselves.
   useEffect(() => {
@@ -174,9 +176,7 @@ export function App() {
     return joinVoiceWithAudioUnlock(roomId, unlockSharedAudioOutput, releaseUnusedSharedAudioOutput, (nextRoomId) => audio.voice.join(nextRoomId, options.visualTargets ?? [], options));
   }, [audio.microphoneTest.active, audio.stopMicrophoneTest, audio.voice.activeRoomId, audio.voice.join]);
   const shellProps = user ? {
-    user,
-    currentNickname,
-    route,
+    user, currentNickname, route,
     servers: workspace.servers,
     activeServerId: workspace.activeServerId,
     rooms: workspace.roomGroups, categories: workspace.categories, uncategorizedPosition: workspace.uncategorizedPosition,
@@ -184,7 +184,7 @@ export function App() {
     serverMembers: workspace.serverMembers,
     socketState: realtime.socketState,
     connectionHealth: audio.connectionHealth,
-    voiceQuality: audio.voiceQuality,
+    voiceQuality: audio.voiceQuality, screenConnectionWarnings: audio.screenConnectionWarnings,
     activeVoiceRoomId: audio.voice.activeRoomId,
     controls: audio.voice.controls,
     voiceModeration: audio.voice.voiceModeration,
@@ -202,7 +202,7 @@ export function App() {
     localPreviews: audio.voice.localPreviews,
     memberVolumes: audio.memberVolumes,
     screenVolumes: audio.screenVolumes,
-    unreadByRoom: chat.unreadByRoom,
+    ...serverNotifications.presentation,
     roomHistory,
     pendingLiveWatch: audio.pendingLiveWatch,
     audioDevices: audio.audioDevices,

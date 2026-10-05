@@ -1,7 +1,7 @@
 import { stageClickAction } from "./stageTileSelection.js";
 import { StreamActions } from "./StreamActions.js";
 import type { VisualMediaKind,VisualTarget,VoiceMediaState,VoiceModerationState } from "@voxly/shared";
-import { useEffect,useRef,useState } from "react";
+import { useEffect,useId,useRef,useState } from "react";
 import { voiceStatusItems } from "../../app/presentation.js";
 import type { Translate } from "../../app/types.js";
 import { MaximizeIcon,VolumeIcon } from "../../components/ui/Icons.js";
@@ -18,6 +18,7 @@ export interface StageSource {
   ownerIsLocal: boolean;
   stream: MediaStream | null;
   target: VisualTarget | null;
+  connectionWarning?: boolean;
   connectionStatus: "connecting" | "reconnecting" | "failed" | "ready";
 }
 /**
@@ -184,6 +185,7 @@ export function VisualStage({
             aria-label={isFullscreen ? t("common.exitFullscreen") : t(source.key === focusedSource?.key ? "voice.removeFromStage" : "voice.addToStage", { nickname: source.ownerName })}
           >
             {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span className="screen-stage-placeholder">{source.connectionStatus === "failed" ? t("voice.retry") : source.connectionStatus === "reconnecting" ? t("voice.reconnecting") : t("voice.connecting")}</span>}
+            {source.connectionWarning ? <span className="screen-connection-mark" role="img" aria-label={t("voice.screenConnectionWarning")} title={t("voice.screenConnectionWarning")}>!</span> : null}
             {source.key !== focusedSource?.key ? <span className="stage-media-label"><strong>{source.ownerName}</strong><span>{source.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}</span></span> : null}
           </button></StreamActions>
         ))}
@@ -194,6 +196,7 @@ export function VisualStage({
           if (focusedSource) onDismiss(focusedSource);
         }}>{isFullscreen ? t("common.exitFullscreen") : t("voice.backToBox")}</button>
         <span><strong>{focusedSource?.ownerName}</strong><span className="muted small">{focusedSource?.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}</span></span>
+        {focusedSource?.connectionWarning ? <ScreenConnectionWarning t={t} /> : null}
         {!focusedSource?.ownerIsLocal && focusedSource?.kind === "screen" ? (
           focusedHasAudio && focusedStream
             ? <details className="volume-popover stage-volume"><summary aria-label={t("voice.screenVolume")}><VolumeIcon /></summary><VolumeControl label={t("voice.screenVolume")} value={focusedVolume} onChange={(volume) => onScreenVolumeChange(focusedStream.id, volume)} /></details>
@@ -206,4 +209,13 @@ export function VisualStage({
       </div>
     </section>
   );
+}
+
+export function ScreenConnectionWarning({ t }: { t: Translate }) {
+  const [open, setOpen] = useState(false);
+  const descriptionId = useId();
+  return <div className={`screen-connection-warning${open ? " is-open" : ""}`}>
+    <button type="button" aria-label={t("voice.screenConnectionWarning")} aria-describedby={descriptionId}
+      aria-expanded={open} onClick={() => setOpen(value => !value)}>!</button>
+    <span id={descriptionId} role="tooltip">{t("voice.screenConnectionWarning")}</span></div>;
 }

@@ -355,6 +355,10 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
 - Keep adaptive controller cleanup generation-safe and idempotent across
   unsubscribe, peer replacement, track end, share stop, leave, and hook
   cleanup. A late async result must not mutate a replacement sender.
+- Screen connection warnings require two measured loss >=5% or RTT >=300ms
+  samples, clear after three healthy samples, and remain a small accessible
+  icon. Low resolution alone is not connection evidence. Keep screen diagnostics
+  bounded, memory-only, and free of identities, addresses, or media.
 - A rejected or unsupported stats or `setParameters` call is non-fatal and
   falls back to browser-native adaptation. Never affect microphone, camera, or
   screen-audio senders.

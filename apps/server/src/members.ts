@@ -11,6 +11,7 @@
 import type { FastifyReply } from "fastify";
 import type { DatabaseSync } from "node:sqlite";
 import type { PresenceStatus, PresenceUser, UserRole } from "@voxly/shared";
+import { baselineMembershipReadState } from "./readState.js";
 import { all, one, run, type VoxlyDatabase } from "./db/database.js";
 
 export type ServerMemberRow = {
@@ -31,6 +32,7 @@ export function activateServerMembership(
   role: "owner" | "member",
   joinedAt: string
 ) {
+  const previous = serverMembership(database.sqlite, serverId, userId);
   run(
     database.sqlite,
     `insert into server_members (server_id, user_id, role, joined_at)
@@ -38,6 +40,7 @@ export function activateServerMembership(
      on conflict(server_id, user_id) do update set removed_at = null`,
     [serverId, userId, role, joinedAt]
   );
+  if (!previous || previous.removed_at) baselineMembershipReadState(database.sqlite, serverId, userId);
 }
 
 export function serverMembership(sqlite: DatabaseSync, serverId: string, userId: string) {

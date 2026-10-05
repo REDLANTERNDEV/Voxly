@@ -46,6 +46,7 @@ export type InviteMaxUses = 1 | 5 | 10 | 25 | 50 | 100 | null;
 
 export interface MessagesResponse {
   messages: ChatMessage[];
+  readThroughSequence: number;
 }
 
 export interface MessageResponse {

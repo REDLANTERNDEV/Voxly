@@ -532,3 +532,17 @@ async function confirmSessionRotation() {
   }
   await sessionConfirmation;
 }
+
+export function fetchNotificationState() {
+  return apiGet<import("@voxly/shared").NotificationStateResponse>("/api/notifications");
+}
+export function advanceRoomReadState(roomId: string, throughSequence: number) {
+  return request<{ throughSequence: number }>(`/api/rooms/${encodeURIComponent(roomId)}/read-state`, {
+    method: "PUT", body: JSON.stringify({ throughSequence })
+  });
+}
+export function updateServerNotificationSettings(serverId: string, setting: import("@voxly/shared").NotificationMuteRequest) {
+  return request<import("@voxly/shared").NotificationStateResponse>(`/api/servers/${encodeURIComponent(serverId)}/notification-settings`, {
+    method: "PATCH", body: JSON.stringify(setting)
+  });
+}

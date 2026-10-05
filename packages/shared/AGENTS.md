@@ -232,3 +232,13 @@ npm test
 
 Add or update server and web tests that exercise both serialization/production
 and consumption of the changed contract.
+
+## Personal Message Notification Contracts
+
+- `ChatMessage.serverId` and monotonic room `sequence` are required in history,
+  creation responses, and realtime messages. History exposes a delivered
+  `readThroughSequence`; clients never mark read from a notification snapshot.
+- `notifications:changed` carries only `serverId`. Personal cursor/settings
+  changes are Account-private; message deletion invalidations carry no cursor.
+- Notification mute requests distinguish enabled, timed preset, and indefinite
+  modes. Their meaning is message notifications, independent of voice moderation.
