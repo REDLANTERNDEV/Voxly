@@ -42,7 +42,7 @@ jobs:
         run: npm run desktop:build
       - name: Check whitespace
         run: git diff --check
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: voxly-windows-feasibility-unsigned
           path: apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
