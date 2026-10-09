@@ -228,6 +228,7 @@ describe("initial negotiation and media instance lifecycle", () => {
     let offers = 0;
     const apply = callback("applyVoiceSnapshot", {
       roomRef: { current: "room" }, userIdRef: { current: "self" },
+      syncScreenRecoveryRef: { current: () => undefined },
       peersRef, remoteMediaInstancesRef,
       voiceSnapshotsRef: { current: {} },
       setVoiceSnapshots: () => undefined, setRemoteStreams: () => undefined,

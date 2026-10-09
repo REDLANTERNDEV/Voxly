@@ -241,6 +241,10 @@ pub(crate) fn queue_voice_action(app: &tauri::AppHandle, action: shortcuts::Acti
     queue_voice_event(app, action, pressed, true);
 }
 
+pub(super) fn release_shortcut_holds(app: &tauri::AppHandle) {
+    for action in shortcuts::Action::ALL { queue_voice_event(app, action, false, false); }
+}
+
 fn queue_voice_event(
     app: &tauri::AppHandle,
     action: shortcuts::Action,

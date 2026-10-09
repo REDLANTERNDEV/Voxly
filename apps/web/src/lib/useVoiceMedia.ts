@@ -1,4 +1,5 @@
 import { ScreenQualityOwner } from "./screenQualityController.js";
+import { ScreenRecoveryOwner, type ScreenPlaybackStatus } from "./screenRecovery.js";
 import { VoicePeerOwner } from "./voicePeerOwner.js";
 import { MicrophoneOwner } from "./microphoneOwner.js";
 import { stepMicrophoneHealth,type MicrophoneHealthState } from "./microphoneHealth.js";
@@ -123,6 +124,10 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
   const [voiceSnapshots, setVoiceSnapshots] = useState<Record<string, VoiceSnapshot>>({});
   const voiceSnapshotsRef = useRef<Record<string, VoiceSnapshot>>({});
   const [visualTargets, setVisualTargets] = useState<VisualTarget[]>([]);
+  const [screenPlaybackStates, setScreenPlaybackStates] = useState<Record<string, ScreenPlaybackStatus>>({});
+  const screenRecoveryRef = useRef<ScreenRecoveryOwner | null>(null);
+  const screenRecoveryRoomRef = useRef<string | null>(null);
+  const syncScreenRecoveryRef = useRef<() => void>(() => {});
   const [remoteStreams, setRemoteStreams] = useState<RemoteStreamState[]>([]);
   const [peerConnectionStates, setPeerConnectionStates] = useState<Record<string, PeerConnectionState>>({});
   const [localPreviews, setLocalPreviews] = useState<LocalPreviewState[]>([]);
@@ -972,9 +977,55 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       visualTargetsRef.current = response.targets;
       setVisualTargets(response.targets);
       persistVoiceResume(response.targets);
+      syncScreenRecoveryRef.current();
     }
     return response;
   }, [persistVoiceResume, socket]);
+
+  const syncScreenRecovery = useCallback(() => {
+    if (screenRecoveryRoomRef.current !== roomRef.current) {
+      screenRecoveryRef.current?.sync([]);
+      screenRecoveryRoomRef.current = roomRef.current;
+    }
+    const snapshot = roomRef.current ? voiceSnapshotsRef.current[roomRef.current] : undefined;
+    const publishing = new Set(snapshot?.members.filter(member => member.media.screen).map(member => member.user.userId));
+    screenRecoveryRef.current?.sync(visualTargetsRef.current.filter(target => target.kind === "screen" && publishing.has(target.publisherUserId)).map(target => {
+      const peer = peersRef.current.get(target.publisherUserId) ?? null;
+      return { publisherId: target.publisherUserId, peer, receiver: peer ? peerOwner.screenReceivers(peer)[0] ?? null : null };
+    }));
+  }, []);
+  syncScreenRecoveryRef.current = syncScreenRecovery;
+
+  useEffect(() => {
+    const owner = new ScreenRecoveryOwner(async (publisherId, expectedPeer, isSelected) => {
+      if (!isSelected() || !socket?.connected || !expectedPeer || peersRef.current.get(publisherId) !== expectedPeer) return;
+      const generation = peerGenerationsRef.current.get(publisherId);
+      const response = await setVisualSubscriptions(visualTargetsRef.current);
+      syncScreenRecovery();
+      if (!isSelected() || !response.ok || screenRecoveryRef.current !== owner || generation === undefined
+        || !isCurrentPeer(publisherId, expectedPeer, generation)
+        || !visualTargetsRef.current.some(target => target.publisherUserId === publisherId && target.kind === "screen")) return;
+      const state = peerRecoveryStatesRef.current.get(publisherId);
+      if (state?.phase === "restarting" || state?.phase === "rebuilding") return;
+      // A media fault requires the remote sender to rebuild, even with healthy ICE.
+      requestPeerRecovery(publisherId, expectedPeer, true);
+    }, setScreenPlaybackStates);
+    screenRecoveryRef.current = owner;
+    const sample = () => { syncScreenRecovery(); if (socket?.connected) void owner.sample(); };
+    sample();
+    const timer = window.setInterval(sample, 2_000);
+    return () => { window.clearInterval(timer); owner.dispose(); if (screenRecoveryRef.current === owner) screenRecoveryRef.current = null; };
+  }, [socket, user?.id, isCurrentPeer, requestPeerRecovery, setVisualSubscriptions, syncScreenRecovery]);
+
+  const noteScreenPlayback = useCallback((publisherId: string, track: MediaStreamTrack) => {
+    syncScreenRecovery();
+    screenRecoveryRef.current?.notePlayback(publisherId, track);
+  }, [syncScreenRecovery]);
+  const retryScreenPlayback = useCallback((publisherId: string) => {
+    syncScreenRecovery();
+    screenRecoveryRef.current?.retry(publisherId);
+    void screenRecoveryRef.current?.sample();
+  }, [syncScreenRecovery]);
 
   const applyVoiceSnapshot = useCallback((nextSnapshot: VoiceSnapshot) => {
     voiceSnapshotsRef.current[nextSnapshot.roomId] = nextSnapshot;
@@ -1043,6 +1094,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
       if (instance) remoteMediaInstancesRef.current.set(peerUserId, instance);
       ensureInitialOffer(peerUserId, ensurePeer(peerUserId));
     }
+    syncScreenRecoveryRef.current();
   }, [emitMediaState, ensureInitialOffer, ensurePeer, persistVoiceResume, removePeer]);
 
   const join = useCallback(async (roomId: string, restoredTargets: VisualTarget[] = [], options: VoiceJoinOptions = {}) => {
@@ -1254,6 +1306,7 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     roomRef.current = null;
     visualTargetsRef.current = [];
     setVisualTargets([]);
+    screenRecoveryRef.current?.sync([]);
     recoveryInProgressRef.current = false;
     resumeDeadlineRef.current = null;
     if (resumeDeadlineTimerRef.current) {
@@ -1956,6 +2009,9 @@ export function useVoiceMedia({ socket, user, iceServers, voiceRoomIds, micropho
     setDeafened,
     toggleDeafen,
     peerConnectionStates,
+    screenPlaybackStates,
+    noteScreenPlayback,
+    retryScreenPlayback,
     setVisualSubscriptions,
     visualTargets,
     voiceSnapshots,

@@ -76,6 +76,22 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
 - Manual leave, room or user change, disconnect generation change, cleanup, or
   deadline expiry cancels timers and makes late results stale. Expiry uses the
   safe leave path and clears room and target state.
+- Watched ongoing screens own a ten-second decoded-first-frame deadline,
+  independent of transport connectivity. Sustained muted/ended tracks require
+  four seconds before repair; static content is not a fault. Restore acknowledged
+  subscriptions and request media recovery at most every fifteen seconds per
+  publisher. Bound continuous faults to ten minutes, then expose Retry without
+  leaving voice. Unwatch, share stop, publisher departure, room changes and
+  cleanup cancel the screen owner; a restarted share requires a new Watch.
+- Keep recovery mechanics separate from playback presentation. Previously decoded
+  ongoing screens retain their last picture during repair and remain quiet for
+  five seconds from the first interruption. Repeated peer replacements preserve
+  that deadline. Then show a small Reconnecting overlay until playback resumes.
+  Initial Watch still shows Connecting; quality reduction alone does not.
+- Retain the watched screen picture only in a bounded in-memory canvas, sampled
+  at most once per second plus live-track teardown. Never overwrite it from a
+  muted or ended track. Unwatch, share termination, departure, room changes and
+  cleanup release it. Keep screen audio on its existing independent owner.
 - Camera and local screen publishing stay off after interruption until the user
   explicitly restarts them. Restore microphone/deafen state from effective
   live-track state and the stored microphone preference.
@@ -343,10 +359,10 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   receiver-side playback cannot reliably unmix call audio already captured by
   another member. Preserve local call playback while sharing.
 - Capture screen video at an ideal and maximum 1280x720 and 30 FPS.
-- Set screen video `contentHint` to `motion` and apply
-  `degradationPreference = "maintain-framerate"` only to the sender carrying
+- Set screen video `contentHint` to `detail` and apply
+  `degradationPreference = "maintain-resolution"` only to the sender carrying
   the matching screen video track.
-- Adapt each viewer's screen-video sender independently. Start near 480p/20 FPS
+- Adapt each viewer's screen-video sender independently. Start at capture resolution (up to 720p)/15 FPS
   at a 1.4 Mbps ceiling, promote healthy connections to 720p/30 FPS at 3 Mbps,
   and reduce sustained congestion as far as 360p/15 FPS at 700 Kbps.
 - Sample sender statistics every two seconds. Promote initial quality after two

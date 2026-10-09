@@ -33,11 +33,20 @@ describe("desktop shortcut registration and bridge", () => {
   });
   it("records physical key combinations and avoids ordinary typing and repeat", () => {
     assert.equal(bindingFromKey(key), "Control+KeyM");
+    for (const [modifier, flag] of [["Control", "ctrlKey"], ["Alt", "altKey"], ["Shift", "shiftKey"]] as const) {
+      for (const side of ["Left", "Right"]) {
+        const event = { code: modifier + side, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, repeat: false, [flag]: true };
+        assert.equal(bindingFromKey(event), modifier);
+        assert.equal(bindingFromKey({ ...event, repeat: true }), null);
+      }
+    }
+    assert.equal(bindingFromKey({ ...key, code: "ControlLeft" }), "Control");
+    assert.equal(bindingFromKey({ ...key, code: "ControlRight" }), "Control");
     assert.equal(bindingLabel("Control+Alt+KeyM"), "Ctrl + Alt + M");
     assert.equal(bindingLabel("Super+Digit9"), "Win + 9");
     assert.equal(bindingFromKey({ ...key, altKey: true, shiftKey: true, metaKey: true }), "Control+Alt+Shift+Super+KeyM");
     assert.equal(bindingFromKey({ ...key, ctrlKey: false, code: "F8" }), "F8");
-    for (const event of [{ ...key, repeat: true }, { ...key, ctrlKey: false }, { ...key, ctrlKey: false, shiftKey: true }, { ...key, code: "ControlLeft" }, { ...key, code: "F25" }]) {
+    for (const event of [{ ...key, repeat: true }, { ...key, ctrlKey: false }, { ...key, ctrlKey: false, shiftKey: true }, { ...key, code: "F25" }]) {
       assert.equal(bindingFromKey(event), null);
     }
   });
@@ -120,6 +129,33 @@ describe("desktop shortcut registration and bridge", () => {
       elements.get("clear-deafen-shortcut")!.dispatchEvent(new Event("click"));
       await Promise.resolve();
       assert.equal(saved, null);
+    } finally { Object.assign(globalThis, { document: previousDocument, window: previousWindow }); }
+  });
+
+  it("records standalone modifiers on release, ignores repeats, and permits longer chords", async () => {
+    class Element extends EventTarget {
+      disabled = false; textContent = ""; value = "";
+      focus() {}
+    }
+    const elements = new Map(["mute-shortcut", "record-shortcut", "save-shortcut", "clear-shortcut", "shortcut-status"]
+      .map(id => [id, new Element()] as const));
+    const previousDocument = globalThis.document, previousWindow = globalThis.window;
+    Object.assign(globalThis, { document: { getElementById: (id: string) => elements.get(id) }, window: new EventTarget() });
+    try {
+      let saved: string | null | undefined;
+      const recorder = mountShortcutSettings({ t: key => key, save: async binding => { saved = binding; } });
+      recorder.render({ preferences: { muteShortcut: null }, registeredMuteShortcut: null, shortcutError: null }, true);
+      const input = elements.get("mute-shortcut")!;
+      for (const modifier of ["Control", "Alt", "Shift"]) for (const chord of [false, true]) {
+        elements.get("record-shortcut")!.dispatchEvent(new Event("click"));
+        const flags = { ...key, ctrlKey: modifier === "Control", altKey: modifier === "Alt", shiftKey: modifier === "Shift", code: modifier + "Left" };
+        input.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), flags));
+        input.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), { ...flags, repeat: true }));
+        if (chord) input.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), { ...flags, code: "F8" }));
+        input.dispatchEvent(Object.assign(new Event("keyup", { cancelable: true }), { ...flags, ctrlKey: false, altKey: false, shiftKey: false }));
+        elements.get("save-shortcut")!.dispatchEvent(new Event("click")); await Promise.resolve();
+        assert.equal(saved, chord ? modifier + "+F8" : modifier);
+      }
     } finally { Object.assign(globalThis, { document: previousDocument, window: previousWindow }); }
   });
 

@@ -329,7 +329,9 @@ requirement.
 ## Context Menus and Layering
 
 - Sidebar rows with actions open the shared portal menu from secondary click or
-  ellipsis. Left-rail voice-participant rows are the deliberate exception on a
+  ellipsis. Server avatars omit the ellipsis: retain secondary click and keyboard
+  menus, and expose Server notification actions through the mobile Server-name
+  header button. Left-rail voice-participant rows are the deliberate exception on a
   fine pointer: hide their ellipsis in CSS to preserve status-icon symmetry,
   keep the row focusable, and open the same menu with secondary click, the
   Context Menu key, or Shift+F10. Rows without actions retain the browser
@@ -651,11 +653,12 @@ folded into a width: a touchscreen laptop is wide and cannot right-click.
 - The composer stays one row: the field's heading goes off screen but stays in
   the document, the send control keeps its mark and drops its word, and the
   error line collapses while it is empty.
-- The dock is two rows — connection and account above, call controls below —
-  and drops the second row when there are no controls to show. `--dock` and
-  `--dock-quiet` are the heights the shell reserves for each; a change to the
-  dock's mobile contents is incomplete until they match it. Dock controls keep
-  the 40px hit area named under Controls, Icons, and Accessibility.
+- On mobile, account, room/connection status, ping, diagnostics, update status
+  and member count live in the left drawer. The bottom dock contains only a
+  compact call-control row during calls; outside calls it reserves no space.
+  Keep Join available in the voice surface or drawer. Dock height variables,
+  composer spacing and safe areas must agree. Download desktop is a labeled
+  drawer-footer action rather than a cramped rail icon. Desktop keeps its dock.
 - A control may drop its label at a narrow width only when it already carries
   that same wording as an accessible name. Add the name in the same change, and
   from the translation tables — never a bare English literal.

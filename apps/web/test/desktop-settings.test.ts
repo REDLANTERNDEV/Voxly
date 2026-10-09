@@ -42,6 +42,15 @@ describe("desktop-only settings", () => {
   it("records physical modified shortcuts without accepting typing or repeats", () => {
     const key = { code: "KeyM", ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, repeat: false };
     assert.equal(desktopKeyboardBinding(key), "Control+Shift+KeyM");
+    for (const [modifier, flag] of [["Control", "ctrlKey"], ["Alt", "altKey"], ["Shift", "shiftKey"]] as const) {
+      for (const side of ["Left", "Right"]) {
+        const event = { code: modifier + side, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, repeat: false, [flag]: true };
+        assert.equal(desktopKeyboardBinding(event), modifier);
+        assert.equal(desktopKeyboardBinding({ ...event, repeat: true }), null);
+      }
+    }
+    assert.equal(desktopKeyboardBinding({ ...key, shiftKey: false, code: "ControlLeft" }), "Control");
+    assert.equal(desktopKeyboardBinding({ ...key, shiftKey: false, code: "ControlRight" }), "Control");
     assert.equal(desktopKeyboardBinding({ ...key, code: "KeyD" }), "Control+Shift+KeyD");
     assert.equal(desktopKeyboardBinding({ ...key, ctrlKey: false }), null);
     assert.equal(desktopKeyboardBinding({ ...key, repeat: true }), null);

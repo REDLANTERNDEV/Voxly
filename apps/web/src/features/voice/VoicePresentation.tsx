@@ -20,6 +20,8 @@ export interface StageSource {
   target: VisualTarget | null;
   connectionWarning?: boolean;
   connectionStatus: "connecting" | "reconnecting" | "failed" | "ready";
+  onPlaybackReady?: (track: MediaStreamTrack) => void;
+  onRetry?: () => void;
 }
 /**
  * What is true of a participant right now, at the end of their row.
@@ -49,14 +51,112 @@ export function VoiceStatusBadges({ media, moderation, t, showVisual = true }: {
   );
 }
 
-export function RemoteVideo({ stream, muted = false }: { stream: MediaStream; muted?: boolean }) {
+export function RemoteVideo({ stream, muted = false, onPlaybackReady }: { stream: MediaStream; muted?: boolean; onPlaybackReady?: (track: MediaStreamTrack) => void }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const readyRef = useRef(onPlaybackReady);
+  readyRef.current = onPlaybackReady;
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-    }
+    const video = videoRef.current;
+    if (!video) return;
+    const ready = () => {
+      const track = stream.getVideoTracks()[0];
+      if (video.srcObject === stream && video.readyState >= 2 && video.videoWidth > 0 && track) readyRef.current?.(track);
+    };
+    video.addEventListener("loadeddata", ready);
+    video.addEventListener("playing", ready);
+    video.srcObject = stream;
+    return () => { video.removeEventListener("loadeddata", ready); video.removeEventListener("playing", ready); };
   }, [stream]);
   return <video className="call-video" ref={videoRef} autoPlay playsInline muted={muted} />;
+}
+
+/** Retains only the watched picture in memory; audio remains owned by RemoteAudio. */
+export function RecoveringScreenVideo({ stream, connectionStatus, onPlaybackReady, t }: {
+  stream: MediaStream | null; connectionStatus: StageSource["connectionStatus"];
+  onPlaybackReady?: (track: MediaStreamTrack) => void; t: Translate;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const callback = useRef(onPlaybackReady);
+  callback.current = onPlaybackReady;
+  const [hasPicture, setHasPicture] = useState(false);
+  const [decodedStream, setDecodedStream] = useState<MediaStream | null>(null);
+  const decoded = Boolean(stream && decodedStream === stream);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || !stream) return;
+    let disposed = false;
+    let frame: number | null = null;
+    let lastCapture = -Infinity;
+    const frameCallbacks = typeof video.requestVideoFrameCallback === "function";
+    const capture = (force = false) => {
+      const track = stream.getVideoTracks()[0];
+      if (video.srcObject !== stream || video.readyState < 2 || !video.videoWidth || track?.readyState !== "live" || track.muted) return;
+      const now = performance.now();
+      if (!force && now - lastCapture < 1_000) return;
+      try {
+        const scale = Math.min(1, 1280 / video.videoWidth, 720 / video.videoHeight);
+        const width = Math.max(1, Math.round(video.videoWidth * scale));
+        const height = Math.max(1, Math.round(video.videoHeight * scale));
+        if (canvas.width !== width) canvas.width = width;
+        if (canvas.height !== height) canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        lastCapture = now;
+        setHasPicture(true);
+      } catch { /* Retain the previous picture if a track ends during capture. */ }
+    };
+    const ready = () => {
+      if (disposed || video.srcObject !== stream || video.readyState < 2 || !video.videoWidth) return;
+      const track = stream.getVideoTracks()[0];
+      if (!track || track.readyState !== "live" || track.muted) return;
+      if (!frameCallbacks) capture();
+      setDecodedStream(stream);
+      callback.current?.(track);
+    };
+    const nextFrame = () => {
+      if (disposed) return;
+      capture();
+      ready();
+      frame = video.requestVideoFrameCallback(nextFrame);
+    };
+    const track = stream.getVideoTracks()[0];
+    const unavailable = () => { capture(true); setDecodedStream(null); };
+    track?.addEventListener("mute", unavailable);
+    track?.addEventListener("ended", unavailable);
+    track?.addEventListener("unmute", ready);
+    video.addEventListener("loadeddata", ready);
+    video.addEventListener("playing", ready);
+    video.addEventListener("timeupdate", ready);
+    video.srcObject = stream;
+    if (frameCallbacks) frame = video.requestVideoFrameCallback(nextFrame);
+    return () => {
+      capture(true);
+      disposed = true;
+      if (frame !== null) video.cancelVideoFrameCallback(frame);
+      video.removeEventListener("loadeddata", ready);
+      video.removeEventListener("playing", ready);
+      video.removeEventListener("timeupdate", ready);
+      track?.removeEventListener("mute", unavailable);
+      track?.removeEventListener("ended", unavailable);
+      track?.removeEventListener("unmute", ready);
+      video.srcObject = null;
+    };
+  }, [stream]);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    return () => { if (canvas) { canvas.width = 0; canvas.height = 0; } };
+  }, []);
+  const failed = connectionStatus === "failed";
+  return <span className="screen-playback">
+    <canvas className="call-video screen-retained-picture" ref={canvasRef} hidden={!hasPicture || decoded || failed} aria-hidden="true" />
+    <video className="call-video" ref={videoRef} autoPlay playsInline muted hidden={!decoded || failed} />
+    {failed || (!hasPicture && !decoded) ? <span className="screen-stage-placeholder">{t(failed ? "voice.retry" : connectionStatus === "reconnecting" ? "voice.reconnecting" : "voice.connecting")}</span> : null}
+    {!failed && hasPicture && connectionStatus === "reconnecting" ? <span className="screen-recovery-overlay" role="status">{t("voice.reconnecting")}</span> : null}
+  </span>;
 }
 
 
@@ -176,15 +276,16 @@ export function VisualStage({
             className={`stage-media ${source.key === focusedSource?.key ? "is-focused" : ""}`}
             type="button"
             onClick={() => {
+              if (source.connectionStatus === "failed" && source.onRetry) { source.onRetry(); return; }
               const action = stageClickAction(document.fullscreenElement === stageRef.current, source.key === focusedSource?.key);
               if (action === "exit-fullscreen") { void document.exitFullscreen?.(); return; }
               if (action === "dismiss") onDismiss(source);
               else onFocus(source.key);
             }}
             aria-pressed={source.key === focusedSource?.key}
-            aria-label={isFullscreen ? t("common.exitFullscreen") : t(source.key === focusedSource?.key ? "voice.removeFromStage" : "voice.addToStage", { nickname: source.ownerName })}
+            aria-label={source.connectionStatus === "failed" ? t("voice.retry") : isFullscreen ? t("common.exitFullscreen") : t(source.key === focusedSource?.key ? "voice.removeFromStage" : "voice.addToStage", { nickname: source.ownerName })}
           >
-            {source.stream ? <RemoteVideo stream={source.stream} muted /> : <span className="screen-stage-placeholder">{source.connectionStatus === "failed" ? t("voice.retry") : source.connectionStatus === "reconnecting" ? t("voice.reconnecting") : t("voice.connecting")}</span>}
+            {source.kind === "screen" && !source.ownerIsLocal ? <RecoveringScreenVideo stream={source.stream} connectionStatus={source.connectionStatus} onPlaybackReady={source.onPlaybackReady} t={t} /> : source.stream ? <RemoteVideo stream={source.stream} muted /> : <span className="screen-stage-placeholder">{t("voice.connecting")}</span>}
             {source.connectionWarning ? <span className="screen-connection-mark" role="img" aria-label={t("voice.screenConnectionWarning")} title={t("voice.screenConnectionWarning")}>!</span> : null}
             {source.key !== focusedSource?.key ? <span className="stage-media-label"><strong>{source.ownerName}</strong><span>{source.kind === "screen" ? t("status.screenSharing") : t("status.cameraOn")}</span></span> : null}
           </button></StreamActions>

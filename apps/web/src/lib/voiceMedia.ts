@@ -95,18 +95,18 @@ export const micConstraints: MediaStreamConstraints = {
 };
 
 export function configureScreenTrack(track: MediaStreamTrack) {
-  if (track.kind === "video") track.contentHint = "motion";
+  if (track.kind === "video") track.contentHint = "detail";
 }
 
-export async function preferScreenSenderFramerate(sender: RTCRtpSender, screenTrack: MediaStreamTrack) {
+export async function preferScreenSenderResolution(sender: RTCRtpSender, screenTrack: MediaStreamTrack) {
   if (screenTrack.kind !== "video" || sender.track !== screenTrack) return false;
   try {
-    // Let resolution adapt before frame rate so motion stays readable under
+    // Let frame rate adapt before resolution so screen details stay readable under
     // congestion. This preference belongs only to the screen-video sender.
     const parameters = sender.getParameters() as RTCRtpSendParameters & {
-      degradationPreference?: "maintain-framerate";
+      degradationPreference?: "maintain-resolution";
     };
-    parameters.degradationPreference = "maintain-framerate";
+    parameters.degradationPreference = "maintain-resolution";
     await sender.setParameters(parameters);
     return true;
   } catch {

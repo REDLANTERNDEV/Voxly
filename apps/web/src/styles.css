@@ -4828,7 +4828,7 @@ button.reply-quote:focus-visible .reply-quote-body {
     width: calc(100vw - 24px);
   }
 
-  body:has(.dock-controls:empty) .notification-region {
+  body:has(.voice-dock:not(.drawer-voice-status) > .dock-controls:empty) .notification-region {
     bottom: calc(var(--dock-quiet) + 14px);
   }
 
@@ -4853,7 +4853,7 @@ button.reply-quote:focus-visible .reply-quote-body {
 
   /* Reserving the taller dock in a text room costs the message list a visible
      slice of a short screen, and a text room is where a phone mostly sits. */
-  body:has(.dock-controls:empty) .app-shell {
+  body:has(.voice-dock:not(.drawer-voice-status) > .dock-controls:empty) .app-shell {
     padding-bottom: calc(var(--dock-quiet) + 16px);
   }
 
@@ -6029,3 +6029,9 @@ button.reply-quote:focus-visible .reply-quote-body {
 .screen-connection-warning > span { display: none; position: absolute; right: 0; bottom: 100%; width: min(260px, calc(100vw - 24px)); background: var(--surface); color: var(--fg); border: 1px solid var(--border); padding: 10px; border-radius: var(--radius-sm); z-index: var(--layer-menu); }
 .screen-connection-warning:has(button:hover) > span, .screen-connection-warning:focus-within > span, .screen-connection-warning.is-open > span { display: block; }
 .screen-connection-mark { position: absolute; top: 8px; right: 8px; color: var(--warning, #c58a20); background: var(--surface); border-radius: 50%; width: 22px; height: 22px; display: grid; place-items: center; }
+
+/* Playback continuity is scoped to the ongoing watched screen. */
+.screen-playback { position: absolute; inset: 0; display: block; overflow: hidden; }
+.screen-playback .call-video { width: 100%; height: 100%; object-fit: contain; }
+.screen-playback [hidden] { display: none; }
+.screen-recovery-overlay { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); padding: 5px 10px; border-radius: 6px; background: rgb(0 0 0 / 75%); color: #fff; font-size: 12px; pointer-events: none; }

@@ -72,6 +72,7 @@ export interface ShellModel {
   musicQueues: Record<string, MusicQueueState>;
   remoteStreams: RemoteStreamState[];
   peerConnectionStates: Record<string, PeerConnectionState>;
+  screenPlaybackStates?: Record<string, import("../lib/screenRecovery.js").ScreenPlaybackStatus>;
   localPreviews: Array<{ kind: "camera" | "screen"; stream: MediaStream }>;
   memberVolumes: Record<string, number>;
   screenVolumes: Record<string, number>;
@@ -101,6 +102,8 @@ export interface ShellModel {
 }
 
 export interface ShellActions {
+  onScreenPlaybackReady?: (publisherId: string, track: MediaStreamTrack) => void;
+  onRetryScreenPlayback?: (publisherId: string) => void;
   onServerNotificationSettingsChange(serverId: string, setting: import("@voxly/shared").NotificationMuteRequest): Promise<void>;
   onNavigate: (path: string) => void;
   onSelectServer: (serverId: string) => Promise<void>;
@@ -147,7 +150,7 @@ export interface ShellActions {
 
 export interface VoiceChromeModel extends Pick<ShellModel,
   "activeVoiceRoomId" | "controls" | "voiceModeration" | "voiceError" | "voiceErrorRevision" | "voiceNotice" | "voiceNoticeRevision" |
-  "visualTargets" | "voiceSnapshots" | "musicQueues" | "remoteStreams" | "peerConnectionStates" |
+  "visualTargets" | "voiceSnapshots" | "musicQueues" | "remoteStreams" | "peerConnectionStates" | "screenPlaybackStates" |
   "localPreviews" | "memberVolumes" | "screenVolumes" | "pendingLiveWatch" |
   "audioDevices" | "audioLevels" | "microphoneTestActive" | "microphoneTestError" |
   "microphoneTestErrorOccurrences" | "microphoneTestErrorRevision"

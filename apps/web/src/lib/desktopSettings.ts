@@ -41,7 +41,16 @@ export async function applyDesktopSettings(operation: DesktopSettingsOperation):
   if (!desktopSettingsAvailable(window)) throw new Error("unavailable");
   return window.__VOXLY_DESKTOP_SETTINGS_V1__!.apply(operation);
 }
+function standaloneDesktopModifier(event: Pick<KeyboardEvent, "code" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey" | "repeat">): string | null {
+  if (event.repeat || event.metaKey) return null;
+  if (/^(ControlLeft|ControlRight)$/.test(event.code) && !event.altKey && !event.shiftKey) return "Control";
+  if (/^(AltLeft|AltRight)$/.test(event.code) && !event.ctrlKey && !event.shiftKey) return "Alt";
+  if (/^(ShiftLeft|ShiftRight)$/.test(event.code) && !event.ctrlKey && !event.altKey) return "Shift";
+  return null;
+}
 export function desktopKeyboardBinding(event: Pick<KeyboardEvent, "code" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey" | "repeat">): string | null {
+  const modifier = standaloneDesktopModifier(event);
+  if (modifier) return modifier;
   if (event.repeat || !/^(Key[A-Z]|Digit[0-9]|F([1-9]|1[0-9]|2[0-4]))$/.test(event.code)) return null;
   if (!/^F/.test(event.code) && !(event.ctrlKey || event.altKey || event.metaKey)) return null;
   return [event.ctrlKey && "Control", event.altKey && "Alt", event.shiftKey && "Shift", event.metaKey && "Super", event.code].filter(Boolean).join("+");

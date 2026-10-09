@@ -21,10 +21,10 @@ export class ScreenQualityController {
   dispose() { this.disposed = true; clearInterval(this.timer); this.timer = undefined; this.track.removeEventListener("ended", this.end); }
   private async apply() {
     if (!this.live()) return false;
-    const parameters = this.sender.getParameters() as RTCRtpSendParameters & { degradationPreference?: "maintain-framerate" };
+    const parameters = this.sender.getParameters() as RTCRtpSendParameters & { degradationPreference?: "maintain-resolution" };
     // Some browsers expose no encodings until negotiation; retry at the next sample.
     if (!parameters.encodings?.length) return false;
-    parameters.degradationPreference = "maintain-framerate";
+    parameters.degradationPreference = "maintain-resolution";
     for (const encoding of parameters.encodings) Object.assign(encoding, screenQualityProfiles[this.state.profile]);
     await this.sender.setParameters(parameters);
     return this.live();

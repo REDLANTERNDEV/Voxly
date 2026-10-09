@@ -16,19 +16,19 @@ import { StreamActions } from "./StreamActions.js";
 import { combineOutputVolume } from "../../lib/audioLevels.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
 import { MusicPanel } from "./MusicPanel.js";
-import { RemoteAudio,RemoteVideo,VisualStage,VoiceStatusBadges,ScreenConnectionWarning,type StageSource } from "./VoicePresentation.js";
+import { RemoteAudio,RemoteVideo,RecoveringScreenVideo,VisualStage,VoiceStatusBadges,ScreenConnectionWarning,type StageSource } from "./VoicePresentation.js";
 
 type VoiceRoomProps = Pick<ShellModel,
   "user" | "currentNickname" | "route" | "activeServerId" | "rooms" | "socketState" |
   "roomHistory" | "t" | "currentRoom" | "screenConnectionWarnings"
 > & Pick<VoiceChromeModel,
   "activeVoiceRoomId" | "controls" | "visualTargets" | "voiceSnapshots" | "musicQueues" | "remoteStreams" |
-  "peerConnectionStates" | "localPreviews" | "memberVolumes" | "screenVolumes" |
+  "peerConnectionStates" | "screenPlaybackStates" | "localPreviews" | "memberVolumes" | "screenVolumes" |
   "pendingLiveWatch" | "audioLevels"
 > & Pick<ShellActions,
   "onNavigate" | "onJoinVoice" | "onWatchLive" | "onLiveWatchHandled" |
   "onRequestVoiceSnapshot" | "onSetVisualSubscriptions" | "onMemberVolumeChange" |
-  "onScreenVolumeChange" | "onMusicControl"
+  "onScreenVolumeChange" | "onMusicControl" | "onScreenPlaybackReady" | "onRetryScreenPlayback"
 >;
 
 export function VoiceRoomScreen(props: VoiceRoomProps) {
@@ -85,9 +85,13 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
         connectionWarning: inViewedVoiceRoom && kind === "screen" && participant.userId !== props.user.id && props.screenConnectionWarnings[participant.userId],
         stream: streamByKey.get(remoteStreamKey(participant.userId, kind)) ?? null,
         target: participant.userId === props.user.id ? null : { publisherUserId: participant.userId, kind },
+        onPlaybackReady: kind === "screen" ? (track: MediaStreamTrack) => props.onScreenPlaybackReady?.(participant.userId, track) : undefined,
+        onRetry: kind === "screen" ? () => props.onRetryScreenPlayback?.(participant.userId) : undefined,
         connectionStatus: participant.userId === props.user.id
           ? "ready"
-          : connectionStatusFor(props.peerConnectionStates[participant.userId] ?? "new", Boolean(streamByKey.get(remoteStreamKey(participant.userId, kind))))
+          : kind === "screen" && props.screenPlaybackStates?.[participant.userId]
+            ? props.screenPlaybackStates[participant.userId]
+            : connectionStatusFor(props.peerConnectionStates[participant.userId] ?? "new", Boolean(streamByKey.get(remoteStreamKey(participant.userId, kind))))
       }));
   });
   const pendingLiveWatch = props.pendingLiveWatch?.roomId === viewedRoomId ? props.pendingLiveWatch : null;
@@ -291,8 +295,9 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
               {visualSources.filter((source) => source.kind === "screen").map((source) => {
                 const selected = selectedKeys.has(source.key);
                 return <li className={`voice-stream-tile ${selected ? "is-selected" : ""}`} key={source.key}>
-                  <StreamActions name={source.ownerName} watched={inViewedVoiceRoom && !source.ownerIsLocal && (selected || props.visualTargets.some((target) => visualTargetKey(target) === source.key))} volume={selected && source.stream?.getAudioTracks().length ? props.screenVolumes[source.stream.id] ?? DEFAULT_VOLUME_PERCENT : undefined} onVolume={source.stream ? (value) => props.onScreenVolumeChange(source.stream!.id, value) : undefined} onUnwatch={() => unwatchSource(source)} t={props.t}><button className="voice-stream-watch" ref={(button) => { if (button) tileButtons.current.set(source.key, button); else tileButtons.current.delete(source.key); }} type="button" disabled={props.socketState !== "live" || selectionPending} onClick={() => watchSource(source)} aria-pressed={selected} aria-label={selected ? props.t("voice.addToStage", { nickname: source.ownerName }) : `${props.t("voice.watchStream")} — ${source.ownerName}`}>
-                    {source.ownerIsLocal && source.stream ? <RemoteVideo stream={source.stream} muted /> : selected && inViewedVoiceRoom && source.stream ? <RemoteVideo stream={source.stream} muted /> : <span className="stream-unwatched-background" aria-hidden="true" />}
+                  <StreamActions name={source.ownerName} watched={inViewedVoiceRoom && !source.ownerIsLocal && (selected || props.visualTargets.some((target) => visualTargetKey(target) === source.key))} volume={selected && source.stream?.getAudioTracks().length ? props.screenVolumes[source.stream.id] ?? DEFAULT_VOLUME_PERCENT : undefined} onVolume={source.stream ? (value) => props.onScreenVolumeChange(source.stream!.id, value) : undefined} onUnwatch={() => unwatchSource(source)} t={props.t}><button className="voice-stream-watch" ref={(button) => { if (button) tileButtons.current.set(source.key, button); else tileButtons.current.delete(source.key); }} type="button" disabled={props.socketState !== "live" || selectionPending} onClick={() => selected && source.connectionStatus === "failed" ? source.onRetry?.() : watchSource(source)} aria-pressed={selected} aria-label={selected && source.connectionStatus === "failed" ? props.t("voice.retry") : selected ? props.t("voice.addToStage", { nickname: source.ownerName }) : `${props.t("voice.watchStream")} — ${source.ownerName}`}>
+                    {source.ownerIsLocal && source.stream ? <RemoteVideo stream={source.stream} muted /> : selected && inViewedVoiceRoom ? <RecoveringScreenVideo stream={source.stream} connectionStatus={source.connectionStatus} onPlaybackReady={source.onPlaybackReady} t={props.t} /> : <span className="stream-unwatched-background" aria-hidden="true" />}
+                    {selected && source.connectionStatus === "failed" ? <span className="stream-watch-label">{props.t("voice.retry")}</span> : null}
                     {!selected && !source.ownerIsLocal ? <span className="stream-watch-label">{props.t("voice.watchStream")}</span> : null}
                     <span className="tile-live">{props.t("common.live")}</span>
                     <span className="voice-tile-caption"><strong>{source.ownerName}</strong><VoiceStatusBadges media={mediaFor(source.ownerId)} moderation={moderationByUser.get(source.ownerId)} t={props.t} showVisual={false} />{!selected ? <ScreenIcon off={false} /> : null}</span>

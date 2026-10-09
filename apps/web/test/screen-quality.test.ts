@@ -54,7 +54,9 @@ describe("screen quality", () => {
     sender.getStats = async () => { throw new Error("unsupported"); };
     const controller = new ScreenQualityController(sender, track, () => true);
     await controller.sample(false); await controller.sample(); await controller.sample();
-    assert.equal(profiles[0].encodings[0].scaleResolutionDownBy, 1.5);
+    assert.equal(profiles[0].encodings[0].scaleResolutionDownBy, 1);
+    assert.equal(profiles[0].encodings[0].maxFramerate, 15);
+    assert.equal((profiles[0] as RTCRtpSendParameters & { degradationPreference: string }).degradationPreference, "maintain-resolution");
     assert.equal(profiles[1].encodings[0].scaleResolutionDownBy, 1);
     controller.dispose(); await controller.sample(); assert.equal(profiles.length, 2);
   });
@@ -75,6 +77,23 @@ describe("screen quality", () => {
     owner.sync("viewer", peer, a.sender, a.track); await new Promise(resolve => setTimeout(resolve, 0));
     owner.sync("viewer", peer, a.sender, a.track); await new Promise(resolve => setTimeout(resolve, 0));
     assert.equal(a.profiles.length, 1); owner.sync("viewer", peer, null, null); owner.clear();
+  });
+  it("reduces only the congested viewer and restores quality after sustained healthy measurements", async () => {
+    const healthy = harness(), constrained = harness();
+    let congested = true;
+    healthy.sender.getStats = async () => new Map([["v", { id: "v", type: "outbound-rtp", kind: "video", remoteId: "r" }], ["r", { id: "r", type: "remote-inbound-rtp", fractionLost: 0, roundTripTime: .05 }]]) as unknown as RTCStatsReport;
+    constrained.sender.getStats = async () => new Map([["v", { id: "v", type: "outbound-rtp", kind: "video", remoteId: "r" }], ["r", { id: "r", type: "remote-inbound-rtp", fractionLost: congested ? .2 : 0, roundTripTime: .05 }]]) as unknown as RTCStatsReport;
+    const a = new ScreenQualityController(healthy.sender, healthy.track, () => true);
+    const b = new ScreenQualityController(constrained.sender, constrained.track, () => true);
+    for (let i = 0; i < 4; i++) { await a.sample(); await b.sample(); }
+    assert.equal(healthy.profiles.at(-1)!.encodings[0].maxFramerate, 30);
+    assert.equal(healthy.profiles.at(-1)!.encodings[0].scaleResolutionDownBy, 1);
+    assert.equal(constrained.profiles.at(-1)!.encodings[0].scaleResolutionDownBy, 2);
+    congested = false;
+    for (let i = 0; i < 6; i++) await b.sample();
+    assert.equal(constrained.profiles.at(-1)!.encodings[0].scaleResolutionDownBy, 1);
+    assert.equal(constrained.profiles.at(-1)!.encodings[0].maxFramerate, 30);
+    a.dispose(); b.dispose();
   });
   it("exports only allowlisted video measurements", () => {
     const stats = safeScreenStats([{ type: "outbound-rtp", kind: "video", frameWidth: 1280, id: "secret", trackIdentifier: "secret", sdp: "secret", qualityLimitationReason: "bandwidth" }]);

@@ -178,6 +178,9 @@ export function AppRoutes({ workspaceReady, workspaceError, route, user, authSta
     musicQueues={shellProps.musicQueues}
     remoteStreams={shellProps.remoteStreams}
     peerConnectionStates={shellProps.peerConnectionStates}
+    screenPlaybackStates={shellProps.screenPlaybackStates}
+    onScreenPlaybackReady={shellProps.onScreenPlaybackReady}
+    onRetryScreenPlayback={shellProps.onRetryScreenPlayback}
     localPreviews={shellProps.localPreviews}
     memberVolumes={shellProps.memberVolumes}
     screenVolumes={shellProps.screenVolumes}

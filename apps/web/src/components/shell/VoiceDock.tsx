@@ -18,7 +18,7 @@ type VoiceDockProps = Pick<ShellModel,
   "voiceQuality" | "voiceSnapshots" | "microphoneHealthWarning"
 > & Pick<ShellActions,
   "onJoinVoice" | "onLeaveVoice" | "onLogout" | "onNavigate" | "onToggleControl"
-> & { connectedCount: number; onOpenSettings: () => void; onOpenAudioSettings?: () => void };
+> & { connectedCount: number; onOpenSettings: () => void; onOpenAudioSettings?: () => void; surface?: "dock" | "drawer"; onlineCount?: number };
 
 export function VoiceDock(props: VoiceDockProps) {
   const canManageServer = activeServerRole(props) === "owner";
@@ -37,7 +37,7 @@ export function VoiceDock(props: VoiceDockProps) {
   const cameraControl = controlPresentation("camera", props.controls);
   const screenControl = controlPresentation("screenShare", props.controls);
   return (
-    <footer className="voice-dock">
+    <footer className={`voice-dock ${props.surface === "drawer" ? "drawer-voice-status" : ""}`}>
       <div className="dock-room">
         <div className="dock-connection">
         <ConnectionSignal health={props.connectionHealth} quality={props.voiceQuality} inCall={Boolean(props.activeVoiceRoomId)} t={props.t} />
@@ -48,12 +48,13 @@ export function VoiceDock(props: VoiceDockProps) {
           <button className="btn btn-ghost" type="button" onClick={props.onOpenAudioSettings ?? props.onOpenSettings}>{props.t("audio.openSettings")}</button>
         </span> : null}
         <ApplicationUpdateStatus t={props.t} />
+        {props.surface === "drawer" ? <span className="small muted">{props.t("common.connected", { count: props.onlineCount ?? props.connectedCount })}</span> : null}
       </div>
-      <div className="dock-controls">
+      <div className={`dock-controls ${canJoinCurrentVoice ? "is-join-only" : ""}`}>
         {canJoinCurrentVoice ? (
           <button className="btn btn-primary" type="button" disabled={props.socketState !== "live"} onClick={() => props.onJoinVoice(props.currentRoom?.id ?? "lobby")}><HeadsetIcon off={false} /><span>{props.t("room.joinCurrentVoice")}</span></button>
         ) : null}
-        {props.activeVoiceRoomId ? (
+        {props.activeVoiceRoomId && props.surface !== "drawer" ? (
           <>
             {props.micLockedByRoom
               ? <ControlButton label={props.t("room.afkMuted")} active tone="danger" enabled={false} onClick={() => undefined}><MicIcon off /></ControlButton>

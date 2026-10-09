@@ -5,24 +5,29 @@ use tauri::AppHandle;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+    GetAsyncKeyState, VK_CONTROL, VK_LCONTROL, VK_RCONTROL, VK_LMENU, VK_RMENU,
+    VK_LSHIFT, VK_RSHIFT, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, PeekMessageW, PostThreadMessageW,
-    SetWindowsHookExW, UnhookWindowsHookEx, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE, WH_MOUSE_LL, WM_APP,
+    SetWindowsHookExW, UnhookWindowsHookEx, MSG, MSLLHOOKSTRUCT, KBDLLHOOKSTRUCT, PM_NOREMOVE, WH_MOUSE_LL, WH_KEYBOARD_LL, WM_APP, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
     WM_MBUTTONDOWN, WM_MBUTTONUP, WM_QUIT, WM_XBUTTONDOWN, WM_XBUTTONUP,
 };
 
-use crate::shortcuts::{Action, MouseBinding, MouseShortcutGates, ALT, CONTROL, SHIFT, SUPER};
+use crate::shortcuts::{Action, ModifierKey, ModifierShortcutGates, MouseBinding, MouseShortcutGates, ALT, CONTROL, SHIFT, SUPER};
+
+#[derive(Clone, Copy)]
+enum ObservedBinding { Mouse(MouseBinding), Modifier(ModifierKey) }
 
 struct HookContext {
     app: AppHandle,
     gates: MouseShortcutGates,
+    modifiers: ModifierShortcutGates,
 }
 
 struct HookUpdate {
     action: Action,
-    binding: Option<MouseBinding>,
+    binding: Option<ObservedBinding>,
     done: mpsc::SyncSender<()>,
 }
 
@@ -32,7 +37,7 @@ struct HookThread {
     id: u32,
     join: JoinHandle<()>,
     updates: mpsc::Sender<HookUpdate>,
-    bindings: [Option<MouseBinding>; 4],
+    bindings: [Option<ObservedBinding>; 4],
 }
 
 static HOOK: OnceLock<Mutex<Option<HookThread>>> = OnceLock::new();
@@ -99,10 +104,43 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: usize, lparam: isize) ->
     unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
 }
 
+unsafe extern "system" fn keyboard_proc(code: i32, wparam: usize, lparam: isize) -> isize {
+    if code == 0 && matches!(wparam as u32, WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP) {
+        let key = unsafe { &*(lparam as *const KBDLLHOOKSTRUCT) };
+        let observed = match key.vkCode {
+            value if value == VK_LCONTROL as u32 => Some((ModifierKey::Control, false)),
+            value if value == VK_RCONTROL as u32 => Some((ModifierKey::Control, true)),
+            value if value == VK_LMENU as u32 => Some((ModifierKey::Alt, false)),
+            value if value == VK_RMENU as u32 => Some((ModifierKey::Alt, true)),
+            value if value == VK_LSHIFT as u32 => Some((ModifierKey::Shift, false)),
+            value if value == VK_RSHIFT as u32 => Some((ModifierKey::Shift, true)),
+            _ => None,
+        };
+        if let Some((modifier, right)) = observed {
+            let pressed = matches!(wparam as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
+            let dispatch = CONTEXT.with(|slot| {
+                let mut context = slot.borrow_mut();
+                let context = context.as_mut()?;
+                context.modifiers.handle(modifier, right, pressed).map(|event| (context.app.clone(), event))
+            });
+            if let Some((app, (action, pressed))) = dispatch { crate::shell::queue_voice_action(&app, action, pressed); }
+        }
+    }
+    unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
+}
+
+fn set_binding(context: &mut HookContext, action: Action, binding: Option<ObservedBinding>) {
+    context.gates.set(action, match binding { Some(ObservedBinding::Mouse(mouse)) => Some(mouse), _ => None });
+    let modifier = match binding { Some(ObservedBinding::Modifier(modifier)) => Some(modifier), _ => None };
+    if let Some((old, pressed)) = context.modifiers.set(action, modifier) {
+        crate::shell::queue_voice_action(&context.app, old, pressed);
+    }
+}
+
 fn update(
     running: &mut HookThread,
     action: Action,
-    binding: Option<MouseBinding>,
+    binding: Option<ObservedBinding>,
 ) -> Result<(), &'static str> {
     let (done, finished) = mpsc::sync_channel(1);
     running
@@ -121,11 +159,13 @@ fn update(
     Ok(())
 }
 
-pub fn register(
-    app: &AppHandle,
-    action: Action,
-    binding: MouseBinding,
-) -> Result<(), &'static str> {
+pub fn register(app: &AppHandle, action: Action, binding: MouseBinding) -> Result<(), &'static str> {
+    register_observed(app, action, ObservedBinding::Mouse(binding))
+}
+pub fn register_modifier(app: &AppHandle, action: Action, modifier: ModifierKey) -> Result<(), &'static str> {
+    register_observed(app, action, ObservedBinding::Modifier(modifier))
+}
+fn register_observed(app: &AppHandle, action: Action, binding: ObservedBinding) -> Result<(), &'static str> {
     let mut hook = HOOK
         .get_or_init(|| Mutex::new(None))
         .lock()
@@ -137,12 +177,12 @@ pub fn register(
     let (updates, pending) = mpsc::channel::<HookUpdate>();
     let app = app.clone();
     let join = thread::Builder::new()
-        .name("voxly-mouse-shortcut".into())
+        .name("voxly-input-shortcut".into())
         .spawn(move || {
             CONTEXT.with(|slot| {
-                let mut gates = MouseShortcutGates::default();
-                gates.set(action, Some(binding));
-                *slot.borrow_mut() = Some(HookContext { app, gates })
+                let mut context = HookContext { app, gates: MouseShortcutGates::default(), modifiers: ModifierShortcutGates::default() };
+                set_binding(&mut context, action, Some(binding));
+                *slot.borrow_mut() = Some(context)
             });
             // A message queue must exist before PostThreadMessageW may stop us.
             // MSG contains only Win32 handles, integers, and a POINT; zero is valid.
@@ -157,7 +197,11 @@ pub fn register(
             } else {
                 unsafe { SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), module, 0) }
             };
-            if installed.is_null() {
+            let keyboard = if module.is_null() { std::ptr::null_mut() } else {
+                unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), module, 0) }
+            };
+            if installed.is_null() || keyboard.is_null() {
+                unsafe { if !installed.is_null() { UnhookWindowsHookEx(installed); } if !keyboard.is_null() { UnhookWindowsHookEx(keyboard); } }
                 let _ = send.send(Err("shortcut_unavailable"));
                 return;
             }
@@ -167,7 +211,7 @@ pub fn register(
                     while let Ok(update) = pending.try_recv() {
                         CONTEXT.with(|slot| {
                             if let Some(context) = slot.borrow_mut().as_mut() {
-                                context.gates.set(update.action, update.binding);
+                                set_binding(context, update.action, update.binding);
                             }
                         });
                         let _ = update.done.send(());
@@ -180,8 +224,14 @@ pub fn register(
             }
             unsafe {
                 UnhookWindowsHookEx(installed);
+                UnhookWindowsHookEx(keyboard);
             }
-            CONTEXT.with(|slot| *slot.borrow_mut() = None);
+            CONTEXT.with(|slot| {
+                if let Some(context) = slot.borrow_mut().as_mut() {
+                    for (action, pressed) in context.modifiers.release_all() { crate::shell::queue_voice_action(&context.app, action, pressed); }
+                }
+                *slot.borrow_mut() = None;
+            });
         })
         .map_err(|_| "shortcut_unavailable")?;
     match receive.recv().map_err(|_| "shortcut_unavailable")? {

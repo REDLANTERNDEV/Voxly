@@ -5,7 +5,7 @@ import { serverPath } from "../../app/navigation.js";
 import { activeServerRole } from "../../app/presentation.js";
 import type { MemberAction,ShellActions,ShellModel } from "../../app/types.js";
 import { ConfirmDialog,NicknameDialog } from "../../components/ui/Dialogs.js";
-import { MenuIcon,UsersIcon } from "../../components/ui/Icons.js";
+import { DownloadIcon,MenuIcon,UsersIcon } from "../../components/ui/Icons.js";
 import { BrandLockup } from "../../components/ui/Navigation.js";
 import { NotificationViewport,useNotificationCenter } from "../../components/ui/Notifications.js";
 import type { AppNotification } from "../../lib/notifications.js";
@@ -129,7 +129,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           <MenuIcon />
           <span>{props.t("common.rooms")}</span>
         </button>
-        <BrandLockup title={props.mobileTitle} subtitle={props.t("common.connected", { count: onlineCount })} href={serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general")} onNavigate={props.onNavigate} />
+        <BrandLockup title={props.mobileTitle} subtitle="" href={serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general")} onNavigate={props.onNavigate} />
         <button className="icon-btn" type="button" onClick={() => props.onDrawerChange(props.drawer === "members" ? null : "members")} aria-label={props.t("common.users")}>
           <UsersIcon />
           <span>{props.t("common.users")}</span>
@@ -153,6 +153,11 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           onOpenSettings={() => openSettings()}
         />
         <ChannelRail
+          mobileStatus={<div className="mobile-drawer-status">
+            <VoiceDock {...props} surface="drawer" connectedCount={voiceConnectedCount} onlineCount={onlineCount}
+              onOpenSettings={() => openSettings()} onOpenAudioSettings={() => openSettings("audio")} />
+            {typeof window === "undefined" || window.__VOXLY_DESKTOP_V1__?.version !== 1 ? <a className="btn btn-ghost drawer-download" href="https://github.com/REDLANTERNDEV/Voxly/releases" target="_blank" rel="noopener noreferrer"><DownloadIcon /><span>{props.t("desktop.download")}</span></a> : null}
+          </div>}
           onOpenSettings={() => openSettings()}
           onToggleControl={props.onToggleControl}
           micLockedByRoom={props.micLockedByRoom}

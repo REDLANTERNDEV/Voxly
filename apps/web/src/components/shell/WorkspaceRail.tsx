@@ -5,7 +5,7 @@ import { CloseIcon, GearIcon, DownloadIcon } from "../ui/Icons.js";
 import { serverNotificationsMuted, serverUnreadCount, unreadBadge } from "../../lib/serverNotifications.js";
 import { ContextMenu } from "../ContextMenu.js";
 import { MenuSubmenu } from "../MenuSubmenu.js";
-import { SidebarMenuTrigger, openSidebarMenuFromPointer, type SidebarActionMenuController } from "./SidebarMenus.js";
+import { openSidebarMenuFromPointer, type SidebarActionMenuController } from "./SidebarMenus.js";
 import { NavLink } from "../ui/Navigation.js";
 
 type WorkspaceRailProps = Pick<ShellModel, "activeServerId" | "servers" | "rooms" | "roomHistory" | "t" | "serverNotificationState" | "serverNotificationTime" | "serverNotificationError"> & Pick<ShellActions, "onNavigate" | "onSelectServer" | "onServerNotificationSettingsChange"> & {
@@ -53,7 +53,6 @@ export function WorkspaceRail({ activeServerId, servers, rooms, roomHistory, t, 
           }}
         ><span aria-hidden="true">{Array.from(server.name.trim())[0]?.toLocaleUpperCase() ?? "V"}</span>
           {count ? <span className="server-unread-badge" aria-hidden="true">{unreadBadge(count)}</span> : null}</button>
-          <SidebarMenuTrigger actionMenu={actionMenu} menuKey={menuKey} label={t("server.notificationMenu", { server: server.name })} menuWidth={220} menuHeight={100} />
           {actionMenu.active?.key === menuKey ? <ContextMenu descriptor={actionMenu.active} label={t("server.notificationMenu", { server: server.name })} onClose={actionMenu.close}>
             <MenuSubmenu label={t("server.muteNotifications")} items={[
               { id: "15", label: t("server.mute15m") }, { id: "60", label: t("server.mute1h") },

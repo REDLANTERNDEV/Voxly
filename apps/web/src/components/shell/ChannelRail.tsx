@@ -1,11 +1,11 @@
 import type { PresenceUser,RoomSummary } from "@voxly/shared";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ApiError } from "../../api.js";
 import { serverPath } from "../../app/navigation.js";
 import { activeServerRole,canInviteToActiveServer,initial,voiceMembersForRoom } from "../../app/presentation.js";
 import type { MemberAction,ShellActions,ShellModel,Translate } from "../../app/types.js";
 import { ChannelNameDialog,ConfirmDialog } from "../../components/ui/Dialogs.js";
-import { CameraIcon, GearIcon, HeadsetIcon, MicIcon, ScreenIcon } from "../../components/ui/Icons.js";
+import { CameraIcon, ChevronIcon, GearIcon, HeadsetIcon, MicIcon, ScreenIcon } from "../../components/ui/Icons.js";
 import { NavLink } from "../../components/ui/Navigation.js";
 import { canOwnerModeratePerson,canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
 import { voiceChannelActivation } from "../../lib/voiceChannelActivation.js";
@@ -35,6 +35,7 @@ type ChannelRailProps = Pick<ShellModel,
   onRequestNickname: (user: PresenceUser, returnFocus: HTMLButtonElement | null) => void;
   onRequestMemberAction: (user: PresenceUser, action: MemberAction, roomId?: string) => void;
   onOpenSettings: () => void;
+  mobileStatus?: ReactNode;
 };
 
 export function ChannelRail(props: ChannelRailProps) {
@@ -227,6 +228,14 @@ export function ChannelRail(props: ChannelRailProps) {
     } : undefined}>
       <div className="rail-head">
         <strong className="rail-server-name" title={activeServer?.name}>{activeServer?.name ?? "Voxly"}</strong>
+        <button className="mobile-server-menu" type="button" aria-label={props.t("server.notificationMenu", { server: activeServer?.name ?? "Voxly" })}
+          aria-haspopup="dialog" aria-expanded={props.actionMenu.active?.key === `server-notifications:${props.activeServerId}`}
+          onClick={event => {
+            const key = `server-notifications:${props.activeServerId}`;
+            if (props.actionMenu.active?.key === key) { props.actionMenu.close(); return; }
+            const rect = event.currentTarget.getBoundingClientRect();
+            props.actionMenu.open({ key, x: rect.left, y: rect.bottom, menuWidth: 220, menuHeight: 100, trigger: event.currentTarget });
+          }}><span>{activeServer?.name ?? "Voxly"}</span><ChevronIcon direction="down" /></button>
         {canInvite ? <InviteQuickAction
           serverId={props.activeServerId}
           serverName={activeServer?.name ?? "Voxly"}
@@ -257,6 +266,7 @@ export function ChannelRail(props: ChannelRailProps) {
         <GearIcon />
         <span>{props.t("settings.open")}</span>
       </button>
+      {props.mobileStatus}
       {deleteError ? <p className="error-text" aria-live="polite">{deleteError}</p> : null}
       {renameTarget ? <ChannelNameDialog key={renameTarget.room.id} name={renameTarget.room.name} returnFocus={renameTarget.trigger}
         t={props.t} onCancel={() => setRenameTarget(null)} onSave={(name) => props.onRenameRoom(renameTarget.room.id, name)} /> : null}

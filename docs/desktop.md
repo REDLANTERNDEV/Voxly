@@ -527,3 +527,15 @@ permission and the other media permission are untouched. Older shells show
 disabled actions with an update-required explanation. Windows privacy restrictions
 remain effective. Notifications already have their own reset action; screen
 sharing opens its source picker again on each attempt.
+
+### Modifier-only voice shortcuts
+
+On Windows, Ctrl, Alt, or Shift alone may be assigned to mute, deafen, Push to
+talk or Push to mute. Either physical key for the chosen modifier activates the
+action immediately; a held action releases when both keys of that modifier are
+up. Normal keyboard input is passed through, so Ctrl+C still copies and also
+activates a Ctrl-only binding. Alt and Shift behave the same way with their
+combinations. Longer voice bindings may coexist and activate their own actions
+too. Exact duplicate bindings are refused. Recording and rebinding end active
+holds. Other platforms retain their existing shortcut support and report
+modifier-only registration as unavailable. The Windows key alone is unsupported.

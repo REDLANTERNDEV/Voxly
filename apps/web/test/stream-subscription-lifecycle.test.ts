@@ -42,7 +42,7 @@ it("Unwatch wins over a delayed Watch acknowledgement in the media hook", async 
     socket: {}, roomRef: { current: "room-a" }, visualSubscriptionRequest: { current: 0 },
     requestVisualSubscriptions: () => new Promise((resolve) => { replies.push(resolve); }),
     visualTargetsRef: { current: [] }, setVisualTargets: (targets: unknown) => committed.push(targets),
-    persistVoiceResume: () => undefined
+    persistVoiceResume: () => undefined, syncScreenRecoveryRef: { current: () => undefined }
   });
   const watch = set([target]); const unwatch = set([]);
   replies[1]({ ok: true, targets: [] }); await unwatch;

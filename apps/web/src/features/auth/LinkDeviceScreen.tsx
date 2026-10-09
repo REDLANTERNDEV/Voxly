@@ -1,5 +1,5 @@
 import { AuthEntryFrame } from "./AuthEntryFrame.js";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { claimDeviceLink, collectDeviceLink, type DeviceLinkOutcome } from "../../api.js";
 import type { Translate } from "../../app/types.js";
 import { TurnstileWidget } from "./InviteScreen.js";
@@ -34,7 +34,7 @@ export function LinkDeviceScreen({ language, t, onLanguageChange, onLinked, turn
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
 
-  const submit = useCallback(async (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setBusy(true);
     setError("");
@@ -55,7 +55,7 @@ export function LinkDeviceScreen({ language, t, onLanguageChange, onLinked, turn
     } finally {
       setBusy(false);
     }
-  }, [code, t]);
+  };
 
   // A scanned code arrives in the fragment. Take it, then take it out of the
   // address bar: a fragment never reaches the server, but it does sit in the

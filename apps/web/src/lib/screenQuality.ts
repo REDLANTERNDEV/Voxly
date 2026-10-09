@@ -1,7 +1,7 @@
 export type ScreenQualityProfile = "low" | "startup" | "high";
 export const screenQualityProfiles = {
   low: { scaleResolutionDownBy: 2, maxFramerate: 15, maxBitrate: 700_000 },
-  startup: { scaleResolutionDownBy: 1.5, maxFramerate: 20, maxBitrate: 1_400_000 },
+  startup: { scaleResolutionDownBy: 1, maxFramerate: 15, maxBitrate: 1_400_000 },
   high: { scaleResolutionDownBy: 1, maxFramerate: 30, maxBitrate: 3_000_000 }
 } as const;
 export interface ScreenQualitySample { loss?: number; rttMs?: number; availableBitrate?: number; bandwidthLimited?: boolean; }

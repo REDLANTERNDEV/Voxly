@@ -4,7 +4,7 @@
 
 Make previously used invite links a safe way back into Voxly for authenticated
 members, while preserving the existing invite validation contract for new
-users. Make motion-heavy screen shares start smoothly and adapt independently
+users. Make screen shares start sharply and adapt independently
 to each viewer without changing the peer-to-peer media architecture.
 
 ## Scope
@@ -87,7 +87,7 @@ qualify for the exception.
 ### Capture and per-viewer boundary
 
 Keep one local screen capture at an ideal and maximum 1280x720 and 30 FPS. Set
-the screen video track's content hint to `motion`. Do not lower the source track
+the screen video track's content hint to `detail`. Do not lower the source track
 for one weak viewer because the same track feeds every peer.
 
 Each viewer already has a separate `RTCPeerConnection` and matching screen
@@ -102,10 +102,10 @@ screen video encoding:
 | Profile | `scaleResolutionDownBy` | `maxFramerate` | `maxBitrate` |
 | --- | ---: | ---: | ---: |
 | `low` | `2` (about 640x360) | `15` | `700_000` bps |
-| `startup` | `1.5` (about 853x480) | `20` | `1_400_000` bps |
+| `startup` | `1` (up to 1280x720) | `15` | `1_400_000` bps |
 | `high` | `1` (1280x720) | `30` | `3_000_000` bps |
 
-Set `degradationPreference` to `maintain-framerate` for all three profiles.
+Set `degradationPreference` to `maintain-resolution` for all three profiles.
 These values are upper bounds, not promised bitrates. The browser remains
 responsible for congestion control inside each profile.
 
@@ -150,7 +150,7 @@ Use these deterministic transitions:
 If the stats API is unavailable, promote from `startup` to `high` after two
 sampling intervals and rely on browser-native congestion control. If applying
 encoding parameters is rejected or unsupported, stop the controller for that
-sender and keep the share alive with the motion hint and native adaptation.
+sender and keep the share alive with the detail hint and native adaptation.
 Do not repeatedly retry an unsupported parameter set.
 
 ### Lifecycle and cleanup
@@ -173,7 +173,7 @@ the peer, sender, track, and generation still match. Cleanup is idempotent.
 ### Standards and deliberate exclusions
 
 The design uses the standard sender parameters and statistics described by the
-[WebRTC specification](https://www.w3.org/TR/webrtc/), the standard motion
+[WebRTC specification](https://www.w3.org/TR/webrtc/), the standard detail
 [MediaStreamTrack content hint](https://www.w3.org/TR/mst-content-hint/), and
 the [WebRTC Statistics API](https://www.w3.org/TR/webrtc-stats/).
 

@@ -12,7 +12,17 @@ export interface ShortcutSnapshot {
   pushToMuteShortcutError?: TranslationKey | null;
 }
 
+function standaloneModifier(event: Pick<KeyboardEvent, "code" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey" | "repeat">): string | null {
+  if (event.repeat || event.metaKey) return null;
+  if (/^(ControlLeft|ControlRight)$/.test(event.code) && !event.altKey && !event.shiftKey) return "Control";
+  if (/^(AltLeft|AltRight)$/.test(event.code) && !event.ctrlKey && !event.shiftKey) return "Alt";
+  if (/^(ShiftLeft|ShiftRight)$/.test(event.code) && !event.ctrlKey && !event.altKey) return "Shift";
+  return null;
+}
+
 export function bindingFromKey(event: Pick<KeyboardEvent, "code" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey" | "repeat">): string | null {
+  const modifier = standaloneModifier(event);
+  if (modifier) return modifier;
   if (event.repeat || !/^(Key[A-Z]|Digit[0-9]|F([1-9]|1[0-9]|2[0-4]))$/.test(event.code)) return null;
   if (!/^F/.test(event.code) && !(event.ctrlKey || event.altKey || event.metaKey)) return null;
   return [event.ctrlKey && "Control", event.altKey && "Alt", event.shiftKey && "Shift", event.metaKey && "Super", event.code].filter(Boolean).join("+");
@@ -45,6 +55,7 @@ export function mountShortcutSettings({ t, save, action = "mute" }: {
   let draft: string | undefined;
   let message: TranslationKey | null = null;
   let suppressedMouseButton: number | null = null;
+  let pendingModifier: string | null = null;
 
   const refresh = () => {
     const fields = {
@@ -62,9 +73,10 @@ export function mountShortcutSettings({ t, save, action = "mute" }: {
     input.value = recording ? t("pressShortcut") : binding ? bindingLabel(binding, t("mouseButton")) : t("shortcutNone");
     status.textContent = t(message ?? error ?? (registered ? "shortcutRegistered" : "shortcutDisabled"));
   };
-  const cancelRecording = () => { recording = false; refresh(); };
+  const cancelRecording = () => { recording = false; pendingModifier = null; refresh(); };
   record.addEventListener("click", () => {
     recording = !recording;
+    pendingModifier = null;
     message = null;
     refresh();
     if (recording) input.focus();
@@ -77,17 +89,29 @@ export function mountShortcutSettings({ t, save, action = "mute" }: {
       return;
     }
     event.preventDefault();
+    if (event.repeat) return;
     const binding = bindingFromKey(event);
     if (!binding) {
+      pendingModifier = null;
       if (!/^(Control|Alt|Shift|Meta)(Left|Right)$/.test(event.code)) message = "shortcut_invalid";
       refresh();
       return;
     }
+    if (["Control", "Alt", "Shift"].includes(binding)) { pendingModifier = binding; return; }
+    pendingModifier = null;
     draft = binding;
     message = "shortcutReady";
     recording = false;
     refresh();
     apply.focus();
+  });
+  input.addEventListener("keyup", (event) => {
+    if (!recording || !pendingModifier) return;
+    const released = standaloneModifier(event);
+    if (!released || released !== pendingModifier) return;
+    event.preventDefault(); pendingModifier = null;
+    draft = released; message = "shortcutReady"; recording = false;
+    refresh(); apply.focus();
   });
   window.addEventListener("mousedown", (event) => {
     if (suppressedMouseButton === event.button) suppressedMouseButton = null;
@@ -129,7 +153,7 @@ export function mountShortcutSettings({ t, save, action = "mute" }: {
     render(next: ShortcutSnapshot | null, available: boolean) {
       snapshot = next;
       enabled = available;
-      if (!available) recording = false;
+      if (!available) { recording = false; pendingModifier = null; }
       refresh();
     }
   };
