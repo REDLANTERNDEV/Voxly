@@ -20,7 +20,13 @@
 
 import { z } from "zod";
 import { audit } from "./audit.js";
-import { createSession, revokeOtherSessionsForUser, revokeSessionsForUser, setSessionCookie } from "./auth/sessions.js";
+import {
+  clearSessionCookie,
+  createSession,
+  revokeOtherSessionsForUser,
+  revokeSessionsForUser,
+  setSessionCookie
+} from "./auth/sessions.js";
 import { requireUser } from "./auth/sessions.js";
 import { createLinkCode, normaliseLinkCode } from "./auth/linkCode.js";
 import { hashToken } from "./auth/tokens.js";
@@ -209,6 +215,7 @@ export function registerRecoveryRoutes({ fastify, database, realtime, secureCook
     // sign-out to be immediate rather than eventual.
     realtime.disconnectUser(user.id);
 
+    clearSessionCookie(reply, request.cookies);
     setSessionCookie(reply, token, secureCookies);
     // No replacement is minted here.
     //

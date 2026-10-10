@@ -144,7 +144,7 @@ export function registerOwnerPanelRoutes(context: RouteContext) {
     }
     const { sessionId } = z.object({ sessionId: z.string().uuid() }).parse(request.params);
     revokeSession(database.sqlite, sessionId);
-    audit(database, owner.id, "session.revoked", sessionId);
+    audit(database, owner.id, "session.revoked", sessionId, undefined, sessionId);
     database.save();
     return reply.code(204).send();
   });

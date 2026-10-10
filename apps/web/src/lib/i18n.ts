@@ -399,12 +399,12 @@ const translations = {
     "landing.linkDevice": "Add this device to your account",
     "landing.recover": "Lost every device?",
     "session.revoked":
-      "This device was signed out. That happens when you sign it out from another device, or when you recover your account — everything else is signed out then.",
+      "This browser no longer has a valid session. Use another signed-in device, your recovery code, or an access link to sign in again.",
     "session.accountDeletionApproved":
       "Your account deletion request was approved. The account and its memberships have been permanently deleted.",
     "session.accountDeletedByOwner": "The installation owner permanently deleted your account.",
     "session.reused":
-      "You were signed out because your session was used from somewhere else. If that was not you, sign in and check your devices.",
+      "This browser has an older session credential that is no longer accepted. Sign in again and check your devices.",
     "devices.arrivedByLink": "Added with a link code",
     "devices.arrivedByRecovery": "Added with a recovery code",
     "devices.title": "Your devices",
@@ -1327,11 +1327,11 @@ const translations = {
     "landing.linkDevice": "Bu cihazı hesabına ekle",
     "landing.recover": "Bütün cihazlarını mı kaybettin?",
     "session.revoked":
-      "Bu cihazın oturumu kapatıldı. Bu, başka bir cihazdan çıkış yaptırdığında ya da hesabını kurtardığında olur — o zaman diğer her şey çıkış yapar.",
+      "Bu tarayıcının artık geçerli bir oturumu yok. Yeniden giriş yapmak için oturumun açık olduğu başka bir cihazı, kurtarma kodunu veya bir erişim bağlantısını kullan.",
     "session.accountDeletionApproved": "Hesap silme talebiniz onaylandı. Hesap ve üyelikleri kalıcı olarak silindi.",
     "session.accountDeletedByOwner": "Kurulum sahibi hesabınızı kalıcı olarak sildi.",
     "session.reused":
-      "Oturumun başka bir yerden kullanıldığı için çıkış yapıldı. Bu sen değilsen, giriş yapıp cihazlarını kontrol et.",
+      "Bu tarayıcıda artık kabul edilmeyen eski bir oturum bilgisi var. Yeniden giriş yapıp cihazlarını kontrol et.",
     "devices.arrivedByLink": "Bağlama koduyla eklendi",
     "devices.arrivedByRecovery": "Kurtarma koduyla eklendi",
     "devices.title": "Cihazların",

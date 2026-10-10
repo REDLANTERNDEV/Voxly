@@ -398,8 +398,8 @@ CLI if it expires or is lost.
 ## 7. Recover owner and member access
 
 Voxly does not store recoverable passwords or raw session tokens. Browser
-sessions last 180 days and are automatically extended when an active session
-enters its final 30 days. Clearing browser storage, explicitly signing out, or
+Sessions last 180 days and slide forward on the 15-minute activity touch, with
+a seven-day renewal floor. Clearing browser storage, explicitly signing out, or
 losing a device removes that device's local access; it does not delete the
 global user account, server memberships, roles, or message history.
 
@@ -468,6 +468,50 @@ An access link is not an invitation:
 
 Verify the person's identity before issuing a recovery link. A recovery link
 restores the whole global account, including its memberships in other servers.
+
+### Investigate unexpected sign-outs
+
+Before issuing recovery access where practical, record the deployed version,
+Account id and approximate incident time. Inspect existing Session and audit
+records with the read-only command (use the configured database path):
+
+```sh
+docker compose exec app npm run sessions:diagnose -w @voxly/server -- \
+  --database /data/voxly.sqlite --account-id ACCOUNT_ID
+```
+
+For a local build, use the same workspace command with a local database path.
+The command opens an existing file read-only, runs no migrations, and reports
+Session creation, activity, expiry, revocation and correlated audit events.
+It excludes credentials and token hashes. Reports still identify Accounts and
+Devices; share them privately. Older events may lack a Session id; the report
+also correlates legacy owner revocations by their target Session id.
+
+Match each available incident to explicit logout, Device/owner revocation,
+Account bans/deletion, recovery or expiry. A live Session with no corresponding
+revocation is insufficient to prove a browser lost its cookie. Check the member's
+Chrome profile, exact hostname, Incognito use and site-data deletion settings
+as evidence checks, without assuming they caused the incident.
+
+New `session.stale_rejected` events identify confirmed old credentials rejected
+after grace, once per credential. This still blocks the old credential but
+deliberately leaves its valid successor signed in. Structured authentication
+logs include safe reason codes (`missing_cookie`, `unknown_token`, `revoked`,
+`expired`, `account_unavailable`, `stale_token`), request identifiers and Session
+ids where known; delivery recovery logs use `session.recovered`. No credentials
+or hashes appear in these diagnostic records. These additions cannot explain
+older incidents for which evidence was never recorded.
+
+Browser cookie names now include a token-specific suffix. Both legacy fixed
+names remain readable and upgrade on successful HTTP authentication. Deploy
+the compatible reader and writer together. Any rollback must retain support
+for the new names; an older fixed-name-only reader will sign upgraded browsers
+out. Existing revoked Sessions remain revoked and need an Access link or another
+recovery method. See [ADR-0031](adr/0031-stale-session-rejection-preserves-successors.md).
+
+After building, run `npm run test:session:browser` with Playwright Chromium
+installed to check real cookie storage, response reordering, multiple tabs,
+profile reopening and reconnect authentication locally.
 
 ## 8. Add reliable TURN connectivity
 

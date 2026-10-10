@@ -13,12 +13,11 @@ import type { AnalyticsConfig } from "./analytics.js";
 import { audit } from "./audit.js";
 import {
   authenticateSocket,
-  authenticateWithoutRenewal,
   clearSessionCookie,
   createSession,
   requireOwner,
   requireUser,
-  revokeSession,
+  logoutBrowserSessions,
   sessionCookieName,
   setSessionCookie
 } from "./auth/sessions.js";
@@ -173,7 +172,7 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
     serveClient: false
   });
 
-  const realtime = registerRealtime(io, database);
+  const realtime = registerRealtime(io, database, server.log);
   // What a route group is handed, and deliberately nothing more; `http.ts` says
   // why each field is here.
   const context: RouteContext = {
@@ -339,6 +338,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
       const user = createUser(database, body.nickname, "owner");
       activateServerMembership(database, defaultServerId, user.id, "owner", new Date().toISOString());
       const token = createSession(database, user.id, request.headers["user-agent"]);
+      clearSessionCookie(reply, request.cookies);
       setSessionCookie(reply, token, options.secureCookies);
 
       return reply.code(201).send({ user: publicUser(user) });
@@ -390,18 +390,20 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     }
 
     const token = createSession(database, user.id, request.headers["user-agent"]);
+    clearSessionCookie(reply, request.cookies);
     setSessionCookie(reply, token, options.secureCookies);
 
     return reply.code(201).send({ user: publicUser(user) });
   });
 
   server.post("/api/logout", async (request, reply) => {
-    const user = authenticateWithoutRenewal(database, request);
-    if (user) {
-      revokeSession(database.sqlite, user.sessionId);
-      database.save();
+    for (const sessionId of logoutBrowserSessions(database, request)) {
+      const session = one<{ user_id: string }>(database.sqlite, "select user_id from sessions where id = ?", [
+        sessionId
+      ]);
+      if (session) realtime.disconnectDevice(session.user_id, sessionId);
     }
-    clearSessionCookie(reply);
+    clearSessionCookie(reply, request.cookies);
     return reply.code(204).send();
   });
 
@@ -699,14 +701,18 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
 
 function registerRealtime(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
-  database: VoxlyDatabase
+  database: VoxlyDatabase,
+  logger: FastifyInstance["log"]
 ): RealtimeModeration {
   const online: OnlineRegistry = new Map();
   const voice = createVoiceRealtime(io, database);
   const music = createMusicRealtime(io, database, voice);
 
   io.use((socket, next) => {
-    const user = authenticateSocket(database, socket.handshake.headers.cookie, socket.handshake.headers["user-agent"]);
+    const user = authenticateSocket(database, socket.handshake.headers.cookie, socket.handshake.headers["user-agent"], {
+      logger,
+      requestId: socket.id
+    });
     if (!user) {
       next(new Error("unauthorized"));
       return;

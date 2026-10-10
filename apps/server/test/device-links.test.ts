@@ -1,3 +1,4 @@
+import { cookieJar, sessionToken as tokenFromCookies } from "./sessionCookies.js";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
@@ -51,7 +52,7 @@ describe("linking a second Device", () => {
 
     assert.equal(collected.json().status, "approved");
     const phoneCookies = cookieJar(collected);
-    assert.ok(phoneCookies.voxly_session);
+    assert.ok(tokenFromCookies(phoneCookies));
     // Nothing is revoked: this is the path that keeps both Devices.
     for (const cookies of [laptop.cookies, phoneCookies]) {
       assert.equal((await app.server.inject({ method: "GET", url: "/api/devices", cookies })).statusCode, 200);
@@ -248,7 +249,7 @@ describe("linking a second Device", () => {
 
     const collected = await collect(app, claim.json().claimToken, phone);
     assert.equal(collected.json().status, "approved");
-    assert.ok(cookieJar(collected).voxly_session);
+    assert.ok(tokenFromCookies(cookieJar(collected)));
   });
 
   it("does not take back an approval when another code is minted", async () => {
@@ -430,8 +431,4 @@ function expiryOf(app: VoxlyApp, linkId: string) {
   const row = app.sqlite.prepare("select expires_at from device_links where id = ?").get(linkId) as
     { expires_at: string } | undefined;
   return row?.expires_at ?? "";
-}
-
-function cookieJar(response: { cookies: Array<{ name: string; value: string }> }) {
-  return Object.fromEntries(response.cookies.map((cookie) => [cookie.name, cookie.value]));
 }

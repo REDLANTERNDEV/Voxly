@@ -1,3 +1,4 @@
+import { cookieJar, sessionToken as tokenFromCookies } from "./sessionCookies.js";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
@@ -29,7 +30,7 @@ describe("browser approval for a desktop Device", () => {
       payload: { bootstrapToken: "bootstrap-secret", nickname: "Owner" }
     });
     assert.equal(response.statusCode, 201);
-    return Object.fromEntries(response.cookies.map((cookie) => [cookie.name, cookie.value]));
+    return cookieJar(response);
   }
 
   async function create() {
@@ -91,9 +92,9 @@ describe("browser approval for a desktop Device", () => {
     );
     const collected = await collect(request.id, request.secret);
     assert.equal(collected.json().status, "approved");
-    const desktopCookies = Object.fromEntries(collected.cookies.map((cookie) => [cookie.name, cookie.value]));
-    assert.ok(desktopCookies.voxly_session);
-    assert.notEqual(desktopCookies.voxly_session, cookies.voxly_session);
+    const desktopCookies = cookieJar(collected);
+    assert.ok(tokenFromCookies(desktopCookies));
+    assert.notEqual(tokenFromCookies(desktopCookies), tokenFromCookies(cookies));
     assert.equal((await app.server.inject({ method: "GET", url: "/api/me", cookies })).statusCode, 200);
     assert.equal((await app.server.inject({ method: "GET", url: "/api/me", cookies: desktopCookies })).statusCode, 200);
     assert.equal((await collect(request.id, request.secret)).json().status, "expired");
@@ -235,7 +236,7 @@ describe("browser approval for a desktop Device", () => {
     const other = await create();
     await decision(other.id, cookies, true);
     const collected = await collect(other.id, other.secret);
-    const otherCookies = Object.fromEntries(collected.cookies.map((cookie) => [cookie.name, cookie.value]));
+    const otherCookies = cookieJar(collected);
     assert.equal(
       (
         await app.server.inject({

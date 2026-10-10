@@ -1,3 +1,4 @@
+import { cookieJar } from "./sessionCookies.js";
 import assert from "node:assert/strict";
 import { it } from "node:test";
 import { createVoxlyApp } from "../src/app.js";
@@ -15,7 +16,7 @@ it("renames text, voice, and AFK channels in place with owner-only server scope"
       url: "/api/bootstrap/owner",
       payload: { bootstrapToken: "rename-fixture", nickname: "Owner" }
     });
-    const cookies = Object.fromEntries(bootstrap.cookies.map((cookie) => [cookie.name, cookie.value]));
+    const cookies = cookieJar(bootstrap);
     const list = await app.server.inject({ method: "GET", url: "/api/servers/the-basement/rooms", cookies });
     for (const room of list.json().rooms) {
       const name = `Renamed ${room.name}`;
@@ -71,7 +72,7 @@ it("renames text, voice, and AFK channels in place with owner-only server scope"
       url: "/api/invites/accept",
       payload: { inviteToken: invite.json().invite.token, nickname: "Member" }
     });
-    const memberCookies = Object.fromEntries(accepted.cookies.map((cookie) => [cookie.name, cookie.value]));
+    const memberCookies = cookieJar(accepted);
     assert.equal(
       (
         await app.server.inject({

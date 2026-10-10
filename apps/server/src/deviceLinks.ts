@@ -23,7 +23,7 @@ import { z } from "zod";
 import { audit } from "./audit.js";
 import { deviceLabel } from "./auth/deviceLabel.js";
 import { createConfirmationNumber, createLinkCode, formatLinkCode, normaliseLinkCode } from "./auth/linkCode.js";
-import { createSession, requireUser, setSessionCookie } from "./auth/sessions.js";
+import { clearSessionCookie, createSession, requireUser, setSessionCookie } from "./auth/sessions.js";
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import { one, run, type VoxlyDatabase } from "./db/database.js";
 import { authenticatedWriteLimit, type RouteContext } from "./http.js";
@@ -330,6 +330,7 @@ export function registerDeviceLinkRoutes({ fastify, database, secureCookies, tur
       throw cause;
     }
     database.save();
+    clearSessionCookie(reply, request.cookies);
     setSessionCookie(reply, token, secureCookies);
     return reply.send({ status: "approved", user: publicUser({ ...user, bannedAt: user.banned_at }) });
   });

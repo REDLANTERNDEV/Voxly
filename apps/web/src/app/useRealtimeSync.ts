@@ -81,7 +81,7 @@ export function useRealtimeSync({
       // member signing this Device out from another one looks like, and sitting
       // on a room the account no longer has any claim to — until somebody
       // happens to refresh — is the worst version of that. Asking who we are
-      // settles it either way, and costs one request.
+      // checks access; a fresh second lookup confirms an initial 401.
       void checkStillSignedInRef.current();
     });
     next.on("presence:serverSnapshot", ({ serverId, users }) => handlersRef.current.presenceSnapshot(serverId, users));

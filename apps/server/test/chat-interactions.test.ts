@@ -1,3 +1,4 @@
+import { cookieJar } from "./sessionCookies.js";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -391,6 +392,6 @@ function identity(response: {
 }): Identity {
   return {
     id: response.json().user.id,
-    cookies: Object.fromEntries(response.cookies.map((cookie) => [cookie.name, cookie.value]))
+    cookies: cookieJar(response)
   };
 }

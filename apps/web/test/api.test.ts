@@ -10,6 +10,7 @@ import {
   deleteServer,
   deleteServerRoom,
   fetchRtcConfig,
+  fetchMe,
   previewInvite,
   revokeInvite,
   updateServer,
@@ -22,6 +23,20 @@ const originalFetch = globalThis.fetch;
 describe("frontend api", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
+  });
+
+  it("session lookups bypass cached authentication responses", async () => {
+    const requests: Array<RequestInit | undefined> = [];
+    globalThis.fetch = async (_path, init) => {
+      requests.push(init);
+      return new Response(
+        JSON.stringify({ user: { id: "member", nickname: "Member", role: "member", bannedAt: null } })
+      );
+    };
+    await fetchMe();
+    await fetchMe();
+    assert.equal(requests.length, 2);
+    assert.ok(requests.every((request) => request?.cache === "no-store" && request.credentials === "include"));
   });
 
   it("shares concurrent owner claim requests for the same token", async () => {

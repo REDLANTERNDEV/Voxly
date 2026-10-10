@@ -29,7 +29,14 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { audit } from "./audit.js";
-import { authenticateHttp, createSession, requireOwner, requireUser, setSessionCookie } from "./auth/sessions.js";
+import {
+  authenticateHttp,
+  clearSessionCookie,
+  createSession,
+  requireOwner,
+  requireUser,
+  setSessionCookie
+} from "./auth/sessions.js";
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import { rejectBotTarget } from "./bots.js";
 import { all, defaultServerId, one, run, type VoxlyDatabase } from "./db/database.js";
@@ -203,6 +210,7 @@ export function registerInviteRoutes(context: RouteContext) {
     // from settings, where it is offered plainly.
     if (!existingUser) {
       const token = createSession(database, user.id, request.headers["user-agent"]);
+      clearSessionCookie(reply, request.cookies);
       setSessionCookie(reply, token, secureCookies);
     }
 
@@ -345,6 +353,7 @@ export function registerInviteRoutes(context: RouteContext) {
     run(database.sqlite, "update access_claims set consumed_at = ? where id = ?", [new Date().toISOString(), claim.id]);
     audit(database, user.id, "access_link.consumed", user.id);
     const sessionToken = createSession(database, user.id, request.headers["user-agent"]);
+    clearSessionCookie(reply, request.cookies);
     setSessionCookie(reply, sessionToken, secureCookies);
     return reply.code(201).send({
       user: publicUser({ ...user, bannedAt: user.banned_at }),

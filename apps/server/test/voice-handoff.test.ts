@@ -1,3 +1,4 @@
+import { cookieJar, sessionToken as tokenFromCookies } from "./sessionCookies.js";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
@@ -42,7 +43,7 @@ describe("voice follows the newest Device", () => {
   for (const displaced of [false, true]) {
     it(`refuses music and media commands from a ${displaced ? "displaced" : "non-voice"} Device`, async () => {
       const owner = await bootstrapOwner(app);
-      const laptop = await connect(owner.cookies.voxly_session);
+      const laptop = await connect(tokenFromCookies(owner.cookies));
       const phone = await connect(linkAnotherDevice(app, owner.user.id));
       await joinVoice(laptop, "lobby");
       if (displaced) await joinVoice(phone, "lobby");
@@ -86,7 +87,7 @@ describe("voice follows the newest Device", () => {
 
   it("tells the first Device it was displaced, and says why", async () => {
     const owner = await bootstrapOwner(app);
-    const laptop = await connect(owner.cookies.voxly_session);
+    const laptop = await connect(tokenFromCookies(owner.cookies));
     const phoneToken = linkAnotherDevice(app, owner.user.id);
     await joinVoice(laptop, "lobby");
 
@@ -102,7 +103,7 @@ describe("voice follows the newest Device", () => {
 
   it("leaves the account in the room, held by the new Device", async () => {
     const owner = await bootstrapOwner(app);
-    const laptop = await connect(owner.cookies.voxly_session);
+    const laptop = await connect(tokenFromCookies(owner.cookies));
     const phoneToken = linkAnotherDevice(app, owner.user.id);
     await joinVoice(laptop, "lobby");
 
@@ -121,7 +122,7 @@ describe("voice follows the newest Device", () => {
     // emits `voice:leave`. Membership is keyed by account, so that goodbye
     // would remove the account from the room the phone had just taken over.
     const owner = await bootstrapOwner(app);
-    const laptop = await connect(owner.cookies.voxly_session);
+    const laptop = await connect(tokenFromCookies(owner.cookies));
     const phoneToken = linkAnotherDevice(app, owner.user.id);
     await joinVoice(laptop, "lobby");
     const phone = await connect(phoneToken);
@@ -137,7 +138,7 @@ describe("voice follows the newest Device", () => {
   it("does not end the call when the displaced Device disconnects", async () => {
     // Closing the laptop tab afterwards is the same hazard arriving later.
     const owner = await bootstrapOwner(app);
-    const laptop = await connect(owner.cookies.voxly_session);
+    const laptop = await connect(tokenFromCookies(owner.cookies));
     const phoneToken = linkAnotherDevice(app, owner.user.id);
     await joinVoice(laptop, "lobby");
     const phone = await connect(phoneToken);
@@ -152,7 +153,7 @@ describe("voice follows the newest Device", () => {
 
   it("still lets the holding Device leave normally", async () => {
     const owner = await bootstrapOwner(app);
-    const laptop = await connect(owner.cookies.voxly_session);
+    const laptop = await connect(tokenFromCookies(owner.cookies));
     const phoneToken = linkAnotherDevice(app, owner.user.id);
     await joinVoice(laptop, "lobby");
     const phone = await connect(phoneToken);
@@ -171,8 +172,8 @@ describe("voice follows the newest Device", () => {
     // to them.
     const owner = await bootstrapOwner(app);
     const other = await acceptInvite(app, owner.cookies, "Ece");
-    const witness = await connect(other.cookies.voxly_session);
-    const laptop = await connect(owner.cookies.voxly_session);
+    const witness = await connect(tokenFromCookies(other.cookies));
+    const laptop = await connect(tokenFromCookies(owner.cookies));
     const phoneToken = linkAnotherDevice(app, owner.user.id);
     await joinVoice(laptop, "lobby");
     await settle();
@@ -190,12 +191,12 @@ describe("voice follows the newest Device", () => {
     // A refresh is not a handoff: same session, same Device. It must not
     // announce a displacement to the Device that is doing the reloading.
     const owner = await bootstrapOwner(app);
-    const first = await connect(owner.cookies.voxly_session);
+    const first = await connect(tokenFromCookies(owner.cookies));
     await joinVoice(first, "lobby");
     first.disconnect();
     await settle();
 
-    const reloaded = await connect(owner.cookies.voxly_session);
+    const reloaded = await connect(tokenFromCookies(owner.cookies));
     const displaced: VoiceForceLeaveReason[] = [];
     reloaded.on("voice:forceLeave", (payload: { reason: VoiceForceLeaveReason }) => displaced.push(payload.reason));
     const joined = await joinVoice(reloaded, "lobby");
@@ -207,7 +208,7 @@ describe("voice follows the newest Device", () => {
 
   it("publishes a new media instance on reload but preserves one on signalling reconnect", async () => {
     const owner = await bootstrapOwner(app);
-    const first = await connect(owner.cookies.voxly_session);
+    const first = await connect(tokenFromCookies(owner.cookies));
     const joinInstance = (socket: Socket, mediaInstanceId: string): Promise<VoiceJoinAck> =>
       new Promise((resolve) =>
         socket.emit("voice:join", { roomId: "lobby", media: joinMedia, mediaInstanceId }, resolve)
@@ -217,11 +218,11 @@ describe("voice follows the newest Device", () => {
     assert.equal(instance(initial), "page-one");
     first.disconnect();
     await settle();
-    const reconnect = await connect(owner.cookies.voxly_session);
+    const reconnect = await connect(tokenFromCookies(owner.cookies));
     assert.equal(instance(await joinInstance(reconnect, "page-one")), "page-one");
     reconnect.disconnect();
     await settle();
-    const reload = await connect(owner.cookies.voxly_session);
+    const reload = await connect(tokenFromCookies(owner.cookies));
     assert.equal(instance(await joinInstance(reload, "page-two")), "page-two");
     const snapshot = await snapshotOf(reload, "lobby");
     assert.equal(snapshot.members.length, 1);
@@ -231,11 +232,11 @@ describe("voice follows the newest Device", () => {
   it("does not forward stale signalling from the replaced media instance", async () => {
     const owner = await bootstrapOwner(app);
     const other = await acceptInvite(app, owner.cookies, "Ece");
-    const listener = await connect(other.cookies.voxly_session);
+    const listener = await connect(tokenFromCookies(other.cookies));
     await joinVoice(listener, "lobby");
-    const oldPage = await connect(owner.cookies.voxly_session);
+    const oldPage = await connect(tokenFromCookies(owner.cookies));
     await joinVoice(oldPage, "lobby");
-    const newPage = await connect(owner.cookies.voxly_session);
+    const newPage = await connect(tokenFromCookies(owner.cookies));
     const joined = await joinVoice(newPage, "lobby");
     assert.ok(joined.ok);
     const send = (socket: Socket): Promise<{ ok: boolean; error?: string }> =>
@@ -258,7 +259,7 @@ describe("voice follows the newest Device", () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ece");
     app.sqlite.prepare("update server_members set moderator_muted = 1 where user_id = ?").run(member.user.id);
-    const laptop = await connect(member.cookies.voxly_session);
+    const laptop = await connect(tokenFromCookies(member.cookies));
     await joinVoice(laptop, "lobby");
     const phoneToken = linkAnotherDevice(app, member.user.id);
 
@@ -349,10 +350,6 @@ async function acceptInvite(app: VoxlyApp, ownerCookies: Record<string, string>,
   return { user: response.json().user, cookies: cookieJar(response) };
 }
 
-function cookieJar(response: { cookies: Array<{ name: string; value: string }> }) {
-  return Object.fromEntries(response.cookies.map((cookie) => [cookie.name, cookie.value]));
-}
-
 function connectSocket(baseUrl: string, sessionToken: string): Promise<Socket> {
   return new Promise((resolve, reject) => {
     const socket = createClient(baseUrl, {
@@ -398,7 +395,7 @@ describe("a live socket outlives the token that opened it", () => {
 
   it("keeps the call alive across a rotation", async () => {
     const owner = await bootstrapOwner(app);
-    const socket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const socket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(socket);
     await joinVoice(socket, "lobby");
 

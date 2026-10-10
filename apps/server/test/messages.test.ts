@@ -1,3 +1,4 @@
+import { cookieJar } from "./sessionCookies.js";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import Fastify from "fastify";
@@ -423,8 +424,4 @@ async function acceptInvite(app: VoxlyApp, ownerCookies: Record<string, string>,
   });
 
   return { user: response.json().user, cookies: cookieJar(response) };
-}
-
-function cookieJar(response: { cookies: Array<{ name: string; value: string }> }) {
-  return Object.fromEntries(response.cookies.map((cookie) => [cookie.name, cookie.value]));
 }

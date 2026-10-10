@@ -1,20 +1,13 @@
+import { cookieJar, sessionToken as tokenFromCookies } from "./sessionCookies.js";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 import { hashToken } from "../src/auth/tokens.js";
 
 /**
- * Session tokens rotate, and a reused one reports its own theft.
- *
- * The property worth defending is that a stolen cookie is worth **fifteen
- * minutes of quiet**, and that spending it after that is loud: the moment the
- * real member's browser rotates and returns the replacement, the thief's copy
- * is retired, and its next use after grace kills the session in front of the
- * member instead of continuing silently. A replacement that never returned is
- * delivery failure, not theft. See ADR-0015 and ADR-0016.
- *
- * The member is not signed out every fifteen minutes. The session row is
- * long-lived; only the value in the cookie is not. These pin both halves.
+ * Rotation retires a credential without ending its Session. Unconfirmed
+ * delivery can recover; confirmed credentials after grace are rejected and
+ * audited without denying the current credential. See ADR-0016 and ADR-0031.
  */
 describe("session token rotation", () => {
   let app: VoxlyApp;
@@ -46,14 +39,14 @@ describe("session token rotation", () => {
 
   it("replaces the value once it is old, without ending the session", async () => {
     const owner = await bootstrapOwner(app);
-    const sessionId = sessionIdOf(app, owner.cookies.voxly_session);
+    const sessionId = sessionIdOf(app, tokenFromCookies(owner.cookies));
     ageToken(app, 16);
 
     const rotated = await request(app, owner.cookies);
 
-    const next = cookieJar(rotated).voxly_session;
+    const next = tokenFromCookies(cookieJar(rotated));
     assert.ok(next, "the token was not replaced");
-    assert.notEqual(next, owner.cookies.voxly_session);
+    assert.notEqual(next, tokenFromCookies(owner.cookies));
     // Same session throughout: this is re-carrying, not re-authenticating.
     assert.equal(sessionIdOf(app, next), sessionId);
     assert.equal((await request(app, { voxly_session: next })).statusCode, 200);
@@ -92,7 +85,7 @@ describe("session token rotation", () => {
     // The server commits the rotation, but this response never reaches the
     // browser. Its cookie jar therefore keeps the retired value.
     const dropped = await request(app, owner.cookies);
-    assert.ok(cookieJar(dropped).voxly_session, "the dropped response did not carry a rotation");
+    assert.ok(tokenFromCookies(cookieJar(dropped)), "the dropped response did not carry a rotation");
     assert.equal(dropped.headers["x-voxly-session-rotated"], "1");
     ageRetiredTokens(app, 5);
 
@@ -100,11 +93,11 @@ describe("session token rotation", () => {
 
     assert.equal(recovered.statusCode, 200);
     assert.equal(recovered.headers["x-voxly-session-rotated"], "1");
-    const replacement = cookieJar(recovered).voxly_session;
+    const replacement = tokenFromCookies(cookieJar(recovered));
     assert.ok(replacement, "the unconfirmed rotation was not retried");
     assert.equal((await request(app, { voxly_session: replacement })).statusCode, 200);
     const actions = (app.dumpTables().auditEvents as Array<{ action: string }>).map((event) => event.action);
-    assert.equal(actions.includes("session.reused"), false);
+    assert.equal(actions.includes("session.stale_rejected"), false);
   });
 
   it("retries recovery when the replacement response is also lost", async () => {
@@ -114,13 +107,13 @@ describe("session token rotation", () => {
     ageRetiredTokens(app, 5);
 
     const firstRecovery = await request(app, owner.cookies);
-    assert.ok(cookieJar(firstRecovery).voxly_session);
+    assert.ok(tokenFromCookies(cookieJar(firstRecovery)));
     ageRetiredTokens(app, 5);
 
     const secondRecovery = await request(app, owner.cookies);
 
     assert.equal(secondRecovery.statusCode, 200);
-    const replacement = cookieJar(secondRecovery).voxly_session;
+    const replacement = tokenFromCookies(cookieJar(secondRecovery));
     assert.ok(replacement);
     assert.equal((await request(app, { voxly_session: replacement })).statusCode, 200);
   });
@@ -135,16 +128,18 @@ describe("session token rotation", () => {
 
     assert.ok(responses.every((response) => response.statusCode === 200));
     const issued = responses.flatMap((response) =>
-      response.cookies.filter((cookie) => cookie.name === "voxly_session").map((cookie) => cookie.value)
+      response.cookies
+        .filter((cookie) => cookie.value && cookie.name.startsWith("voxly_session_"))
+        .map((cookie) => cookie.value)
     );
     assert.equal(issued.length, 1, `issued ${issued.length} recovery tokens`);
   });
 
-  it("treats a retired value used after the grace window as theft", async () => {
+  it("rejects a confirmed retired value without revoking its successor", async () => {
     const owner = await bootstrapOwner(app);
     ageToken(app, 16);
     const rotated = await request(app, owner.cookies);
-    const current = cookieJar(rotated).voxly_session;
+    const current = tokenFromCookies(cookieJar(rotated));
     const confirmed = await app.server.inject({
       method: "POST",
       url: "/api/session/confirm",
@@ -157,11 +152,10 @@ describe("session token rotation", () => {
 
     assert.equal(reused.statusCode, 401);
     assert.equal(reused.json().error, "session_reused");
-    // Loud, not quiet: the session ends for the thief *and* for the member,
-    // which is what makes the theft visible.
-    assert.equal((await request(app, { voxly_session: current })).statusCode, 401);
+    // Reject and audit the stale credential while preserving its successor.
+    assert.equal((await request(app, { voxly_session: current })).statusCode, 200);
     const actions = (app.dumpTables().auditEvents as Array<{ action: string }>).map((event) => event.action);
-    assert.ok(actions.includes("session.reused"), "the reuse left no line for the owner");
+    assert.ok(actions.includes("session.stale_rejected"), "the reuse left no line for the owner");
   });
 
   it("does not accept an invite while carrying a reused session", async () => {
@@ -207,7 +201,9 @@ describe("session token rotation", () => {
     const responses = await Promise.all(Array.from({ length: 8 }, () => request(app, owner.cookies)));
 
     assert.ok(responses.every((response) => response.statusCode === 200));
-    const issued = responses.flatMap((response) => response.cookies.map((cookie) => cookie.value));
+    const issued = responses.flatMap((response) =>
+      response.cookies.filter((cookie) => cookie.value).map((cookie) => cookie.value)
+    );
     assert.equal(new Set(issued).size, 1, `issued ${issued.length} different tokens`);
   });
 
@@ -217,7 +213,7 @@ describe("session token rotation", () => {
     // thing this avoids — expiry is for a Device nobody has touched in a whole
     // window, not for somebody who is right here.
     const owner = await bootstrapOwner(app);
-    const before = expiryOf(app, owner.cookies.voxly_session);
+    const before = expiryOf(app, tokenFromCookies(owner.cookies));
     // Old enough that the touch throttle lets the renewal through.
     app.sqlite.prepare("update sessions set last_seen_at = ?").run(new Date(Date.now() - 20 * 60 * 1000).toISOString());
     app.sqlite
@@ -227,7 +223,7 @@ describe("session token rotation", () => {
     const response = await request(app, owner.cookies);
 
     assert.equal(response.statusCode, 200);
-    const after = expiryOf(app, owner.cookies.voxly_session);
+    const after = expiryOf(app, tokenFromCookies(owner.cookies));
     assert.ok(after > before - 1000, `expiry went backwards: ${after} < ${before}`);
     // Back out to a full window, not merely nudged.
     assert.ok(after - Date.now() > 170 * 24 * 60 * 60 * 1000, "the window did not reset");
@@ -240,7 +236,7 @@ describe("session token rotation", () => {
     const owner = await bootstrapOwner(app);
     app.sqlite
       .prepare("update sessions set expires_at = ? where token_hash = ?")
-      .run(new Date(Date.now() - 1000).toISOString(), hashToken(owner.cookies.voxly_session));
+      .run(new Date(Date.now() - 1000).toISOString(), hashToken(tokenFromCookies(owner.cookies)));
 
     assert.equal((await request(app, owner.cookies)).statusCode, 401);
   });
@@ -318,8 +314,4 @@ async function bootstrapOwner(app: VoxlyApp) {
   });
 
   return { user: response.json().user, cookies: cookieJar(response) };
-}
-
-function cookieJar(response: { cookies: Array<{ name: string; value: string }> }) {
-  return Object.fromEntries(response.cookies.map((cookie) => [cookie.name, cookie.value]));
 }

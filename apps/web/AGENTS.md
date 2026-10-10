@@ -64,8 +64,12 @@ requirement.
   account-entry frame while retaining their separate authentication lifecycles.
 
 - Route initial session lookup and successful invite/access/owner claims
-  through the authentication request gate. A stale bootstrap response must not
-  overwrite a newly authenticated user.
+  through the authentication request gate, including reconnect checks. A stale
+  response must not overwrite a newly authenticated user; invalidate requests
+  on unmount. Confirm a current reconnect-check 401 with one fresh `/api/me`
+  lookup. Clear authentication only after a second current 401; retain it on
+  successful verification or network/server failure. Generic 401 copy describes
+  unavailable browser access without attributing it to another Device.
 - Treat an authenticated `/invite/:token` route as intent to accept. Share one
   in-flight request per token, auto-accept a valid new membership, and use the
   returned `serverId` for both success and `already_server_member` navigation.

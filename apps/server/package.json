@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.build.json",
     "owner:create": "node dist/src/cli/create-owner.js",
     "owner:claim": "node dist/src/cli/create-owner-login-claim.js",
+    "sessions:diagnose": "node dist/src/cli/diagnose-sessions.js",
     "start": "node dist/src/main.js",
     "test": "npm run build && node --test \"dist/test/*.test.js\"",
     "typecheck": "tsc --noEmit"

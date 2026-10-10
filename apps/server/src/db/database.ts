@@ -319,6 +319,7 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "invites", "server_id", "text");
   addColumnIfMissing(sqlite, "invites", "max_uses", "integer default 1");
   addColumnIfMissing(sqlite, "audit_events", "server_id", "text");
+  addColumnIfMissing(sqlite, "audit_events", "session_id", "text");
   addColumnIfMissing(sqlite, "access_claims", "revoked_at", "text");
   addColumnIfMissing(sqlite, "server_members", "nickname", "text");
   addColumnIfMissing(sqlite, "server_members", "moderator_muted", "integer not null default 0");
@@ -329,6 +330,7 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "sessions", "token_issued_at", "text");
   addColumnIfMissing(sqlite, "sessions", "origin", "text");
   const addedReplacementSeenAt = addColumnIfMissing(sqlite, "session_tokens", "replacement_seen_at", "text");
+  addColumnIfMissing(sqlite, "session_tokens", "stale_rejected_at", "text");
   if (addedReplacementSeenAt) {
     // Rows written by an older release already used the strict reuse rule. Keep
     // that posture across an upgrade; only rotations created by the new

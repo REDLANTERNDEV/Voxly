@@ -2,6 +2,7 @@ import type { PublicUser } from "@voxly/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, fetchConfig, fetchMe, fetchRtcConfig } from "../api.js";
 import { createAuthRequestGate } from "../lib/authRequestGate.js";
+import { checkSessionAfterDisconnect } from "../lib/sessionCheck.js";
 import type { VoiceErrorKey } from "../lib/i18n.js";
 import { getInviteTokenFromPath, resolveInitialRoute } from "../lib/navigation.js";
 import type { AppConfigResponse, RtcConfigResponse } from "../types.js";
@@ -27,6 +28,7 @@ export function useSessionController(route: Route, navigate: (path: string) => v
   const [rtcConfigErrorRevision, setRtcConfigErrorRevision] = useState(0);
   const authRequestGateRef = useRef(createAuthRequestGate());
   const authenticatedUserIdRef = useRef<string | null>(null);
+  const mountedRef = useRef(false);
 
   const completeAuthentication = useCallback((nextUser: PublicUser) => {
     authRequestGateRef.current.invalidate();
@@ -34,6 +36,7 @@ export function useSessionController(route: Route, navigate: (path: string) => v
     authenticatedUserIdRef.current = nextUser.id;
     setUser(nextUser);
     setAuthState("ready");
+    setSignedOutReason("");
   }, []);
 
   const clearAuthentication = useCallback(() => {
@@ -59,25 +62,29 @@ export function useSessionController(route: Route, navigate: (path: string) => v
    * usually the network but is also exactly what being signed out from another
    * Device looks like. Leaving somebody sitting in a room their account no
    * longer has any claim to — until they happen to refresh — is the worst
-   * version of that, and one request settles it.
+   * version of that.
    *
-   * A network failure answers nothing and changes nothing; only a 401 clears
-   * the session, so a flaky connection cannot sign anybody out.
+   * Confirm a 401 with a fresh lookup. A network failure answers nothing;
+   * a newer authentication or check invalidates every older outcome.
    */
   const checkStillSignedIn = useCallback(async () => {
-    if (!authenticatedUserIdRef.current) return;
-    try {
-      await fetchMe();
-    } catch (error: unknown) {
-      if (!(error instanceof ApiError) || error.status !== 401) return;
-      setSignedOutReason(error.code === "session_reused" ? "reused" : "revoked");
-      clearAuthentication();
-      navigate("/");
-    }
+    if (!mountedRef.current || !authenticatedUserIdRef.current) return;
+    await checkSessionAfterDisconnect({
+      gate: authRequestGateRef.current,
+      lookup: fetchMe,
+      isUnauthorized: (error) => error instanceof ApiError && error.status === 401,
+      signedOut: (error) => {
+        setSignedOutReason(error instanceof ApiError && error.code === "session_reused" ? "reused" : "revoked");
+        clearAuthentication();
+        navigate("/");
+      }
+    });
   }, [clearAuthentication, navigate]);
 
   useEffect(() => {
     let mounted = true;
+    mountedRef.current = true;
+    const gate = authRequestGateRef.current;
     fetchConfig()
       .then((config) => {
         if (mounted) setAppConfig(config);
@@ -87,6 +94,8 @@ export function useSessionController(route: Route, navigate: (path: string) => v
       });
     return () => {
       mounted = false;
+      mountedRef.current = false;
+      gate.invalidate();
     };
   }, []);
 
@@ -149,9 +158,8 @@ export function useSessionController(route: Route, navigate: (path: string) => v
         if (error instanceof ApiError && error.status === 401) {
           authenticatedUserIdRef.current = null;
           setUser(null);
-          // Being signed out because the session was seen in two places is not
-          // the same as never having been signed in, and the member is owed the
-          // difference (ADR-0015).
+          // A rejected old credential needs recovery guidance, not attribution
+          // to another Device; delayed requests also produce this result.
           setSignedOutReason(error.code === "session_reused" ? "reused" : "");
           setAuthState("ready");
           if (

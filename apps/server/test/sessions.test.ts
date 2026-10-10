@@ -15,6 +15,7 @@ import {
   hostSessionCookieName,
   readSessionToken,
   sessionCookieName,
+  sessionCookieNameFor,
   setSessionCookie
 } from "../src/auth/sessions.js";
 import { hashToken } from "../src/auth/tokens.js";
@@ -208,13 +209,10 @@ describe("sessions", () => {
 
       assert.deepEqual(reused, { ok: false, error: "session_reused" });
       assert.deepEqual(unknown, { ok: false, error: "unauthorized" });
-      assert.deepEqual(
-        reusedReply.cookies.map((cookie) => cookie.name),
-        [sessionCookieName, hostSessionCookieName]
-      );
+      assert.deepEqual(reusedReply.cookies, []);
       const auditCount = one<{ count: number }>(
         db.sqlite,
-        "select count(*) as count from audit_events where action = 'session.reused' and target_user_id = ?",
+        "select count(*) as count from audit_events where action = 'session.stale_rejected' and target_user_id = ?",
         ["member"]
       );
       assert.equal(auditCount?.count, 1);
@@ -259,12 +257,12 @@ describe("sessions", () => {
 
       assert.equal(user, null);
       const session = one<{ revoked_at: string | null }>(db.sqlite, "select revoked_at from sessions");
-      assert.ok(session?.revoked_at);
+      assert.equal(session?.revoked_at, null);
       const auditEvent = one<{ action: string; target_user_id: string | null }>(
         db.sqlite,
-        "select action, target_user_id from audit_events where action = 'session.reused'"
+        "select action, target_user_id from audit_events where action = 'session.stale_rejected'"
       );
-      assert.equal(auditEvent?.action, "session.reused");
+      assert.equal(auditEvent?.action, "session.stale_rejected");
       assert.equal(auditEvent?.target_user_id, "member");
     });
 
@@ -280,7 +278,7 @@ describe("sessions", () => {
       assert.equal(session?.revoked_at, null);
       const auditCount = one<{ count: number }>(
         db.sqlite,
-        "select count(*) as count from audit_events where action = 'session.reused'"
+        "select count(*) as count from audit_events where action = 'session.stale_rejected'"
       );
       assert.equal(auditCount?.count, 0);
     });
@@ -323,7 +321,7 @@ describe("sessions", () => {
       // retired alongside it, which is how an upgrade moves members over.
       assert.deepEqual(
         cookies.map((entry) => entry.name),
-        [hostSessionCookieName, sessionCookieName]
+        [sessionCookieNameFor(token, true), sessionCookieName]
       );
       assert.equal(cookies[0]?.value, token);
       assert.equal(cookies[0]?.options.expires?.toISOString(), stored?.expires_at);
@@ -356,7 +354,7 @@ describe("sessions", () => {
       authenticateHttp(db, requestDouble({ [sessionCookieName]: token }), replyDouble().reply, true);
 
       const { reply, cookies } = replyDouble();
-      authenticateHttp(db, requestDouble({ [sessionCookieName]: token }), reply, true);
+      authenticateHttp(db, requestDouble({ [sessionCookieNameFor(token, true)]: token }), reply, true);
 
       assert.deepEqual(cookies, []);
     });
@@ -469,7 +467,7 @@ describe("sessions", () => {
         // browser enforce what we already ask for and stops a sibling subdomain
         // writing a session cookie this host would then read. The prefix
         // *requires* Secure, so plain HTTP keeps the plain name.
-        assert.equal(cookies[0]?.name, secure ? hostSessionCookieName : sessionCookieName);
+        assert.equal(cookies[0]?.name, sessionCookieNameFor("token", secure));
         assert.equal(cookies[0]?.value, "token");
         assert.deepEqual(
           { ...cookies[0]?.options, expires: undefined },
@@ -478,33 +476,36 @@ describe("sessions", () => {
       }
     });
 
-    it("retires the unprefixed name once it is writing the prefixed one", () => {
-      // An upgrading deployment leaves members holding the old name too. Both
-      // would be read, and two copies of one credential is how they drift apart.
+    it("writes only the new name without clearing names the request did not present", () => {
       const { reply, cookies } = replyDouble();
-
       setSessionCookie(reply, "token", true);
-
-      assert.deepEqual(cookies[1], { name: sessionCookieName, value: null, options: { path: "/" } });
+      assert.equal(cookies.length, 1);
+      assert.equal(cookies[0]?.name, sessionCookieNameFor("token", true));
     });
 
-    it("prefers the prefixed cookie when a browser is holding both", () => {
+    it("prefers the prefixed cookie when a browser is holding both", async () => {
+      const db = await seed({ member: {} });
+      const old = createSession(db, "member");
+      const current = createSession(db, "member");
       // Mid-upgrade a browser can carry both. The prefixed one wins because it
       // is the one a subdomain could not have written.
-      assert.equal(readSessionToken({ [sessionCookieName]: "old", [hostSessionCookieName]: "new" }), "new");
-      assert.equal(readSessionToken({ [sessionCookieName]: "old" }), "old");
-      assert.equal(readSessionToken({}), undefined);
+      assert.equal(
+        readSessionToken(db.sqlite, { [sessionCookieName]: old, [hostSessionCookieName]: current }),
+        current
+      );
+      assert.equal(readSessionToken(db.sqlite, { [sessionCookieName]: old }), old);
+      assert.equal(readSessionToken(db.sqlite, {}), undefined);
     });
 
     it("is cleared across the whole site, so no stale copy survives on a sub-path", () => {
       const { reply, cookies } = replyDouble();
 
-      clearSessionCookie(reply);
+      clearSessionCookie(reply, { [sessionCookieName]: "token", [hostSessionCookieName]: "token" });
 
       // Both names, or an upgrade would leave the old one behind on sign-out.
       assert.deepEqual(cookies, [
-        { name: sessionCookieName, value: null, options: { path: "/" } },
-        { name: hostSessionCookieName, value: null, options: { path: "/" } }
+        { name: sessionCookieName, value: null, options: { path: "/", secure: false } },
+        { name: hostSessionCookieName, value: null, options: { path: "/", secure: true } }
       ]);
     });
   });

@@ -10,7 +10,7 @@ import {
   userIdParam,
   type RouteContext
 } from "../src/http.js";
-import { createSession, sessionCookieName } from "../src/auth/sessions.js";
+import { createSession, sessionCookieNameFor } from "../src/auth/sessions.js";
 import { activateServerMembership } from "../src/members.js";
 import { openDatabase, run, type VoxlyDatabase } from "../src/db/database.js";
 import type { VoxlyIoServer } from "../src/socket.js";
@@ -35,7 +35,11 @@ function replyDouble() {
 }
 
 function requestDouble(token: string | null, params: Record<string, string>) {
-  return { cookies: token ? { [sessionCookieName]: token } : {}, headers: {}, params } as unknown as FastifyRequest;
+  return {
+    cookies: token ? { [sessionCookieNameFor(token, true)]: token } : {},
+    headers: {},
+    params
+  } as unknown as FastifyRequest;
 }
 
 describe("the shared route preamble", () => {

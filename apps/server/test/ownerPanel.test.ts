@@ -1,3 +1,4 @@
+import { cookieJar } from "./sessionCookies.js";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import Fastify from "fastify";
@@ -7,7 +8,12 @@ import type { RealtimeModeration, RouteContext } from "../src/http.js";
 import { all, defaultServerId, one, openDatabase, type VoxlyDatabase } from "../src/db/database.js";
 import type { VoxlyIoServer } from "../src/socket.js";
 
-type AuditRow = { action: string; target_user_id: string | null; actor_user_id: string | null };
+type AuditRow = {
+  action: string;
+  target_user_id: string | null;
+  actor_user_id: string | null;
+  session_id: string | null;
+};
 
 describe("the owner panel", () => {
   let app: VoxlyApp;
@@ -28,7 +34,7 @@ describe("the owner panel", () => {
   function auditRows(action: string) {
     return all<AuditRow>(
       app.sqlite,
-      "select action, target_user_id, actor_user_id from audit_events where action = ?",
+      "select action, target_user_id, actor_user_id, session_id from audit_events where action = ?",
       [action]
     );
   }
@@ -256,6 +262,7 @@ describe("the owner panel", () => {
         auditRows("session.revoked").map((row) => row.target_user_id),
         [memberSession.id]
       );
+      assert.equal(auditRows("session.revoked")[0]?.session_id, memberSession.id);
     });
 
     it("answers a session id that names nothing with the same 204 and the same audit line", async () => {
@@ -730,8 +737,4 @@ async function accept(app: VoxlyApp, inviteToken: string, nickname: string) {
   });
 
   return { user: response.json().user, cookies: cookieJar(response) };
-}
-
-function cookieJar(response: { cookies: Array<{ name: string; value: string }> }) {
-  return Object.fromEntries(response.cookies.map((cookie) => [cookie.name, cookie.value]));
 }

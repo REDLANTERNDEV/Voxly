@@ -220,7 +220,7 @@ export async function redeemRecoveryCode(code: string, turnstileToken?: string) 
 }
 
 export async function fetchMe() {
-  return apiGet<CurrentUserResponse>("/api/me");
+  return request<CurrentUserResponse>("/api/me", { cache: "no-store" });
 }
 
 export async function fetchConfig(init: RequestInit = {}) {

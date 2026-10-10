@@ -1,3 +1,4 @@
+import { cookieJar, sessionToken as tokenFromCookies } from "./sessionCookies.js";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -297,9 +298,9 @@ describe("Voxly HTTP MVP", () => {
     });
 
     assert.equal(response.statusCode, 201);
-    assert.equal(response.cookies[0]?.name, "voxly_session");
-    assert.equal(response.cookies[0]?.httpOnly, true);
-    assert.equal(response.cookies[0]?.sameSite, "Lax");
+    assert.match(response.cookies.find((cookie) => cookie.value)!.name, /^voxly_session_[a-f0-9]{64}$/);
+    assert.equal(response.cookies.find((cookie) => cookie.value)?.httpOnly, true);
+    assert.equal(response.cookies.find((cookie) => cookie.value)?.sameSite, "Lax");
 
     const body = response.json();
     assert.equal(body.user.nickname, "Red Lantern");
@@ -356,7 +357,7 @@ describe("Voxly HTTP MVP", () => {
       });
 
       assert.equal(response.statusCode, 201);
-      assert.equal(response.cookies[0]?.name, "voxly_session");
+      assert.match(response.cookies.find((cookie) => cookie.value)!.name, /^voxly_session_[a-f0-9]{64}$/);
       assert.equal(response.json().user.role, "owner");
 
       const reuseResponse = await app.server.inject({
@@ -493,7 +494,7 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(acceptResponse.statusCode, 201);
 
     const sessionCookie = acceptResponse.cookies.find(
-      (cookie: { name: string; value: string }) => cookie.name === "voxly_session"
+      (cookie: { name: string; value: string }) => cookie.name.startsWith("voxly_session_") && cookie.value
     );
     assert.equal(typeof sessionCookie?.value, "string");
     assert.equal(JSON.stringify(app.dumpTables()).includes(sessionCookie?.value ?? ""), false);
@@ -504,7 +505,7 @@ describe("Voxly HTTP MVP", () => {
     const soon = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     run(app.sqlite, "update sessions set expires_at = ? where token_hash = ?", [
       soon,
-      hashToken(owner.cookies.voxly_session)
+      hashToken(tokenFromCookies(owner.cookies))
     ]);
 
     const firstResponse = await app.server.inject({
@@ -514,12 +515,14 @@ describe("Voxly HTTP MVP", () => {
     });
     assert.equal(firstResponse.statusCode, 200);
 
-    const sessionCookie = firstResponse.cookies.find((cookie: { name: string }) => cookie.name === "voxly_session");
-    assert.equal(sessionCookie?.name, "voxly_session");
+    const sessionCookie = firstResponse.cookies.find(
+      (cookie: { name: string; value: string }) => cookie.name.startsWith("voxly_session_") && cookie.value
+    );
+    assert.match(sessionCookie!.name, /^voxly_session_[a-f0-9]{64}$/);
     assert.ok(sessionCookie?.expires instanceof Date);
 
     const session = one<{ expires_at: string }>(app.sqlite, "select expires_at from sessions where token_hash = ?", [
-      hashToken(owner.cookies.voxly_session)
+      hashToken(tokenFromCookies(owner.cookies))
     ]);
     assert.ok(session);
     assert.ok(new Date(session.expires_at).getTime() > new Date(soon).getTime());
@@ -3141,8 +3144,4 @@ async function acceptInvite(app: VoxlyApp, ownerCookies: Record<string, string>,
     user: response.json().user,
     cookies: cookieJar(response)
   };
-}
-
-function cookieJar(response: { cookies: Array<{ name: string; value: string }> }) {
-  return Object.fromEntries(response.cookies.map((cookie) => [cookie.name, cookie.value]));
 }

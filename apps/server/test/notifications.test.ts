@@ -1,3 +1,4 @@
+import { cookieJar } from "./sessionCookies.js";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -24,8 +25,7 @@ describe("persistent personal notifications", () => {
     await app.close();
     await rm(directory, { recursive: true, force: true });
   });
-  const jar = (response: { cookies: Array<{ name: string; value: string }> }) =>
-    Object.fromEntries(response.cookies.map((cookie) => [cookie.name, cookie.value]));
+  const jar = (response: { cookies: Array<{ name: string; value: string }> }) => cookieJar(response);
   async function owner() {
     const response = await app.server.inject({
       method: "POST",

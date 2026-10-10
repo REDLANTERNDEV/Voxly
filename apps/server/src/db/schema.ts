@@ -123,15 +123,16 @@ export const recoveryCodes = sqliteTable("recovery_codes", {
  *
  * A session outlives any single token value: the value rotates while the row,
  * and everything bound to it, stays. These are the retired values, kept so that
- * one turning up again can be recognised for what it is — two parties holding
- * the same cookie. See ADR-0015.
+ * unconfirmed delivery can recover and confirmed stale credentials can be
+ * rejected without revoking their successors. See ADR-0016 and ADR-0031.
  */
 export const sessionTokens = sqliteTable("session_tokens", {
   tokenHash: text("token_hash").primaryKey(),
   sessionId: text("session_id").notNull(),
   supersededAt: text("superseded_at").notNull(),
   /** When the replacement first returned, proving that its cookie was delivered. */
-  replacementSeenAt: text("replacement_seen_at")
+  replacementSeenAt: text("replacement_seen_at"),
+  staleRejectedAt: text("stale_rejected_at")
 });
 
 export const ownerClaims = sqliteTable("owner_claims", {
@@ -231,6 +232,8 @@ export const auditEvents = sqliteTable("audit_events", {
   actorUserId: text("actor_user_id"),
   action: text("action").notNull(),
   targetUserId: text("target_user_id"),
+  serverId: text("server_id"),
+  sessionId: text("session_id"),
   createdAt: text("created_at").notNull()
 });
 

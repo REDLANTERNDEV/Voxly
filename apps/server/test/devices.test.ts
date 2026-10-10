@@ -1,3 +1,4 @@
+import { cookieJar } from "./sessionCookies.js";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
@@ -211,8 +212,8 @@ describe("a member's own Devices", () => {
       cookies: second.cookies
     });
 
-    const events = app.dumpTables().auditEvents as Array<{ action: string }>;
-    assert.ok(events.some((event) => event.action === "device.revoked"));
+    const events = app.dumpTables().auditEvents as Array<{ action: string; session_id: string | null }>;
+    assert.equal(events.find((event) => event.action === "device.revoked")?.session_id, stale.id);
   });
 
   it("answers nothing without a session", async () => {
@@ -283,8 +284,4 @@ async function acceptInvite(app: VoxlyApp, ownerCookies: Record<string, string>,
   });
 
   return { user: response.json().user, cookies: cookieJar(response) };
-}
-
-function cookieJar(response: { cookies: Array<{ name: string; value: string }> }) {
-  return Object.fromEntries(response.cookies.map((cookie) => [cookie.name, cookie.value]));
 }

@@ -1,3 +1,4 @@
+import { cookieJar, sessionToken as tokenFromCookies } from "./sessionCookies.js";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
@@ -46,9 +47,9 @@ describe("Voxly realtime MVP", () => {
       member.user.id,
       "Notification test Device"
     );
-    const first = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const first = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     const second = await connectSocket(baseUrl, secondToken);
-    const unrelated = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const unrelated = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(first, second, unrelated);
     for (const request of [
       { method: "PUT" as const, url: "/api/rooms/general/read-state", payload: { throughSequence: 0 } },
@@ -79,8 +80,8 @@ describe("Voxly realtime MVP", () => {
   it("notifies every server member when the shared room layout changes", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Layout member");
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(ownerSocket, memberSocket);
     const ownerNotice = onceEvent<{ serverId: string }>(ownerSocket, "server:roomsChanged");
     const memberNotice = onceEvent<{ serverId: string }>(memberSocket, "server:roomsChanged");
@@ -99,8 +100,8 @@ describe("Voxly realtime MVP", () => {
   it("broadcasts channel renames without changing voice membership or message history", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Rename member");
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(ownerSocket, memberSocket);
     const joined = await joinVoice(memberSocket, "lobby");
     assert.ok(joined.ok);
@@ -141,12 +142,12 @@ describe("Voxly realtime MVP", () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ece");
 
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     const onlinePromise = onceEvent<{ serverId: string; user: { nickname: string } }>(
       ownerSocket,
       "presence:serverOnline"
     );
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(ownerSocket, memberSocket);
 
     const online = await onlinePromise;
@@ -190,9 +191,9 @@ describe("Voxly realtime MVP", () => {
     });
     const otherCookies = cookieJar(otherMemberResponse);
 
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
-    const otherSocket = await connectSocket(baseUrl, otherCookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
+    const otherSocket = await connectSocket(baseUrl, tokenFromCookies(otherCookies));
     sockets.push(ownerSocket, memberSocket, otherSocket);
     const initialSnapshotPromise = onceEvent(ownerSocket, "voice:snapshot");
     await joinVoice(memberSocket, "lobby");
@@ -245,8 +246,8 @@ describe("Voxly realtime MVP", () => {
     });
     const memberCookies = cookieJar(memberResponse);
 
-    const memberSocket = await connectSocket(baseUrl, memberCookies.voxly_session);
-    const outsiderSocket = await connectSocket(baseUrl, outsider.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(memberCookies));
+    const outsiderSocket = await connectSocket(baseUrl, tokenFromCookies(outsider.cookies));
     sockets.push(memberSocket, outsiderSocket);
     const updatedPromise = onceEvent<{ serverId: string; name: string }>(memberSocket, "server:updated");
 
@@ -264,8 +265,8 @@ describe("Voxly realtime MVP", () => {
   it("joins with the requested muted media in one authoritative snapshot", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Muted member");
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(ownerSocket, memberSocket);
 
     const snapshotPromise = onceEvent<{
@@ -308,7 +309,7 @@ describe("Voxly realtime MVP", () => {
     const privateVoiceRoom = rooms.find((room) => room.kind === "voice");
     assert.ok(privateVoiceRoom);
 
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(memberSocket);
 
     assert.deepEqual(await joinVoice(memberSocket, "missing-room"), {
@@ -330,7 +331,7 @@ describe("Voxly realtime MVP", () => {
       acceptInvite(app, owner.cookies, "Derya")
     ]);
     const socketsForMembers = await Promise.all(
-      members.map((member) => connectSocket(baseUrl, member.cookies.voxly_session))
+      members.map((member) => connectSocket(baseUrl, tokenFromCookies(member.cookies)))
     );
     sockets.push(...socketsForMembers);
 
@@ -369,9 +370,9 @@ describe("Voxly realtime MVP", () => {
     const viewer = await acceptInvite(app, owner.cookies, "Viewer");
     const outsider = await acceptInvite(app, owner.cookies, "Outsider");
 
-    const publisherSocket = await connectSocket(baseUrl, publisher.cookies.voxly_session);
-    const viewerSocket = await connectSocket(baseUrl, viewer.cookies.voxly_session);
-    const outsiderSocket = await connectSocket(baseUrl, outsider.cookies.voxly_session);
+    const publisherSocket = await connectSocket(baseUrl, tokenFromCookies(publisher.cookies));
+    const viewerSocket = await connectSocket(baseUrl, tokenFromCookies(viewer.cookies));
+    const outsiderSocket = await connectSocket(baseUrl, tokenFromCookies(outsider.cookies));
     sockets.push(publisherSocket, viewerSocket, outsiderSocket);
 
     await Promise.all([joinVoice(publisherSocket, "lobby"), joinVoice(viewerSocket, "lobby")]);
@@ -424,8 +425,8 @@ describe("Voxly realtime MVP", () => {
     const publisher = await acceptInvite(app, owner.cookies, "Publisher");
     const viewer = await acceptInvite(app, owner.cookies, "Viewer");
 
-    const publisherSocket = await connectSocket(baseUrl, publisher.cookies.voxly_session);
-    const viewerSocket = await connectSocket(baseUrl, viewer.cookies.voxly_session);
+    const publisherSocket = await connectSocket(baseUrl, tokenFromCookies(publisher.cookies));
+    const viewerSocket = await connectSocket(baseUrl, tokenFromCookies(viewer.cookies));
     sockets.push(publisherSocket, viewerSocket);
     await Promise.all([joinVoice(publisherSocket, "lobby"), joinVoice(viewerSocket, "lobby")]);
     await emitWithAck(publisherSocket, "voice:setMediaState", { roomId: "lobby", media: { screen: true } });
@@ -456,9 +457,9 @@ describe("Voxly realtime MVP", () => {
     const publisher = await acceptInvite(app, owner.cookies, "Publisher");
     const firstViewer = await acceptInvite(app, owner.cookies, "First viewer");
     const secondViewer = await acceptInvite(app, owner.cookies, "Second viewer");
-    const publisherSocket = await connectSocket(baseUrl, publisher.cookies.voxly_session);
-    const firstViewerSocket = await connectSocket(baseUrl, firstViewer.cookies.voxly_session);
-    const secondViewerSocket = await connectSocket(baseUrl, secondViewer.cookies.voxly_session);
+    const publisherSocket = await connectSocket(baseUrl, tokenFromCookies(publisher.cookies));
+    const firstViewerSocket = await connectSocket(baseUrl, tokenFromCookies(firstViewer.cookies));
+    const secondViewerSocket = await connectSocket(baseUrl, tokenFromCookies(secondViewer.cookies));
     sockets.push(publisherSocket, firstViewerSocket, secondViewerSocket);
 
     await Promise.all([
@@ -509,7 +510,7 @@ describe("Voxly realtime MVP", () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");
 
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(memberSocket);
     await joinVoice(memberSocket, "lobby");
     await emitWithAck(memberSocket, "voice:snapshot", "lobby");
@@ -565,8 +566,8 @@ describe("Voxly realtime MVP", () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Viewer");
 
-    const observerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const observerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(observerSocket, memberSocket);
 
     await joinVoice(memberSocket, "lobby");
@@ -590,7 +591,7 @@ describe("Voxly realtime MVP", () => {
   it("enforces persistent owner mute while keeping owner deafen independent", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Moderated");
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(memberSocket);
 
     const moderated = await app.server.inject({
@@ -642,9 +643,9 @@ describe("Voxly realtime MVP", () => {
     const receiver = await acceptInvite(app, owner.cookies, "Receiver");
     const outsider = await acceptInvite(app, owner.cookies, "Outsider");
 
-    const senderSocket = await connectSocket(baseUrl, sender.cookies.voxly_session);
-    const receiverSocket = await connectSocket(baseUrl, receiver.cookies.voxly_session);
-    const outsiderSocket = await connectSocket(baseUrl, outsider.cookies.voxly_session);
+    const senderSocket = await connectSocket(baseUrl, tokenFromCookies(sender.cookies));
+    const receiverSocket = await connectSocket(baseUrl, tokenFromCookies(receiver.cookies));
+    const outsiderSocket = await connectSocket(baseUrl, tokenFromCookies(outsider.cookies));
     sockets.push(senderSocket, receiverSocket, outsiderSocket);
 
     await Promise.all([joinVoice(senderSocket, "lobby"), joinVoice(receiverSocket, "lobby")]);
@@ -705,8 +706,8 @@ describe("Voxly realtime MVP", () => {
       payload: { inviteToken: inviteResponse.json().invite.token }
     });
 
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
-    const outsiderSocket = await connectSocket(baseUrl, outsider.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
+    const outsiderSocket = await connectSocket(baseUrl, tokenFromCookies(outsider.cookies));
     sockets.push(memberSocket, outsiderSocket);
 
     await joinVoice(memberSocket, "lobby");
@@ -740,7 +741,7 @@ describe("Voxly realtime MVP", () => {
   it("joins an existing user's live sockets to a newly accepted server", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Aylin");
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(memberSocket);
     const serverResponse = await app.server.inject({
       method: "POST",
@@ -779,8 +780,8 @@ describe("Voxly realtime MVP", () => {
   it("removes a member from voice immediately when an owner disconnects or bans them", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Deniz");
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(ownerSocket, memberSocket);
 
     await Promise.all([joinVoice(ownerSocket, "lobby"), joinVoice(memberSocket, "lobby")]);
@@ -847,8 +848,8 @@ describe("Voxly realtime MVP", () => {
       payload: { inviteToken: inviteResponse.json().invite.token }
     });
 
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(ownerSocket, memberSocket);
 
     // The member is talking in the default server, and holds no voice
@@ -878,14 +879,14 @@ describe("Voxly realtime MVP", () => {
 
   it("stops kicked and banned members from receiving future text-room messages", async () => {
     const owner = await bootstrapOwner(app);
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     ownerSocket.emit("room:join", "general");
     await waitForSocketRoom(app, ownerSocket, "room:general");
 
     for (const action of ["kick", "ban"] as const) {
       const member = await acceptInvite(app, owner.cookies, `${action} target`);
-      const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+      const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
       sockets.push(memberSocket);
       memberSocket.emit("room:join", "general");
       await waitForSocketRoom(app, memberSocket, "room:general");
@@ -915,7 +916,7 @@ describe("Voxly realtime MVP", () => {
   it("notifies server members about messages in rooms they have not opened", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Unread listener");
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(memberSocket);
 
     const messagePromise = onceEvent<{ roomId: string; body: string }>(memberSocket, "message:new");
@@ -937,7 +938,7 @@ describe("Voxly realtime MVP", () => {
   it("publishes embed suppression to everyone viewing the text room", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Embed author");
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(memberSocket);
     memberSocket.emit("room:join", "general");
     await waitForSocketRoom(app, memberSocket, "room:general");
@@ -963,7 +964,7 @@ describe("Voxly realtime MVP", () => {
   it("invalidates member directories after an offline member is unbanned", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Offline unban");
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
 
     const bannedChanged = onceEvent<{ serverId: string }>(ownerSocket, "server:directoryChanged");
@@ -989,7 +990,7 @@ describe("Voxly realtime MVP", () => {
     // A member parked by their own idle timer is not the one making the
     // request, so the mute cannot be left to the client to apply.
     const owner = await bootstrapOwner(app);
-    const socket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const socket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(socket);
     const afkRoom = app.sqlite
       .prepare("select id from rooms where server_id = ? and is_afk = 1")
@@ -1005,7 +1006,7 @@ describe("Voxly realtime MVP", () => {
   it("moves a member the owner sends to another voice channel", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Deniz");
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(memberSocket);
     await joinVoice(memberSocket, "lobby");
 
@@ -1048,7 +1049,7 @@ describe("Voxly realtime MVP", () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Deniz");
     const other = await acceptInvite(app, owner.cookies, "Ada");
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(memberSocket);
     await joinVoice(memberSocket, "lobby");
 
@@ -1065,7 +1066,7 @@ describe("Voxly realtime MVP", () => {
   it("refuses a move into another server's room", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Deniz");
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(memberSocket);
     await joinVoice(memberSocket, "lobby");
     const otherServer = await app.server.inject({
@@ -1096,7 +1097,7 @@ describe("Voxly realtime MVP", () => {
     // Regression: entry mute alone was not enough. `voice:setMediaState` let the
     // member turn the microphone straight back on, so the room muted nobody.
     const owner = await bootstrapOwner(app);
-    const socket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const socket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(socket);
     const afkRoom = app.sqlite
       .prepare("select id from rooms where server_id = ? and is_afk = 1")
@@ -1115,7 +1116,7 @@ describe("Voxly realtime MVP", () => {
   it("restores the microphone once the member leaves the AFK room", async () => {
     // The mute belongs to the room, so leaving is how you get it back.
     const owner = await bootstrapOwner(app);
-    const socket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const socket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(socket);
     const afkRoom = app.sqlite
       .prepare("select id from rooms where server_id = ? and is_afk = 1")
@@ -1130,7 +1131,7 @@ describe("Voxly realtime MVP", () => {
 
   it("leaves an ordinary voice room's microphone request alone", async () => {
     const owner = await bootstrapOwner(app);
-    const socket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const socket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(socket);
 
     const joined = await joinVoice(socket, "lobby", { ...defaultJoinMedia, mic: true });
@@ -1141,8 +1142,8 @@ describe("Voxly realtime MVP", () => {
   it("publishes an away status to the server without dropping the member offline", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Deniz");
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(ownerSocket, memberSocket);
     await waitForSocketRoom(app, ownerSocket, "server:the-basement");
 
@@ -1159,9 +1160,9 @@ describe("Voxly realtime MVP", () => {
     // Two tabs, one idle: the person is at the keyboard.
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Deniz");
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const firstTab = await connectSocket(baseUrl, member.cookies.voxly_session);
-    const secondTab = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const firstTab = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
+    const secondTab = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(ownerSocket, firstTab, secondTab);
     await waitForSocketRoom(app, ownerSocket, "server:the-basement");
 
@@ -1181,7 +1182,7 @@ describe("Voxly realtime MVP", () => {
   it("tells existing members about a new channel instead of waiting for their next reload", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(memberSocket);
     await waitForSocketRoom(app, memberSocket, "server:the-basement");
 
@@ -1201,8 +1202,8 @@ describe("Voxly realtime MVP", () => {
   it("forces members out and invalidates room lists when an active voice channel is deleted", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(ownerSocket, memberSocket);
     await joinVoice(memberSocket, "lobby");
     await waitForSocketRoom(app, memberSocket, "voice:lobby");
@@ -1253,8 +1254,8 @@ describe("Voxly realtime MVP", () => {
     const voiceRoom = rooms.find((room) => room.kind === "voice");
     assert.ok(voiceRoom);
 
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(ownerSocket, memberSocket);
     await joinVoice(memberSocket, voiceRoom.id);
     await waitForSocketRoom(app, memberSocket, `voice:${voiceRoom.id}`);
@@ -1284,7 +1285,7 @@ describe("Voxly realtime MVP", () => {
 
     // Still serving: a valid session connects and the HTTP side answers.
     const owner = await bootstrapOwner(app);
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     const health = await app.server.inject({ method: "GET", url: "/api/health" });
     assert.equal(health.statusCode, 200);
@@ -1292,7 +1293,7 @@ describe("Voxly realtime MVP", () => {
 
   it("survives malformed socket payloads on every event", async () => {
     const owner = await bootstrapOwner(app);
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
 
     // Each of these previously threw inside the listener — an unvalidated payload
@@ -1324,7 +1325,7 @@ describe("Voxly realtime MVP", () => {
   it("terminates a live socket when the member is banned globally", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Mallory");
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(memberSocket);
 
     const voiceRoom = { id: "lobby" };
@@ -1351,13 +1352,13 @@ describe("Voxly realtime MVP", () => {
     assert.equal(app.io.sockets.sockets.get(memberSocket.id ?? ""), undefined);
 
     // The revoked session cannot be used to reconnect either.
-    await assert.rejects(connectSocket(baseUrl, member.cookies.voxly_session), /connect_error/);
+    await assert.rejects(connectSocket(baseUrl, tokenFromCookies(member.cookies)), /connect_error/);
   });
 
   it("blocks realtime access for a globally banned member that is still connected", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Mallory");
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(memberSocket);
 
     // Ban directly in the database so the socket is not evicted — this isolates
@@ -1405,7 +1406,7 @@ describe("music bot presence", () => {
     });
     const [botSession] = exchange.json().sessions as Array<{ serverId: string; userId: string; token: string }>;
 
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     const onlinePromise = onceEvent<{ serverId: string; user: { userId: string; nickname: string; isBot?: boolean } }>(
       ownerSocket,
       "presence:serverOnline"
@@ -1431,7 +1432,7 @@ describe("music bot presence", () => {
 
     const botSocket = await connectSocket(baseUrl, botSession.token);
     const onlinePromise = onceEvent<{ user: { userId: string; isBot?: boolean } }>(botSocket, "presence:serverOnline");
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(botSocket, ownerSocket);
 
     const online = await onlinePromise;
@@ -1448,7 +1449,7 @@ describe("music bot presence", () => {
     });
     const [botSession] = exchange.json().sessions as Array<{ token: string }>;
     const botSocket = await connectSocket(baseUrl, botSession.token);
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(botSocket, ownerSocket);
 
     const createdResync = onceEvent(botSocket, "bot:resync");
@@ -1626,7 +1627,7 @@ describe("music bot control", () => {
     const owner = await bootstrapOwner(app);
     const track = { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 };
     const { received } = await connectBot({ ok: true, kind: "track", track });
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
@@ -1645,7 +1646,7 @@ describe("music bot control", () => {
     // answer would leave the member watching a room where nothing happens.
     const owner = await bootstrapOwner(app);
     await connectBot({ ok: false, error: "track_unavailable" });
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
@@ -1671,7 +1672,7 @@ describe("music bot control", () => {
       }
     ];
     const { received } = await connectBot({ ok: true, kind: "results", results });
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
@@ -1691,7 +1692,7 @@ describe("music bot control", () => {
   it("forwards the commands that carry no link", async () => {
     const owner = await bootstrapOwner(app);
     const { received } = await connectBot();
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
@@ -1714,7 +1715,7 @@ describe("music bot control", () => {
     // is a request the bot succeeds at without moving, not a refusal here.
     const owner = await bootstrapOwner(app);
     const { received } = await connectBot();
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
@@ -1740,7 +1741,7 @@ describe("music bot control", () => {
   it("refuses a member who is in the server but not in that voice room", async () => {
     const owner = await bootstrapOwner(app);
     const { botSocket } = await connectBot();
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
 
     const silence = expectNoEvent(botSocket, "music:command");
@@ -1756,7 +1757,7 @@ describe("music bot control", () => {
   it("refuses the AFK room, where nothing the bot sent could be wanted", async () => {
     const owner = await bootstrapOwner(app);
     const { botSocket } = await connectBot();
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     const afkRoomId = "afk-the-basement";
     await joinVoice(ownerSocket, afkRoomId);
@@ -1773,7 +1774,7 @@ describe("music bot control", () => {
 
   it("says the bot is offline rather than dropping the request silently", async () => {
     const owner = await bootstrapOwner(app);
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
@@ -1788,7 +1789,7 @@ describe("music bot control", () => {
   it("refuses a command it does not know, a link that is not a string, and a room that is not voice", async () => {
     const owner = await bootstrapOwner(app);
     await connectBot();
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
@@ -1838,8 +1839,8 @@ describe("music bot control", () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ece");
     const { botSocket } = await connectBot();
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(ownerSocket, memberSocket);
     await joinVoice(ownerSocket, "lobby");
     await joinVoice(memberSocket, "lobby");
@@ -1882,7 +1883,7 @@ describe("music bot control", () => {
   it("refuses a Queue from a member who is not the Music bot", async () => {
     const owner = await bootstrapOwner(app);
     await connectBot();
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
@@ -1901,7 +1902,7 @@ describe("music bot control", () => {
     // narrating a Set it is no longer part of.
     const owner = await bootstrapOwner(app);
     const { botSocket } = await connectBot();
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
@@ -1918,7 +1919,7 @@ describe("music bot control", () => {
   it("refuses a Queue that is not the shape everyone agreed on", async () => {
     const owner = await bootstrapOwner(app);
     const { botSocket } = await connectBot();
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
     await joinVoice(botSocket, "lobby");
@@ -2003,7 +2004,7 @@ describe("music bot control", () => {
     // it. What it does check is that the shape is one everybody agreed on.
     const owner = await bootstrapOwner(app);
     const { botSocket } = await connectBot();
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
     await joinVoice(botSocket, "lobby");
@@ -2039,7 +2040,7 @@ describe("music bot control", () => {
     // keeps, so a table added later is covered without anybody remembering to.
     const owner = await bootstrapOwner(app);
     const { botSocket } = await connectBot();
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
     await joinVoice(botSocket, "lobby");
@@ -2083,8 +2084,8 @@ describe("music bot control", () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ece");
     const { botSocket } = await connectBot();
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const outsiderSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const outsiderSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(ownerSocket, outsiderSocket);
     await joinVoice(ownerSocket, "lobby");
     await joinVoice(botSocket, "lobby");
@@ -2102,8 +2103,8 @@ describe("music bot control", () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ece");
     await connectBot();
-    const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
     sockets.push(ownerSocket, memberSocket);
     await joinVoice(ownerSocket, "lobby");
     await joinVoice(memberSocket, "lobby");
@@ -2173,10 +2174,6 @@ const defaultJoinMedia: VoiceMediaState = {
 
 function joinVoice(socket: Socket, roomId: string, media: VoiceMediaState = defaultJoinMedia): Promise<VoiceJoinAck> {
   return emitWithAck<VoiceJoinAck>(socket, "voice:join", { roomId, media });
-}
-
-function cookieJar(response: { cookies: Array<{ name: string; value: string }> }) {
-  return Object.fromEntries(response.cookies.map((cookie) => [cookie.name, cookie.value]));
 }
 
 function connectSocket(baseUrl: string, sessionToken: string): Promise<Socket> {

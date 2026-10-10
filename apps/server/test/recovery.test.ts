@@ -1,3 +1,4 @@
+import { cookieJar, sessionToken as tokenFromCookies } from "./sessionCookies.js";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
@@ -54,7 +55,7 @@ describe("recovering an account", () => {
 
     assert.equal(recovered.statusCode, 200);
     assert.equal(recovered.json().user.nickname, "Member");
-    assert.ok(cookieJar(recovered).voxly_session);
+    assert.ok(tokenFromCookies(cookieJar(recovered)));
   });
 
   it("asks for the code and nothing else", async () => {
@@ -355,8 +356,4 @@ function linkAnotherDevice(app: VoxlyApp, userId: string) {
 
 function redeem(app: VoxlyApp, code: string) {
   return app.server.inject({ method: "POST", url: "/api/recovery/redeem", payload: { code } });
-}
-
-function cookieJar(response: { cookies: Array<{ name: string; value: string }> }) {
-  return Object.fromEntries(response.cookies.map((cookie) => [cookie.name, cookie.value]));
 }

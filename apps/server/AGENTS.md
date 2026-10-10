@@ -100,13 +100,18 @@ web serving, and owner recovery CLIs.
   back by the same authentication, so the two remain one model (ADR-0003). Add
   a rule about sessions here rather than beside the route that noticed it.
   Authentication outcomes stay per call: never pass a failure through module-
-  global state or require a caller to read it in a second step. The HTTP and
-  Socket.IO adapters record reuse inside this module; the HTTP adapter also
-  clears the cookie before returning `session_reused` to its caller.
-  Time alone is not reuse evidence: a retired token may revoke a session only
-  after its replacement has returned on a later request. If that delivery was
-  never confirmed, HTTP retries rotation and Socket.IO admits the Device
-  without silently weakening the later confirmed-reuse check (ADR-0016).
+  global state or require a caller to read it in a second step. All transports
+  select the newest represented Session by SQLite insertion order, then its
+  current credential; never use cookie-header order or fall back to an older
+  Account after that Session is denied. Secure cookie names take precedence.
+  Browser cookies have immutable token-specific names; read both legacy names
+  and upgrade successful HTTP authentication. Clean only obsolete names the
+  request presented, never an unseen successor. Superseded credentials must
+  not be reissued during renewal. A confirmed retired credential after grace
+  is rejected with `session_reused` and audited once as `session.stale_rejected`;
+  do not revoke its successor or clear cookies on this rejection (ADR-0031).
+  If replacement delivery was never confirmed, HTTP retries rotation and
+  Socket.IO admits the Device under ADR-0016's recovery rule.
   `app.ts` registers `@fastify/cookie` and composes the routes; it decides
   nothing about sessions.
 - `src/members.ts` owns membership lookups, the permission guards routes call,
@@ -198,11 +203,15 @@ queries across endpoints.
 
 - Invite, session, access-claim, and owner-claim tokens are stored only as
   hashes. Do not log or persist raw values.
-- A browser session lasts 180 days and is renewed on use once it is within 30
-  days of expiring. Renewal writes the row and the cookie together, so an
-  answer already handed to a caller can never disagree with the stored expiry.
-  A caller ending its session authenticates without renewing; setting a fresh
-  cookie on the way out would race the one the response clears.
+- A browser Session lasts 180 days, renewed on the 15-minute activity touch
+  or within seven days of expiry. Renew the row, but write a cookie only for a
+  current browser credential or its recovery replacement. Logout does not
+  renew; it revokes accepted Sessions represented by the browser's credentials
+  and clears presented names. A rejected stale credential cannot authorize
+  revocation. Other Devices remain signed in.
+- Diagnostic audit events may include a nullable Session id. Record safe reason
+  codes and request identifiers, never token values or hashes. The diagnostic
+  CLI opens SQLite read-only without migrations and uses explicit projections.
 - Invite expiry and capacity are independent nullable limits. Count one use per
   account in `invite_uses`; preserve the legacy first-use columns as metadata.
 - When supplied, invite expiry accepts only 30, 60, 360, 720, 1440, 10080, or

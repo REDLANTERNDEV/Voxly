@@ -23,11 +23,12 @@ export function audit(
   actorUserId: string | null,
   action: string,
   targetUserId: string | null,
-  serverId: string = defaultServerId
+  serverId: string = defaultServerId,
+  sessionId: string | null = null
 ) {
   run(
     database.sqlite,
-    "insert into audit_events (id, actor_user_id, action, target_user_id, server_id, created_at) values (?, ?, ?, ?, ?, ?)",
-    [crypto.randomUUID(), actorUserId, action, targetUserId, serverId, new Date().toISOString()]
+    "insert into audit_events (id, actor_user_id, action, target_user_id, server_id, created_at, session_id) values (?, ?, ?, ?, ?, ?, ?)",
+    [crypto.randomUUID(), actorUserId, action, targetUserId, serverId, new Date().toISOString(), sessionId]
   );
 }

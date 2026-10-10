@@ -4,7 +4,7 @@ import { z } from "zod";
 import { audit } from "./audit.js";
 import { createConfirmationNumber } from "./auth/linkCode.js";
 import { deviceLabel } from "./auth/deviceLabel.js";
-import { createSession, requireUser, setSessionCookie } from "./auth/sessions.js";
+import { clearSessionCookie, createSession, requireUser, setSessionCookie } from "./auth/sessions.js";
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import { one, run } from "./db/database.js";
 import { authenticatedWriteLimit, unauthenticatedWriteLimit, type RouteContext } from "./http.js";
@@ -332,6 +332,7 @@ export function registerDesktopAuthorizationRoutes({ fastify, database, secureCo
       audit(database, user.id, "device.linked", user.id);
       database.sqlite.exec("commit");
       database.save();
+      clearSessionCookie(reply, request.cookies);
       setSessionCookie(reply, token, secureCookies);
       return reply.send({ status: "approved", user: publicUser({ ...user, bannedAt: user.banned_at }) });
     } catch (cause) {

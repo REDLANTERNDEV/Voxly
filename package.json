@@ -23,7 +23,8 @@
     "desktop:build": "npm run bundle -w @voxly/desktop -- -- --locked",
     "test:voice:browser": "node scripts/voice-lab/run.mjs",
     "test:chat:browser": "node scripts/chat-interactions/check.mjs",
-    "test:voice:metrics": "node --test scripts/voice-lab/audio.test.mjs"
+    "test:voice:metrics": "node --test scripts/voice-lab/audio.test.mjs",
+    "test:session:browser": "node scripts/session-reliability/check.mjs"
   },
   "engines": {
     "node": ">=22.13"

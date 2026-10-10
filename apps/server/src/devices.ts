@@ -75,7 +75,7 @@ export function registerDeviceRoutes({ fastify, database, realtime, secureCookie
       return reply.code(404).send({ error: "device_not_found" });
     }
 
-    audit(database, user.id, "device.revoked", user.id);
+    audit(database, user.id, "device.revoked", user.id, undefined, parsed.data.sessionId);
     database.save();
     // Revocation is only honoured when a request is authenticated again, so a
     // live socket would otherwise keep working on a session that is already
