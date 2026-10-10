@@ -7,7 +7,10 @@
   </head>
   <body class="is-loading">
     <section id="startup-loading" class="startup-loading" aria-labelledby="loading-title">
-      <img src="/voxly-icon.png" alt="" width="72" height="72" />
+      <div class="startup-indicator" aria-hidden="true">
+        <span class="startup-spinner"></span>
+        <img src="/voxly-icon.png" alt="" width="48" height="48" />
+      </div>
       <h1 id="loading-title">Voxly</h1>
       <p id="loading-status" role="status" aria-live="polite">Opening Voxly…</p>
       <p id="loading-origin"></p>

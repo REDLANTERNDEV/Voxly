@@ -565,43 +565,57 @@ async function start() {
       void receiveDesktopLink().catch((error: unknown) => status(errorKey(error)));
     });
     state = await invoke<Snapshot>("shell_state");
-    updateState = await invoke<UpdateSnapshot>("shell_update_state");
     language = state.preferences.language;
     renderTranslations();
     renderInstallations();
-    await listen<Snapshot>("shell:ready", (event) => {
-      state = event.payload; receivedReady = event.payload; loadingTarget = null; booting = false; renderInstallations();
-    });
-    await listen("shell:show-home", () => { booting = false; loadingTarget = null; renderLoading(); });
     let trayUpdateRequested = false;
+    let updateRevision = 0;
     const showUpdater = () => {
       trayUpdateRequested = true;
       booting = false; loadingTarget = null; renderLoading();
       element("updates-heading").scrollIntoView({ block: "center" });
       element("update-check").focus();
     };
-    await listen("shell:check-update", () => {
-      showUpdater();
-      void invoke("take_tray_update_check");
-    });
-    await listen<Installation>("shell:load-failed", (event) => {
-      loadingTarget = null; booting = false;
-      failedConnection = event.payload;
-      element("status").textContent = `${t("connectionFailed")} ${event.payload.origin}. ${t("window_failed")}`;
-      renderInstallations();
-      void invoke<Snapshot>("shell_state").then((next) => { state = next; renderInstallations(); }).catch((error) => status(errorKey(error)));
-    });
-    await listen("shell:preferences", () => {
-      void invoke<Snapshot>("shell_state").then((next) => { state = next; renderInstallations(); }).catch((error) => status(errorKey(error)));
-    });
-    await listen("shell:quit-requested", () => void quit());
-    await listen<UpdateSnapshot>("shell:updates", (event) => { updateState = event.payload; renderUpdates(); });
-    await listen("shell:review-update", () => {
-      void invoke<UpdateSnapshot>("shell_update_state").then((next) => {
-        updateState = next; renderUpdates();
-        element("updates-heading").scrollIntoView({ block: "center" });
-        if (next.phase === "ready" && !confirmPending) element("update-install").click();
-      }).catch((error: unknown) => status(errorKey(error)));
+    await Promise.all([
+      listen<Snapshot>("shell:ready", (event) => {
+        state = event.payload; receivedReady = event.payload; loadingTarget = null; booting = false; renderInstallations();
+      }),
+      listen("shell:show-home", () => { booting = false; loadingTarget = null; renderLoading(); }),
+      listen("shell:check-update", () => {
+        showUpdater();
+        void invoke("take_tray_update_check");
+      }),
+      listen<Installation>("shell:load-failed", (event) => {
+        loadingTarget = null; booting = false;
+        failedConnection = event.payload;
+        element("status").textContent = `${t("connectionFailed")} ${event.payload.origin}. ${t("window_failed")}`;
+        renderInstallations();
+        void invoke<Snapshot>("shell_state").then((next) => { state = next; renderInstallations(); }).catch((error) => status(errorKey(error)));
+      }),
+      listen("shell:preferences", () => {
+        void invoke<Snapshot>("shell_state").then((next) => { state = next; renderInstallations(); }).catch((error) => status(errorKey(error)));
+      }),
+      listen("shell:quit-requested", () => void quit()),
+      listen<UpdateSnapshot>("shell:updates", (event) => { updateRevision++; updateState = event.payload; renderUpdates(); }),
+      listen("shell:review-update", () => {
+        updateRevision++;
+        void invoke<UpdateSnapshot>("shell_update_state").then((next) => {
+          updateState = next; renderUpdates();
+          element("updates-heading").scrollIntoView({ block: "center" });
+          if (next.phase === "ready" && !confirmPending) element("update-install").click();
+        }).catch((error: unknown) => status(errorKey(error)));
+      })
+    ]);
+    // Updater presentation is optional and must not hold up Installation startup.
+    // Subscribe first; a newer published state wins over this initial read.
+    const updateReadRevision = updateRevision;
+    void invoke<UpdateSnapshot>("shell_update_state").then((next) => {
+      if (updateRevision !== updateReadRevision) return;
+      updateState = next; renderUpdates();
+    }).catch(() => {
+      if (updateRevision !== updateReadRevision) return;
+      updateState = { currentVersion: state!.shellVersion, phase: "error", version: null, downloaded: 0, total: null, error: "update_unavailable" };
+      renderUpdates();
     });
     const handoffReceived = await receiveDesktopLink();
     const trayCheckRequested = await invoke<boolean>("take_tray_update_check");
@@ -610,9 +624,6 @@ async function start() {
     if (preferred) await connect(preferred);
     booting = false; renderLoading();
     refreshReport();
-    // Cover a native background transition between the initial read and subscription.
-    updateState = await invoke<UpdateSnapshot>("shell_update_state");
-    renderUpdates();
     if (!state.active && !state.preferences.trayAcknowledged) {
       const dialog = element<HTMLDialogElement>("tray-dialog");
       dialog.addEventListener("close", () => {

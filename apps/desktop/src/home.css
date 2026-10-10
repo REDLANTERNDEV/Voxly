@@ -87,3 +87,7 @@ body.is-loading .startup-loading { display: flex; flex-direction: column; align-
 .startup-loading p { margin: 0; color: #aeb7c5; }
 #loading-origin { font-size: 13px; overflow-wrap: anywhere; max-width: 100%; }
 .startup-loading button { margin-top: 12px; }
+.startup-indicator { display: grid; place-items: center; position: relative; width: 76px; height: 76px; }
+.startup-spinner { animation: startup-spinner-spin 0.9s linear infinite; border: 6px solid #e8edf538; border-right-color: #cbd3dd; border-top-color: #cbd3dd; border-radius: 50%; inset: 0; position: absolute; }
+@keyframes startup-spinner-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .startup-spinner { animation: none; } }

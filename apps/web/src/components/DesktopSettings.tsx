@@ -45,16 +45,19 @@ export function DesktopHomeButton({ t, onOpened }: { t: Translate; onOpened?: ()
 export function DesktopGeneralSettings({ t }: { t: Translate }) {
   const { snapshot, pending, error, save } = useDesktopSettings();
   const labelId = useId();
+  const descriptionId = useId();
   const supported = typeof snapshot?.preferences.quitOnClose === "boolean";
   const enabled = snapshot?.preferences.quitOnClose ?? false;
   return <section className="settings-card">
-    <div className="audio-toggle-control">
-      <span id={labelId}><strong>{t("desktopSettings.quitOnClose")}</strong></span>
-      <button type="button" role="switch" aria-checked={enabled} aria-labelledby={labelId}
+    <div className="desktop-general-toggle">
+      <div className="desktop-general-copy">
+        <strong id={labelId}>{t("desktopSettings.quitOnClose")}</strong>
+        <p id={descriptionId} className="muted small">{t("desktopSettings.quitOnCloseHint")}</p>
+      </div>
+      <button type="button" role="switch" aria-checked={enabled} aria-labelledby={labelId} aria-describedby={descriptionId}
         className={`audio-switch ${enabled ? "is-on" : ""}`} disabled={!supported || pending}
         onClick={() => void save({ kind: "quitOnClose", enabled: !enabled })}><span aria-hidden="true" /></button>
     </div>
-    <p className="muted small">{t("desktopSettings.quitOnCloseHint")}</p>
     {snapshot && !supported ? <p className="muted small">{t("desktopSettings.updateRequired")}</p> : null}
     <Feedback error={error} t={t} />
   </section>;

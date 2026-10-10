@@ -66,3 +66,14 @@ test("startup reveals only ready installation windows, supports cancellation, an
   assert.match(readFileSync("src/main.ts", "utf8"), /take_tray_update_check/);
   assert.doesNotMatch(check, /install_shell_update|confirmed|destroy/);
 });
+
+test("startup includes a decorative circular indicator and honors reduced motion", () => {
+  const html = readFileSync("index.html", "utf8");
+  assert.match(html, /<body class="is-loading">/);
+  assert.match(html, /class="startup-indicator" aria-hidden="true"/);
+  assert.match(html, /class="startup-spinner"/);
+  assert.match(html, /id="loading-status" role="status" aria-live="polite"/);
+  const styles = readFileSync("src/home.css", "utf8");
+  assert.match(styles, /\.startup-spinner\s*\{[^}]*animation: startup-spinner-spin 0\.9s linear infinite/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.startup-spinner\s*\{\s*animation: none/);
+});

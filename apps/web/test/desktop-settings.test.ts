@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "node:test";
 import { desktopSettingsAvailable, desktopKeyboardBinding, desktopMouseBinding, rememberCompletedDesktopAuthentication, type DesktopSettingsBridge } from "../src/lib/desktopSettings.js";
-import { DesktopHomeButton, DesktopMicrophoneSettings, DesktopShortcutSettings } from "../src/components/DesktopSettings.js";
+import { DesktopGeneralSettings, DesktopHomeButton, DesktopMicrophoneSettings, DesktopShortcutSettings } from "../src/components/DesktopSettings.js";
 import { translate } from "../src/lib/i18n.js";
 
 describe("desktop-only settings", () => {
@@ -72,6 +72,22 @@ describe("desktop-only settings", () => {
 });
 
 describe("desktop settings presentation", () => {
+  it("associates the close-window switch with its full translated title and description", () => {
+    for (const language of ["en", "tr"] as const) {
+      const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
+      const html = renderToStaticMarkup(createElement(DesktopGeneralSettings, { t }));
+      const labelId = html.match(/aria-labelledby="([^"]+)"/)?.[1];
+      const descriptionId = html.match(/aria-describedby="([^"]+)"/)?.[1];
+      assert.ok(labelId);
+      assert.ok(descriptionId);
+      assert.ok(html.includes(`id="${labelId}"`));
+      assert.ok(html.includes(`id="${descriptionId}"`));
+      assert.ok(html.includes(t("desktopSettings.quitOnClose")));
+      assert.ok(html.includes(t("desktopSettings.quitOnCloseHint")));
+      assert.match(html, /role="switch" aria-checked="false"/);
+      assert.match(html, /disabled=""/);
+    }
+  });
   it("keeps recording in one button and places audio links inside held-shortcut rows", async () => {
     const { readFileSync } = await import("node:fs");
     const source = readFileSync("src/components/DesktopSettings.tsx", "utf8");

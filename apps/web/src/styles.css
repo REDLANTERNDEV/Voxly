@@ -4563,6 +4563,31 @@ button.reply-quote:focus-visible .reply-quote-body {
   grid-template-columns: 1fr auto;
 }
 
+.desktop-general-toggle {
+  align-items: start;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.desktop-general-copy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.desktop-general-copy > strong {
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.desktop-general-copy > p {
+  line-height: 1.5;
+  margin: 0;
+}
+
 .audio-toggle-control > span:first-child {
   color: var(--muted);
   font-size: 12px;
