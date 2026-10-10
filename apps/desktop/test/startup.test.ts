@@ -20,7 +20,7 @@ async function flush() { await new Promise<void>((resolve) => setImmediate(resol
 
 function boot(options: { updates?: () => Promise<unknown>; registration?: (event: string) => Promise<unknown>; connection?: Promise<unknown>; handoff?: boolean; tray?: boolean } = {}) {
   const preferred = { id: "preferred", origin: "https://chat.example" };
-  const snapshot = { active: null, shellVersion: "0.1.1", preferences: {
+  const snapshot = { active: null, shellVersion: "0.1.2", preferences: {
     language: "en", installations: [preferred], defaultInstallationId: preferred.id,
     openOnStartup: true, trayAcknowledged: true
   } };
