@@ -166,7 +166,9 @@ pub(super) async fn desktop_settings(
         }
         Operation::Recording { enabled } => {
             shell.recording_shortcut.store(enabled, Ordering::Release);
-            if enabled { super::voice::release_shortcut_holds(&app); }
+            if enabled {
+                super::voice::release_shortcut_holds(&app);
+            }
             return Ok(snapshot(&inner));
         }
         Operation::Home {} => {

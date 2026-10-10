@@ -178,7 +178,11 @@ pub enum Binding {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ModifierKey { Control, Alt, Shift }
+pub enum ModifierKey {
+    Control,
+    Alt,
+    Shift,
+}
 
 pub fn parse_binding(binding: &str) -> Result<Binding, &'static str> {
     match binding {
@@ -270,9 +274,14 @@ impl Registry for NativeRegistry<'_> {
             }
             Binding::Modifier(modifier) => {
                 #[cfg(target_os = "windows")]
-                { crate::mouse_hook::register_modifier(self.app, self.action, modifier) }
+                {
+                    crate::mouse_hook::register_modifier(self.app, self.action, modifier)
+                }
                 #[cfg(not(target_os = "windows"))]
-                { let _ = modifier; Err("shortcut_unavailable") }
+                {
+                    let _ = modifier;
+                    Err("shortcut_unavailable")
+                }
             }
         };
         result?;
@@ -301,27 +310,51 @@ impl Registry for NativeRegistry<'_> {
 /** Both physical keys of each modifier form one hold, independent of other shortcuts. */
 #[cfg(any(test, target_os = "windows"))]
 #[derive(Default)]
-pub struct ModifierShortcutGates { gates: Vec<(Action, ModifierKey, [bool; 2])> }
+pub struct ModifierShortcutGates {
+    gates: Vec<(Action, ModifierKey, [bool; 2])>,
+}
 #[cfg(any(test, target_os = "windows"))]
 impl ModifierShortcutGates {
     pub fn set(&mut self, action: Action, modifier: Option<ModifierKey>) -> Option<(Action, bool)> {
-        let release = self.gates.iter().find(|(registered, _, down)| *registered == action && down.iter().any(|pressed| *pressed))
+        let release = self
+            .gates
+            .iter()
+            .find(|(registered, _, down)| {
+                *registered == action && down.iter().any(|pressed| *pressed)
+            })
             .map(|(registered, _, _)| (*registered, false));
-        self.gates.retain(|(registered, _, _)| *registered != action);
-        if let Some(modifier) = modifier { self.gates.push((action, modifier, [false; 2])); }
+        self.gates
+            .retain(|(registered, _, _)| *registered != action);
+        if let Some(modifier) = modifier {
+            self.gates.push((action, modifier, [false; 2]));
+        }
         release
     }
-    pub fn handle(&mut self, modifier: ModifierKey, right: bool, pressed: bool) -> Option<(Action, bool)> {
-        let (action, _, down) = self.gates.iter_mut().find(|(_, registered, _)| *registered == modifier)?;
+    pub fn handle(
+        &mut self,
+        modifier: ModifierKey,
+        right: bool,
+        pressed: bool,
+    ) -> Option<(Action, bool)> {
+        let (action, _, down) = self
+            .gates
+            .iter_mut()
+            .find(|(_, registered, _)| *registered == modifier)?;
         let before = down.iter().any(|value| *value);
         down[usize::from(right)] = pressed;
         let after = down.iter().any(|value| *value);
         (before != after).then_some((*action, after))
     }
     pub fn release_all(&mut self) -> Vec<(Action, bool)> {
-        let releases = self.gates.iter().filter(|(_, _, down)| down.iter().any(|pressed| *pressed))
-            .map(|(action, _, _)| (*action, false)).collect();
-        for (_, _, down) in &mut self.gates { *down = [false; 2]; }
+        let releases = self
+            .gates
+            .iter()
+            .filter(|(_, _, down)| down.iter().any(|pressed| *pressed))
+            .map(|(action, _, _)| (*action, false))
+            .collect();
+        for (_, _, down) in &mut self.gates {
+            *down = [false; 2];
+        }
         releases
     }
 }
@@ -410,23 +443,47 @@ mod tests {
     #[test]
     fn modifier_only_gates_observe_both_keys_repeats_and_rebinding() {
         let mut gates = ModifierShortcutGates::default();
-        assert_eq!(gates.set(Action::PushToTalk, Some(ModifierKey::Control)), None);
-        assert_eq!(gates.handle(ModifierKey::Control, false, true), Some((Action::PushToTalk, true)));
+        assert_eq!(
+            gates.set(Action::PushToTalk, Some(ModifierKey::Control)),
+            None
+        );
+        assert_eq!(
+            gates.handle(ModifierKey::Control, false, true),
+            Some((Action::PushToTalk, true))
+        );
         assert_eq!(gates.handle(ModifierKey::Control, false, true), None);
         assert_eq!(gates.handle(ModifierKey::Control, true, true), None);
         assert_eq!(gates.handle(ModifierKey::Control, false, false), None);
-        assert_eq!(gates.handle(ModifierKey::Control, true, false), Some((Action::PushToTalk, false)));
+        assert_eq!(
+            gates.handle(ModifierKey::Control, true, false),
+            Some((Action::PushToTalk, false))
+        );
         assert_eq!(gates.set(Action::PushToTalk, Some(ModifierKey::Alt)), None);
-        assert_eq!(gates.handle(ModifierKey::Alt, false, true), Some((Action::PushToTalk, true)));
-        assert_eq!(gates.set(Action::PushToTalk, Some(ModifierKey::Shift)), Some((Action::PushToTalk, false)));
+        assert_eq!(
+            gates.handle(ModifierKey::Alt, false, true),
+            Some((Action::PushToTalk, true))
+        );
+        assert_eq!(
+            gates.set(Action::PushToTalk, Some(ModifierKey::Shift)),
+            Some((Action::PushToTalk, false))
+        );
         assert_eq!(gates.handle(ModifierKey::Alt, false, false), None);
-        assert_eq!(gates.handle(ModifierKey::Shift, true, true), Some((Action::PushToTalk, true)));
-        assert_eq!(gates.set(Action::PushToTalk, None), Some((Action::PushToTalk, false)));
+        assert_eq!(
+            gates.handle(ModifierKey::Shift, true, true),
+            Some((Action::PushToTalk, true))
+        );
+        assert_eq!(
+            gates.set(Action::PushToTalk, None),
+            Some((Action::PushToTalk, false))
+        );
         assert_eq!(gates.handle(ModifierKey::Shift, true, false), None);
         for binding in ["Control", "Alt", "Shift"] {
             assert!(matches!(parse_binding(binding), Ok(Binding::Modifier(_))));
             assert!(distinct_bindings(Some(binding), Some("Control+KeyM")).is_ok());
-            assert_eq!(distinct_bindings(Some(binding), Some(binding)), Err("shortcut_duplicate"));
+            assert_eq!(
+                distinct_bindings(Some(binding), Some(binding)),
+                Err("shortcut_duplicate")
+            );
         }
         assert!(parse_binding("Super").is_err());
     }
@@ -434,17 +491,31 @@ mod tests {
     #[test]
     fn modifier_holds_are_independent_and_shutdown_releases_every_action() {
         let mut gates = ModifierShortcutGates::default();
-        for (action, modifier) in [(Action::PushToTalk, ModifierKey::Control), (Action::PushToMute, ModifierKey::Alt), (Action::Mute, ModifierKey::Shift)] {
+        for (action, modifier) in [
+            (Action::PushToTalk, ModifierKey::Control),
+            (Action::PushToMute, ModifierKey::Alt),
+            (Action::Mute, ModifierKey::Shift),
+        ] {
             gates.set(action, Some(modifier));
             assert_eq!(gates.handle(modifier, false, true), Some((action, true)));
             assert_eq!(gates.handle(modifier, true, true), None);
             assert_eq!(gates.handle(modifier, false, false), None);
             assert_eq!(gates.handle(modifier, true, true), None);
         }
-        assert_eq!(gates.release_all(), vec![(Action::PushToTalk, false), (Action::PushToMute, false), (Action::Mute, false)]);
+        assert_eq!(
+            gates.release_all(),
+            vec![
+                (Action::PushToTalk, false),
+                (Action::PushToMute, false),
+                (Action::Mute, false)
+            ]
+        );
         assert!(gates.release_all().is_empty());
         assert_eq!(gates.handle(ModifierKey::Alt, true, false), None);
-        assert_eq!(gates.handle(ModifierKey::Shift, false, true), Some((Action::Mute, true)));
+        assert_eq!(
+            gates.handle(ModifierKey::Shift, false, true),
+            Some((Action::Mute, true))
+        );
     }
 
     #[test]
