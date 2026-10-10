@@ -76,7 +76,14 @@ describe("voice quality counters", () => {
 
   it("reads the selected WebRTC candidate pair without using signaling RTT", () => {
     const reading = readVoiceTransport([
-      { type: "candidate-pair", state: "succeeded", nominated: true, currentRoundTripTime: 0.18, localCandidateId: "local", remoteCandidateId: "remote" },
+      {
+        type: "candidate-pair",
+        state: "succeeded",
+        nominated: true,
+        currentRoundTripTime: 0.18,
+        localCandidateId: "local",
+        remoteCandidateId: "remote"
+      },
       { type: "local-candidate", id: "local", candidateType: "relay" },
       { type: "remote-candidate", id: "remote", candidateType: "relay" }
     ]);
@@ -87,8 +94,23 @@ describe("voice quality counters", () => {
   it("prefers the browser-selected pair over another succeeded pair", () => {
     const reading = readVoiceTransport([
       { type: "transport", selectedCandidatePairId: "selected" },
-      { type: "candidate-pair", id: "other", state: "succeeded", nominated: true, currentRoundTripTime: 0.42, localCandidateId: "host", remoteCandidateId: "remote" },
-      { type: "candidate-pair", id: "selected", state: "succeeded", currentRoundTripTime: 0.09, localCandidateId: "relay", remoteCandidateId: "remote" },
+      {
+        type: "candidate-pair",
+        id: "other",
+        state: "succeeded",
+        nominated: true,
+        currentRoundTripTime: 0.42,
+        localCandidateId: "host",
+        remoteCandidateId: "remote"
+      },
+      {
+        type: "candidate-pair",
+        id: "selected",
+        state: "succeeded",
+        currentRoundTripTime: 0.09,
+        localCandidateId: "relay",
+        remoteCandidateId: "remote"
+      },
       { type: "local-candidate", id: "host", candidateType: "host" },
       { type: "local-candidate", id: "relay", candidateType: "relay" },
       { type: "remote-candidate", id: "remote", candidateType: "srflx" }
@@ -98,10 +120,13 @@ describe("voice quality counters", () => {
   });
 
   it("chooses the worst live media route across peers", () => {
-    assert.deepEqual(worstVoiceTransport([
-      { rttMs: 90, candidateType: "host", candidatePairState: "succeeded" },
+    assert.deepEqual(
+      worstVoiceTransport([
+        { rttMs: 90, candidateType: "host", candidatePairState: "succeeded" },
+        { rttMs: 210, candidateType: "relay", candidatePairState: "succeeded" }
+      ]),
       { rttMs: 210, candidateType: "relay", candidatePairState: "succeeded" }
-    ]), { rttMs: 210, candidateType: "relay", candidatePairState: "succeeded" });
+    );
   });
 });
 
@@ -121,38 +146,54 @@ describe("voice quality reading", () => {
   }
 
   it("calculates buffer delay from accumulated sample delay across a four-second interval", () => {
-    const reading = voiceQualityReading(clean(), clean({
-      packetsReceived: 250, jitterBufferEmittedCount: SECOND * 5,
-      jitterBufferDelay: SECOND * 0.04 + SECOND * 4 * 0.08
-    }));
+    const reading = voiceQualityReading(
+      clean(),
+      clean({
+        packetsReceived: 250,
+        jitterBufferEmittedCount: SECOND * 5,
+        jitterBufferDelay: SECOND * 0.04 + SECOND * 4 * 0.08
+      })
+    );
     assert.ok(reading);
     assert.equal(reading.bufferMs, 80);
   });
 
   it("detects silent concealment while the sender says it is speaking", () => {
-    assert.equal(voiceMediaStalled(
-      counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND }),
-      counters({ packetsReceived: 10, silentConcealedSamples: SECOND * 2, jitterBufferEmittedCount: SECOND * 2 }),
+    assert.equal(
+      voiceMediaStalled(
+        counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND }),
+        counters({ packetsReceived: 10, silentConcealedSamples: SECOND * 2, jitterBufferEmittedCount: SECOND * 2 }),
+        true
+      ),
       true
-    ), true);
-    assert.equal(voiceMediaStalled(
-      counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND }),
-      counters({ packetsReceived: 10, silentConcealedSamples: SECOND * 2, jitterBufferEmittedCount: SECOND * 2 }),
+    );
+    assert.equal(
+      voiceMediaStalled(
+        counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND }),
+        counters({ packetsReceived: 10, silentConcealedSamples: SECOND * 2, jitterBufferEmittedCount: SECOND * 2 }),
+        false
+      ),
       false
-    ), false);
+    );
   });
 
   it("detects a receiver that gets packets but emits no audio", () => {
-    assert.equal(voiceMediaStalled(
-      counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND, jitterBufferEmittedCountAvailable: true }),
-      counters({ packetsReceived: 60, jitterBufferEmittedCount: SECOND, jitterBufferEmittedCountAvailable: true }),
+    assert.equal(
+      voiceMediaStalled(
+        counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND, jitterBufferEmittedCountAvailable: true }),
+        counters({ packetsReceived: 60, jitterBufferEmittedCount: SECOND, jitterBufferEmittedCountAvailable: true }),
+        true
+      ),
       true
-    ), true);
-    assert.equal(voiceMediaStalled(
-      counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND, jitterBufferEmittedCountAvailable: true }),
-      counters({ packetsReceived: 60, jitterBufferEmittedCount: SECOND }),
-      true
-    ), false);
+    );
+    assert.equal(
+      voiceMediaStalled(
+        counters({ packetsReceived: 10, jitterBufferEmittedCount: SECOND, jitterBufferEmittedCountAvailable: true }),
+        counters({ packetsReceived: 60, jitterBufferEmittedCount: SECOND }),
+        true
+      ),
+      false
+    );
   });
 
   it("reports nothing until enough audio has played to divide by", () => {
@@ -176,13 +217,16 @@ describe("voice quality reading", () => {
   });
 
   it("names lost packets when concealment has loss behind it", () => {
-    const reading = voiceQualityReading(clean(), clean({
-      packetsReceived: 145,
-      packetsLost: 5,
-      // 30 ms of invented audio to cover the gaps the loss left.
-      concealedSamples: SAMPLE_RATE * 0.03,
-      jitterBufferEmittedCount: SECOND * 2
-    }));
+    const reading = voiceQualityReading(
+      clean(),
+      clean({
+        packetsReceived: 145,
+        packetsLost: 5,
+        // 30 ms of invented audio to cover the gaps the loss left.
+        concealedSamples: SAMPLE_RATE * 0.03,
+        jitterBufferEmittedCount: SECOND * 2
+      })
+    );
 
     assert.ok(reading);
     assert.equal(reading.symptom, "loss");
@@ -192,11 +236,14 @@ describe("voice quality reading", () => {
 
   it("distinguishes late packets from lost ones", () => {
     // The same crackle, a different fault: everything arrived, too late to use.
-    const reading = voiceQualityReading(clean(), clean({
-      packetsReceived: 100,
-      concealedSamples: SAMPLE_RATE * 0.04,
-      jitterBufferEmittedCount: SECOND * 2
-    }));
+    const reading = voiceQualityReading(
+      clean(),
+      clean({
+        packetsReceived: 100,
+        concealedSamples: SAMPLE_RATE * 0.04,
+        jitterBufferEmittedCount: SECOND * 2
+      })
+    );
 
     assert.ok(reading);
     assert.equal(reading.symptom, "jitter");
@@ -205,12 +252,15 @@ describe("voice quality reading", () => {
 
   it("does not count silent concealment against the path", () => {
     // A talker who stopped sending is what discontinuous transmission is for.
-    const reading = voiceQualityReading(clean(), clean({
-      packetsReceived: 100,
-      concealedSamples: SAMPLE_RATE * 0.5,
-      silentConcealedSamples: SAMPLE_RATE * 0.5,
-      jitterBufferEmittedCount: SECOND * 2
-    }));
+    const reading = voiceQualityReading(
+      clean(),
+      clean({
+        packetsReceived: 100,
+        concealedSamples: SAMPLE_RATE * 0.5,
+        silentConcealedSamples: SAMPLE_RATE * 0.5,
+        jitterBufferEmittedCount: SECOND * 2
+      })
+    );
 
     assert.ok(reading);
     assert.equal(reading.grade, "clear");
@@ -218,11 +268,14 @@ describe("voice quality reading", () => {
   });
 
   it("names speeding up, which is the symptom members describe", () => {
-    const reading = voiceQualityReading(clean(), clean({
-      packetsReceived: 100,
-      removedSamplesForAcceleration: SAMPLE_RATE * 0.05,
-      jitterBufferEmittedCount: SECOND * 2
-    }));
+    const reading = voiceQualityReading(
+      clean(),
+      clean({
+        packetsReceived: 100,
+        removedSamplesForAcceleration: SAMPLE_RATE * 0.05,
+        jitterBufferEmittedCount: SECOND * 2
+      })
+    );
 
     assert.ok(reading);
     assert.equal(reading.symptom, "speedUp");
@@ -231,11 +284,14 @@ describe("voice quality reading", () => {
   });
 
   it("names slowing down separately from speeding up", () => {
-    const reading = voiceQualityReading(clean(), clean({
-      packetsReceived: 100,
-      insertedSamplesForDeceleration: SAMPLE_RATE * 0.05,
-      jitterBufferEmittedCount: SECOND * 2
-    }));
+    const reading = voiceQualityReading(
+      clean(),
+      clean({
+        packetsReceived: 100,
+        insertedSamplesForDeceleration: SAMPLE_RATE * 0.05,
+        jitterBufferEmittedCount: SECOND * 2
+      })
+    );
 
     assert.ok(reading);
     assert.equal(reading.symptom, "slowDown");
@@ -257,16 +313,22 @@ describe("voice quality reading", () => {
   it("normalises by audio played, not by wall clock", () => {
     // A throttled background tab samples less often. The same fault must read
     // the same either way, or throttling is reported as a network problem.
-    const oneSecond = voiceQualityReading(clean(), clean({
-      packetsReceived: 100,
-      concealedSamples: SAMPLE_RATE * 0.02,
-      jitterBufferEmittedCount: SECOND * 2
-    }));
-    const fourSeconds = voiceQualityReading(clean(), clean({
-      packetsReceived: 250,
-      concealedSamples: SAMPLE_RATE * 0.08,
-      jitterBufferEmittedCount: SECOND * 5
-    }));
+    const oneSecond = voiceQualityReading(
+      clean(),
+      clean({
+        packetsReceived: 100,
+        concealedSamples: SAMPLE_RATE * 0.02,
+        jitterBufferEmittedCount: SECOND * 2
+      })
+    );
+    const fourSeconds = voiceQualityReading(
+      clean(),
+      clean({
+        packetsReceived: 250,
+        concealedSamples: SAMPLE_RATE * 0.08,
+        jitterBufferEmittedCount: SECOND * 5
+      })
+    );
 
     assert.ok(oneSecond && fourSeconds);
     assert.ok(
@@ -280,12 +342,15 @@ describe("worst voice quality", () => {
   it("reports the room as its worst peer rather than its average", () => {
     // Three good peers must not divide one bad peer's fault by four.
     const good = voiceQualityReading(clean(), clean({ packetsReceived: 100, jitterBufferEmittedCount: SECOND * 2 }));
-    const bad = voiceQualityReading(clean(), clean({
-      packetsReceived: 142,
-      packetsLost: 8,
-      concealedSamples: SAMPLE_RATE * 0.08,
-      jitterBufferEmittedCount: SECOND * 2
-    }));
+    const bad = voiceQualityReading(
+      clean(),
+      clean({
+        packetsReceived: 142,
+        packetsLost: 8,
+        concealedSamples: SAMPLE_RATE * 0.08,
+        jitterBufferEmittedCount: SECOND * 2
+      })
+    );
 
     assert.ok(good && bad);
     assert.equal(worstVoiceQuality([good, good, bad, good])?.grade, "breaking");

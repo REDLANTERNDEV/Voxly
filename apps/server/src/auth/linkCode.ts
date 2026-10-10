@@ -51,11 +51,7 @@ export function createLinkCode(length = linkCodeLength) {
  * cannot accidentally look up a partially-normalised value.
  */
 export function normaliseLinkCode(input: string, length = linkCodeLength) {
-  const cleaned = input
-    .toUpperCase()
-    .replace(/[\s-]/g, "")
-    .replace(/[IL]/g, "1")
-    .replace(/O/g, "0");
+  const cleaned = input.toUpperCase().replace(/[\s-]/g, "").replace(/[IL]/g, "1").replace(/O/g, "0");
   if (cleaned.length !== length) return "";
   for (const character of cleaned) {
     if (!alphabet.includes(character)) return "";

@@ -1,6 +1,14 @@
-import type { AfkTimeoutMinutes,ChatMessage,PresenceStatus,PresenceUser,PublicUser,VoiceForceLeaveReason } from "@voxly/shared";
-import { useEffect,useRef,useState,type RefObject } from "react";
-import { createVoxlySocket,type VoxlySocket } from "../socket.js";
+import type {
+  AfkTimeoutMinutes,
+  MessageReactionsEvent,
+  ChatMessage,
+  PresenceStatus,
+  PresenceUser,
+  PublicUser,
+  VoiceForceLeaveReason
+} from "@voxly/shared";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { createVoxlySocket, type VoxlySocket } from "../socket.js";
 import type { Route } from "./types.js";
 
 interface RealtimeHandlers {
@@ -19,13 +27,24 @@ interface RealtimeHandlers {
   connected(): void;
   messageNew(message: ChatMessage): void;
   messageUpdated(message: ChatMessage): void;
+  messageReactions(event: MessageReactionsEvent): void;
+  pinsChanged(serverId: string, roomId: string): void;
   messageDeleted(roomId: string, messageId: string): void;
   accessRevoked(serverId: string): void;
   accountDeleted(reason: "request_approved" | "owner_initiated"): void;
   deletionRequestCreated(requestId: string): void;
 }
 
-export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, leaveVoiceRef, moveVoiceRef, forceLeaveNoticeRef, checkStillSignedInRef }: {
+export function useRealtimeSync({
+  user,
+  route,
+  handlers,
+  activeVoiceRoomRef,
+  leaveVoiceRef,
+  moveVoiceRef,
+  forceLeaveNoticeRef,
+  checkStillSignedInRef
+}: {
   user: PublicUser | null;
   route: Route;
   handlers: RealtimeHandlers;
@@ -44,11 +63,17 @@ export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, lea
   handlersRef.current = handlers;
 
   useEffect(() => {
-    if (!user) { setSocket(null); return; }
+    if (!user) {
+      setSocket(null);
+      return;
+    }
     const next = createVoxlySocket();
     setSocket(next);
     setSocketState("connecting");
-    next.on("connect", () => { setSocketState("live"); handlersRef.current.connected(); });
+    next.on("connect", () => {
+      setSocketState("live");
+      handlersRef.current.connected();
+    });
     next.io.on("reconnect_attempt", () => setSocketState("reconnecting"));
     next.on("disconnect", () => {
       setSocketState("offline");
@@ -60,19 +85,31 @@ export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, lea
       void checkStillSignedInRef.current();
     });
     next.on("presence:serverSnapshot", ({ serverId, users }) => handlersRef.current.presenceSnapshot(serverId, users));
-    next.on("presence:serverOnline", ({ serverId, user: nextUser }) => handlersRef.current.presenceOnline(serverId, nextUser));
+    next.on("presence:serverOnline", ({ serverId, user: nextUser }) =>
+      handlersRef.current.presenceOnline(serverId, nextUser)
+    );
     next.on("presence:serverOffline", ({ serverId, userId }) => handlersRef.current.presenceOffline(serverId, userId));
-    next.on("presence:serverStatus", ({ serverId, userId, status }) => handlersRef.current.presenceStatus(serverId, userId, status));
+    next.on("presence:serverStatus", ({ serverId, userId, status }) =>
+      handlersRef.current.presenceStatus(serverId, userId, status)
+    );
     next.on("server:directoryChanged", ({ serverId }) => handlersRef.current.directoryChanged(serverId));
-    next.on("server:memberUpdated", ({ serverId, user: nextUser }) => handlersRef.current.memberUpdated(serverId, nextUser));
+    next.on("server:memberUpdated", ({ serverId, user: nextUser }) =>
+      handlersRef.current.memberUpdated(serverId, nextUser)
+    );
     next.on("server:memberDeleted", ({ serverId, userId }) => handlersRef.current.memberDeleted(serverId, userId));
     next.on("server:updated", ({ serverId, name }) => handlersRef.current.serverUpdated(serverId, name));
-    next.on("server:afkUpdated", ({ serverId, afkTimeoutMinutes }) => handlersRef.current.afkUpdated(serverId, afkTimeoutMinutes));
-    next.on("server:roomsChanged", ({ serverId, deletedRoomId }) => handlersRef.current.roomsChanged(serverId, deletedRoomId));
+    next.on("server:afkUpdated", ({ serverId, afkTimeoutMinutes }) =>
+      handlersRef.current.afkUpdated(serverId, afkTimeoutMinutes)
+    );
+    next.on("server:roomsChanged", ({ serverId, deletedRoomId }) =>
+      handlersRef.current.roomsChanged(serverId, deletedRoomId)
+    );
     next.on("server:deleted", ({ serverId }) => handlersRef.current.serverDeleted(serverId));
     next.on("notifications:changed", ({ serverId }) => handlersRef.current.notificationsChanged(serverId));
     next.on("message:new", (message) => handlersRef.current.messageNew(message));
     next.on("message:updated", (message) => handlersRef.current.messageUpdated(message));
+    next.on("message:reactions", (event) => handlersRef.current.messageReactions(event));
+    next.on("message:pinsChanged", ({ serverId, roomId }) => handlersRef.current.pinsChanged(serverId, roomId));
     next.on("message:deleted", ({ roomId, messageId }) => handlersRef.current.messageDeleted(roomId, messageId));
     next.on("voice:forceLeave", ({ roomId, reason }) => {
       if (activeVoiceRoomRef.current !== roomId) return;
@@ -86,13 +123,18 @@ export function useRealtimeSync({ user, route, handlers, activeVoiceRoomRef, lea
     next.on("server:accessRevoked", ({ serverId }) => handlersRef.current.accessRevoked(serverId));
     next.on("account:deleted", ({ reason }) => handlersRef.current.accountDeleted(reason));
     next.on("account:deletionRequestCreated", ({ requestId }) => handlersRef.current.deletionRequestCreated(requestId));
-    return () => { next.disconnect(); setSocket(null); };
+    return () => {
+      next.disconnect();
+      setSocket(null);
+    };
   }, [user]);
 
   useEffect(() => {
     if (!socket || route.name !== "text") return;
     socket.emit("room:join", route.roomId);
-    return () => { socket.emit("room:leave", route.roomId); };
+    return () => {
+      socket.emit("room:leave", route.roomId);
+    };
   }, [route, socket]);
 
   return { socket, socketState };

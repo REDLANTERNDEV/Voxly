@@ -1,7 +1,20 @@
-import type { AfkTimeoutMinutes, CategorySummary, MusicCommand,MusicControlAck,MusicQueueState,PresenceUser,PublicUser,RoomSummary,ServerRoomLayout,VisualTarget,VoiceModerationState,VoiceSnapshot } from "@voxly/shared";
+import type {
+  AfkTimeoutMinutes,
+  CategorySummary,
+  MusicCommand,
+  MusicControlAck,
+  MusicQueueState,
+  PresenceUser,
+  PublicUser,
+  RoomSummary,
+  ServerRoomLayout,
+  VisualTarget,
+  VoiceModerationState,
+  VoiceSnapshot
+} from "@voxly/shared";
 import { type AudioLevels } from "../lib/audioLevels.js";
 import type { RoomHistory } from "../lib/channelState.js";
-import { type LanguageCode,type TranslationKey,type VoiceErrorKey } from "../lib/i18n.js";
+import { type LanguageCode, type TranslationKey, type VoiceErrorKey } from "../lib/i18n.js";
 import type { UseAudioDevicesResult } from "../lib/useAudioDevices.js";
 import type { ConnectionHealth } from "../lib/useConnectionHealth.js";
 import type { VoiceQuality } from "../lib/useVoiceQuality.js";
@@ -14,7 +27,7 @@ import { type VoiceControls } from "../lib/voiceControls.js";
 import { type PeerConnectionState } from "../lib/voiceNegotiation.js";
 import type { VisualSubscriptionResult } from "../lib/voiceRecovery.js";
 import { type RemoteStreamState } from "../lib/voiceStreams.js";
-import type { AppConfigResponse,ServerSummary } from "../types.js";
+import type { AppConfigResponse, ServerSummary } from "../types.js";
 
 export type Route =
   | { name: "landing" }
@@ -104,7 +117,10 @@ export interface ShellModel {
 export interface ShellActions {
   onScreenPlaybackReady?: (publisherId: string, track: MediaStreamTrack) => void;
   onRetryScreenPlayback?: (publisherId: string) => void;
-  onServerNotificationSettingsChange(serverId: string, setting: import("@voxly/shared").NotificationMuteRequest): Promise<void>;
+  onServerNotificationSettingsChange(
+    serverId: string,
+    setting: import("@voxly/shared").NotificationMuteRequest
+  ): Promise<void>;
   onNavigate: (path: string) => void;
   onSelectServer: (serverId: string) => Promise<void>;
   onCreateServer: (name: string) => Promise<void>;
@@ -119,7 +135,10 @@ export interface ShellActions {
   onDeleteRoom: (roomId: string) => Promise<void>;
   onDeleteServer: () => Promise<void>;
   onModerateMember: (userId: string, action: "ban" | "unban" | "kick") => Promise<void>;
-  onVoiceModeration: (userId: string, moderation: Partial<VoiceModerationState>) => Promise<{ moderation: VoiceModerationState }>;
+  onVoiceModeration: (
+    userId: string,
+    moderation: Partial<VoiceModerationState>
+  ) => Promise<{ moderation: VoiceModerationState }>;
   onUpdateMemberNickname: (userId: string, nickname: string) => Promise<PresenceUser>;
   onUpdateMemberPermissions: (userId: string, canInvite: boolean) => Promise<PresenceUser>;
   onDisconnectMember: (roomId: string, userId: string) => Promise<void>;
@@ -148,10 +167,29 @@ export interface ShellActions {
   onLogout: () => Promise<void>;
 }
 
-export interface VoiceChromeModel extends Pick<ShellModel,
-  "activeVoiceRoomId" | "controls" | "voiceModeration" | "voiceError" | "voiceErrorRevision" | "voiceNotice" | "voiceNoticeRevision" |
-  "visualTargets" | "voiceSnapshots" | "musicQueues" | "remoteStreams" | "peerConnectionStates" | "screenPlaybackStates" |
-  "localPreviews" | "memberVolumes" | "screenVolumes" | "pendingLiveWatch" |
-  "audioDevices" | "audioLevels" | "microphoneTestActive" | "microphoneTestError" |
-  "microphoneTestErrorOccurrences" | "microphoneTestErrorRevision"
+export interface VoiceChromeModel extends Pick<
+  ShellModel,
+  | "activeVoiceRoomId"
+  | "controls"
+  | "voiceModeration"
+  | "voiceError"
+  | "voiceErrorRevision"
+  | "voiceNotice"
+  | "voiceNoticeRevision"
+  | "visualTargets"
+  | "voiceSnapshots"
+  | "musicQueues"
+  | "remoteStreams"
+  | "peerConnectionStates"
+  | "screenPlaybackStates"
+  | "localPreviews"
+  | "memberVolumes"
+  | "screenVolumes"
+  | "pendingLiveWatch"
+  | "audioDevices"
+  | "audioLevels"
+  | "microphoneTestActive"
+  | "microphoneTestError"
+  | "microphoneTestErrorOccurrences"
+  | "microphoneTestErrorRevision"
 > {}

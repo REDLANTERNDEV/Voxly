@@ -7,8 +7,8 @@
 ## Context
 
 The design makes the bot the single source of truth for the Queue and playback
-state: *"the bot applies or rejects each one and broadcasts the resulting state
-to everyone in the room."* Nothing in the product could do that.
+state: _"the bot applies or rejects each one and broadcasts the resulting state
+to everyone in the room."_ Nothing in the product could do that.
 
 Until now the only thing the bot ever said that reached a person was the
 acknowledgement of that person's own request. Someone pastes a link, the server
@@ -20,8 +20,8 @@ all about where it came from or what follows.
 The obvious fix is for the bot to emit to the room. It cannot. The bot is an
 ordinary member with an ordinary socket ([ADR-0001](./0001-music-bot-is-a-mesh-peer.md)),
 and no member in Voxly can emit to a room — the server does that, after it has
-decided who may. `AGENTS.md` says it plainly: *"the browser must not infer
-permissions that the server does not enforce"*, and the bot is a browser as far
+decided who may. `AGENTS.md` says it plainly: _"the browser must not infer
+permissions that the server does not enforce"_, and the bot is a browser as far
 as authorization is concerned. Adding a relay that forwards whatever the bot
 sends, to whichever room it names, would make the bot the one client in the
 product with a broadcast primitive.
@@ -37,9 +37,9 @@ how a Requester gets a name.
 
 A new pair of events, and no more than a pair:
 
-- `music:publish` — client to server, from the bot: *this room, this Queue*.
+- `music:publish` — client to server, from the bot: _this room, this Queue_.
   Acknowledged.
-- `music:queue` — server to client, to the voice room: *this room, this Queue*.
+- `music:queue` — server to client, to the voice room: _this room, this Queue_.
 
 `music:publish` is checked before anything is sent anywhere. The publisher must
 **be that server's own Music bot account**, and it must **still be in that voice
@@ -124,5 +124,4 @@ reasoning. Today it is not: the boundary between two Tracks is the prebuffer
 means silence rather than lost music — though nobody has heard one, so its
 length is unmeasured.
 
-Transport controls and simultaneous skips are ticket 09; the Set log is ticket
-11. Both publish through this path.
+Transport controls and simultaneous skips are ticket 09; the Set log is ticket 11. Both publish through this path.

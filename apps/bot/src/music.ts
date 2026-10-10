@@ -264,11 +264,13 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
     const wait = (graceWaitsStarted += 1);
     log(`the last Listener left room ${current.roomId}; waiting ${gracePeriodMs}ms before leaving.`);
     graceTimer = startTimer(() => {
-      queue = queue.then(async () => {
-        if (set !== current || wait !== graceWaitsStarted || !playback.awaitingReturn) return;
-        log(`nobody came back to room ${current.roomId}; ending the Set.`);
-        await endCurrentSet();
-      }).catch(() => undefined);
+      queue = queue
+        .then(async () => {
+          if (set !== current || wait !== graceWaitsStarted || !playback.awaitingReturn) return;
+          log(`nobody came back to room ${current.roomId}; ending the Set.`);
+          await endCurrentSet();
+        })
+        .catch(() => undefined);
     }, gracePeriodMs);
   }
 
@@ -310,10 +312,12 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
    * by reporting before it closes the buffer.
    */
   function reportFailure(current: MusicSet, entryId: string, failure: MusicTrackFailure) {
-    queue = queue.then(() => {
-      if (set !== current) return;
-      advance(current, { kind: "failed", entryId, reason: failure, lineId: mintLineId() });
-    }).catch(() => undefined);
+    queue = queue
+      .then(() => {
+        if (set !== current) return;
+        advance(current, { kind: "failed", entryId, reason: failure, lineId: mintLineId() });
+      })
+      .catch(() => undefined);
   }
 
   async function endCurrentSet() {
@@ -385,9 +389,11 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
         const ended = loadedEntryId;
         // Through the same chain as a command: a Track ending while a Summon is
         // half-finished must not advance a Queue that is still being changed.
-        queue = queue.then(() => {
-          if (set === started && ended) advance(started, { kind: "ended", entryId: ended });
-        }).catch(() => undefined);
+        queue = queue
+          .then(() => {
+            if (set === started && ended) advance(started, { kind: "ended", entryId: ended });
+          })
+          .catch(() => undefined);
       },
       // Somebody arrived or left. Whoever just walked in has no Queue yet, and
       // the server keeps no copy to hand them, so the bot says it again. This
@@ -403,9 +409,7 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
         // because which of them is news is the Queue's to answer: both are
         // idempotent there, and holding a second copy of "is a wait on" here
         // would be the copy that could disagree with it.
-        advance(started, listenerUserIds.length === 0
-          ? { kind: "roomEmptied" }
-          : { kind: "listenerReturned" });
+        advance(started, listenerUserIds.length === 0 ? { kind: "roomEmptied" } : { kind: "listenerReturned" });
       },
       log
     });
@@ -491,7 +495,10 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
    */
   function enqueueSearch(name: string): Promise<MusicCommandAck> {
     const answered = searches.then(() => runSearch(name));
-    searches = answered.then(() => undefined, () => undefined);
+    searches = answered.then(
+      () => undefined,
+      () => undefined
+    );
     return answered;
   }
 
@@ -540,11 +547,7 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
    * recovery is part of the reason: a request that threw may have left a
    * half-built Set behind, and the next one must not trip over it.
    */
-  function enqueue(
-    what: string,
-    roomId: string,
-    run: () => Promise<MusicCommandAck>
-  ): Promise<MusicCommandAck> {
+  function enqueue(what: string, roomId: string, run: () => Promise<MusicCommandAck>): Promise<MusicCommandAck> {
     const answered = queue.then(run).catch(async (cause: unknown) => {
       // A failed Summon must not take the process down, and must not leave a
       // half-built Set behind for the next command to trip over.

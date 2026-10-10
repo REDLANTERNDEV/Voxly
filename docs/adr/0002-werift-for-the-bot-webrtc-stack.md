@@ -28,8 +28,8 @@ no-build-step deployment stays intact.
 
 ## One qualification, from proving it
 
-"The same encoded packets to every sender" means the same *bytes*, not the same
-*object*. `RTCRtpSender.sendRtp` rewrites the packet it is handed — ssrc,
+"The same encoded packets to every sender" means the same _bytes_, not the same
+_object_. `RTCRtpSender.sendRtp` rewrites the packet it is handed — ssrc,
 payload type, sequence number and timestamp — and keeps that same object in its
 retransmission cache, so handing one object to several senders leaves each cache
 holding another Listener's header. Measured directly: after one write to a track

@@ -39,10 +39,12 @@ function installWindow(AudioContextClass?: new () => AudioContext) {
   return events;
 }
 
-function createElement(options: {
-  play?: () => Promise<void>;
-  setSinkId?: (sinkId: string) => Promise<void>;
-} = {}) {
+function createElement(
+  options: {
+    play?: () => Promise<void>;
+    setSinkId?: (sinkId: string) => Promise<void>;
+  } = {}
+) {
   let pauses = 0;
   const listeners = new Map<string, Set<() => void>>();
   const emit = (type: string) => {
@@ -73,7 +75,9 @@ function createElement(options: {
     },
     emit,
     setSinkId: options.setSinkId ?? (async () => undefined),
-    pauseCount() { return pauses; }
+    pauseCount() {
+      return pauses;
+    }
   };
   return element as unknown as Omit<HTMLAudioElement, "paused"> & {
     emit: (type: string) => void;
@@ -97,19 +101,31 @@ function unlockedContext(options: { rejectSink?: boolean; supportsSink?: boolean
     state: AudioContextState = "suspended";
     currentTime = 0;
     destination = {};
-    setSinkId = options.supportsSink === false ? undefined : async (sinkId: string) => {
-      sinks.push(sinkId);
-      if (options.rejectSink && sinkId) throw new Error("sink unavailable");
-    };
-    constructor() { super(); context = this; }
-    async resume() { this.state = "running"; }
+    setSinkId =
+      options.supportsSink === false
+        ? undefined
+        : async (sinkId: string) => {
+            sinks.push(sinkId);
+            if (options.rejectSink && sinkId) throw new Error("sink unavailable");
+          };
+    constructor() {
+      super();
+      context = this;
+    }
+    async resume() {
+      this.state = "running";
+    }
     async close() {}
     createMediaStreamSource(stream: MediaStream) {
       const source = { stream, connected: false };
       sources.push(source);
       return {
-        connect() { source.connected = true; },
-        disconnect() { source.connected = false; }
+        connect() {
+          source.connected = true;
+        },
+        disconnect() {
+          source.connected = false;
+        }
       };
     }
     createGain() {
@@ -132,11 +148,20 @@ describe("hybrid voice audio output", () => {
       state: AudioContextState = "suspended";
       currentTime = 0;
       destination = {};
-      constructor() { FakeAudioContext.latest = this; }
-      async resume() { this.state = "running"; }
+      constructor() {
+        FakeAudioContext.latest = this;
+      }
+      async resume() {
+        this.state = "running";
+      }
       async close() {}
       createMediaStreamSource(stream: MediaStream) {
-        return { connect() { routedStreams.push(stream); }, disconnect() {} };
+        return {
+          connect() {
+            routedStreams.push(stream);
+          },
+          disconnect() {}
+        };
       }
       createGain() {
         const gain = { value: 1 };
@@ -154,7 +179,11 @@ describe("hybrid voice audio output", () => {
       await friendOutput.ready;
       FakeAudioContext.latest.currentTime = 60 * 60;
       const botStream = { id: "late-bot" } as MediaStream;
-      const botElement = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+      const botElement = createElement({
+        play: async () => {
+          throw { name: "NotAllowedError" };
+        }
+      });
       const botOutput = connect(botElement, botStream, false, 50);
       await botOutput.ready;
 
@@ -173,9 +202,11 @@ describe("hybrid voice audio output", () => {
   it("returns an audible fallback to native output after a user activation without doubling audio", async () => {
     const h = unlockedContext();
     let activated = false;
-    const element = createElement({ play: async () => {
-      if (!activated) throw { name: "NotAllowedError" };
-    } });
+    const element = createElement({
+      play: async () => {
+        if (!activated) throw { name: "NotAllowedError" };
+      }
+    });
     const stream = { id: "bot" } as MediaStream;
     const output = connect(element, stream, false, 100);
     await output.ready;
@@ -194,32 +225,40 @@ describe("hybrid voice audio output", () => {
 
   it("keeps fallback volume live across normal and boosted levels, and mutes both paths", async () => {
     const h = unlockedContext();
-    const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+    const element = createElement({
+      play: async () => {
+        throw { name: "NotAllowedError" };
+      }
+    });
     const output = connect(element, { id: "bot" } as MediaStream, false, 100);
     await output.ready;
     for (const volume of [0, 50, 100, 150, 200]) {
       output.setVolume(false, volume);
       assert.equal(h.gains.at(-1)?.value, volume / 100);
       assert.equal(element.muted, true);
-      assert.equal(h.sources.filter(source => source.connected).length, 1);
+      assert.equal(h.sources.filter((source) => source.connected).length, 1);
     }
     output.setVolume(true, 200);
-    assert.equal(h.sources.filter(source => source.connected).length, 0);
+    assert.equal(h.sources.filter((source) => source.connected).length, 0);
     assert.equal(element.muted, true);
     output.setVolume(false, 50);
     await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.equal(h.sources.filter(source => source.connected).length, 1);
+    assert.equal(h.sources.filter((source) => source.connected).length, 1);
     assert.equal(h.gains.at(-1)?.value, 0.5);
     assert.equal(element.muted, true);
     output.dispose();
-    assert.equal(h.sources.filter(source => source.connected).length, 0);
+    assert.equal(h.sources.filter((source) => source.connected).length, 0);
   });
 
   for (const supportsSink of [true, false]) {
     it(`keeps recovery available when the selected speaker cannot route fallback (sink API: ${supportsSink})`, async () => {
       const h = unlockedContext({ rejectSink: true, supportsSink });
       await selectSharedAudioOutputDevice("speaker-a");
-      const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+      const element = createElement({
+        play: async () => {
+          throw { name: "NotAllowedError" };
+        }
+      });
       const output = connect(element, { id: "bot" } as MediaStream, false, 100);
       await output.ready;
       assert.equal(h.sources.length, 0, "audio must never escape to the default speaker");
@@ -231,7 +270,11 @@ describe("hybrid voice audio output", () => {
   it("routes fallback to the selected speaker and rebuilds it when the speaker changes", async () => {
     const h = unlockedContext();
     await selectSharedAudioOutputDevice("speaker-a");
-    const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+    const element = createElement({
+      play: async () => {
+        throw { name: "NotAllowedError" };
+      }
+    });
     const output = connect(element, { id: "bot" } as MediaStream, false, 100);
     await output.ready;
     assert.equal(h.sinks.at(-1), "speaker-a");
@@ -240,32 +283,42 @@ describe("hybrid voice audio output", () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
     assert.equal(h.sinks.at(-1), "speaker-b");
     assert.equal(h.sources[0].connected, false);
-    assert.equal(h.sources.filter(source => source.connected).length, 1);
+    assert.equal(h.sources.filter((source) => source.connected).length, 1);
   });
 
   it("reports blocking when an audible fallback context suspends, and restores it when resumed", async () => {
     const h = unlockedContext();
-    const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+    const element = createElement({
+      play: async () => {
+        throw { name: "NotAllowedError" };
+      }
+    });
     const output = connect(element, { id: "bot" } as MediaStream, false, 100);
     await output.ready;
     h.context.state = "suspended";
     h.context.dispatchEvent(new Event("statechange"));
-    assert.equal(h.sources.filter(source => source.connected).length, 0);
+    assert.equal(h.sources.filter((source) => source.connected).length, 0);
     assert.equal(voiceOutputDiagnostics().blockedCount, 1);
     h.context.state = "running";
     h.context.dispatchEvent(new Event("statechange"));
     await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.equal(h.sources.filter(source => source.connected).length, 1);
+    assert.equal(h.sources.filter((source) => source.connected).length, 1);
     assert.equal(voiceOutputDiagnostics().blockedCount, 0);
   });
 
   it("does not create a context when native playback is denied without a voice join unlock", async () => {
     let contexts = 0;
     class FakeAudioContext {
-      constructor() { contexts += 1; }
+      constructor() {
+        contexts += 1;
+      }
     }
     installWindow(FakeAudioContext as unknown as new () => AudioContext);
-    const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+    const element = createElement({
+      play: async () => {
+        throw { name: "NotAllowedError" };
+      }
+    });
     const output = connect(element, { id: "bot" } as MediaStream, false, 100);
     await output.ready;
     assert.equal(contexts, 0);
@@ -276,8 +329,15 @@ describe("hybrid voice audio output", () => {
     const h = unlockedContext();
     h.context.state = "suspended";
     let resumes = 0;
-    h.context.resume = () => { resumes += 1; return new Promise<void>(() => {}); };
-    const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+    h.context.resume = () => {
+      resumes += 1;
+      return new Promise<void>(() => {});
+    };
+    const element = createElement({
+      play: async () => {
+        throw { name: "NotAllowedError" };
+      }
+    });
     const output = connect(element, { id: "bot" } as MediaStream, false, 100);
     await output.ready;
     assert.equal(resumes, 0, "fallback must not await a promise that requires another user activation");
@@ -289,8 +349,15 @@ describe("hybrid voice audio output", () => {
     const h = unlockedContext();
     await selectSharedAudioOutputDevice("speaker-a");
     let finishSink!: () => void;
-    h.context.setSinkId = () => new Promise<void>((resolve) => { finishSink = resolve; });
-    const element = createElement({ play: async () => { throw { name: "NotAllowedError" }; } });
+    h.context.setSinkId = () =>
+      new Promise<void>((resolve) => {
+        finishSink = resolve;
+      });
+    const element = createElement({
+      play: async () => {
+        throw { name: "NotAllowedError" };
+      }
+    });
     const output = connect(element, { id: "bot" } as MediaStream, false, 100);
     await new Promise<void>((resolve) => setImmediate(resolve));
     assert.equal(typeof finishSink, "function");
@@ -308,8 +375,12 @@ describe("hybrid voice audio output", () => {
     const stream = { id: "remote" } as MediaStream;
     await selectSharedAudioOutputDevice("speaker-a");
     const element = createElement({
-      setSinkId: async (sinkId) => { events.push(`sink:${sinkId}`); },
-      play: async () => { events.push("play"); }
+      setSinkId: async (sinkId) => {
+        events.push(`sink:${sinkId}`);
+      },
+      play: async () => {
+        events.push("play");
+      }
     });
 
     const output = connect(element, stream, false, 50);
@@ -325,7 +396,11 @@ describe("hybrid voice audio output", () => {
     installWindow();
     let plays = 0;
     const stream = { id: "remote" } as MediaStream;
-    const element = createElement({ play: async () => { plays += 1; } });
+    const element = createElement({
+      play: async () => {
+        plays += 1;
+      }
+    });
     const output = connect(element, stream, false, 100);
     await output.ready;
 
@@ -359,14 +434,14 @@ describe("hybrid voice audio output", () => {
       createGain() {
         const gain = { value: 1 };
         gains.push(gain);
-        return gainNode = {
+        return (gainNode = {
           connect(target: unknown) {
             assert.equal(target, hardwareDestination);
             connections.push("gain:destination");
           },
           disconnect() {},
           gain
-        };
+        });
       }
       async resume() {
         events.push("resume");
@@ -376,7 +451,11 @@ describe("hybrid voice audio output", () => {
     }
     let gainNode: { connect(target: unknown): void; disconnect(): void; gain: { value: number } };
     installWindow(FakeAudioContext as unknown as new () => AudioContext);
-    const element = createElement({ play: async () => { events.push(`play:${(element.srcObject as MediaStream)?.id}`); } });
+    const element = createElement({
+      play: async () => {
+        events.push(`play:${(element.srcObject as MediaStream)?.id}`);
+      }
+    });
 
     const output = connect(element, originalStream, false, 150);
     assert.equal(element.srcObject, originalStream);
@@ -400,7 +479,9 @@ describe("hybrid voice audio output", () => {
     class FakeAudioContext {
       state: AudioContextState = "running";
       destination = {};
-      get currentTime() { return currentTime; }
+      get currentTime() {
+        return currentTime;
+      }
       createMediaStreamSource() {
         sourceCreates += 1;
         return { connect() {}, disconnect() {} };
@@ -409,7 +490,9 @@ describe("hybrid voice audio output", () => {
         const gain = {
           value: 1,
           cancelScheduledValues() {},
-          setValueAtTime(value: number) { gain.value = value; },
+          setValueAtTime(value: number) {
+            gain.value = value;
+          },
           linearRampToValueAtTime(value: number, at: number) {
             ramps.push({ from: gain.value, to: value, at });
             gain.value = value;
@@ -421,7 +504,11 @@ describe("hybrid voice audio output", () => {
       async close() {}
     }
     installWindow(FakeAudioContext as unknown as new () => AudioContext);
-    const element = createElement({ play: async () => { plays += 1; } });
+    const element = createElement({
+      play: async () => {
+        plays += 1;
+      }
+    });
     let srcObject = element.srcObject;
     let srcObjectWrites = 0;
     Object.defineProperty(element, "srcObject", {
@@ -446,22 +533,31 @@ describe("hybrid voice audio output", () => {
     assert.equal(srcObjectWrites, 0);
     assert.equal(element.srcObject, stream);
     assert.equal(element.muted, true);
-    assert.deepEqual(ramps.slice(-2).map(({ to, at }) => ({ to, at })), [
-      { to: 1.5, at: 5.025 },
-      { to: 1.8, at: 6.025 }
-    ]);
+    assert.deepEqual(
+      ramps.slice(-2).map(({ to, at }) => ({ to, at })),
+      [
+        { to: 1.5, at: 5.025 },
+        { to: 1.8, at: 6.025 }
+      ]
+    );
   });
 
   it("keeps direct 100 percent playback when boost setup fails", async () => {
     const stream = { id: "remote" } as MediaStream;
     class FailingAudioContext {
       state: AudioContextState = "suspended";
-      async resume() { throw new Error("resume failed"); }
+      async resume() {
+        throw new Error("resume failed");
+      }
       async close() {}
     }
     installWindow(FailingAudioContext as unknown as new () => AudioContext);
     let plays = 0;
-    const element = createElement({ play: async () => { plays += 1; } });
+    const element = createElement({
+      play: async () => {
+        plays += 1;
+      }
+    });
 
     const output = connect(element, stream, false, 175);
     await output.ready;
@@ -479,17 +575,32 @@ describe("hybrid voice audio output", () => {
       state: AudioContextState = "running";
       destination = {};
       createMediaStreamSource() {
-        return { connect() {}, disconnect() { sourceDisconnects += 1; } };
+        return {
+          connect() {},
+          disconnect() {
+            sourceDisconnects += 1;
+          }
+        };
       }
       createGain() {
-        return { connect() {}, disconnect() { gainDisconnects += 1; }, gain: { value: 1 } };
+        return {
+          connect() {},
+          disconnect() {
+            gainDisconnects += 1;
+          },
+          gain: { value: 1 }
+        };
       }
       async resume() {}
       async close() {}
     }
     installWindow(FakeAudioContext as unknown as new () => AudioContext);
     let plays = 0;
-    const element = createElement({ play: async () => { plays += 1; } });
+    const element = createElement({
+      play: async () => {
+        plays += 1;
+      }
+    });
 
     const output = connect(element, stream, false, 150);
     await output.ready;
@@ -514,14 +625,23 @@ describe("hybrid voice audio output", () => {
     class FakeAudioContext {
       state: AudioContextState = "running";
       destination = {};
-      constructor() { context = this; }
+      constructor() {
+        context = this;
+      }
       addEventListener(type: string, listener: () => void) {
         if (type === "statechange") stateListener = listener;
       }
       createMediaStreamSource() {
-        return { connect() {}, disconnect() { sourceDisconnects += 1; } };
+        return {
+          connect() {},
+          disconnect() {
+            sourceDisconnects += 1;
+          }
+        };
       }
-      createGain() { return { connect() {}, disconnect() {}, gain: { value: 1 } }; }
+      createGain() {
+        return { connect() {}, disconnect() {}, gain: { value: 1 } };
+      }
       async resume() {}
       async close() {}
     }
@@ -546,16 +666,26 @@ describe("hybrid voice audio output", () => {
     class FakeAudioContext {
       state: AudioContextState = "running";
       destination = {};
-      async setSinkId(sinkId: string) { contextSinks.push(sinkId); }
-      createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
-      createGain() { return { connect() {}, disconnect() {}, gain: { value: 1 } }; }
+      async setSinkId(sinkId: string) {
+        contextSinks.push(sinkId);
+      }
+      createMediaStreamSource() {
+        return { connect() {}, disconnect() {} };
+      }
+      createGain() {
+        return { connect() {}, disconnect() {}, gain: { value: 1 } };
+      }
       async resume() {}
       async close() {}
     }
     installWindow(FakeAudioContext as unknown as new () => AudioContext);
     await selectSharedAudioOutputDevice("speaker-c");
     const elementSinks: string[] = [];
-    const element = createElement({ setSinkId: async (sinkId) => { elementSinks.push(sinkId); } });
+    const element = createElement({
+      setSinkId: async (sinkId) => {
+        elementSinks.push(sinkId);
+      }
+    });
 
     const output = connect(element, { id: "remote" } as MediaStream, false, 150);
     await output.ready;
@@ -574,7 +704,9 @@ describe("hybrid voice audio output", () => {
         sources += 1;
         return { connect() {}, disconnect() {} };
       }
-      createGain() { return { connect() {}, disconnect() {}, gain: { value: 1 } }; }
+      createGain() {
+        return { connect() {}, disconnect() {}, gain: { value: 1 } };
+      }
       async resume() {}
       async close() {}
     }
@@ -617,10 +749,12 @@ describe("hybrid voice audio output", () => {
     installWindow();
     let playable = false;
     let attempts = 0;
-    const element = createElement({ play: async () => {
-      attempts += 1;
-      if (!playable) throw { name: "AbortError" };
-    } });
+    const element = createElement({
+      play: async () => {
+        attempts += 1;
+        if (!playable) throw { name: "AbortError" };
+      }
+    });
     const stream = { id: "late-music-bot" } as MediaStream;
     const output = connect(element, stream, false, 100);
     await output.ready;
@@ -640,9 +774,11 @@ describe("hybrid voice audio output", () => {
     it(`retries a late blocked Music bot output on ${activation}`, async () => {
       const events = installWindow();
       let activated = false;
-      const element = createElement({ play: async () => {
-        if (!activated) throw { name: "NotAllowedError" };
-      } });
+      const element = createElement({
+        play: async () => {
+          if (!activated) throw { name: "NotAllowedError" };
+        }
+      });
       const output = connect(element, { id: "late-music-bot" } as MediaStream, false, 100);
       await output.ready;
       assert.equal(element.paused, true);
@@ -659,11 +795,18 @@ describe("hybrid voice audio output", () => {
   it("recovers multiple late outputs independently as each becomes playable", async () => {
     installWindow();
     let playable = false;
-    const elements = [createElement({ play: async () => {
-      if (!playable) throw { name: "AbortError" };
-    } }), createElement({ play: async () => {
-      if (!playable) throw { name: "AbortError" };
-    } })];
+    const elements = [
+      createElement({
+        play: async () => {
+          if (!playable) throw { name: "AbortError" };
+        }
+      }),
+      createElement({
+        play: async () => {
+          if (!playable) throw { name: "AbortError" };
+        }
+      })
+    ];
     const outputs = elements.map((element) => connect(element, { id: "bot" } as MediaStream, false, 100));
     await Promise.all(outputs.map((output) => output.ready));
     playable = true;
@@ -682,7 +825,11 @@ describe("hybrid voice audio output", () => {
   it("does not restart healthy audio on readiness events or user activation", async () => {
     const events = installWindow();
     let attempts = 0;
-    const element = createElement({ play: async () => { attempts += 1; } });
+    const element = createElement({
+      play: async () => {
+        attempts += 1;
+      }
+    });
     const output = connect(element, { id: "remote" } as MediaStream, false, 100);
     await output.ready;
     element.emit("canplay");
@@ -695,12 +842,16 @@ describe("hybrid voice audio output", () => {
     const events = installWindow();
     let attempts = 0;
     let resolvePlay!: () => void;
-    const pendingPlay = new Promise<void>((resolve) => { resolvePlay = resolve; });
-    const element = createElement({ play: async () => {
-      attempts += 1;
-      if (attempts === 1) throw { name: "NotAllowedError" };
-      await pendingPlay;
-    } });
+    const pendingPlay = new Promise<void>((resolve) => {
+      resolvePlay = resolve;
+    });
+    const element = createElement({
+      play: async () => {
+        attempts += 1;
+        if (attempts === 1) throw { name: "NotAllowedError" };
+        await pendingPlay;
+      }
+    });
     const output = connect(element, { id: "remote" } as MediaStream, false, 100);
     await output.ready;
     events.dispatchEvent(new Event("pointerdown"));
@@ -716,11 +867,15 @@ describe("hybrid voice audio output", () => {
     installWindow();
     await selectSharedAudioOutputDevice("speaker-late");
     let applySink!: () => void;
-    const sinkPending = new Promise<void>((resolve) => { applySink = resolve; });
+    const sinkPending = new Promise<void>((resolve) => {
+      applySink = resolve;
+    });
     let attempts = 0;
     const element = createElement({
       setSinkId: () => sinkPending,
-      play: async () => { attempts += 1; }
+      play: async () => {
+        attempts += 1;
+      }
     });
     const output = connect(element, { id: "remote" } as MediaStream, false, 100);
     element.emit("canplay");
@@ -735,10 +890,17 @@ describe("hybrid voice audio output", () => {
     const events = installWindow();
     let rejectPlay!: (cause: unknown) => void;
     let attempts = 0;
-    const pendingPlay = new Promise<void>((_resolve, reject) => { rejectPlay = reject; });
+    const pendingPlay = new Promise<void>((_resolve, reject) => {
+      rejectPlay = reject;
+    });
     const blockedStates: boolean[] = [];
     const unsubscribe = subscribeBlockedAudioOutputs((blocked) => blockedStates.push(blocked));
-    const element = createElement({ play: () => { attempts += 1; return pendingPlay; } });
+    const element = createElement({
+      play: () => {
+        attempts += 1;
+        return pendingPlay;
+      }
+    });
     const output = connect(element, { id: "remote" } as MediaStream, false, 100);
     // Allow sink application to finish and the first play to start.
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -759,7 +921,11 @@ describe("hybrid voice audio output", () => {
   it("retries playback if a previously playing remote output pauses", async () => {
     installWindow();
     let attempts = 0;
-    const element = createElement({ play: async () => { attempts += 1; } });
+    const element = createElement({
+      play: async () => {
+        attempts += 1;
+      }
+    });
     const output = connect(element, { id: "remote" } as MediaStream, false, 100);
     await output.ready;
 
@@ -776,12 +942,20 @@ describe("hybrid voice audio output", () => {
     installWindow();
     const firstSinks: string[] = [];
     const secondSinks: string[] = [];
-    const first = createElement({ setSinkId: async (sinkId) => { firstSinks.push(sinkId); } });
+    const first = createElement({
+      setSinkId: async (sinkId) => {
+        firstSinks.push(sinkId);
+      }
+    });
     const firstOutput = connect(first, { id: "first" } as MediaStream, false, 100);
     await firstOutput.ready;
 
     assert.equal(await selectSharedAudioOutputDevice("speaker-b"), "media-elements");
-    const second = createElement({ setSinkId: async (sinkId) => { secondSinks.push(sinkId); } });
+    const second = createElement({
+      setSinkId: async (sinkId) => {
+        secondSinks.push(sinkId);
+      }
+    });
     const secondOutput = connect(second, { id: "second" } as MediaStream, false, 100);
     await secondOutput.ready;
 
@@ -794,7 +968,13 @@ describe("hybrid voice audio output", () => {
     let stopped = 0;
     const stream = {
       id: "remote",
-      getTracks: () => [{ stop: () => { stopped += 1; } }]
+      getTracks: () => [
+        {
+          stop: () => {
+            stopped += 1;
+          }
+        }
+      ]
     } as unknown as MediaStream;
     const element = createElement();
     const output = connect(element, stream, false, 100);
@@ -813,8 +993,15 @@ describe("hybrid voice audio output", () => {
     let closes = 0;
     class FakeAudioContext {
       state: AudioContextState = "suspended";
-      resume() { resumes += 1; this.state = "running"; return Promise.resolve(); }
-      close() { closes += 1; return Promise.resolve(); }
+      resume() {
+        resumes += 1;
+        this.state = "running";
+        return Promise.resolve();
+      }
+      close() {
+        closes += 1;
+        return Promise.resolve();
+      }
     }
     installWindow(FakeAudioContext as unknown as new () => AudioContext);
 

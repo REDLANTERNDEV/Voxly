@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { measuringVoiceQuality, VoiceQualityController, type VoiceStatsSource } from "./voiceQualityController.js";
-export type { VoiceQuality, VoiceQualityRecoveryRequest, VoiceStatsPeer, VoiceStatsSource } from "./voiceQualityController.js";
+export type {
+  VoiceQuality,
+  VoiceQualityRecoveryRequest,
+  VoiceStatsPeer,
+  VoiceStatsSource
+} from "./voiceQualityController.js";
 
 // Recovery still requires two four-second observations, not two render ticks.
 export const voiceQualitySampleMs = 4_000;

@@ -14,24 +14,24 @@ import {
 
 describe("message permissions", () => {
   it("lets members edit and delete their own messages", () => {
-    assert.deepEqual(
-      messagePermissions({ currentUserId: "u1", currentUserRole: "member", messageUserId: "u1" }),
-      { canEdit: true, canDelete: true }
-    );
+    assert.deepEqual(messagePermissions({ currentUserId: "u1", currentUserRole: "member", messageUserId: "u1" }), {
+      canEdit: true,
+      canDelete: true
+    });
   });
 
   it("lets owners delete but not edit other users messages", () => {
-    assert.deepEqual(
-      messagePermissions({ currentUserId: "owner", currentUserRole: "owner", messageUserId: "u1" }),
-      { canEdit: false, canDelete: true }
-    );
+    assert.deepEqual(messagePermissions({ currentUserId: "owner", currentUserRole: "owner", messageUserId: "u1" }), {
+      canEdit: false,
+      canDelete: true
+    });
   });
 
   it("blocks members from moderating other users messages", () => {
-    assert.deepEqual(
-      messagePermissions({ currentUserId: "u2", currentUserRole: "member", messageUserId: "u1" }),
-      { canEdit: false, canDelete: false }
-    );
+    assert.deepEqual(messagePermissions({ currentUserId: "u2", currentUserRole: "member", messageUserId: "u1" }), {
+      canEdit: false,
+      canDelete: false
+    });
   });
 
   it("uses a clearer delete error when the browser session no longer owns the message", () => {
@@ -74,11 +74,25 @@ describe("message list scrolling", () => {
 describe("message menu position", () => {
   it("keeps the menu within the viewport margin", () => {
     assert.deepEqual(
-      clampContextMenuPosition({ x: 990, y: 790, menuWidth: 160, menuHeight: 96, viewportWidth: 1000, viewportHeight: 800 }),
+      clampContextMenuPosition({
+        x: 990,
+        y: 790,
+        menuWidth: 160,
+        menuHeight: 96,
+        viewportWidth: 1000,
+        viewportHeight: 800
+      }),
       { x: 832, y: 696 }
     );
     assert.deepEqual(
-      clampContextMenuPosition({ x: -5, y: -4, menuWidth: 160, menuHeight: 96, viewportWidth: 1000, viewportHeight: 800 }),
+      clampContextMenuPosition({
+        x: -5,
+        y: -4,
+        menuWidth: 160,
+        menuHeight: 96,
+        viewportWidth: 1000,
+        viewportHeight: 800
+      }),
       { x: 8, y: 8 }
     );
   });
@@ -89,7 +103,9 @@ describe("edited message timestamp", () => {
     const value = "2026-07-14T12:34:56.000Z";
     assert.equal(
       formatMessageDateTime(value, "en"),
-      new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "medium", ...timeFormatOptions("auto") }).format(new Date(value))
+      new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "medium", ...timeFormatOptions("auto") }).format(
+        new Date(value)
+      )
     );
   });
 });
@@ -109,7 +125,9 @@ describe("message timestamp", () => {
 
     assert.equal(
       formatMessageTimestamp(value, "en", now),
-      new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", ...timeFormatOptions("auto") }).format(new Date(value))
+      new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", ...timeFormatOptions("auto") }).format(
+        new Date(value)
+      )
     );
   });
 
@@ -119,7 +137,9 @@ describe("message timestamp", () => {
 
     assert.equal(
       formatMessageTimestamp(value, "tr", now),
-      new Intl.DateTimeFormat("tr", { dateStyle: "medium", timeStyle: "short", ...timeFormatOptions("auto") }).format(new Date(value))
+      new Intl.DateTimeFormat("tr", { dateStyle: "medium", timeStyle: "short", ...timeFormatOptions("auto") }).format(
+        new Date(value)
+      )
     );
   });
 });

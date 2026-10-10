@@ -5,9 +5,7 @@ export interface ContextMenuDescriptor {
   trigger: HTMLButtonElement | null;
 }
 
-export type ContextMenuAction =
-  | { type: "open"; menu: ContextMenuDescriptor }
-  | { type: "close" };
+export type ContextMenuAction = { type: "open"; menu: ContextMenuDescriptor } | { type: "close" };
 
 export function contextMenuReducer(
   _state: ContextMenuDescriptor | null,
@@ -32,10 +30,12 @@ export function clampContextMenuPosition(input: {
   };
 }
 
-export function createContextMenuDescriptor(input: Parameters<typeof clampContextMenuPosition>[0] & {
-  key: string;
-  trigger: HTMLButtonElement | null;
-}): ContextMenuDescriptor {
+export function createContextMenuDescriptor(
+  input: Parameters<typeof clampContextMenuPosition>[0] & {
+    key: string;
+    trigger: HTMLButtonElement | null;
+  }
+): ContextMenuDescriptor {
   return {
     key: input.key,
     anchor: { x: input.x, y: input.y },

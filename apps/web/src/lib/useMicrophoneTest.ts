@@ -17,7 +17,9 @@ export function useMicrophoneTest(
   const [active, setActive] = useState(false);
   const [monitorStream, setMonitorStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<MicrophoneTestError>(null);
-  const [errorOccurrence, setErrorOccurrence] = useState<ErrorOccurrence<Exclude<MicrophoneTestError, null>> | null>(null);
+  const [errorOccurrence, setErrorOccurrence] = useState<ErrorOccurrence<Exclude<MicrophoneTestError, null>> | null>(
+    null
+  );
   const inputRef = useRef<MicrophoneInput | null>(null);
   const sharedStreamRef = useRef(sharedMonitorStream);
   const deviceIdRef = useRef(deviceId);
@@ -55,10 +57,9 @@ export function useMicrophoneTest(
     try {
       // The running capture is released first so the reopen is served by a new
       // pipeline rather than the one already attached to the device.
-      rawStream = await pendingCaptures.run(() => openMicrophoneCapture(
-        { deviceId: deviceIdRef.current },
-        { release: () => previous?.dispose() }
-      ));
+      rawStream = await pendingCaptures.run(() =>
+        openMicrophoneCapture({ deviceId: deviceIdRef.current }, { release: () => previous?.dispose() })
+      );
       const input = createMicrophoneInput(rawStream, volumeRef.current, {
         noiseSuppression: noiseSuppressionRef.current
       });
@@ -74,7 +75,8 @@ export function useMicrophoneTest(
     } catch (cause) {
       rawStream?.getTracks().forEach((track) => track.stop());
       if (generation === generationRef.current) {
-        const nextError = cause instanceof DOMException && cause.name === "NotAllowedError" ? "permission" : "unavailable";
+        const nextError =
+          cause instanceof DOMException && cause.name === "NotAllowedError" ? "permission" : "unavailable";
         setError(nextError);
         setErrorOccurrence((current) => recordErrorOccurrence(current, nextError));
       }
@@ -125,8 +127,12 @@ export function useMicrophoneTest(
     };
   }, []);
 
-  const isBusy = useCallback(() => pendingCaptures.isPending()
-    || (monitorStreamRef.current?.getTracks().some((track) => track.readyState === "live") ?? false), [pendingCaptures]);
+  const isBusy = useCallback(
+    () =>
+      pendingCaptures.isPending() ||
+      (monitorStreamRef.current?.getTracks().some((track) => track.readyState === "live") ?? false),
+    [pendingCaptures]
+  );
 
   return {
     isBusy,

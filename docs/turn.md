@@ -40,12 +40,12 @@ an HTTP proxy, disable it for the TURN hostname. For Cloudflare this means
 
 ## 2. Ports and firewalls
 
-| Protocol | Port | Purpose |
-| --- | --- | --- |
-| UDP | 3478 | STUN and preferred TURN transport |
-| TCP | 3478 | TURN fallback when UDP is blocked |
-| TCP | 5349 | TURN over TLS |
-| UDP | 49160-50160 | Allocated relay media ports |
+| Protocol | Port        | Purpose                           |
+| -------- | ----------- | --------------------------------- |
+| UDP      | 3478        | STUN and preferred TURN transport |
+| TCP      | 3478        | TURN fallback when UDP is blocked |
+| TCP      | 5349        | TURN over TLS                     |
+| UDP      | 49160-50160 | Allocated relay media ports       |
 
 3478 and 5349 are the standard Coturn listener defaults. The UDP relay range
 is a Voxly deployment default (1,000 relay ports for multi-user voice and screen sharing).

@@ -27,12 +27,12 @@ second; times below are the first sample with received height 720, so actual
 arrival can be earlier. Decoded frame counts were read from receiver statistics.
 
 | Trial | Fresh first 720p | Late-viewer first 720p |
-| --- | ---: | ---: |
-| 1 | 1165 ms | 1033 ms |
-| 2 | 1035 ms | 1045 ms |
-| 3 | 1035 ms | 1037 ms |
-| 4 | 1035 ms | 1046 ms |
-| 5 | 1035 ms | 1040 ms |
+| ----- | ---------------: | ---------------------: |
+| 1     |          1165 ms |                1033 ms |
+| 2     |          1035 ms |                1045 ms |
+| 3     |          1035 ms |                1037 ms |
+| 4     |          1035 ms |                1046 ms |
+| 5     |          1035 ms |                1040 ms |
 
 All trials met the five-second healthy-fixture target. Final receiver samples
 confirmed 89–120 decoded frames. This fixture is a local direct connection;

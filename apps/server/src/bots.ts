@@ -57,10 +57,7 @@ export function resolveBotConfig(input: { token?: string }): BotConfig | undefin
  */
 export function isBotTokenValid(configured: string, presented: string | undefined) {
   if (!presented) return false;
-  return timingSafeEqual(
-    Buffer.from(hashToken(configured), "hex"),
-    Buffer.from(hashToken(presented), "hex")
-  );
+  return timingSafeEqual(Buffer.from(hashToken(configured), "hex"), Buffer.from(hashToken(presented), "hex"));
 }
 
 /** The credential arrives as a header, never as a query string or a cookie. */
@@ -132,11 +129,7 @@ export function rejectBotTarget(database: VoxlyDatabase, userId: string, reply: 
   return true;
 }
 
-export function createMusicBotAccount(
-  database: VoxlyDatabase,
-  serverId: string,
-  joinedAt: string
-): BotAccount {
+export function createMusicBotAccount(database: VoxlyDatabase, serverId: string, joinedAt: string): BotAccount {
   // A UUID rather than a readable id: every server-scoped moderation route
   // validates `userId` as a UUID, and a bot that could not be named in those
   // routes could not be muted or disconnected either.

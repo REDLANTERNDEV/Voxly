@@ -101,12 +101,16 @@ export interface ChatMessageReply {
   nickname: string;
   authorDeleted: boolean;
   body: string;
+  mentions: MessageMention[];
 }
 
 /** Longest quoted excerpt the server will send for a reply. */
 export const replyExcerptMaxLength = 160;
 
 export interface ChatMessage {
+  mentions: MessageMention[];
+  reactionState: MessageReactionState;
+  pinnedAt: string | null;
   serverId: string;
   sequence: number;
   id: string;
@@ -128,6 +132,8 @@ export interface ChatMessage {
 }
 
 export interface PresenceUser {
+  /** Absent only on synthesized session identities with no Server context. */
+  mentionCode?: string;
   userId: string;
   nickname: string;
   role: UserRole;
@@ -184,8 +190,7 @@ export interface VoiceJoinRequest {
 }
 
 export type VoiceJoinAck =
-  | { ok: true; state: VoiceMemberState }
-  | { ok: false; error: "room_not_found" | "forbidden" | "visual_limit_reached" };
+  { ok: true; state: VoiceMemberState } | { ok: false; error: "room_not_found" | "forbidden" | "visual_limit_reached" };
 
 export type VoiceSetMediaAck =
   | { ok: true; state: VoiceMemberState }
@@ -226,9 +231,14 @@ export interface VisualTarget {
 export type VoiceSetVisualSubscriptionsAck =
   | { ok: true; targets: VisualTarget[] }
   | {
-    ok: false;
-    error: "invalid_payload" | "room_not_found" | "not_in_voice_room" | "target_not_in_voice_room" | "target_visual_unavailable";
-  };
+      ok: false;
+      error:
+        | "invalid_payload"
+        | "room_not_found"
+        | "not_in_voice_room"
+        | "target_not_in_voice_room"
+        | "target_visual_unavailable";
+    };
 
 export type RtcSignal = Record<string, unknown>;
 
@@ -238,15 +248,16 @@ export interface RtcRecoveryRequest {
 }
 
 export function isRtcRecoveryRequest(signal: unknown): signal is RtcRecoveryRequest {
-  return typeof signal === "object"
-    && signal !== null
-    && (signal as { type?: unknown }).type === "recovery-request"
-    && Object.keys(signal).length === 1;
+  return (
+    typeof signal === "object" &&
+    signal !== null &&
+    (signal as { type?: unknown }).type === "recovery-request" &&
+    Object.keys(signal).length === 1
+  );
 }
 
 export type RtcSignalAck =
-  | { ok: true }
-  | { ok: false; error: "room_not_found" | "not_in_voice_room" | "target_not_in_voice_room" };
+  { ok: true } | { ok: false; error: "room_not_found" | "not_in_voice_room" | "target_not_in_voice_room" };
 
 /**
  * How far a peer connection has got through an offer/answer exchange. Spelled
@@ -254,12 +265,7 @@ export type RtcSignalAck =
  * pass its own library's state through the same rules.
  */
 export type VoiceSignalingState =
-  | "stable"
-  | "have-local-offer"
-  | "have-remote-offer"
-  | "have-local-pranswer"
-  | "have-remote-pranswer"
-  | "closed";
+  "stable" | "have-local-offer" | "have-remote-offer" | "have-local-pranswer" | "have-remote-pranswer" | "closed";
 
 /**
  * Which of two members offers the connection between them. Comparing user ids
@@ -497,13 +503,7 @@ export type MusicTrackFailure = "failedUnavailable" | "failedSource" | "failedBo
  * The five name a member and the three do not, which is the one thing every
  * consumer has to read this union for. ADR-0011.
  */
-export type MusicSetLogAction =
-  | "added"
-  | "skipped"
-  | "removed"
-  | "paused"
-  | "resumed"
-  | MusicTrackFailure;
+export type MusicSetLogAction = "added" | "skipped" | "removed" | "paused" | "resumed" | MusicTrackFailure;
 
 /**
  * One line of the Set log: a member, a verb, and the Track it was about.
@@ -593,17 +593,17 @@ export interface MusicQueueState {
 export type MusicPublishAck =
   | { ok: true }
   | {
-    ok: false;
-    /**
-     * `not_authorized` is a publisher that is not this room's Music bot, or is
-     * one that has since left the room — an eviction the bot has not noticed
-     * yet arrives this way. `room_not_found` is a room that is gone or was
-     * never a voice room. `invalid_state` is a payload that did not survive
-     * validation, which is a fault in the bot rather than anything a member
-     * did. They are distinct because only the last is a bug.
-     */
-    error: "not_authorized" | "room_not_found" | "invalid_state";
-  };
+      ok: false;
+      /**
+       * `not_authorized` is a publisher that is not this room's Music bot, or is
+       * one that has since left the room — an eviction the bot has not noticed
+       * yet arrives this way. `room_not_found` is a room that is gone or was
+       * never a voice room. `invalid_state` is a payload that did not survive
+       * validation, which is a fault in the bot rather than anything a member
+       * did. They are distinct because only the last is a bug.
+       */
+      error: "not_authorized" | "room_not_found" | "invalid_state";
+    };
 
 /**
  * Why a music request could not be carried out.
@@ -681,25 +681,18 @@ export type MusicAnswer =
    */
   | { ok: true; kind: "results"; results: MusicSearchResult[] };
 
-export type MusicControlAck =
-  | MusicAnswer
-  | { ok: false; error: MusicControlError };
+export type MusicControlAck = MusicAnswer | { ok: false; error: MusicControlError };
 
 /** What the bot answers the server. The server's own refusals never reach it. */
 export type MusicCommandAck =
   | MusicAnswer
   | {
-    ok: false;
-    error: Extract<
-      MusicControlError,
-      | "unsupported_link"
-      | "track_unavailable"
-      | "live_stream"
-      | "extractor_failed"
-      | "queue_full"
-      | "bot_failed"
-    >;
-  };
+      ok: false;
+      error: Extract<
+        MusicControlError,
+        "unsupported_link" | "track_unavailable" | "live_stream" | "extractor_failed" | "queue_full" | "bot_failed"
+      >;
+    };
 
 export interface ServerToClientEvents {
   "account:deleted": (payload: { reason: "request_approved" | "owner_initiated" }) => void;
@@ -714,6 +707,8 @@ export interface ServerToClientEvents {
   "notifications:changed": (event: { serverId: string }) => void;
   "message:new": (message: ChatMessage) => void;
   "message:updated": (message: ChatMessage) => void;
+  "message:reactions": (event: MessageReactionsEvent) => void;
+  "message:pinsChanged": (event: { serverId: string; roomId: string }) => void;
   "message:deleted": (payload: { roomId: string; messageId: string }) => void;
   "voice:joined": (payload: { roomId: string; user: PresenceUser }) => void;
   "voice:left": (payload: { roomId: string; userId: string }) => void;
@@ -783,15 +778,27 @@ export interface ClientToServerEvents {
   "voice:join": (payload: VoiceJoinRequest, ack: (response: VoiceJoinAck) => void) => void;
   "voice:leave": (roomId: string) => void;
   "voice:snapshot": (roomId: string, ack: (snapshot: VoiceSnapshot) => void) => void;
-  "voice:setMediaState": (payload: { roomId: string; media: Partial<VoiceMediaState> }, ack: (response: VoiceSetMediaAck) => void) => void;
-  "voice:setVisualSubscriptions": (payload: { roomId: string; targets: VisualTarget[] }, ack?: (response: VoiceSetVisualSubscriptionsAck) => void) => void;
-  "rtc:signal": (payload: { roomId: string; toUserId: string; signal: RtcSignal }, ack?: (response: RtcSignalAck) => void) => void;
+  "voice:setMediaState": (
+    payload: { roomId: string; media: Partial<VoiceMediaState> },
+    ack: (response: VoiceSetMediaAck) => void
+  ) => void;
+  "voice:setVisualSubscriptions": (
+    payload: { roomId: string; targets: VisualTarget[] },
+    ack?: (response: VoiceSetVisualSubscriptionsAck) => void
+  ) => void;
+  "rtc:signal": (
+    payload: { roomId: string; toUserId: string; signal: RtcSignal },
+    ack?: (response: RtcSignalAck) => void
+  ) => void;
   /**
    * Summon the Music bot, or tell it what to do once it is here. Acknowledged
    * so the asker learns that no bot answered, rather than watching a room where
    * nothing happens.
    */
-  "music:control": (payload: { roomId: string; command: MusicCommand }, ack: (response: MusicControlAck) => void) => void;
+  "music:control": (
+    payload: { roomId: string; command: MusicCommand },
+    ack: (response: MusicControlAck) => void
+  ) => void;
   /**
    * The Music bot saying what the Queue now is, for the server to hand to
    * everyone in the room.
@@ -813,7 +820,177 @@ export interface ClientToServerEvents {
 
 /** Personal message notifications; unrelated to owner-enforced voice moderation. */
 export type ServerNotificationMute = { mode: "enabled" } | { mode: "until"; until: string } | { mode: "indefinite" };
-export type NotificationMuteRequest = { mode: "enabled" } | { mode: "timed"; durationMinutes: 15 | 60 | 180 | 480 | 1440 } | { mode: "indefinite" };
-export interface RoomUnreadState { roomId: string; unreadCount: number; lastReadSequence: number; latestSequence: number; }
-export interface ServerNotificationState { serverId: string; mute: ServerNotificationMute; rooms: RoomUnreadState[]; }
-export interface NotificationStateResponse { serverTime: string; servers: ServerNotificationState[]; }
+export type NotificationMuteRequest =
+  { mode: "enabled" } | { mode: "timed"; durationMinutes: 15 | 60 | 180 | 480 | 1440 } | { mode: "indefinite" };
+export interface RoomUnreadState {
+  roomId: string;
+  unreadCount: number;
+  lastReadSequence: number;
+  latestSequence: number;
+}
+export interface ServerNotificationState {
+  serverId: string;
+  mute: ServerNotificationMute;
+  rooms: RoomUnreadState[];
+}
+export interface NotificationStateResponse {
+  serverTime: string;
+  servers: ServerNotificationState[];
+}
+
+/** Local Unicode catalogue shared by the picker and server reaction allowlist. */
+export const chatEmojiCatalog = [
+  ["😀", "faces", "grin smile happy", "gülümse mutlu"],
+  ["😃", "faces", "happy smile", "mutlu gülümse"],
+  ["😄", "faces", "laugh happy", "gül mutlu"],
+  ["😁", "faces", "grin", "gülümse"],
+  ["😆", "faces", "laugh", "kahkaha"],
+  ["😂", "faces", "laugh tears", "kahkaha gözyaşı"],
+  ["🤣", "faces", "laugh rolling", "kahkaha"],
+  ["😊", "faces", "smile blush", "gülümse utan"],
+  ["😉", "faces", "wink", "göz kırp"],
+  ["😍", "faces", "love heart eyes", "aşk sevgi"],
+  ["🥰", "faces", "love hearts", "sevgi kalpler"],
+  ["😘", "faces", "kiss", "öpücük"],
+  ["😎", "faces", "cool sunglasses", "havalı gözlük"],
+  ["🤔", "faces", "think", "düşün"],
+  ["🤨", "faces", "skeptical", "şüpheli"],
+  ["😐", "faces", "neutral", "ifadesiz"],
+  ["🙄", "faces", "eye roll", "göz devir"],
+  ["😏", "faces", "smirk", "sırıt"],
+  ["😴", "faces", "sleep", "uyku"],
+  ["😭", "faces", "cry sad", "ağla üzgün"],
+  ["😢", "faces", "sad tear", "üzgün gözyaşı"],
+  ["😡", "faces", "angry", "kızgın"],
+  ["😱", "faces", "shock scream", "şaşkın çığlık"],
+  ["🤯", "faces", "mind blown", "şaşkın"],
+  ["🥳", "faces", "party celebrate", "parti kutla"],
+  ["🤩", "faces", "star excited", "heyecan yıldız"],
+  ["🥺", "faces", "please pleading", "lütfen yalvar"],
+  ["🤗", "faces", "hug", "sarıl"],
+  ["🤭", "faces", "giggle", "kıkırda"],
+  ["🫡", "faces", "salute", "selam"],
+  ["👍", "gestures", "thumb up like yes", "beğen evet onay"],
+  ["👎", "gestures", "thumb down dislike", "beğenme hayır"],
+  ["👏", "gestures", "clap", "alkış"],
+  ["🙌", "gestures", "hooray", "yaşasın"],
+  ["🙏", "gestures", "thanks please", "teşekkür lütfen"],
+  ["👋", "gestures", "wave hello", "selam merhaba"],
+  ["🤝", "gestures", "handshake", "tokalaş"],
+  ["💪", "gestures", "strong muscle", "güç kas"],
+  ["👌", "gestures", "okay", "tamam"],
+  ["✌️", "gestures", "peace victory", "barış zafer"],
+  ["🤞", "gestures", "luck", "şans"],
+  ["🤘", "gestures", "rock", "rock"],
+  ["❤️", "symbols", "red heart love", "kırmızı kalp sevgi"],
+  ["🧡", "symbols", "orange heart", "turuncu kalp"],
+  ["💛", "symbols", "yellow heart", "sarı kalp"],
+  ["💚", "symbols", "green heart", "yeşil kalp"],
+  ["💙", "symbols", "blue heart", "mavi kalp"],
+  ["💜", "symbols", "purple heart", "mor kalp"],
+  ["🖤", "symbols", "black heart", "siyah kalp"],
+  ["🤍", "symbols", "white heart", "beyaz kalp"],
+  ["💔", "symbols", "broken heart", "kırık kalp"],
+  ["💯", "symbols", "hundred perfect", "yüz mükemmel"],
+  ["✅", "symbols", "check done", "onay tamam"],
+  ["❌", "symbols", "cross no", "çarpı hayır"],
+  ["❓", "symbols", "question", "soru"],
+  ["🎉", "activities", "party celebration", "parti kutlama"],
+  ["🎊", "activities", "confetti", "konfeti"],
+  ["🎮", "activities", "game controller", "oyun kontrol"],
+  ["🏆", "activities", "trophy winner", "kupa kazanan"],
+  ["⚽", "activities", "football", "futbol"],
+  ["🎵", "activities", "music note", "müzik nota"],
+  ["🎸", "activities", "guitar", "gitar"],
+  ["🔥", "nature", "fire hot", "ateş sıcak"],
+  ["✨", "nature", "sparkles", "parıltı"],
+  ["⭐", "nature", "star", "yıldız"],
+  ["🌈", "nature", "rainbow", "gökkuşağı"],
+  ["☀️", "nature", "sun", "güneş"],
+  ["🌙", "nature", "moon", "ay"],
+  ["🐱", "nature", "cat", "kedi"],
+  ["🐶", "nature", "dog", "köpek"],
+  ["🌸", "nature", "flower", "çiçek"],
+  ["☕", "food", "coffee", "kahve"],
+  ["🍕", "food", "pizza", "pizza"],
+  ["🍔", "food", "burger", "hamburger"],
+  ["🍿", "food", "popcorn", "patlamış mısır"],
+  ["🎂", "food", "cake birthday", "pasta doğum günü"],
+  ["🍻", "food", "cheers beer", "şerefe bira"],
+  ["🚀", "objects", "rocket", "roket"],
+  ["💡", "objects", "idea light", "fikir ışık"],
+  ["💻", "objects", "computer", "bilgisayar"],
+  ["📌", "objects", "pin", "sabitle"],
+  ["🎁", "objects", "gift", "hediye"],
+  ["👀", "objects", "eyes look", "göz bak"],
+  ["💤", "objects", "sleep", "uyku"]
+] as const;
+
+export const maxMessageReactionKinds = 8;
+export const chatEmojiSet: ReadonlySet<string> = new Set(chatEmojiCatalog.map(([emoji]) => emoji));
+
+export type MentionTarget = { kind: "person"; userId: string } | { kind: "everyone" | "here" };
+export type MessageMentionInput = MentionTarget & { id?: string; start: number; end: number };
+export type MessageMention = MessageMentionInput & {
+  /** Stable occurrence identity: a new collective label gets a new snapshot. */
+  id: string;
+  nickname: string;
+  mentionCode: string;
+  authorDeleted: boolean;
+  /** Frozen on creation; used only for presentation, never authorization. */
+  recipientIds: string[];
+};
+export interface MessageReaction {
+  emoji: string;
+  userIds: string[];
+}
+export interface MessageReactionState {
+  version: number;
+  reactions: MessageReaction[];
+}
+export interface MessageReactionsEvent extends MessageReactionState {
+  serverId: string;
+  roomId: string;
+  messageId: string;
+}
+
+/** Ranges refer to the exact plain body, in JavaScript's UTF-16 units. */
+export function validMentionRanges(body: string, mentions: MessageMentionInput[]) {
+  let previousEnd = 0;
+  for (const mention of mentions) {
+    if (
+      !Number.isInteger(mention.start) ||
+      !Number.isInteger(mention.end) ||
+      mention.start < previousEnd ||
+      mention.end <= mention.start ||
+      mention.end > body.length ||
+      body[mention.start] !== "@"
+    )
+      return false;
+    const text = body.slice(mention.start, mention.end);
+    if (mention.kind !== "person" && text !== `@${mention.kind}`) return false;
+    previousEnd = mention.end;
+  }
+  return true;
+}
+
+/** Rebase generated labels without changing the surrounding authored text. */
+export function rewriteMentionLabels(body: string, mentions: MessageMention[]) {
+  let result = "",
+    offset = 0;
+  const rewritten: MessageMention[] = [];
+  for (const mention of mentions) {
+    result += body.slice(offset, mention.start);
+    const label =
+      mention.kind !== "person"
+        ? `@${mention.kind}`
+        : mention.authorDeleted
+          ? `@#${mention.mentionCode}`
+          : `@${mention.nickname} · #${mention.mentionCode}`;
+    const start = result.length;
+    result += label;
+    rewritten.push({ ...mention, start, end: result.length });
+    offset = mention.end;
+  }
+  return { body: result + body.slice(offset), mentions: rewritten };
+}

@@ -65,19 +65,22 @@ describe("messages", () => {
     });
 
     it("carries a quote only while the quoted message is still live", () => {
-      const quoted = publicMessage(messageRow({
-        replyToMessageId: "message-0",
-        replyToUserId: "user-0",
-        replyToNickname: "Ada",
-        replyToAuthorDeleted: 0,
-        replyToBody: "the original"
-      }));
+      const quoted = publicMessage(
+        messageRow({
+          replyToMessageId: "message-0",
+          replyToUserId: "user-0",
+          replyToNickname: "Ada",
+          replyToAuthorDeleted: 0,
+          replyToBody: "the original"
+        })
+      );
       assert.deepEqual(quoted.replyTo, {
         messageId: "message-0",
         userId: "user-0",
         nickname: "Ada",
         authorDeleted: false,
-        body: "the original"
+        body: "the original",
+        mentions: []
       });
 
       // The target has since been deleted: the join finds nothing, the reply
@@ -146,11 +149,21 @@ describe("messages", () => {
       // neighbouring group during ticket 19 fails here rather than silently.
       assert.deepEqual(registered.sort(), [
         "DELETE /api/rooms/:roomId/messages/:messageId",
+        "DELETE /api/rooms/:roomId/messages/:messageId/pin",
+        "DELETE /api/rooms/:roomId/messages/:messageId/reactions",
+        "DELETE /api/rooms/:roomId/messages/:messageId/reactions/:emoji",
+        "DELETE /api/rooms/:roomId/messages/:messageId/reactions/:emoji/all",
         "GET /api/rooms/:roomId/messages",
+        "GET /api/rooms/:roomId/messages/:messageId/context",
+        "GET /api/rooms/:roomId/pins",
         "HEAD /api/rooms/:roomId/messages",
+        "HEAD /api/rooms/:roomId/messages/:messageId/context",
+        "HEAD /api/rooms/:roomId/pins",
         "PATCH /api/rooms/:roomId/messages/:messageId",
         "PATCH /api/rooms/:roomId/messages/:messageId/embeds",
-        "POST /api/rooms/:roomId/messages"
+        "POST /api/rooms/:roomId/messages",
+        "PUT /api/rooms/:roomId/messages/:messageId/pin",
+        "PUT /api/rooms/:roomId/messages/:messageId/reactions/:emoji"
       ]);
     });
   });
@@ -230,7 +243,11 @@ describe("messages", () => {
           cookies: member.cookies,
           payload: { embedKey: "youtube:dQw4w9WgXcQ" }
         }),
-        app.server.inject({ method: "DELETE", url: `/api/rooms/${voiceRoom}/messages/${messageId}`, cookies: member.cookies })
+        app.server.inject({
+          method: "DELETE",
+          url: `/api/rooms/${voiceRoom}/messages/${messageId}`,
+          cookies: member.cookies
+        })
       ]);
 
       for (const attempt of attempts) {

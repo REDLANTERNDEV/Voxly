@@ -81,15 +81,15 @@ these results show trial variation, not a consistent Voxly-specific regression.
 
 Measured longest missing-speech interval per trial (maximum of two directions):
 
-| Route | Impairment | Voxly | Native |
-| --- | --- | --- | --- |
-| Direct | 40 ± 20 ms jitter | 10 ms | 10 ms |
-| Direct | 3% packet loss | 10 ms | 10 ms |
-| Direct | 500 ms outage | 290 ms | 300 ms |
-| TURN | 40 ± 20 ms jitter | 50 ms | 50 ms |
-| TURN | 3% packet loss, repeat | 20 ms | 30 ms |
-| TURN | 500 ms outage, repeat | 280 ms | 150 ms |
-| TURN | 500 ms outage, verification | 220 ms | 270 ms |
+| Route  | Impairment                  | Voxly  | Native |
+| ------ | --------------------------- | ------ | ------ |
+| Direct | 40 ± 20 ms jitter           | 10 ms  | 10 ms  |
+| Direct | 3% packet loss              | 10 ms  | 10 ms  |
+| Direct | 500 ms outage               | 290 ms | 300 ms |
+| TURN   | 40 ± 20 ms jitter           | 50 ms  | 50 ms  |
+| TURN   | 3% packet loss, repeat      | 20 ms  | 30 ms  |
+| TURN   | 500 ms outage, repeat       | 280 ms | 150 ms |
+| TURN   | 500 ms outage, verification | 220 ms | 270 ms |
 
 Each impairment run used two fresh joins before degrading the established call.
 These are individual synthetic trials; random impairment and fixture phase

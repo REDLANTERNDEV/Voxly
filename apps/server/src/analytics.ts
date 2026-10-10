@@ -94,7 +94,12 @@ const providerIngest: Record<AnalyticsProvider, { defaults(scriptUrl: string): s
   }
 };
 
-export function resolveAnalyticsConfig(input: { provider?: string; scriptUrl?: string; websiteId?: string; hostUrl?: string }): AnalyticsConfig | undefined {
+export function resolveAnalyticsConfig(input: {
+  provider?: string;
+  scriptUrl?: string;
+  websiteId?: string;
+  hostUrl?: string;
+}): AnalyticsConfig | undefined {
   const provider = input.provider?.trim().toLowerCase();
   const scriptUrl = input.scriptUrl?.trim();
   const websiteId = input.websiteId?.trim();
@@ -104,7 +109,7 @@ export function resolveAnalyticsConfig(input: { provider?: string; scriptUrl?: s
     return undefined;
   }
   if (!provider) {
-    throw new Error("ANALYTICS_PROVIDER must be set to \"umami\" or \"google\" when analytics values are configured.");
+    throw new Error('ANALYTICS_PROVIDER must be set to "umami" or "google" when analytics values are configured.');
   }
   if (provider !== "umami" && provider !== "google") {
     throw new Error(`Unsupported ANALYTICS_PROVIDER "${provider}". Supported values are "umami" and "google".`);
@@ -120,11 +125,18 @@ export function resolveAnalyticsConfig(input: { provider?: string; scriptUrl?: s
   if (provider === "google") {
     // gtag.js is served from one well-known origin and keyed by measurement ID,
     // so operators only supply the ID.
-    return { provider, scriptUrl: `${googleScriptOrigin}/gtag/js?id=${encodeURIComponent(websiteId)}`, websiteId, ...ingest };
+    return {
+      provider,
+      scriptUrl: `${googleScriptOrigin}/gtag/js?id=${encodeURIComponent(websiteId)}`,
+      websiteId,
+      ...ingest
+    };
   }
 
   if (!scriptUrl) {
-    throw new Error("ANALYTICS_SCRIPT_URL must be set for the umami provider, for example https://analytics.example.com/script.js");
+    throw new Error(
+      "ANALYTICS_SCRIPT_URL must be set for the umami provider, for example https://analytics.example.com/script.js"
+    );
   }
   return { provider, scriptUrl: requireHttpUrl(scriptUrl, "ANALYTICS_SCRIPT_URL"), websiteId, ...ingest };
 }
@@ -143,9 +155,8 @@ export function analyticsCspOrigins(analytics: AnalyticsConfig | undefined) {
   const configured = analytics.hostUrl ? [new URL(analytics.hostUrl).origin] : [];
   // A configured host stands alone only where the tag has no other endpoint to
   // fall back to; elsewhere it is added to the provider's own.
-  const connect = configured.length > 0 && ingest.exclusive
-    ? configured
-    : [...configured, ...ingest.defaults(analytics.scriptUrl)];
+  const connect =
+    configured.length > 0 && ingest.exclusive ? configured : [...configured, ...ingest.defaults(analytics.scriptUrl)];
 
   return { script: [new URL(analytics.scriptUrl).origin], connect: [...new Set(connect)] };
 }

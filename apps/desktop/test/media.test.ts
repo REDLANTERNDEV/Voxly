@@ -1,15 +1,32 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createCaptureOwner, probeConstraints, screenConstraints, summarizeTracks, transitionWithMediaCleanup } from "../src/media.js";
+import {
+  createCaptureOwner,
+  probeConstraints,
+  screenConstraints,
+  summarizeTracks,
+  transitionWithMediaCleanup
+} from "../src/media.js";
 import { english, turkish, errorKey } from "../src/i18n.js";
 
 function streamFixture() {
   let stops = 0;
   const track = {
-    kind: "audio", readyState: "live", enabled: true, muted: false,
+    kind: "audio",
+    readyState: "live",
+    enabled: true,
+    muted: false,
     label: "Private microphone name",
-    getSettings: () => ({ deviceId: "secret-device", groupId: "secret-group", sampleRate: 48000, echoCancellation: true, restrictOwnAudio: false }),
-    stop: () => { stops += 1; }
+    getSettings: () => ({
+      deviceId: "secret-device",
+      groupId: "secret-group",
+      sampleRate: 48000,
+      echoCancellation: true,
+      restrictOwnAudio: false
+    }),
+    stop: () => {
+      stops += 1;
+    }
   } as unknown as MediaStreamTrack;
   return { stream: { getTracks: () => [track] } as unknown as MediaStream, stops: () => stops };
 }
@@ -48,11 +65,14 @@ describe("desktop feasibility probes", () => {
     const late = streamFixture();
     const ticket = owner.begin();
     owner.accept(ticket, live.stream);
-    await assert.rejects(transitionWithMediaCleanup(owner.stop, async () => {
-      assert.equal(live.stops(), 1);
-      assert.equal(owner.accept(ticket, late.stream), false);
-      throw new Error("installation unreachable");
-    }), /installation unreachable/);
+    await assert.rejects(
+      transitionWithMediaCleanup(owner.stop, async () => {
+        assert.equal(live.stops(), 1);
+        assert.equal(owner.accept(ticket, late.stream), false);
+        throw new Error("installation unreachable");
+      }),
+      /installation unreachable/
+    );
     assert.equal(late.stops(), 1);
     assert.equal(owner.current(), null);
   });
@@ -68,19 +88,28 @@ describe("desktop feasibility probes", () => {
     const failed = owner.begin();
     owner.finish(failed);
     assert.equal(owner.isPending(), false);
-    owner.begin(); owner.stop();
+    owner.begin();
+    owner.stop();
     assert.equal(owner.isPending(), false);
   });
 
   it("excludes Device identifiers and capture labels from diagnostics", () => {
-    assert.deepEqual(summarizeTracks(streamFixture().stream), [{
-      kind: "audio", readyState: "live", enabled: true, muted: false,
-      settings: { sampleRate: 48000, echoCancellation: true, restrictOwnAudio: false }
-    }]);
+    assert.deepEqual(summarizeTracks(streamFixture().stream), [
+      {
+        kind: "audio",
+        readyState: "live",
+        enabled: true,
+        muted: false,
+        settings: { sampleRate: 48000, echoCancellation: true, restrictOwnAudio: false }
+      }
+    ]);
   });
 
   it("requests microphone processing without claiming it was applied", () => {
-    assert.deepEqual(probeConstraints("microphone"), { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+    assert.deepEqual(probeConstraints("microphone"), {
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false
+    });
     assert.equal(probeConstraints("camera").audio, false);
   });
 

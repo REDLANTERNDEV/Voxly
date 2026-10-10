@@ -29,21 +29,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { audit } from "./audit.js";
-import {
-  authenticateHttp,
-  createSession,
-  requireOwner,
-  requireUser,
-  setSessionCookie
-} from "./auth/sessions.js";
+import { authenticateHttp, createSession, requireOwner, requireUser, setSessionCookie } from "./auth/sessions.js";
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import { rejectBotTarget } from "./bots.js";
 import { all, defaultServerId, one, run, type VoxlyDatabase } from "./db/database.js";
-import {
-  activateServerMembership,
-  requireServerInviter,
-  serverMembership
-} from "./members.js";
+import { activateServerMembership, requireServerInviter, serverMembership } from "./members.js";
 import { createUser, nicknameSchema, publicUser, type UserRow } from "./users.js";
 import { verifyTurnstile } from "./turnstile.js";
 import {
@@ -74,11 +64,26 @@ const maxActiveInvitesPerCreator = 200;
  * its fixed list of values — an arbitrary number is not a compatibility
  * shortcut (`AGENTS.md`, Authentication and Sensitive Tokens).
  */
-export const inviteBodySchema = z.object({
-  label: z.string().trim().min(1).max(80),
-  expiresInMinutes: z.union([z.literal(30), z.literal(60), z.literal(360), z.literal(720), z.literal(1440), z.literal(10080), z.literal(43200), z.null()]).optional(),
-  maxUses: z.union([z.literal(1), z.literal(5), z.literal(10), z.literal(25), z.literal(50), z.literal(100), z.null()]).optional()
-}).strict();
+export const inviteBodySchema = z
+  .object({
+    label: z.string().trim().min(1).max(80),
+    expiresInMinutes: z
+      .union([
+        z.literal(30),
+        z.literal(60),
+        z.literal(360),
+        z.literal(720),
+        z.literal(1440),
+        z.literal(10080),
+        z.literal(43200),
+        z.null()
+      ])
+      .optional(),
+    maxUses: z
+      .union([z.literal(1), z.literal(5), z.literal(10), z.literal(25), z.literal(50), z.literal(100), z.null()])
+      .optional()
+  })
+  .strict();
 
 /** Access links are short-lived by design: a named member's way back in, not a standing credential. */
 const accessLinkLifetimeMinutes = 15;
@@ -87,11 +92,13 @@ export function registerInviteRoutes(context: RouteContext) {
   const { fastify, database, realtime, secureCookies, turnstile } = context;
 
   fastify.post("/api/invites/accept", { config: unauthenticatedWriteLimit }, async (request, reply) => {
-    const body = z.object({
-      inviteToken: z.string().min(24),
-      nickname: nicknameSchema.optional(),
-      turnstileToken: z.string().optional()
-    }).parse(request.body);
+    const body = z
+      .object({
+        inviteToken: z.string().min(24),
+        nickname: nicknameSchema.optional(),
+        turnstileToken: z.string().optional()
+      })
+      .parse(request.body);
 
     const authentication = authenticateHttp(database, request, reply, secureCookies);
     if (!authentication.ok && authentication.error === "session_reused") {
@@ -110,8 +117,8 @@ export function registerInviteRoutes(context: RouteContext) {
       return reply.code(400).send({ error: "nickname_required" });
     }
 
-    let user: { id: string; nickname: string; role: "owner" | "member"; bannedAt: string | null } | null = existingUser;
-    let serverId = "";
+    let user: { id: string; nickname: string; role: "owner" | "member"; bannedAt: string | null };
+    let serverId: string;
     database.sqlite.exec("begin immediate");
     try {
       const invite = one<{
@@ -133,7 +140,11 @@ export function registerInviteRoutes(context: RouteContext) {
 
       const member = existingUser ? serverMembership(database.sqlite, invite.server_id, existingUser.id) : null;
       const priorUse = existingUser
-        ? one<{ used_at: string }>(database.sqlite, "select used_at from invite_uses where invite_id = ? and user_id = ?", [invite.id, existingUser.id])
+        ? one<{ used_at: string }>(
+            database.sqlite,
+            "select used_at from invite_uses where invite_id = ? and user_id = ?",
+            [invite.id, existingUser.id]
+          )
         : null;
       if (member?.banned_at) {
         database.sqlite.exec("rollback");
@@ -161,7 +172,11 @@ export function registerInviteRoutes(context: RouteContext) {
       user = existingUser ?? createUser(database, body.nickname as string, "member");
       const now = new Date().toISOString();
       activateServerMembership(database, invite.server_id, user.id, "member", now);
-      run(database.sqlite, "insert into invite_uses (invite_id, user_id, used_at) values (?, ?, ?)", [invite.id, user.id, now]);
+      run(database.sqlite, "insert into invite_uses (invite_id, user_id, used_at) values (?, ?, ?)", [
+        invite.id,
+        user.id,
+        now
+      ]);
       run(
         database.sqlite,
         `update invites
@@ -214,7 +229,12 @@ export function registerInviteRoutes(context: RouteContext) {
       [hashToken(inviteToken)]
     );
     const usedCount = invite ? inviteUseCount(database.sqlite, invite.invite_id) : 0;
-    if (!invite || invite.revoked_at || isExpired(invite.expires_at) || (invite.max_uses !== null && usedCount >= invite.max_uses)) {
+    if (
+      !invite ||
+      invite.revoked_at ||
+      isExpired(invite.expires_at) ||
+      (invite.max_uses !== null && usedCount >= invite.max_uses)
+    ) {
       return reply.code(404).send({ error: "invite_invalid" });
     }
     return {
@@ -302,15 +322,25 @@ export function registerInviteRoutes(context: RouteContext) {
 
   fastify.post("/api/access/claim", { config: unauthenticatedWriteLimit }, async (request, reply) => {
     const { token } = z.object({ token: z.string().min(24) }).parse(request.body);
-    const claim = one<{ id: string; user_id: string; server_id: string; expires_at: string; consumed_at: string | null; revoked_at: string | null }>(
+    const claim = one<{
+      id: string;
+      user_id: string;
+      server_id: string;
+      expires_at: string;
+      consumed_at: string | null;
+      revoked_at: string | null;
+    }>(
       database.sqlite,
       "select id, user_id, server_id, expires_at, consumed_at, revoked_at from access_claims where token_hash = ?",
       [hashToken(token)]
     );
     // Unknown, expired, consumed, revoked and orphaned all answer the same way;
     // which one it was is not the caller's to learn.
-    if (!claim || claim.consumed_at || claim.revoked_at || isExpired(claim.expires_at)) return reply.code(404).send({ error: "access_claim_invalid" });
-    const user = one<UserRow>(database.sqlite, "select id, nickname, role, banned_at from users where id = ?", [claim.user_id]);
+    if (!claim || claim.consumed_at || claim.revoked_at || isExpired(claim.expires_at))
+      return reply.code(404).send({ error: "access_claim_invalid" });
+    const user = one<UserRow>(database.sqlite, "select id, nickname, role, banned_at from users where id = ?", [
+      claim.user_id
+    ]);
     if (!user) return reply.code(404).send({ error: "access_claim_invalid" });
     run(database.sqlite, "update access_claims set consumed_at = ? where id = ?", [new Date().toISOString(), claim.id]);
     audit(database, user.id, "access_link.consumed", user.id);
@@ -330,7 +360,12 @@ export function registerInviteRoutes(context: RouteContext) {
     if (activeInviteCount(database.sqlite, defaultServerId, owner.id) >= maxActiveInvitesPerCreator) {
       return reply.code(409).send({ error: "invite_limit_reached" });
     }
-    const invite = createInviteForServer(database, defaultServerId, owner.id, inviteBodySchema.parse(request.body ?? {}));
+    const invite = createInviteForServer(
+      database,
+      defaultServerId,
+      owner.id,
+      inviteBodySchema.parse(request.body ?? {})
+    );
     audit(database, owner.id, "invite.created", null, defaultServerId);
     database.save();
     return reply.code(201).send({ invite });
@@ -373,12 +408,9 @@ export function createInviteForServer(
   // permanent account-creation credential — the opposite of how `maxUses`
   // defaults. Omission now means the bounded default; only an explicit `null`
   // from an owner produces a link that never expires.
-  const expiresInMinutes = body.expiresInMinutes === undefined
-    ? defaultInviteExpiryMinutes
-    : body.expiresInMinutes;
-  const expiresAt = expiresInMinutes === null
-    ? null
-    : new Date(now.getTime() + expiresInMinutes * 60 * 1000).toISOString();
+  const expiresInMinutes = body.expiresInMinutes === undefined ? defaultInviteExpiryMinutes : body.expiresInMinutes;
+  const expiresAt =
+    expiresInMinutes === null ? null : new Date(now.getTime() + expiresInMinutes * 60 * 1000).toISOString();
   const maxUses = body.maxUses === undefined ? 1 : body.maxUses;
   run(
     database.sqlite,
@@ -448,19 +480,24 @@ export function revokeInvitesCreatedBy(database: VoxlyDatabase, serverId: string
 
 /** Invites a member has outstanding on one server: neither revoked nor expired. */
 export function activeInviteCount(sqlite: DatabaseSync, serverId: string, createdByUserId: string) {
-  return one<{ count: number }>(
-    sqlite,
-    `select count(*) as count from invites
+  return (
+    one<{ count: number }>(
+      sqlite,
+      `select count(*) as count from invites
      where server_id = ? and created_by_user_id = ?
        and revoked_at is null
        and (expires_at is null or expires_at > ?)`,
-    [serverId, createdByUserId, new Date().toISOString()]
-  )?.count ?? 0;
+      [serverId, createdByUserId, new Date().toISOString()]
+    )?.count ?? 0
+  );
 }
 
 /** One use per account, counted from `invite_uses` rather than the legacy first-use columns. */
 export function inviteUseCount(sqlite: DatabaseSync, inviteId: string) {
-  return one<{ count: number }>(sqlite, "select count(*) as count from invite_uses where invite_id = ?", [inviteId])?.count ?? 0;
+  return (
+    one<{ count: number }>(sqlite, "select count(*) as count from invite_uses where invite_id = ?", [inviteId])
+      ?.count ?? 0
+  );
 }
 
 /**

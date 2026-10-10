@@ -17,7 +17,7 @@ export async function installVerifiedUpdate(options: {
   install: () => Promise<void>;
 }): Promise<boolean> {
   const report = await options.report().catch(() => null);
-  if (!await options.confirm(report)) return false;
+  if (!(await options.confirm(report))) return false;
   options.stop();
   await options.install();
   return true;

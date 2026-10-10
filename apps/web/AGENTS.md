@@ -150,7 +150,7 @@ requirement.
   identity from the selected server directory before falling back to the global
   account nickname. Preserve the server-scoped self nickname while realtime is
   disconnected.
-- Member-safe directory data is limited to user ID, nickname, server role, the
+- Member-safe directory data is limited to user ID, nickname, Mention code, server role, the
   invite grant, and whether the account is a Bot. Do not reuse owner moderation
   records as a public directory response.
 - A Bot is listed with the members it sits among, marked with a visible text
@@ -248,6 +248,27 @@ requirement.
   deletion event.
 
 ## Chat Interaction Contract
+
+- The composer and message editor share the local emoji picker and Mention
+  selector. Keep selection ranges through edits, trim rebasing, outbox retries
+  and reply excerpts; editing a generated label turns it into ordinary text.
+- Resolve person Mentions by identity, with nickname and Mention code visible
+  in suggestions, labels and the person card. Include offline active people;
+  derive online status only from authoritative presence. Collective labels use
+  frozen server recipients for highlighting and preserve normal notification gates.
+- Message reactions use the shared catalogue and kind ceiling. At the ceiling,
+  existing groups remain joinable and removable. Render reaction glyphs at 20px,
+  counters at 12px, and controls at least 32px tall (44px on phones/touch).
+  Wrap groups instead of widening the message viewport.
+- Server owners can clear one entire emoji group or every reaction in one click
+  without a confirmation dialog; ordinary members can remove only their own.
+  Gate pin and reaction-moderation controls by the selected Server role.
+- Pinned messages load independently of recent history. Old destinations open
+  their own bounded context window, preserve scroll and unseen arrivals, and
+  provide a return to latest. Context/pin fetches never advance read watermarks.
+  Reaction snapshots reject older versions, including late HTTP responses.
+- Preserve native context menus on message and preview-header anchors. Other
+  message surfaces retain the permission-filtered custom menu and ellipsis.
 
 - Enter sends a non-empty draft; Shift+Enter inserts a newline; IME composition
   never sends. The send button uses the same guarded submission path.
@@ -458,7 +479,7 @@ requirement.
 - The Queue grows the panel and the panel grows the page. A scroll region inside
   it would also make it a fixed-height block the stage has to shrink for, which
   is the one thing adding music must not do to somebody who was already sharing
-  a screen. The same holds for a search's Results: bound the *count* — five, at
+  a screen. The same holds for a search's Results: bound the _count_ — five, at
   `musicSearchResultsMax` — rather than reaching for a height.
 - Allow the stage to contract on short viewports without covering later
   sections. Fullscreen remains exempt from in-panel height bounds.
@@ -501,7 +522,7 @@ requirement.
   it does. Skipping the last Track disables the button under the cursor and
   removing a row unmounts it; the browser then drops focus to the document and
   leaves a keyboard user at the top of the page. Restore it only for the
-  member's *own* press — the Queue also changes when somebody else acts, and
+  member's _own_ press — the Queue also changes when somebody else acts, and
   pulling focus for that is worse than losing it.
 - Render the Queue from what the bot published to the room (`music:queue`),
   never from a Track remembered out of an acknowledgement. The acknowledgement
@@ -650,6 +671,9 @@ folded into a width: a touchscreen laptop is wide and cannot right-click.
   rather than three. Leaving the three-row template in place hands the composer
   the track that grows and stops the message list at the height of its own
   messages.
+- Keep the pins entry point available in the text-room viewport's compact
+  toolbar when the room header is hidden. Historical navigation shares that
+  toolbar; neither control adds a growing track to the room grid.
 - The composer stays one row: the field's heading goes off screen but stays in
   the document, the send control keeps its mark and drops its word, and the
   error line collapses while it is empty.

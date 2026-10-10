@@ -17,12 +17,12 @@ hardware, capture source type, browser peer, and hidden-call duration were not
 provided, so these reports establish initial feasibility rather than completing
 the broader acceptance cases.
 
-| Report | Recorded result | Remaining scope |
-| --- | --- | --- |
-| Voice audible correctly on both sides | Reported pass | Camera, effective track teardown, moderation, and other peer browsers |
-| Screen and computer audio sharing work | Reported pass | Monitor/window variants, games in different display modes, source loss, and output routing |
-| Audio continues after hiding to tray | Reported pass | 30-minute duration, silent/muted/deafened conditions, hidden reconnect, and sleep/resume |
-| Permission-denial errors work | Reported pass | Retry/reset, persistent denial, and Windows privacy settings |
+| Report                                 | Recorded result | Remaining scope                                                                            |
+| -------------------------------------- | --------------- | ------------------------------------------------------------------------------------------ |
+| Voice audible correctly on both sides  | Reported pass   | Camera, effective track teardown, moderation, and other peer browsers                      |
+| Screen and computer audio sharing work | Reported pass   | Monitor/window variants, games in different display modes, source loss, and output routing |
+| Audio continues after hiding to tray   | Reported pass   | 30-minute duration, silent/muted/deafened conditions, hidden reconnect, and sleep/resume   |
+| Permission-denial errors work          | Reported pass   | Retry/reset, persistent denial, and Windows privacy settings                               |
 
 The contributor also requests easier game capture, describing the current
 picker as similar to Edge and Discord's game-sharing process as easier and
@@ -63,25 +63,25 @@ Unreported cases remain **not run**. Mark complete pass/fail only with runtime
 version and evidence covering the whole case; a smoke report covers its stated
 subset.
 
-| Case | Evidence required | Result |
-| --- | --- | --- |
-| Microphone, camera | Local live tracks, correct remote presentation, audible/visible browser peer, effective stop state | Voice reported pass; camera/remaining cases not run |
-| Capture permissions | First consent, denial, persistent denial/reset, Windows privacy denial, recoverable retry | Denial errors reported pass; remaining cases not run |
-| Screen capture | Monitor and application window; picker cancellation, source closure, stop/restart, source minimize | Sharing reported pass; source variants/remaining cases not run |
-| Computer audio | Monitor/window tested independently; returned live audio track **and audible browser-peer reception** | Sharing reported pass; source variants/track evidence pending |
-| Call-audio exclusion | Sharing member hears the call, viewer hears game/content without their own voice returning through screen audio; test desktop and web sharers and record actual `restrictOwnAudio` setting | Optional request implemented; Windows audible test not run |
-| Output selection | System default, explicit output, device disappearance, ordinary media element and Web Audio boost | not run |
-| Voxly noise suppression | Actual worklet path, suppression on/off, background processing, no microphone reopening | not run |
-| Notification cues | Voice/message/connection cues with existing preference and deafen gates | not run |
-| Browser interoperability | Bidirectional voice, camera, screen and computer audio, concurrent peer joins | not run |
-| Owner moderation | Locked owner mute/deafen, no transmitted microphone audio when muted, no remote playback when deafened | not run |
-| Tray call continuity | Hide for 30+ minutes, verify bidirectional audio, cues, and live signaling without reopening | Audio reported pass; duration/cues/signaling not provided |
-| Silent background conditions | Repeat hidden with self-mute, self-deafen, no incoming audio; restore and verify media | not run |
-| Background recovery | Lose/recover network while hidden; verify existing retry/backoff and media normalization | not run |
-| Minimize and lock | Minimize, Windows lock/unlock, competing fullscreen app, reconnect without duplicate media | not run |
-| Sleep/resume | Connection may end during sleep; resume must recover or show a useful retry state | not run |
-| Device changes | Unplug/replug headset/camera, default-device change, permission/device contention | not run |
-| Explicit media end | Quit, disconnect, retry, switch; no tracks/processes left capturing after teardown | not run |
+| Case                         | Evidence required                                                                                                                                                                          | Result                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| Microphone, camera           | Local live tracks, correct remote presentation, audible/visible browser peer, effective stop state                                                                                         | Voice reported pass; camera/remaining cases not run            |
+| Capture permissions          | First consent, denial, persistent denial/reset, Windows privacy denial, recoverable retry                                                                                                  | Denial errors reported pass; remaining cases not run           |
+| Screen capture               | Monitor and application window; picker cancellation, source closure, stop/restart, source minimize                                                                                         | Sharing reported pass; source variants/remaining cases not run |
+| Computer audio               | Monitor/window tested independently; returned live audio track **and audible browser-peer reception**                                                                                      | Sharing reported pass; source variants/track evidence pending  |
+| Call-audio exclusion         | Sharing member hears the call, viewer hears game/content without their own voice returning through screen audio; test desktop and web sharers and record actual `restrictOwnAudio` setting | Optional request implemented; Windows audible test not run     |
+| Output selection             | System default, explicit output, device disappearance, ordinary media element and Web Audio boost                                                                                          | not run                                                        |
+| Voxly noise suppression      | Actual worklet path, suppression on/off, background processing, no microphone reopening                                                                                                    | not run                                                        |
+| Notification cues            | Voice/message/connection cues with existing preference and deafen gates                                                                                                                    | not run                                                        |
+| Browser interoperability     | Bidirectional voice, camera, screen and computer audio, concurrent peer joins                                                                                                              | not run                                                        |
+| Owner moderation             | Locked owner mute/deafen, no transmitted microphone audio when muted, no remote playback when deafened                                                                                     | not run                                                        |
+| Tray call continuity         | Hide for 30+ minutes, verify bidirectional audio, cues, and live signaling without reopening                                                                                               | Audio reported pass; duration/cues/signaling not provided      |
+| Silent background conditions | Repeat hidden with self-mute, self-deafen, no incoming audio; restore and verify media                                                                                                     | not run                                                        |
+| Background recovery          | Lose/recover network while hidden; verify existing retry/backoff and media normalization                                                                                                   | not run                                                        |
+| Minimize and lock            | Minimize, Windows lock/unlock, competing fullscreen app, reconnect without duplicate media                                                                                                 | not run                                                        |
+| Sleep/resume                 | Connection may end during sleep; resume must recover or show a useful retry state                                                                                                          | not run                                                        |
+| Device changes               | Unplug/replug headset/camera, default-device change, permission/device contention                                                                                                          | not run                                                        |
+| Explicit media end           | Quit, disconnect, retry, switch; no tracks/processes left capturing after teardown                                                                                                         | not run                                                        |
 
 In the chooser run Media checks to inspect the runtime's API availability and
 returned track settings. Copy its report before stopping if track settings are
@@ -93,28 +93,28 @@ all consequential cases inside the real remote interface.
 
 ## Shell, storage, navigation, and recovery
 
-| Case | Expected behavior | Result |
-| --- | --- | --- |
-| First use | Tray explanation, equivalent English/Turkish copy, accessible close and focus return | not run |
-| Valid installation | HTTPS origin accepted, health preflight then ordinary Voxly interface | not run |
-| Invalid address | Refuse credentials, non-loopback HTTP, Invite/access routes, queries, fragments, native schemes | not run |
-| Invalid TLS/redirect | No certificate bypass and no redirect following in health preflight | not run |
-| Unreachable target | Local error and retry/change-address options; existing call stays intact if replacement preflight fails | not run |
-| Later page load failure | Tray Installations remains available; explicit Retry loading recovers | not run |
-| Switch/retry/disconnect | Confirmation required whenever replacing an open window; cancellation retains it | not run |
-| Session persistence | Restart, reconnect same origin, session and preferences remain in its profile | not run |
-| Origin isolation | Two installations under a common parent domain cannot share cookies, local storage, or permission grants | not run |
-| Forget address | Entry removed only after disconnect; session survives until explicit revocation | not run |
-| External links | HTTP(S) new-window links open the default browser; native schemes and cross-origin top navigation refused | not run |
-| Native authority | Remote top frame and embedded content cannot invoke chooser/updater/opener/filesystem commands | not run |
-| Single instance | Second launch restores first instance, no second media runtime | not run |
-| Global mute shortcuts | Keyboard and Mouse 3/4/5 combinations persist; one press toggles once with another app/game focused or tray hidden; keyboard conflicts reported and owner mute cannot be bypassed | Keyboard shortcut initial contributor pass; mouse support requires installed Windows test |
-| Global deafen shortcut | Separate binding persists; toggles existing self-deafen with game focus or tray hiding; preserves owner locks, microphone-test isolation, receive-only and microphone restoration rules | Implemented; installed Windows test not run |
-| Browser sign-in | Desktop minimizes once its matching number is ready (or Open browser is selected for manual sign-in); browser approval gains the desktop profile its own session; desktop restores after approval/refusal/expiry; older shells, cancellation and revocation stay safe | Implemented; installed Windows test not run |
-| Account menu update failures | Failed checks/downloads show no error or retry action in the account menu; available/ready updates remain visible; recovery stays in Home and Settings | Implemented; installed Windows test not run |
-| Device revocation | Existing Account & devices revocation signs desktop out and ends room access | not run |
-| Deployment update | Active voice/capture/media check delays reload; idle pending notice reloads only on explicit action | not run |
-| Update network failure | Current interface stays usable; polling retries without forced reload | not run |
+| Case                         | Expected behavior                                                                                                                                                                                                                                                     | Result                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| First use                    | Tray explanation, equivalent English/Turkish copy, accessible close and focus return                                                                                                                                                                                  | not run                                                                                   |
+| Valid installation           | HTTPS origin accepted, health preflight then ordinary Voxly interface                                                                                                                                                                                                 | not run                                                                                   |
+| Invalid address              | Refuse credentials, non-loopback HTTP, Invite/access routes, queries, fragments, native schemes                                                                                                                                                                       | not run                                                                                   |
+| Invalid TLS/redirect         | No certificate bypass and no redirect following in health preflight                                                                                                                                                                                                   | not run                                                                                   |
+| Unreachable target           | Local error and retry/change-address options; existing call stays intact if replacement preflight fails                                                                                                                                                               | not run                                                                                   |
+| Later page load failure      | Tray Installations remains available; explicit Retry loading recovers                                                                                                                                                                                                 | not run                                                                                   |
+| Switch/retry/disconnect      | Confirmation required whenever replacing an open window; cancellation retains it                                                                                                                                                                                      | not run                                                                                   |
+| Session persistence          | Restart, reconnect same origin, session and preferences remain in its profile                                                                                                                                                                                         | not run                                                                                   |
+| Origin isolation             | Two installations under a common parent domain cannot share cookies, local storage, or permission grants                                                                                                                                                              | not run                                                                                   |
+| Forget address               | Entry removed only after disconnect; session survives until explicit revocation                                                                                                                                                                                       | not run                                                                                   |
+| External links               | HTTP(S) new-window links open the default browser; native schemes and cross-origin top navigation refused                                                                                                                                                             | not run                                                                                   |
+| Native authority             | Remote top frame and embedded content cannot invoke chooser/updater/opener/filesystem commands                                                                                                                                                                        | not run                                                                                   |
+| Single instance              | Second launch restores first instance, no second media runtime                                                                                                                                                                                                        | not run                                                                                   |
+| Global mute shortcuts        | Keyboard and Mouse 3/4/5 combinations persist; one press toggles once with another app/game focused or tray hidden; keyboard conflicts reported and owner mute cannot be bypassed                                                                                     | Keyboard shortcut initial contributor pass; mouse support requires installed Windows test |
+| Global deafen shortcut       | Separate binding persists; toggles existing self-deafen with game focus or tray hiding; preserves owner locks, microphone-test isolation, receive-only and microphone restoration rules                                                                               | Implemented; installed Windows test not run                                               |
+| Browser sign-in              | Desktop minimizes once its matching number is ready (or Open browser is selected for manual sign-in); browser approval gains the desktop profile its own session; desktop restores after approval/refusal/expiry; older shells, cancellation and revocation stay safe | Implemented; installed Windows test not run                                               |
+| Account menu update failures | Failed checks/downloads show no error or retry action in the account menu; available/ready updates remain visible; recovery stays in Home and Settings                                                                                                                | Implemented; installed Windows test not run                                               |
+| Device revocation            | Existing Account & devices revocation signs desktop out and ends room access                                                                                                                                                                                          | not run                                                                                   |
+| Deployment update            | Active voice/capture/media check delays reload; idle pending notice reloads only on explicit action                                                                                                                                                                   | not run                                                                                   |
+| Update network failure       | Current interface stays usable; polling retries without forced reload                                                                                                                                                                                                 | not run                                                                                   |
 
 For the mouse shortcut check, open the installed desktop chooser, select
 **Record shortcut**, press Mouse 3, Mouse 4, or Mouse 5, and save the displayed binding.
@@ -172,14 +172,14 @@ room size, devices, display resolution, source content, and noise suppression.
 Include foreground and hidden voice; do not run the browser baseline and desktop
 workload simultaneously because each changes the other's CPU/memory budget.
 
-| Workload | Desktop private MiB / working-set MiB / CPU % | Browser baseline | Result |
-| --- | --- | --- | --- |
-| Installation idle with chooser retained | unmeasured | unmeasured | not run |
-| Two-peer voice, foreground | unmeasured | unmeasured | not run |
-| Two-peer voice, hidden | unmeasured | unmeasured | not run |
-| Voice + camera | unmeasured | unmeasured | not run |
-| Voice + screen + computer audio | unmeasured | unmeasured | not run |
-| Representative maximum group | unmeasured | unmeasured | not run |
+| Workload                                | Desktop private MiB / working-set MiB / CPU % | Browser baseline | Result  |
+| --------------------------------------- | --------------------------------------------- | ---------------- | ------- |
+| Installation idle with chooser retained | unmeasured                                    | unmeasured       | not run |
+| Two-peer voice, foreground              | unmeasured                                    | unmeasured       | not run |
+| Two-peer voice, hidden                  | unmeasured                                    | unmeasured       | not run |
+| Voice + camera                          | unmeasured                                    | unmeasured       | not run |
+| Voice + screen + computer audio         | unmeasured                                    | unmeasured       | not run |
+| Representative maximum group            | unmeasured                                    | unmeasured       | not run |
 
 Set budgets after measuring; do not invent a resource advantage or treat the
 Tauri binary size as a runtime memory measurement.
@@ -200,25 +200,25 @@ any Windows acceptance row above. Rust ran with a temporary Rust 1.98.1
 toolchain under `/private/tmp`; no system toolchain was installed. Commands
 below ran from the repository root.
 
-| Command | Result |
-| --- | --- |
-| `npm ci --ignore-scripts --dry-run` | Passed; workspace/lockfile validation only |
-| `npm run typecheck` | Passed across all workspaces |
-| `npm run typecheck -w @voxly/desktop` | Passed after the final Vite watch configuration change |
-| `npm run build` | Passed server, web, bot; existing web chunk-size warning |
-| `npm run build -w @voxly/desktop` | Passed chooser bundle |
-| `npm test` | Shared 19/19, server 392/392, web 800/801; stopped at the existing copy assertion below |
-| `npm run test -w @voxly/web` | 800/801; update-deferral and modularity tests passed |
-| `npm run test -w @voxly/bot` | Passed 277/277, run separately because root tests stopped at web |
-| `npm run test -w @voxly/desktop` | Passed 8/8 |
-| `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check` | Passed |
-| `cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked` | Passed |
-| `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked` | Passed 7/7, including bounded loopback health checks |
-| `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --all-targets -- -D warnings` | Passed |
-| `npm run bundle -w @voxly/desktop -- --no-bundle --debug -- --locked` | Passed native macOS executable with bundled chooser; no installer |
-| `docker compose config --quiet` | Passed |
-| `docker compose --profile music config --quiet` | Passed |
-| `git diff --check` | Passed |
+| Command                                                                                                | Result                                                                                  |
+| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `npm ci --ignore-scripts --dry-run`                                                                    | Passed; workspace/lockfile validation only                                              |
+| `npm run typecheck`                                                                                    | Passed across all workspaces                                                            |
+| `npm run typecheck -w @voxly/desktop`                                                                  | Passed after the final Vite watch configuration change                                  |
+| `npm run build`                                                                                        | Passed server, web, bot; existing web chunk-size warning                                |
+| `npm run build -w @voxly/desktop`                                                                      | Passed chooser bundle                                                                   |
+| `npm test`                                                                                             | Shared 19/19, server 392/392, web 800/801; stopped at the existing copy assertion below |
+| `npm run test -w @voxly/web`                                                                           | 800/801; update-deferral and modularity tests passed                                    |
+| `npm run test -w @voxly/bot`                                                                           | Passed 277/277, run separately because root tests stopped at web                        |
+| `npm run test -w @voxly/desktop`                                                                       | Passed 8/8                                                                              |
+| `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check`                                  | Passed                                                                                  |
+| `cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked`                               | Passed                                                                                  |
+| `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked`                                | Passed 7/7, including bounded loopback health checks                                    |
+| `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --all-targets -- -D warnings` | Passed                                                                                  |
+| `npm run bundle -w @voxly/desktop -- --no-bundle --debug -- --locked`                                  | Passed native macOS executable with bundled chooser; no installer                       |
+| `docker compose config --quiet`                                                                        | Passed                                                                                  |
+| `docker compose --profile music config --quiet`                                                        | Passed                                                                                  |
+| `git diff --check`                                                                                     | Passed                                                                                  |
 
 The optional TURN overlay also passed configuration validation with synthetic
 inputs; no services were started:
@@ -805,7 +805,6 @@ Development verification:
   not an installed WebView2 profile or Windows protocol handler.
 - `git diff --check`. Existing web bundle chunk-size warning remains.
 
-
 ## Signed shell update acceptance — pending, 2026-10-01
 
 The bundled updater and protected release-candidate workflow are implemented.
@@ -818,20 +817,20 @@ or Store submission has been built, published, installed or tested in this chat.
 All installed results below remain **PENDING**. Follow
 [release operations](desktop-releases.md) for exact setup and recovery steps.
 
-| Case | Installed Windows result |
-| --- | --- |
-| Startup/hourly/manual check, including hidden tray sessions, and offline recovery without disrupting a call | Pending |
-| Verified update between two signed desktop versions | Pending |
-| Cancel download, discard verified update, cancel installation confirmation | Pending |
-| Active/muted/receive-only voice, camera, screen/computer audio, retained capture, pending join/capture and microphone test | Pending |
-| Invalid signature/key, altered artifact, wrong version/platform and interrupted download | Pending |
-| Installation content denied check/download/install authority; scoped public status and local-review commands only | Pending |
-| Tray Check for updates, current/available versions in dock/account menu, Settings version footer, and 380px/1280px layouts | Pending |
-| Checked NSIS launch failure and successful exit/restart | Pending |
-| Interrupted installation and recovery using signed installer | Pending |
-| First restart keeps saved addresses, language, shortcuts and isolated signed-in sessions | Pending |
-| Machine-wide install with per-user data, WebView2 bootstrapper, and the selected signing mode | Pending |
-| Microsoft Store EXE certification or MSIX packaging | Pending; no submission/package created |
+| Case                                                                                                                       | Installed Windows result               |
+| -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| Startup/hourly/manual check, including hidden tray sessions, and offline recovery without disrupting a call                | Pending                                |
+| Verified update between two signed desktop versions                                                                        | Pending                                |
+| Cancel download, discard verified update, cancel installation confirmation                                                 | Pending                                |
+| Active/muted/receive-only voice, camera, screen/computer audio, retained capture, pending join/capture and microphone test | Pending                                |
+| Invalid signature/key, altered artifact, wrong version/platform and interrupted download                                   | Pending                                |
+| Installation content denied check/download/install authority; scoped public status and local-review commands only          | Pending                                |
+| Tray Check for updates, current/available versions in dock/account menu, Settings version footer, and 380px/1280px layouts | Pending                                |
+| Checked NSIS launch failure and successful exit/restart                                                                    | Pending                                |
+| Interrupted installation and recovery using signed installer                                                               | Pending                                |
+| First restart keeps saved addresses, language, shortcuts and isolated signed-in sessions                                   | Pending                                |
+| Machine-wide install with per-user data, WebView2 bootstrapper, and the selected signing mode                              | Pending                                |
+| Microsoft Store EXE certification or MSIX packaging                                                                        | Pending; no submission/package created |
 
 Local macOS verification covers cryptographic fixtures, HTTP download failure
 fixtures, finite native ACLs, confirmation cancellation, staging cleanup,
@@ -844,20 +843,20 @@ The Home layout, local startup preferences, bounded settings bridge, and
 machine-wide NSIS configuration are implemented. These are code results;
 installed Windows acceptance below remains **PENDING**.
 
-| Case | Installed Windows result |
-| --- | --- |
-| Fresh setup targets Program Files; setup/uninstall, taskbar and shortcuts show the Voxly icon | Pending |
-| Existing per-user install is removed without deleting app data, then reinstalled machine-wide with one application/protocol registration | Pending |
-| Separate Windows users keep separate preferences and WebView2 profiles | Pending |
-| First use prioritizes the connection form; English/Turkish, keyboard, touch, 380px and short windows remain usable | Pending |
-| Remembered and unremembered origins retain separate sign-ins; Rename and Forget do not clear session data | Pending |
-| Completed browser approval sets the latest default and enables startup; refused/cancelled/expired/stale requests do not | Pending |
-| Cold startup opens the default; a pending handoff wins; disabling/changing the default and tray Home work | Pending |
-| Home access preserves a call; switching/retry keeps call-aware confirmation; health and interface-load failures provide recovery | Pending |
-| Desktop Home button and microphone/Shortcuts controls; Notifications section; fresh mute/deafen defaults, custom/cleared bindings, conflicts and Mouse4/5 recording | Pending |
-| Global shortcuts work with another app focused; recording does not mute a live call or navigate history | Pending |
-| Signed machine-wide update requests UAC, handles cancellation/launch failure, and restarts Voxly without administrator privileges | Pending |
-| Update restart preserves names, startup/display settings and signed-in profiles | Pending |
+| Case                                                                                                                                                                | Installed Windows result |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| Fresh setup targets Program Files; setup/uninstall, taskbar and shortcuts show the Voxly icon                                                                       | Pending                  |
+| Existing per-user install is removed without deleting app data, then reinstalled machine-wide with one application/protocol registration                            | Pending                  |
+| Separate Windows users keep separate preferences and WebView2 profiles                                                                                              | Pending                  |
+| First use prioritizes the connection form; English/Turkish, keyboard, touch, 380px and short windows remain usable                                                  | Pending                  |
+| Remembered and unremembered origins retain separate sign-ins; Rename and Forget do not clear session data                                                           | Pending                  |
+| Completed browser approval sets the latest default and enables startup; refused/cancelled/expired/stale requests do not                                             | Pending                  |
+| Cold startup opens the default; a pending handoff wins; disabling/changing the default and tray Home work                                                           | Pending                  |
+| Home access preserves a call; switching/retry keeps call-aware confirmation; health and interface-load failures provide recovery                                    | Pending                  |
+| Desktop Home button and microphone/Shortcuts controls; Notifications section; fresh mute/deafen defaults, custom/cleared bindings, conflicts and Mouse4/5 recording | Pending                  |
+| Global shortcuts work with another app focused; recording does not mute a live call or navigate history                                                             | Pending                  |
+| Signed machine-wide update requests UAC, handles cancellation/launch failure, and restarts Voxly without administrator privileges                                   | Pending                  |
+| Update restart preserves names, startup/display settings and signed-in profiles                                                                                     | Pending                  |
 
 Desktop and web interface must both be updated to use the new settings and
 successful-sign-in/default flow. Local browser layout inspection and macOS
@@ -891,16 +890,16 @@ Implemented:
 
 Installed Windows follow-up remains required:
 
-| Case | Installed Windows result |
-| --- | --- |
-| Dark setup/uninstall icon is visible; application/taskbar/shortcut icons remain correct | Pending |
-| Cold default startup shows one visible window, no white flash, then the usable Installation | Pending |
-| Slow/offline startup, timeout, cancellation, late readiness, Retry and Choose another installation | Pending |
-| Settings/tray Home preserves an active call; remembered handoff switching still confirms active or unknown media | Pending |
-| Browser matching-number approval, cancellation, expiry, already signed-in desktop and latest successful default | Pending |
-| Shortcut recording with keyboard and Mouse4/5, Escape/blur cancellation, registration conflicts and an active call | Pending |
-| Tray Quit remains last; Check for updates works for idle/current/available/error and preserves downloading/ready states | Pending |
-| English/Turkish, keyboard/touch, light/dark, reduced motion and 100/125/150/200% Windows scaling | Pending |
+| Case                                                                                                                    | Installed Windows result |
+| ----------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| Dark setup/uninstall icon is visible; application/taskbar/shortcut icons remain correct                                 | Pending                  |
+| Cold default startup shows one visible window, no white flash, then the usable Installation                             | Pending                  |
+| Slow/offline startup, timeout, cancellation, late readiness, Retry and Choose another installation                      | Pending                  |
+| Settings/tray Home preserves an active call; remembered handoff switching still confirms active or unknown media        | Pending                  |
+| Browser matching-number approval, cancellation, expiry, already signed-in desktop and latest successful default         | Pending                  |
+| Shortcut recording with keyboard and Mouse4/5, Escape/blur cancellation, registration conflicts and an active call      | Pending                  |
+| Tray Quit remains last; Check for updates works for idle/current/available/error and preserves downloading/ready states | Pending                  |
+| English/Turkish, keyboard/touch, light/dark, reduced motion and 100/125/150/200% Windows scaling                        | Pending                  |
 
 Local verification and any remaining development-check limits are recorded below.
 
@@ -955,14 +954,14 @@ retained addresses/profiles, settings operation rejection, early tray request
 consumption and updater phase preservation. Public preparation tests cover
 shared work, expiry renewal, failure retry, cancellation and late responses.
 
-| Installed Windows gate | Result |
-| --- | --- |
-| Silver setup package in light/dark Explorer; unchanged dark wizard, uninstall and installed app icons | Pending |
-| First/repeated browser protocol opening; unfamiliar address stays unsaved until successful approval | Pending |
-| Offline/slow startup, retry, cancellation, active-call switching, session isolation | Pending |
+| Installed Windows gate                                                                                                                   | Result  |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Silver setup package in light/dark Explorer; unchanged dark wizard, uninstall and installed app icons                                    | Pending |
+| First/repeated browser protocol opening; unfamiliar address stays unsaved until successful approval                                      | Pending |
+| Offline/slow startup, retry, cancellation, active-call switching, session isolation                                                      | Pending |
 | Tray check during startup/hidden Home, Checking/result publication, unavailable/offline, repeated clicks, downloading/ready preservation | Pending |
-| Reset registration/conflicts, required hold rejection, continuous keyboard/Mouse4/5 recording and native suppression cleanup | Pending |
-| Actual Windows Settings/device headings, composer/language hit targets, keyboard/touch/reduced motion, 100/125/150/200% scaling | Pending |
+| Reset registration/conflicts, required hold rejection, continuous keyboard/Mouse4/5 recording and native suppression cleanup             | Pending |
+| Actual Windows Settings/device headings, composer/language hit targets, keyboard/touch/reduced motion, 100/125/150/200% scaling          | Pending |
 
 macOS compilation and rendered browser fixtures cannot complete these gates.
 Ship updated web and desktop builds together. Existing unrelated work is retained.
@@ -1006,15 +1005,15 @@ sharing bar may still have its own icon/taskbar entry.
 General's device-wide close preference remains default-off, including older
 preference files; older shells show an update-required disabled switch.
 
-| Installed Windows/WebView2 gate | Result |
-| --- | --- |
-| Original microphone consent flow, repeated joins/actions and saved decisions across relaunch | Pending |
-| Windows privacy denial, separate camera permission and Installation profile isolation | Pending |
-| Home and Installation windows group with the installed Voxly shortcut, including hide/restore | Pending |
-| Existing screen chooser, stop sharing and runtime sharing bar | Pending |
-| Missing close preference defaults off; saved preference survives relaunch | Pending |
-| Home and Installation X/Alt+F4 hide with preference off and request Quit with it on | Pending |
-| Active-call cancellation preserves call; repeated close requests show one confirmation; explicit Home/tray Quit works with either value | Pending |
+| Installed Windows/WebView2 gate                                                                                                                | Result  |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Original microphone consent flow, repeated joins/actions and saved decisions across relaunch                                                   | Pending |
+| Windows privacy denial, separate camera permission and Installation profile isolation                                                          | Pending |
+| Home and Installation windows group with the installed Voxly shortcut, including hide/restore                                                  | Pending |
+| Existing screen chooser, stop sharing and runtime sharing bar                                                                                  | Pending |
+| Missing close preference defaults off; saved preference survives relaunch                                                                      | Pending |
+| Home and Installation X/Alt+F4 hide with preference off and request Quit with it on                                                            | Pending |
+| Active-call cancellation preserves call; repeated close requests show one confirmation; explicit Home/tray Quit works with either value        | Pending |
 | Quiet composer bottom alignment, edge/padding focus and Send across voice transitions, replies and multiline drafts at Windows display scaling | Pending |
 
 Rebuild the Windows shell and deploy the web client together before performing

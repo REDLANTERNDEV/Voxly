@@ -66,22 +66,22 @@ Do not assume a purchased certificate is exportable as PFX.
 
 Environment variables (public configuration):
 
-| Variable | Value |
-| --- | --- |
-| `DESKTOP_UPDATER_PUBLIC_KEY` | Entire base64 text from the Tauri public-key file, not a path |
-| `DESKTOP_PUBLISHER` | Distributor label; defaults to repository owner for `none`, verified signing/Store identity required for `authenticode` |
-| `DESKTOP_TIMESTAMP_URL` | Authenticode only: your signing provider's HTTPS RFC 3161 timestamp endpoint |
-| `DESKTOP_UPDATE_ENDPOINT` | Optional override of the repository's `desktop-stable/latest.json` URL |
-| `DESKTOP_RELEASE_BASE_URL` | Optional override of the versioned installer directory; trailing slash required |
+| Variable                     | Value                                                                                                                   |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `DESKTOP_UPDATER_PUBLIC_KEY` | Entire base64 text from the Tauri public-key file, not a path                                                           |
+| `DESKTOP_PUBLISHER`          | Distributor label; defaults to repository owner for `none`, verified signing/Store identity required for `authenticode` |
+| `DESKTOP_TIMESTAMP_URL`      | Authenticode only: your signing provider's HTTPS RFC 3161 timestamp endpoint                                            |
+| `DESKTOP_UPDATE_ENDPOINT`    | Optional override of the repository's `desktop-stable/latest.json` URL                                                  |
+| `DESKTOP_RELEASE_BASE_URL`   | Optional override of the versioned installer directory; trailing slash required                                         |
 
 Environment secrets:
 
-| Secret | Purpose |
-| --- | --- |
-| `DESKTOP_UPDATER_PRIVATE_KEY` | Tauri updater private-key content |
-| `DESKTOP_UPDATER_PASSWORD` | Password protecting that key |
+| Secret                            | Purpose                                                                               |
+| --------------------------------- | ------------------------------------------------------------------------------------- |
+| `DESKTOP_UPDATER_PRIVATE_KEY`     | Tauri updater private-key content                                                     |
+| `DESKTOP_UPDATER_PASSWORD`        | Password protecting that key                                                          |
 | `DESKTOP_AUTHENTICODE_PFX_BASE64` | Authenticode only: exported signing certificate including private key, base64 encoded |
-| `DESKTOP_AUTHENTICODE_PASSWORD` | Authenticode only: PFX import password |
+| `DESKTOP_AUTHENTICODE_PASSWORD`   | Authenticode only: PFX import password                                                |
 
 For the initial `none` mode, configure only `DESKTOP_UPDATER_PUBLIC_KEY`,
 `DESKTOP_UPDATER_PRIVATE_KEY` and `DESKTOP_UPDATER_PASSWORD`. The publisher label
@@ -204,7 +204,6 @@ release CI still uses the repository's pinned toolchain. Browser preview of the
 unconfigured update UI showed no horizontal overflow at 390px. This verifies
 frontend presentation only; signed Windows packaging, installed updater tests,
 Store acceptance, and the remaining media/resource gates are unverified.
-
 
 Program Files packages use NSIS `perMachine` and explicit Voxly installer and
 uninstaller icons. Setup and native updates request administrator approval;

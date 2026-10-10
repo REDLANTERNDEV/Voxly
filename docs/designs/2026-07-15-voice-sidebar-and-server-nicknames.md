@@ -186,4 +186,3 @@ git diff --check
 
 Inspect desktop, short-viewport, narrow, and coarse-pointer behavior in a
 browser when available.
-

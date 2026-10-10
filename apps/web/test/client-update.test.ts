@@ -43,10 +43,9 @@ describe("long-lived client updates", () => {
   });
 
   it("preserves the route and adds a cache-busting deployment version", () => {
-    const next = new URL(clientUpdateUrl(
-      "https://voxly.example.com/app/server/one/text/two?panel=open#message",
-      "/assets/index-new.js"
-    ));
+    const next = new URL(
+      clientUpdateUrl("https://voxly.example.com/app/server/one/text/two?panel=open#message", "/assets/index-new.js")
+    );
 
     assert.equal(next.pathname, "/app/server/one/text/two");
     assert.equal(next.searchParams.get("panel"), "open");
@@ -58,7 +57,9 @@ describe("long-lived client updates", () => {
     const values = new Map<string, string>();
     const storage = {
       getItem: (key: string) => values.get(key) ?? null,
-      setItem: (key: string, value: string) => { values.set(key, value); }
+      setItem: (key: string, value: string) => {
+        values.set(key, value);
+      }
     };
 
     assert.equal(claimClientUpdateAttempt(storage, "old", "new"), true);

@@ -74,7 +74,10 @@ describe("reading the RTC configuration", () => {
     });
 
     assert.equal(servers.length, 1);
-    assert.deepEqual(calls.map((call) => call.cookie), ["voxly_session=stale", "voxly_session=fresh"]);
+    assert.deepEqual(
+      calls.map((call) => call.cookie),
+      ["voxly_session=stale", "voxly_session=fresh"]
+    );
     assert.equal(holder.token, "fresh");
   });
 
@@ -82,13 +85,19 @@ describe("reading the RTC configuration", () => {
     let refreshes = 0;
     const { fetchImpl, calls } = fetchDouble([{ status: 500 }]);
 
-    await assert.rejects(fetchIceServers({
-      serverUrl: environment.serverUrl,
-      cookieName: "voxly_session",
-      sessionToken: "token-one",
-      refreshSession: async () => { refreshes += 1; return "fresh"; },
-      fetchImpl
-    }), /failed with 500/);
+    await assert.rejects(
+      fetchIceServers({
+        serverUrl: environment.serverUrl,
+        cookieName: "voxly_session",
+        sessionToken: "token-one",
+        refreshSession: async () => {
+          refreshes += 1;
+          return "fresh";
+        },
+        fetchImpl
+      }),
+      /failed with 500/
+    );
 
     assert.equal(refreshes, 0);
     assert.equal(calls.length, 1);

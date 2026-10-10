@@ -1,7 +1,15 @@
 import type { MusicControlAck, MusicQueueState, MusicSearchResult, VoiceMemberState } from "@voxly/shared";
 import { useEffect, useRef, useState } from "react";
 import type { Translate } from "../../app/types.js";
-import { ChevronIcon, CloseIcon, LeaveIcon, PauseIcon, PlayIcon, PlayingIcon, SkipIcon } from "../../components/ui/Icons.js";
+import {
+  ChevronIcon,
+  CloseIcon,
+  LeaveIcon,
+  PauseIcon,
+  PlayIcon,
+  PlayingIcon,
+  SkipIcon
+} from "../../components/ui/Icons.js";
 import {
   isSendableInput,
   musicBotIn,
@@ -49,7 +57,14 @@ import {
  * Queue grows the page rather than becoming a little window of its own, and the
  * screen-share stage above it is never squeezed to make room.
  */
-export function MusicPanel({ members, queues, roomId, connected, onMusicControl, t }: {
+export function MusicPanel({
+  members,
+  queues,
+  roomId,
+  connected,
+  onMusicControl,
+  t
+}: {
   members: VoiceMemberState[];
   queues: Record<string, MusicQueueState>;
   roomId: string | null;
@@ -196,69 +211,85 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
     >
       <header className="compact-section-head music-accessible-heading">
         <div>
-          <p className="label" id="musicPanelTitle">{t("music.title")}</p>
+          <p className="label" id="musicPanelTitle">
+            {t("music.title")}
+          </p>
         </div>
       </header>
       <div className="music-player-head">
-        <span className={`music-artwork ${transport.playing ? "is-playing" : ""}`} aria-hidden="true"><span>♪</span></span>
+        <span className={`music-artwork ${transport.playing ? "is-playing" : ""}`} aria-hidden="true">
+          <span>♪</span>
+        </span>
         <div className="music-now-playing">
-          <span className="music-playing-label">{currentTrack ? t(transport.playing ? "music.nowPlaying" : "music.pausedTrack") : t("music.title")}</span>
+          <span className="music-playing-label">
+            {currentTrack ? t(transport.playing ? "music.nowPlaying" : "music.pausedTrack") : t("music.title")}
+          </span>
           <strong>{currentTrack?.title ?? t("music.queueEmpty")}</strong>
-          {currentTrack ? <span className="music-track-meta muted small"><span title={t("music.requestedBy", { nickname: currentTrack.requester })}>{currentTrack.requester}</span><span className="music-track-duration">{currentTrack.length}</span></span> : null}
+          {currentTrack ? (
+            <span className="music-track-meta muted small">
+              <span title={t("music.requestedBy", { nickname: currentTrack.requester })}>{currentTrack.requester}</span>
+              <span className="music-track-duration">{currentTrack.length}</span>
+            </span>
+          ) : null}
         </div>
-      {transport.present || roomNotice ? (
-      <div className="music-panel-controls">
-        {transport.present ? (
-          <>
-            {/* One button, and the mark on it says which half it is. The word
+        {transport.present || roomNotice ? (
+          <div className="music-panel-controls">
+            {transport.present ? (
+              <>
+                {/* One button, and the mark on it says which half it is. The word
                 moved from the face into the accessible name when the face
                 became an icon: it is still the only place the pressed state is
                 said, because "Pause, pressed" leaves a listener working out
                 whether the music is running or stopped, which is the one thing
                 the name has already told them. */}
-            <button
-              aria-label={transport.playing ? t("music.pause") : t("music.play")}
-              className="icon-btn music-transport"
-              disabled={transportDisabled}
-              onClick={() => void send(transportToggleCommand(transport))}
-              title={transport.playing ? t("music.pause") : t("music.play")}
-              type="button"
-            >
-              {transport.playing ? <PauseIcon /> : <PlayIcon />}
-            </button>
-            {/* The skip names the entry it believes is playing. A panel one
+                <button
+                  aria-label={transport.playing ? t("music.pause") : t("music.play")}
+                  className="icon-btn music-transport"
+                  disabled={transportDisabled}
+                  onClick={() => void send(transportToggleCommand(transport))}
+                  title={transport.playing ? t("music.pause") : t("music.play")}
+                  type="button"
+                >
+                  {transport.playing ? <PauseIcon /> : <PlayIcon />}
+                </button>
+                {/* The skip names the entry it believes is playing. A panel one
                 message out of date therefore skips nothing rather than skipping
                 whatever moved up — which is what makes two members pressing it
                 together cost one Track. */}
-            <button
-              aria-label={t("music.skip")}
-              className="icon-btn music-transport"
-              disabled={transportDisabled}
-              onClick={() => {
-                // Narrowing, not a second guard: `disabled` has already ruled
-                // this out, and the command cannot carry a null entry.
-                if (transport.currentEntryId) void send({ kind: "skip", entryId: transport.currentEntryId });
-              }}
-              title={t("music.skip")}
-              type="button"
-            >
-              <SkipIcon />
-            </button>
-          </>
-        ) : null}
-        {/* The room's own notice, and the only thing left in it: the mute,
+                <button
+                  aria-label={t("music.skip")}
+                  className="icon-btn music-transport"
+                  disabled={transportDisabled}
+                  onClick={() => {
+                    // Narrowing, not a second guard: `disabled` has already ruled
+                    // this out, and the command cannot carry a null entry.
+                    if (transport.currentEntryId) void send({ kind: "skip", entryId: transport.currentEntryId });
+                  }}
+                  title={t("music.skip")}
+                  type="button"
+                >
+                  <SkipIcon />
+                </button>
+              </>
+            ) : null}
+            {/* The room's own notice, and the only thing left in it: the mute,
             which is the one state the room cannot see for itself. Before the
             control that sends the bot away, so that control keeps the same
             place on the row whether or not an owner has muted anything. */}
-        {roomNotice ? <span className="music-room-notice muted small">{roomNotice}</span> : null}
-        {transport.present ? (
-          <button className="btn btn-ghost music-leave" type="button" disabled={busy} onClick={() => void send({ kind: "leave" })}>
-            <LeaveIcon />
-            <span>{t("music.leave")}</span>
-          </button>
+            {roomNotice ? <span className="music-room-notice muted small">{roomNotice}</span> : null}
+            {transport.present ? (
+              <button
+                className="btn btn-ghost music-leave"
+                type="button"
+                disabled={busy}
+                onClick={() => void send({ kind: "leave" })}
+              >
+                <LeaveIcon />
+                <span>{t("music.leave")}</span>
+              </button>
+            ) : null}
+          </div>
         ) : null}
-      </div>
-      ) : null}
       </div>
       <form
         className="music-panel-link"
@@ -299,12 +330,20 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
           readers follow reliably. The colour is what changes, and it is the
           app's own colour for a failure rather than the muted grey this used
           to share with the room's status. */}
-      <p className={`music-reply ${refusal ? "error-text" : accepted && results.length === 0 ? "music-reply-announcement" : "muted small"}`} role="status" aria-live="polite">{reply}</p>
+      <p
+        className={`music-reply ${refusal ? "error-text" : accepted && results.length === 0 ? "music-reply-announcement" : "muted small"}`}
+        role="status"
+        aria-live="polite"
+      >
+        {reply}
+      </p>
       {/* What a typed name might have meant. This member's list and nobody
           else's — it never reaches `music:queue`, and ADR-0007 says why. */}
       {resultRows.length > 0 ? (
         <section aria-labelledby="musicResultsTitle" className="music-results">
-          <p className="label" id="musicResultsTitle">{t("music.results")}</p>
+          <p className="label" id="musicResultsTitle">
+            {t("music.results")}
+          </p>
           <ol className="music-results-list">
             {resultRows.map((row, index) => (
               <li key={row.url}>
@@ -341,7 +380,12 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
       ) : null}
       {queue ? (
         <details className="music-queue" open={queueOpen} onToggle={(event) => setQueueOpen(event.currentTarget.open)}>
-          <summary className="label" id="musicQueueTitle"><span>{t("music.queue")} · {rows.length}</span><ChevronIcon direction="down" /></summary>
+          <summary className="label" id="musicQueueTitle">
+            <span>
+              {t("music.queue")} · {rows.length}
+            </span>
+            <ChevronIcon direction="down" />
+          </summary>
           {rows.length > 0 ? (
             <ol className="music-queue-list">
               {rows.map((row) => (
@@ -393,7 +437,10 @@ export function MusicPanel({ members, queues, roomId, connected, onMusicControl,
           the member waiting for an answer to their own press. */}
       {logRows.length > 0 ? (
         <details className="music-log">
-          <summary className="label" id="musicLogTitle"><span>{t("music.log")}</span><ChevronIcon direction="down" /></summary>
+          <summary className="label" id="musicLogTitle">
+            <span>{t("music.log")}</span>
+            <ChevronIcon direction="down" />
+          </summary>
           <ol className="music-log-list">
             {logRows.map((row) => (
               /* By id and not by what it says: two members pausing in turn

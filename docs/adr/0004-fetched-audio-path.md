@@ -68,10 +68,10 @@ byte and its steady state.
 where the audio ran out and resumes from that same frame when more arrives. The
 alternatives were both worse:
 
-- *Skip ahead to where the clock says playback should be.* The music silently
+- _Skip ahead to where the clock says playback should be._ The music silently
   loses whatever the extractor was late by, and nobody — not the listeners, not
   the log — ever learns which part of the Track they did not hear.
-- *Keep the clock running and catch up.* The wait is owed back as a burst of
+- _Keep the clock running and catch up._ The wait is owed back as a burst of
   frames the instant audio arrives, which the receiving jitter buffer discards
   as a flood. That is a longer gap than the stall, arrived at less honestly.
 
@@ -106,6 +106,6 @@ receiving jitter buffer has nothing else to resynchronise on.
 
 ## What is not settled here
 
-Whether a Track that fails *mid-playback* is skipped, retried, or reported is
+Whether a Track that fails _mid-playback_ is skipped, retried, or reported is
 ticket 13's. This ADR settles only that the audio ends where the stream ended,
 which is what a player already sending frames needs.

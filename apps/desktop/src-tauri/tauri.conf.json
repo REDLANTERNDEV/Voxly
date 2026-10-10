@@ -24,26 +24,20 @@
       }
     ],
     "security": {
-      "capabilities": [
-        "local-shell"
-      ],
+      "capabilities": ["local-shell"],
       "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src ipc: http://ipc.localhost https://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
     }
   },
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": [
-          "voxly"
-        ]
+        "schemes": ["voxly"]
       }
     }
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "nsis"
-    ],
+    "targets": ["nsis"],
     "icon": [
       "../branding/tauri/icons/32x32.png",
       "../branding/tauri/icons/128x128.png",
@@ -58,10 +52,7 @@
       },
       "nsis": {
         "installMode": "perMachine",
-        "languages": [
-          "English",
-          "Turkish"
-        ],
+        "languages": ["English", "Turkish"],
         "displayLanguageSelector": true,
         "installerIcon": "../branding/tauri/icons/setup-package.ico",
         "uninstallerIcon": "../branding/tauri/icons/setup-dark.ico",

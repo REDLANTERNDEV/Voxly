@@ -1,9 +1,6 @@
 import { useId } from "react";
 import type { Translate } from "../app/types.js";
-import {
-  externalPreviewProviders,
-  type ExternalPreviewPreferences
-} from "../lib/externalPreviewPreferences.js";
+import { externalPreviewProviders, type ExternalPreviewPreferences } from "../lib/externalPreviewPreferences.js";
 import type { MessageEmbedProvider } from "../lib/messageEmbeds.js";
 
 const providerNames: Record<MessageEmbedProvider, string> = {
@@ -13,7 +10,11 @@ const providerNames: Record<MessageEmbedProvider, string> = {
   spotify: "Spotify"
 };
 
-function PreviewSwitch({ provider, enabled, onChange }: {
+function PreviewSwitch({
+  provider,
+  enabled,
+  onChange
+}: {
   provider: MessageEmbedProvider;
   enabled: boolean;
   onChange(enabled: boolean): void;
@@ -29,12 +30,18 @@ function PreviewSwitch({ provider, enabled, onChange }: {
         aria-checked={enabled}
         aria-labelledby={labelId}
         onClick={() => onChange(!enabled)}
-      ><span aria-hidden="true" /></button>
+      >
+        <span aria-hidden="true" />
+      </button>
     </div>
   );
 }
 
-export function ExternalPreviewSettings({ preferences, t, onChange }: {
+export function ExternalPreviewSettings({
+  preferences,
+  t,
+  onChange
+}: {
   preferences: ExternalPreviewPreferences;
   t: Translate;
   onChange(provider: MessageEmbedProvider, enabled: boolean): void;
@@ -47,11 +54,17 @@ export function ExternalPreviewSettings({ preferences, t, onChange }: {
 
   return (
     <section className="theme-card privacy-preview-settings">
-      <div className="theme-card-head"><span className="label">{t("privacy.externalPreviews")}</span></div>
+      <div className="theme-card-head">
+        <span className="label">{t("privacy.externalPreviews")}</span>
+      </div>
       <p className="muted small">{t("privacy.externalPreviewsHint")}</p>
       <div className="message-actions privacy-preview-actions">
-        <button className="btn btn-ghost" type="button" disabled={allEnabled} onClick={() => setAll(true)}>{t("privacy.enableAll")}</button>
-        <button className="btn btn-ghost" type="button" disabled={allDisabled} onClick={() => setAll(false)}>{t("privacy.disableAll")}</button>
+        <button className="btn btn-ghost" type="button" disabled={allEnabled} onClick={() => setAll(true)}>
+          {t("privacy.enableAll")}
+        </button>
+        <button className="btn btn-ghost" type="button" disabled={allDisabled} onClick={() => setAll(false)}>
+          {t("privacy.disableAll")}
+        </button>
       </div>
       <div className="audio-device-fields">
         {externalPreviewProviders.map((provider) => (

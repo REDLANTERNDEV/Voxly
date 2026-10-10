@@ -52,62 +52,74 @@ describe("narrow layout", () => {
   it("gives the room the growing row once the room header is not drawn", () => {
     // Three tracks for header, room and composer, with only two of the three
     // present, hands the composer the one that grows.
-    assert.match(narrow, /\.room-header \{\s*display: none;/);
-    assert.match(narrow, /\.main-panel \{[^}]*grid-template-rows: minmax\(0, 1fr\) auto;/);
+    assert.match(narrow, /\.room-header\s+\{\s*display:\s+none;/);
+    assert.match(narrow, /\.main-panel\s+\{[^}]*grid-template-rows:\s+minmax\(0,\s+1fr\)\s+auto;/);
   });
 
   it("keeps the composer on one row with a marked send control", () => {
-    assert.match(narrow, /\.composer form \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto;/);
-    assert.match(narrow, /\.composer-send span \{\s*display: none;/);
-    assert.match(narrow, /\.composer \.error-text:empty \{\s*display: none;/);
+    assert.match(narrow, /\.composer\s+form\s+\{[^}]*grid-template-columns:\s+minmax\(0,\s+1fr\)\s+auto;/);
+    assert.match(narrow, /\.composer-send\s+span\s+\{\s*display:\s+none;/);
+    assert.match(narrow, /\.composer\s+\.error-text:empty\s+\{\s*display:\s+none;/);
     // The heading goes off the screen rather than out of the document: it is
     // what names the field.
-    assert.match(narrow, /\.composer-field-label \{[^}]*position: absolute;/);
+    assert.match(narrow, /\.composer-field-label\s+\{[^}]*position:\s+absolute;/);
   });
 
   it("names the controls whose words the narrow layout drops", () => {
-    assert.match(declaration("TextRoomScreen", "StageSource"), /className="btn btn-primary composer-send"[^>]*aria-label=/);
-    assert.match(declaration("VoiceDock", "ConnectionSignal"), /className="btn btn-danger dock-leave"[^>]*aria-label=/);
-    assert.match(declaration("VoiceDock", "ConnectionSignal"), /className="btn btn-ghost account-owner-link"[^>]*label=/);
+    assert.match(
+      declaration("TextRoomScreen", "StageSource"),
+      /className="btn\s+btn-primary\s+composer-send"[^>]*aria-label=/
+    );
+    assert.match(
+      declaration("VoiceDock", "ConnectionSignal"),
+      /className="btn\s+btn-danger\s+dock-leave"[^>]*aria-label=/
+    );
+    assert.match(
+      declaration("VoiceDock", "ConnectionSignal"),
+      /className="btn\s+btn-ghost\s+account-owner-link"[^>]*label=/
+    );
 
-    assert.match(narrow, /\.mobile-topbar \.icon-btn span \{\s*display: none;/);
-    assert.match(narrow, /\.dock-leave span,\s*\.dock-owner span \{\s*display: none;/);
+    assert.match(narrow, /\.mobile-topbar\s+\.icon-btn\s+span\s+\{\s*display:\s+none;/);
+    assert.match(narrow, /\.dock-leave\s+span,\s*\.dock-owner\s+span\s+\{\s*display:\s+none;/);
   });
 
   it("moves mobile status into the drawer and reserves only active call controls", () => {
     const visual = readFileSync("src/visual-refresh.css", "utf8");
-    assert.match(visual, /--dock: 76px; --dock-quiet: 0px;/);
-    assert.match(visual, /\.voice-dock:not\(\.drawer-voice-status\):has\(> \.dock-controls:empty\) \{ display: none; \}/);
-    assert.match(visual, /\.mobile-drawer-status \{ display: grid;/);
-    assert.match(visual, /\.drawer-download \{[^}]*min-height: 44px;/);
+    assert.match(visual, /--dock:\s+76px;\s+--dock-quiet:\s+0px;/);
+    assert.match(
+      visual,
+      /\.voice-dock:not\(\.drawer-voice-status\):has\(>\s+\.dock-controls:empty\)\s+\{\s+display:\s+none;\s+\}/
+    );
+    assert.match(visual, /\.mobile-drawer-status\s+\{\s+display:\s+grid;/);
+    assert.match(visual, /\.drawer-download\s+\{[^}]*min-height:\s+44px;/);
     assert.match(readAppSource(), /surface="drawer"/);
   });
 
   it("keeps the dock controls at the documented mobile hit area", () => {
-    assert.match(narrow, /\.dock-controls \.control-icon \{[^}]*height: 40px;[^}]*width: 40px;/);
+    assert.match(narrow, /\.dock-controls\s+\.control-icon\s+\{[^}]*height:\s+40px;[^}]*width:\s+40px;/);
   });
 
   it("scrolls the owner sections rather than sharing the width between them", () => {
-    assert.match(narrow, /\.dash-nav \{[^}]*overflow-x: auto;/);
-    assert.match(narrow, /\.dash-nav-item \{[^}]*white-space: nowrap;/);
-    assert.doesNotMatch(narrow, /\.dash-nav \{[^}]*grid-auto-columns/);
+    assert.match(narrow, /\.dash-nav\s+\{[^}]*overflow-x:\s+auto;/);
+    assert.match(narrow, /\.dash-nav-item\s+\{[^}]*white-space:\s+nowrap;/);
+    assert.doesNotMatch(narrow, /\.dash-nav\s+\{[^}]*grid-auto-columns/);
   });
 
   it("collapses the invite ledger's wider split, which outranks the plain one", () => {
-    assert.match(narrow, /\.dash-split\.is-invites,[\s\S]{0,200}?grid-template-columns: minmax\(0, 1fr\);/);
+    assert.match(narrow, /\.dash-split\.is-invites,[\s\S]{0,200}?grid-template-columns:\s+minmax\(0,\s+1fr\);/);
   });
 
   it("folds an owner table row into a card instead of a stack of full-width blocks", () => {
-    assert.match(narrow, /\.dash-table-row \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto;/);
-    assert.match(narrow, /\.dash-table-row > \.dash-cell\.is-actions \{[^}]*grid-row: 1;/);
-    assert.match(narrow, /\.dash-table-row > \.dash-cell:nth-child\(3\) \{[^}]*justify-items: end;/);
+    assert.match(narrow, /\.dash-table-row\s+\{[^}]*grid-template-columns:\s+minmax\(0,\s+1fr\)\s+auto;/);
+    assert.match(narrow, /\.dash-table-row\s+>\s+\.dash-cell\.is-actions\s+\{[^}]*grid-row:\s+1;/);
+    assert.match(narrow, /\.dash-table-row\s+>\s+\.dash-cell:nth-child\(3\)\s+\{[^}]*justify-items:\s+end;/);
   });
 });
 
 describe("phone layout", () => {
   it("keeps the account chip, which is the only way to sign out", () => {
     assert.match(declaration("VoiceDock", "ConnectionSignal"), /common\.logout/);
-    assert.doesNotMatch(phone, /\.dock-self \{\s*display: none;/);
+    assert.doesNotMatch(phone, /\.dock-self\s+\{\s*display:\s+none;/);
   });
 });
 
@@ -115,6 +127,6 @@ describe("touch affordances", () => {
   it("gives sidebar menu triggers a target a finger can hit", () => {
     const coarse = mediaBlock("(pointer: coarse)", ".message-reply-trigger,");
 
-    assert.match(coarse, /\.sidebar-menu-trigger \{\s*height: 36px;\s*width: 36px;/);
+    assert.match(coarse, /\.sidebar-menu-trigger\s+\{\s*height:\s+36px;\s*width:\s+36px;/);
   });
 });

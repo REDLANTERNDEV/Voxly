@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+  type ReactNode
+} from "react";
 
 const cardWidth = 184;
 const cardHeight = 108;
@@ -19,9 +28,10 @@ export function liveStreamCardPosition(
   viewport: { width: number; height: number }
 ) {
   const preferredLeft = trigger.right + cardGap;
-  const left = preferredLeft + cardWidth <= viewport.width - viewportMargin
-    ? preferredLeft
-    : Math.max(viewportMargin, trigger.left - cardWidth - cardGap);
+  const left =
+    preferredLeft + cardWidth <= viewport.width - viewportMargin
+      ? preferredLeft
+      : Math.max(viewportMargin, trigger.left - cardWidth - cardGap);
   const centeredTop = trigger.top + trigger.height / 2 - cardHeight / 2;
   const top = Math.max(viewportMargin, Math.min(centeredTop, viewport.height - cardHeight - viewportMargin));
   return { left, top };
@@ -104,7 +114,9 @@ export function LiveStreamPopover(props: LiveStreamPopoverProps) {
         aria-controls={cardId}
         aria-expanded={open}
         onClick={openCard}
-      >{props.liveLabel}</button>
+      >
+        {props.liveLabel}
+      </button>
       <span
         className="voice-live-card"
         id={cardId}
@@ -124,7 +136,9 @@ export function LiveStreamPopover(props: LiveStreamPopoverProps) {
             props.onWatch();
           }}
         >
-          <span className="voice-live-preview-icon" aria-hidden="true">{props.icon}</span>
+          <span className="voice-live-preview-icon" aria-hidden="true">
+            {props.icon}
+          </span>
           <span className="voice-live-preview-name">{props.nickname}</span>
           <span className="voice-live-preview-overlay">{props.watchLabel}</span>
         </button>

@@ -83,10 +83,12 @@ const musicCommandSchema = z.discriminatedUnion("kind", [
 const coversEveryCommand: MusicCommand extends z.infer<typeof musicCommandSchema> ? true : never = true;
 void coversEveryCommand;
 
-const musicControlPayloadSchema = z.object({
-  roomId: z.string().min(1),
-  command: musicCommandSchema
-}).strict();
+const musicControlPayloadSchema = z
+  .object({
+    roomId: z.string().min(1),
+    command: musicCommandSchema
+  })
+  .strict();
 
 /**
  * How long the bot gets to answer before the member is told it did not.
@@ -127,38 +129,50 @@ const trackDurationMaxSeconds = 24 * 60 * 60;
  * one — which is what makes "the Set log is never written to the database"
  * enforced rather than merely true today.
  */
-const musicSetLogLineSchema = z.object({
-  lineId: z.string().min(1).max(musicIdentifierMaxLength),
-  action: z.enum([
-    "added",
-    "skipped",
-    "removed",
-    "paused",
-    "resumed",
-    // The three the bot writes about itself: a Track whose turn came and would
-    // not play. They carry no member, which is the only reason the field below
-    // is nullable. ADR-0011.
-    "failedUnavailable",
-    "failedSource",
-    "failedBot"
-  ]),
-  requestedByUserId: z.string().min(1).max(musicIdentifierMaxLength).nullable(),
-  trackTitle: z.string().max(musicTitleMaxLength).nullable()
-}).strict();
+const musicSetLogLineSchema = z
+  .object({
+    lineId: z.string().min(1).max(musicIdentifierMaxLength),
+    action: z.enum([
+      "added",
+      "skipped",
+      "removed",
+      "paused",
+      "resumed",
+      // The three the bot writes about itself: a Track whose turn came and would
+      // not play. They carry no member, which is the only reason the field below
+      // is nullable. ADR-0011.
+      "failedUnavailable",
+      "failedSource",
+      "failedBot"
+    ]),
+    requestedByUserId: z.string().min(1).max(musicIdentifierMaxLength).nullable(),
+    trackTitle: z.string().max(musicTitleMaxLength).nullable()
+  })
+  .strict();
 
-const musicQueueStateSchema = z.object({
-  entries: z.array(z.object({
-    entryId: z.string().min(1).max(musicIdentifierMaxLength),
-    track: z.object({
-      id: z.string().min(1).max(musicIdentifierMaxLength),
-      title: z.string().max(musicTitleMaxLength),
-      durationSeconds: z.number().int().min(0).max(trackDurationMaxSeconds)
-    }).strict(),
-    requestedByUserId: z.string().min(1).max(musicIdentifierMaxLength)
-  }).strict()).max(musicQueueMaxEntries),
-  playing: z.boolean(),
-  log: z.array(musicSetLogLineSchema).max(musicSetLogMaxLines)
-}).strict();
+const musicQueueStateSchema = z
+  .object({
+    entries: z
+      .array(
+        z
+          .object({
+            entryId: z.string().min(1).max(musicIdentifierMaxLength),
+            track: z
+              .object({
+                id: z.string().min(1).max(musicIdentifierMaxLength),
+                title: z.string().max(musicTitleMaxLength),
+                durationSeconds: z.number().int().min(0).max(trackDurationMaxSeconds)
+              })
+              .strict(),
+            requestedByUserId: z.string().min(1).max(musicIdentifierMaxLength)
+          })
+          .strict()
+      )
+      .max(musicQueueMaxEntries),
+    playing: z.boolean(),
+    log: z.array(musicSetLogLineSchema).max(musicSetLogMaxLines)
+  })
+  .strict();
 
 /**
  * The join between the shared vocabulary and this validator, as the command
@@ -166,14 +180,17 @@ const musicQueueStateSchema = z.object({
  * would be a line the bot writes and the server refuses, which stops the whole
  * publish — the Queue with it — for something no member did wrong.
  */
-const coversEverySetLogAction:
-  MusicSetLogAction extends z.infer<typeof musicSetLogLineSchema>["action"] ? true : never = true;
+const coversEverySetLogAction: MusicSetLogAction extends z.infer<typeof musicSetLogLineSchema>["action"]
+  ? true
+  : never = true;
 void coversEverySetLogAction;
 
-const musicPublishPayloadSchema = z.object({
-  roomId: z.string().min(1),
-  state: musicQueueStateSchema
-}).strict();
+const musicPublishPayloadSchema = z
+  .object({
+    roomId: z.string().min(1),
+    state: musicQueueStateSchema
+  })
+  .strict();
 
 export interface MusicRealtime {
   registerHandlers: (socket: VoxlySocket, user: PresenceUser) => void;
@@ -186,19 +203,25 @@ export function createMusicRealtime(
 ): MusicRealtime {
   return {
     registerHandlers(socket, user) {
-      socket.on("music:control", safeSocketHandler("music:control", (payload, ack) => {
-        void forwardMusicCommand(io, database, voice, user.userId, socket, payload)
-          .then((response) => callAck(ack, response))
-          // The request is now in flight to another process, so a fault here is
-          // not something the asker can be left hanging on.
-          .catch((cause: unknown) => {
-            console.error("music:control failed", cause);
-            callAck(ack, { ok: false, error: "bot_timeout" } satisfies MusicControlAck);
-          });
-      }));
-      socket.on("music:publish", safeSocketHandler("music:publish", (payload, ack) => {
-        callAck(ack, publishQueue(io, database, voice, user.userId, payload));
-      }));
+      socket.on(
+        "music:control",
+        safeSocketHandler("music:control", (payload, ack) => {
+          void forwardMusicCommand(io, database, voice, user.userId, socket, payload)
+            .then((response) => callAck(ack, response))
+            // The request is now in flight to another process, so a fault here is
+            // not something the asker can be left hanging on.
+            .catch((cause: unknown) => {
+              console.error("music:control failed", cause);
+              callAck(ack, { ok: false, error: "bot_timeout" } satisfies MusicControlAck);
+            });
+        })
+      );
+      socket.on(
+        "music:publish",
+        safeSocketHandler("music:publish", (payload, ack) => {
+          callAck(ack, publishQueue(io, database, voice, user.userId, payload));
+        })
+      );
     }
   };
 }
@@ -223,7 +246,10 @@ async function forwardMusicCommand(
   // Being in the room is the whole permission: it is what makes this the
   // asker's room to change, and it is checked against live voice membership
   // rather than server membership, which everyone in the server has.
-  if (!hasActiveServerMembership(database.sqlite, room.serverId, requestedByUserId) || !voice.isVoiceSocketMember(room.id, requestedByUserId, socket)) {
+  if (
+    !hasActiveServerMembership(database.sqlite, room.serverId, requestedByUserId) ||
+    !voice.isVoiceSocketMember(room.id, requestedByUserId, socket)
+  ) {
     return { ok: false, error: "not_in_voice_room" };
   }
   // The AFK room mutes everyone in it, the server included, so a bot summoned

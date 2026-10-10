@@ -1,5 +1,5 @@
-import { getOwnerClaimTokenFromHash,parsePathRoute } from "../lib/navigation.js";
-import type { Route,ThemeChoice } from "./types.js";
+import { getOwnerClaimTokenFromHash, parsePathRoute } from "../lib/navigation.js";
+import type { Route, ThemeChoice } from "./types.js";
 
 const themeKey = "voxly:theme";
 

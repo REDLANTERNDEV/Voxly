@@ -72,6 +72,7 @@ function loadScript(settings: AnalyticsSettings) {
  * that rather than a plain array.
  */
 const gtag = function () {
+  // eslint-disable-next-line prefer-rest-params -- gtag.js expects an Arguments object, not an array.
   (window.dataLayer ??= []).push(arguments);
 } as (...params: unknown[]) => void;
 
@@ -94,5 +95,7 @@ export function trackLandingView(settings: AnalyticsSettings | null) {
     return;
   }
 
-  void loadScript(settings).then(() => window.umami?.track()).catch(() => undefined);
+  void loadScript(settings)
+    .then(() => window.umami?.track())
+    .catch(() => undefined);
 }

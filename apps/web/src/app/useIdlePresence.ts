@@ -1,11 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import type { AfkTimeoutMinutes, PresenceStatus } from "@voxly/shared";
-import {
-  afkActivityEvents,
-  afkIdleCheckIntervalMs,
-  afkTimeoutFor,
-  afkTimeoutMs
-} from "../lib/idleActivity.js";
+import { afkActivityEvents, afkIdleCheckIntervalMs, afkTimeoutFor, afkTimeoutMs } from "../lib/idleActivity.js";
 
 /**
  * Marks a member away once they have gone long enough without interacting.
@@ -19,7 +14,13 @@ import {
  * them, in a window they are not looking at. So the only consequence of the
  * guess is a dot.
  */
-export function useIdlePresence({ roomServerIdsRef, afkTimeoutsByServerRef, activeVoiceRoomId, speaking, reportStatus }: {
+export function useIdlePresence({
+  roomServerIdsRef,
+  afkTimeoutsByServerRef,
+  activeVoiceRoomId,
+  speaking,
+  reportStatus
+}: {
   roomServerIdsRef: RefObject<Record<string, string>>;
   afkTimeoutsByServerRef: RefObject<Record<string, AfkTimeoutMinutes>>;
   activeVoiceRoomId: string | null;

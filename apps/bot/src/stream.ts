@@ -105,25 +105,37 @@ const maxPartialLineBytes = 4_000;
  * what the browser negotiates and what `audio.ts` assumes.
  */
 const encoderArguments = [
-  "-loglevel", "error",
-  "-i", "pipe:0",
+  "-loglevel",
+  "error",
+  "-i",
+  "pipe:0",
   // The first audio stream of the first input, and nothing else. `bestaudio`
   // usually yields audio alone, but it falls back to `best`, which is a video
   // file that happens to carry some. The file index is not optional here:
   // `-map a:0` reads "a" as an input index and fails.
-  "-map", "0:a:0",
+  "-map",
+  "0:a:0",
   "-vn",
-  "-c:a", "libopus",
-  "-b:a", "96k",
-  "-ar", "48000",
-  "-ac", "2",
-  "-application", "audio",
-  "-frame_duration", "20",
-  "-fec", "1",
-  "-packet_loss", "5",
+  "-c:a",
+  "libopus",
+  "-b:a",
+  "96k",
+  "-ar",
+  "48000",
+  "-ac",
+  "2",
+  "-application",
+  "audio",
+  "-frame_duration",
+  "20",
+  "-fec",
+  "1",
+  "-packet_loss",
+  "5",
   // The Ogg Opus muxer. Asking for a container rather than a raw stream is what
   // keeps this on the same framing path as a file on disk — see ADR-0004.
-  "-f", "opus",
+  "-f",
+  "opus",
   "pipe:1"
 ];
 
@@ -138,8 +150,10 @@ function extractorArguments(environment: BotEnvironment, url: string) {
     // gain from a partial file on a read-only filesystem.
     "--no-progress",
     "--no-cache-dir",
-    "--socket-timeout", "15",
-    "-f", "bestaudio/best",
+    "--socket-timeout",
+    "15",
+    "-f",
+    "bestaudio/best",
     ...(environment.extractorClient
       ? ["--extractor-args", `youtube:player_client=${environment.extractorClient}`]
       : []),
@@ -232,7 +246,8 @@ function searchArguments(environment: BotEnvironment, name: string) {
     "--no-warnings",
     "--no-progress",
     "--no-cache-dir",
-    "--socket-timeout", "15",
+    "--socket-timeout",
+    "15",
     ...(environment.extractorClient
       ? ["--extractor-args", `youtube:player_client=${environment.extractorClient}`]
       : []),
@@ -258,11 +273,7 @@ function searchArguments(environment: BotEnvironment, name: string) {
  * buffer is exactly how a completed Track ends too, so without this a blocked
  * video and a Track the room heard all of were the same event.
  */
-export function fetchTrackAudio(
-  environment: BotEnvironment,
-  track: Track,
-  handlers: TrackFetchHandlers
-): TrackAudio {
+export function fetchTrackAudio(environment: BotEnvironment, track: Track, handlers: TrackFetchHandlers): TrackAudio {
   const { log } = handlers;
   const buffer = new TrackBuffer();
   const reader = new OggOpusReader();
@@ -371,7 +382,10 @@ export function fetchTrackAudio(
   });
   encoder.stdout.on("end", () => finish("the encoder finished"));
 
-  for (const [name, child] of [["yt-dlp", extractor], ["ffmpeg", encoder]] as const) {
+  for (const [name, child] of [
+    ["yt-dlp", extractor],
+    ["ffmpeg", encoder]
+  ] as const) {
     child.on("error", (cause) => {
       log(`could not run ${name} (${environment.extractorPath}/${environment.encoderPath}): ${String(cause)}`);
       spawnFailed = true;
@@ -449,7 +463,10 @@ interface CollectedOutput {
 }
 
 /** Runs a child to completion, capturing both streams and bounding the wait. */
-function collect(child: ChildProcess & { stdout: Readable; stderr: Readable }, timeoutMs: number): Promise<CollectedOutput> {
+function collect(
+  child: ChildProcess & { stdout: Readable; stderr: Readable },
+  timeoutMs: number
+): Promise<CollectedOutput> {
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";

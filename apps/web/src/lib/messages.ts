@@ -1,5 +1,5 @@
 import type { UserRole } from "@voxly/shared";
-import { timeFormatOptions,type TimeFormatPreference } from "./timeFormat.js";
+import { timeFormatOptions, type TimeFormatPreference } from "./timeFormat.js";
 
 export function formatMessageDateTime(value: string, language: string, timeFormat: TimeFormatPreference = "auto") {
   return new Intl.DateTimeFormat(language, {
@@ -9,11 +9,15 @@ export function formatMessageDateTime(value: string, language: string, timeForma
   }).format(new Date(value));
 }
 
-export function formatMessageTimestamp(value: string, language: string, now = new Date(), timeFormat: TimeFormatPreference = "auto") {
+export function formatMessageTimestamp(
+  value: string,
+  language: string,
+  now = new Date(),
+  timeFormat: TimeFormatPreference = "auto"
+) {
   const date = new Date(value);
-  const isToday = date.getFullYear() === now.getFullYear()
-    && date.getMonth() === now.getMonth()
-    && date.getDate() === now.getDate();
+  const isToday =
+    date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
   return new Intl.DateTimeFormat(
     language,
     isToday
@@ -22,11 +26,7 @@ export function formatMessageTimestamp(value: string, language: string, now = ne
   ).format(date);
 }
 
-export function messagePermissions(input: {
-  currentUserId: string;
-  currentUserRole: UserRole;
-  messageUserId: string;
-}) {
+export function messagePermissions(input: { currentUserId: string; currentUserRole: UserRole; messageUserId: string }) {
   const isOwn = input.currentUserId === input.messageUserId;
   return {
     canEdit: isOwn,
@@ -44,11 +44,7 @@ export function messageDeleteFailureCopy<T extends string>(status: number | unde
  * swallow every Enter pressed while it was open, which lost keystrokes outright
  * on a slow link; delivery is ordered by the outbox instead.
  */
-export function shouldSubmitComposer(input: {
-  key: string;
-  shiftKey: boolean;
-  isComposing: boolean;
-}) {
+export function shouldSubmitComposer(input: { key: string; shiftKey: boolean; isComposing: boolean }) {
   return input.key === "Enter" && !input.shiftKey && !input.isComposing;
 }
 

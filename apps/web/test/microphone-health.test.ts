@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
-import { describe,it } from "node:test";
-import { stepMicrophoneHealth,type MicrophoneHealthState,type MicrophoneHealthSample } from "../src/lib/microphoneHealth.js";
-const healthy: MicrophoneHealthSample = { expected: true, visible: true, live: true, unavailable: false, contextState: "running", now: 0 };
+import { describe, it } from "node:test";
+import {
+  stepMicrophoneHealth,
+  type MicrophoneHealthState,
+  type MicrophoneHealthSample
+} from "../src/lib/microphoneHealth.js";
+const healthy: MicrophoneHealthSample = {
+  expected: true,
+  visible: true,
+  live: true,
+  unavailable: false,
+  contextState: "running",
+  now: 0
+};
 const empty: MicrophoneHealthState = { faultSince: null, warning: false };
 describe("microphone capture health", () => {
   it("never diagnoses silence as failure, even after hours of zero input", () => {

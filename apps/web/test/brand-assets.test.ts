@@ -24,7 +24,7 @@ const webAssets = [
   "public/brand/pwa/icon-primary-512x512.png",
   "public/brand/pwa/icon-512x512.png",
   "public/brand/pwa/icon-maskable-192x192.png",
-  "public/brand/pwa/icon-maskable-512x512.png",
+  "public/brand/pwa/icon-maskable-512x512.png"
 ];
 
 describe("brand asset hierarchy", () => {

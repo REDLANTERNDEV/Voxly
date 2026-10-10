@@ -72,13 +72,15 @@ interface FakeSet extends MusicSet {
   readonly events: string[];
 }
 
-function harness(options: {
-  failToBegin?: string;
-  resolveAs?: TrackResult;
-  searchAs?: SearchResult;
-  /** Parks the extractor mid-answer, so a test can hold the chain open. */
-  holdResolve?: boolean;
-} = {}) {
+function harness(
+  options: {
+    failToBegin?: string;
+    resolveAs?: TrackResult;
+    searchAs?: SearchResult;
+    /** Parks the extractor mid-answer, so a test can hold the chain open. */
+    holdResolve?: boolean;
+  } = {}
+) {
   const created: FakeSet[] = [];
   const endTrack = new Map<string, () => void>();
   const iceRequests: number[] = [];
@@ -325,11 +327,15 @@ describe("a pasted link", () => {
     assert.deepEqual(fetched, ["aB3dE5gH7jK"], "and nothing is fetched until it is its turn");
     assert.deepEqual(cancelled, [], "the Track that is playing keeps its fetch");
     assert.deepEqual(titles(lastPublished()), ["Track aB3dE5gH7jK", "Track zY9xW7vU5tS"]);
-    assert.deepEqual(answer, {
-      ok: true,
-      kind: "track",
-      track: { id: "zY9xW7vU5tS", title: "Track zY9xW7vU5tS", durationSeconds: 273 }
-    }, "the answer names the Track the asker added, not the one playing");
+    assert.deepEqual(
+      answer,
+      {
+        ok: true,
+        kind: "track",
+        track: { id: "zY9xW7vU5tS", title: "Track zY9xW7vU5tS", durationSeconds: 273 }
+      },
+      "the answer names the Track the asker added, not the one playing"
+    );
   });
 
   it("plays the Queue in order, advancing when a Track ends", async () => {
@@ -593,7 +599,10 @@ describe("telling the room", () => {
 
     await responder.handle(add(), "lobby", ada);
 
-    assert.deepEqual(published.map((entry) => entry.roomId), ["lobby"]);
+    assert.deepEqual(
+      published.map((entry) => entry.roomId),
+      ["lobby"]
+    );
     assert.deepEqual(published[0]?.state, {
       playing: true,
       entries: [
@@ -903,10 +912,7 @@ describe("a Track that will not play when its turn comes", () => {
     failFetch("aB3dE5gH7jK", "failedSource");
     await responder.handle(play, "lobby", ada);
 
-    assert.deepEqual(lines(lastPublished()), [
-      "null failedSource Track aB3dE5gH7jK",
-      `${ada} added Track aB3dE5gH7jK`
-    ]);
+    assert.deepEqual(lines(lastPublished()), ["null failedSource Track aB3dE5gH7jK", `${ada} added Track aB3dE5gH7jK`]);
   });
 
   it("says nothing when the Set moved past that Track first", async () => {
@@ -940,7 +946,10 @@ describe("a Track that will not play when its turn comes", () => {
     await responder.handle(play, "lobby", ada);
 
     assert.deepEqual(cancelled, ["aB3dE5gH7jK"], "the finished Track's fetch was torn down");
-    assert.deepEqual(lastPublished()?.log.map((line) => line.action), ["added", "added"]);
+    assert.deepEqual(
+      lastPublished()?.log.map((line) => line.action),
+      ["added", "added"]
+    );
   });
 
   it("keeps the line when the player then reports the end of the Track that failed", async () => {
@@ -1182,7 +1191,10 @@ describe("the Grace period running out", () => {
 
     assert.equal(responder.currentRoomId(), "lobby");
     assert.deepEqual(titles(lastPublished()), ["Track aB3dE5gH7jK"]);
-    assert.deepEqual(created[0]?.events.filter((event) => event === "end"), []);
+    assert.deepEqual(
+      created[0]?.events.filter((event) => event === "end"),
+      []
+    );
   });
 
   it("does not cut short the wait that replaced the one it expired for", async () => {

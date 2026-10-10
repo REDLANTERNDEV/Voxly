@@ -18,6 +18,12 @@ export async function openDatabase(databasePath: string): Promise<VoxlyDatabase>
   migrate(sqlite);
   seedRooms(sqlite);
   seedAfkRooms(sqlite);
+  for (const row of all<{ server_id: string; user_id: string }>(
+    sqlite,
+    "select server_id, user_id from server_members where mention_code is null"
+  )) {
+    assignMentionCode(sqlite, row.server_id, row.user_id);
+  }
 
   return {
     sqlite,
@@ -41,6 +47,29 @@ export function run(sqlite: DatabaseSync, sql: string, params: DbParam[] = []) {
   sqlite.prepare(sql).run(...params);
 }
 
+/** Persist once per Membership; retry collisions rather than deriving mutable prefixes. */
+export function assignMentionCode(sqlite: DatabaseSync, serverId: string, userId: string) {
+  if (
+    one<{ mention_code: string | null }>(
+      sqlite,
+      "select mention_code from server_members where server_id = ? and user_id = ?",
+      [serverId, userId]
+    )?.mention_code
+  )
+    return;
+  let code: string;
+  do {
+    code = crypto.randomUUID().replaceAll("-", "").slice(0, 6).toUpperCase();
+  } while (
+    one(sqlite, "select user_id from server_members where server_id = ? and mention_code = ?", [serverId, code])
+  );
+  run(
+    sqlite,
+    "update server_members set mention_code = ? where server_id = ? and user_id = ? and mention_code is null",
+    [code, serverId, userId]
+  );
+}
+
 export function dumpTables(sqlite: DatabaseSync) {
   return {
     servers: all(sqlite, "select * from servers"),
@@ -60,10 +89,11 @@ export function dumpTables(sqlite: DatabaseSync) {
 }
 
 function migrate(sqlite: DatabaseSync) {
-  const needsLegacyMembershipBackfill = one<{ count: number }>(
-    sqlite,
-    "select count(*) as count from sqlite_master where type = 'table' and name = 'server_members'"
-  )?.count === 0;
+  const needsLegacyMembershipBackfill =
+    one<{ count: number }>(
+      sqlite,
+      "select count(*) as count from sqlite_master where type = 'table' and name = 'server_members'"
+    )?.count === 0;
 
   sqlite.exec(`
     create table if not exists users (
@@ -268,6 +298,19 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "messages", "deleted_at", "text");
   addColumnIfMissing(sqlite, "messages", "deleted_by_user_id", "text");
   addColumnIfMissing(sqlite, "messages", "reply_to_message_id", "text");
+  addColumnIfMissing(sqlite, "messages", "mentions", "text not null default '[]'");
+  addColumnIfMissing(sqlite, "messages", "reaction_version", "integer not null default 0");
+  addColumnIfMissing(sqlite, "messages", "pinned_at", "text");
+  addColumnIfMissing(sqlite, "server_members", "mention_code", "text");
+  sqlite.exec(`
+    create unique index if not exists idx_members_mention_code on server_members(server_id, mention_code) where mention_code is not null;
+    create table if not exists message_reactions (
+      message_id text not null references messages(id) on delete cascade,
+      user_id text not null references users(id) on delete cascade,
+      emoji text not null,
+      primary key(message_id, user_id, emoji)
+    );
+  `);
   addColumnIfMissing(sqlite, "rooms", "server_id", "text");
   addColumnIfMissing(sqlite, "rooms", "is_afk", "integer not null default 0");
   addColumnIfMissing(sqlite, "rooms", "category_id", "text references categories(id) on delete set null");
@@ -330,7 +373,9 @@ function migrate(sqlite: DatabaseSync) {
     ]);
   }
 
-  const hasDefaultServer = (one<{ count: number }>(sqlite, "select count(*) as count from servers where id = ?", [defaultServerId])?.count ?? 0) > 0;
+  const hasDefaultServer =
+    (one<{ count: number }>(sqlite, "select count(*) as count from servers where id = ?", [defaultServerId])?.count ??
+      0) > 0;
   if (hasDefaultServer) {
     run(sqlite, "update rooms set server_id = ? where server_id is null", [defaultServerId]);
     run(sqlite, "update invites set server_id = ? where server_id is null", [defaultServerId]);
@@ -387,11 +432,10 @@ function seedAfkRooms(sqlite: DatabaseSync) {
      )`
   );
   for (const server of servers) {
-    const position = one<{ position: number | null }>(
-      sqlite,
-      "select max(position) as position from rooms where server_id = ?",
-      [server.id]
-    )?.position ?? 0;
+    const position =
+      one<{ position: number | null }>(sqlite, "select max(position) as position from rooms where server_id = ?", [
+        server.id
+      ])?.position ?? 0;
     run(sqlite, "insert into rooms (id, server_id, name, kind, position, is_afk) values (?, ?, ?, ?, ?, 1)", [
       `afk-${server.id}`,
       server.id,
@@ -434,5 +478,8 @@ function migrateNotificationState(sqlite: DatabaseSync) {
     }
     sqlite.exec(`create unique index if not exists idx_messages_room_sequence on messages(room_id, sequence) where sequence > 0;
       create index if not exists idx_room_read_cursors_room on room_read_cursors(room_id); COMMIT;`);
-  } catch (error) { sqlite.exec("ROLLBACK"); throw error; }
+  } catch (error) {
+    sqlite.exec("ROLLBACK");
+    throw error;
+  }
 }

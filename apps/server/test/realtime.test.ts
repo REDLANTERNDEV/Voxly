@@ -2,7 +2,17 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { io as createClient, type Socket } from "socket.io-client";
 import { musicBotNickname, musicIdentifierMaxLength, musicSetLogMaxLines } from "@voxly/shared";
-import type { MusicCommand, MusicCommandAck, MusicControlAck, MusicPublishAck, MusicQueueState, VoiceJoinAck, VoiceMediaState, VoiceSetMediaAck, VoiceSnapshot } from "@voxly/shared";
+import type {
+  MusicCommand,
+  MusicCommandAck,
+  MusicControlAck,
+  MusicPublishAck,
+  MusicQueueState,
+  VoiceJoinAck,
+  VoiceMediaState,
+  VoiceSetMediaAck,
+  VoiceSnapshot
+} from "@voxly/shared";
 import { createSession } from "../src/auth/sessions.js";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 
@@ -29,15 +39,24 @@ describe("Voxly realtime MVP", () => {
   });
 
   it("synchronizes personal reads and mutes across Devices without notifying other members", async () => {
-    const owner = await bootstrapOwner(app), member = await acceptInvite(app, owner.cookies, "Reader");
-    const secondToken = createSession({ sqlite: app.sqlite, save() {}, close() {} }, member.user.id, "Notification test Device");
+    const owner = await bootstrapOwner(app),
+      member = await acceptInvite(app, owner.cookies, "Reader");
+    const secondToken = createSession(
+      { sqlite: app.sqlite, save() {}, close() {} },
+      member.user.id,
+      "Notification test Device"
+    );
     const first = await connectSocket(baseUrl, member.cookies.voxly_session);
     const second = await connectSocket(baseUrl, secondToken);
     const unrelated = await connectSocket(baseUrl, owner.cookies.voxly_session);
     sockets.push(first, second, unrelated);
     for (const request of [
       { method: "PUT" as const, url: "/api/rooms/general/read-state", payload: { throughSequence: 0 } },
-      { method: "PATCH" as const, url: "/api/servers/the-basement/notification-settings", payload: { mode: "indefinite" } }
+      {
+        method: "PATCH" as const,
+        url: "/api/servers/the-basement/notification-settings",
+        payload: { mode: "indefinite" }
+      }
     ]) {
       const notices = [onceEvent(first, "notifications:changed"), onceEvent(second, "notifications:changed")];
       const quiet = expectNoEvent(unrelated, "notifications:changed");
@@ -45,7 +64,11 @@ describe("Voxly realtime MVP", () => {
       assert.deepEqual(await Promise.all(notices), [{ serverId: "the-basement" }, { serverId: "the-basement" }]);
       await quiet;
     }
-    const state = await app.server.inject({ method: "GET", url: "/api/notifications", cookies: { voxly_session: secondToken } });
+    const state = await app.server.inject({
+      method: "GET",
+      url: "/api/notifications",
+      cookies: { voxly_session: secondToken }
+    });
     assert.equal(state.json().servers[0].mute.mode, "indefinite");
   });
 
@@ -81,20 +104,36 @@ describe("Voxly realtime MVP", () => {
     sockets.push(ownerSocket, memberSocket);
     const joined = await joinVoice(memberSocket, "lobby");
     assert.ok(joined.ok);
-    const message = await app.server.inject({ method: "POST", url: "/api/rooms/general/messages", cookies: member.cookies, payload: { body: "History survives a rename" } });
+    const message = await app.server.inject({
+      method: "POST",
+      url: "/api/rooms/general/messages",
+      cookies: member.cookies,
+      payload: { body: "History survives a rename" }
+    });
     assert.equal(message.statusCode, 201);
     for (const roomId of ["general", "lobby"]) {
       const ownerNotice = onceEvent<{ serverId: string }>(ownerSocket, "server:roomsChanged");
       const memberNotice = onceEvent<{ serverId: string }>(memberSocket, "server:roomsChanged");
-      const renamed = await app.server.inject({ method: "PATCH", url: `/api/servers/the-basement/rooms/${roomId}`, cookies: owner.cookies, payload: { name: `Renamed ${roomId}` } });
+      const renamed = await app.server.inject({
+        method: "PATCH",
+        url: `/api/servers/the-basement/rooms/${roomId}`,
+        cookies: owner.cookies,
+        payload: { name: `Renamed ${roomId}` }
+      });
       assert.equal(renamed.statusCode, 200);
       assert.deepEqual(await ownerNotice, { serverId: "the-basement" });
       assert.deepEqual(await memberNotice, { serverId: "the-basement" });
     }
-    const snapshot = await new Promise<VoiceSnapshot>(resolve => memberSocket.emit("voice:snapshot", "lobby", resolve));
+    const snapshot = await new Promise<VoiceSnapshot>((resolve) =>
+      memberSocket.emit("voice:snapshot", "lobby", resolve)
+    );
     assert.equal(snapshot.viewerInVoiceRoom, true);
     assert.equal(snapshot.members[0]?.mediaInstanceId, joined.state.mediaInstanceId);
-    const history = await app.server.inject({ method: "GET", url: "/api/rooms/general/messages", cookies: member.cookies });
+    const history = await app.server.inject({
+      method: "GET",
+      url: "/api/rooms/general/messages",
+      cookies: member.cookies
+    });
     assert.equal(history.json().messages[0]?.id, message.json().message.id);
   });
 
@@ -103,7 +142,10 @@ describe("Voxly realtime MVP", () => {
     const member = await acceptInvite(app, owner.cookies, "Ece");
 
     const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
-    const onlinePromise = onceEvent<{ serverId: string; user: { nickname: string } }>(ownerSocket, "presence:serverOnline");
+    const onlinePromise = onceEvent<{ serverId: string; user: { nickname: string } }>(
+      ownerSocket,
+      "presence:serverOnline"
+    );
     const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
     sockets.push(ownerSocket, memberSocket);
 
@@ -176,10 +218,7 @@ describe("Voxly realtime MVP", () => {
     const [updated, snapshot] = await Promise.all([updatedPromise, snapshotPromise]);
     assert.equal(updated.serverId, "the-basement");
     assert.equal(updated.user.nickname, "Basement Ece");
-    assert.equal(
-      snapshot.members.find((entry) => entry.user.userId === member.user.id)?.user.nickname,
-      "Basement Ece"
-    );
+    assert.equal(snapshot.members.find((entry) => entry.user.userId === member.user.id)?.user.nickname, "Basement Ece");
     await expectNoEvent(otherSocket, "server:memberUpdated");
   });
 
@@ -259,11 +298,13 @@ describe("Voxly realtime MVP", () => {
       payload: { name: "Private voice server" }
     });
     const privateServerId = created.json().server.id as string;
-    const rooms = (await app.server.inject({
-      method: "GET",
-      url: `/api/servers/${privateServerId}/rooms`,
-      cookies: owner.cookies
-    })).json().rooms as Array<{ id: string; kind: string }>;
+    const rooms = (
+      await app.server.inject({
+        method: "GET",
+        url: `/api/servers/${privateServerId}/rooms`,
+        cookies: owner.cookies
+      })
+    ).json().rooms as Array<{ id: string; kind: string }>;
     const privateVoiceRoom = rooms.find((room) => room.kind === "voice");
     assert.ok(privateVoiceRoom);
 
@@ -303,13 +344,15 @@ describe("Voxly realtime MVP", () => {
         })
       )
     );
-    assert.equal(firstThree.every((response) => response.ok), true);
-
-    const fourth = await emitWithAck<{ ok: boolean; error: string }>(
-      socketsForMembers[3],
-      "voice:setMediaState",
-      { roomId: "lobby", media: { screen: true } }
+    assert.equal(
+      firstThree.every((response) => response.ok),
+      true
     );
+
+    const fourth = await emitWithAck<{ ok: boolean; error: string }>(socketsForMembers[3], "voice:setMediaState", {
+      roomId: "lobby",
+      media: { screen: true }
+    });
     assert.deepEqual(fourth, { ok: false, error: "visual_limit_reached" });
 
     const snapshot = await emitWithAck<{
@@ -331,10 +374,7 @@ describe("Voxly realtime MVP", () => {
     const outsiderSocket = await connectSocket(baseUrl, outsider.cookies.voxly_session);
     sockets.push(publisherSocket, viewerSocket, outsiderSocket);
 
-    await Promise.all([
-      joinVoice(publisherSocket, "lobby"),
-      joinVoice(viewerSocket, "lobby")
-    ]);
+    await Promise.all([joinVoice(publisherSocket, "lobby"), joinVoice(viewerSocket, "lobby")]);
     await emitWithAck(viewerSocket, "voice:snapshot", "lobby");
     await emitWithAck(publisherSocket, "voice:setMediaState", {
       roomId: "lobby",
@@ -387,10 +427,7 @@ describe("Voxly realtime MVP", () => {
     const publisherSocket = await connectSocket(baseUrl, publisher.cookies.voxly_session);
     const viewerSocket = await connectSocket(baseUrl, viewer.cookies.voxly_session);
     sockets.push(publisherSocket, viewerSocket);
-    await Promise.all([
-      joinVoice(publisherSocket, "lobby"),
-      joinVoice(viewerSocket, "lobby")
-    ]);
+    await Promise.all([joinVoice(publisherSocket, "lobby"), joinVoice(viewerSocket, "lobby")]);
     await emitWithAck(publisherSocket, "voice:setMediaState", { roomId: "lobby", media: { screen: true } });
 
     await onceEvent(publisherSocket, "voice:visualSubscriberState", () => {
@@ -432,19 +469,39 @@ describe("Voxly realtime MVP", () => {
     await emitWithAck(publisherSocket, "voice:setMediaState", { roomId: "lobby", media: { screen: true } });
     const target = [{ publisherUserId: publisher.user.id, kind: "screen" }];
 
-    const firstSubscription = onceEvent<{ viewerUserId: string; subscribedKinds: string[] }>(publisherSocket, "voice:visualSubscriberState", () => {
-      firstViewerSocket.emit("voice:setVisualSubscriptions", { roomId: "lobby", targets: target });
+    const firstSubscription = onceEvent<{ viewerUserId: string; subscribedKinds: string[] }>(
+      publisherSocket,
+      "voice:visualSubscriberState",
+      () => {
+        firstViewerSocket.emit("voice:setVisualSubscriptions", { roomId: "lobby", targets: target });
+      }
+    );
+    assert.deepEqual(await firstSubscription, {
+      roomId: "lobby",
+      viewerUserId: firstViewer.user.id,
+      subscribedKinds: ["screen"]
     });
-    assert.deepEqual(await firstSubscription, { roomId: "lobby", viewerUserId: firstViewer.user.id, subscribedKinds: ["screen"] });
 
-    const secondSubscription = onceEvent<{ viewerUserId: string; subscribedKinds: string[] }>(publisherSocket, "voice:visualSubscriberState", () => {
-      secondViewerSocket.emit("voice:setVisualSubscriptions", { roomId: "lobby", targets: target });
+    const secondSubscription = onceEvent<{ viewerUserId: string; subscribedKinds: string[] }>(
+      publisherSocket,
+      "voice:visualSubscriberState",
+      () => {
+        secondViewerSocket.emit("voice:setVisualSubscriptions", { roomId: "lobby", targets: target });
+      }
+    );
+    assert.deepEqual(await secondSubscription, {
+      roomId: "lobby",
+      viewerUserId: secondViewer.user.id,
+      subscribedKinds: ["screen"]
     });
-    assert.deepEqual(await secondSubscription, { roomId: "lobby", viewerUserId: secondViewer.user.id, subscribedKinds: ["screen"] });
 
-    const retry = onceEvent<{ viewerUserId: string; subscribedKinds: string[] }>(publisherSocket, "voice:visualSubscriberState", () => {
-      firstViewerSocket.emit("voice:setVisualSubscriptions", { roomId: "lobby", targets: target });
-    });
+    const retry = onceEvent<{ viewerUserId: string; subscribedKinds: string[] }>(
+      publisherSocket,
+      "voice:visualSubscriberState",
+      () => {
+        firstViewerSocket.emit("voice:setVisualSubscriptions", { roomId: "lobby", targets: target });
+      }
+    );
     assert.deepEqual(await retry, { roomId: "lobby", viewerUserId: firstViewer.user.id, subscribedKinds: ["screen"] });
   });
 
@@ -513,10 +570,10 @@ describe("Voxly realtime MVP", () => {
     sockets.push(observerSocket, memberSocket);
 
     await joinVoice(memberSocket, "lobby");
-    const snapshotPromise = onceEvent<{ roomId: string; members: Array<{ user: { nickname: string }; media: VoiceMediaState }> }>(
-      observerSocket,
-      "voice:snapshot"
-    );
+    const snapshotPromise = onceEvent<{
+      roomId: string;
+      members: Array<{ user: { nickname: string }; media: VoiceMediaState }>;
+    }>(observerSocket, "voice:snapshot");
     await emitWithAck(memberSocket, "voice:setMediaState", { roomId: "lobby", media: { speaking: true } });
     const snapshot = await snapshotPromise;
 
@@ -590,10 +647,7 @@ describe("Voxly realtime MVP", () => {
     const outsiderSocket = await connectSocket(baseUrl, outsider.cookies.voxly_session);
     sockets.push(senderSocket, receiverSocket, outsiderSocket);
 
-    await Promise.all([
-      joinVoice(senderSocket, "lobby"),
-      joinVoice(receiverSocket, "lobby")
-    ]);
+    await Promise.all([joinVoice(senderSocket, "lobby"), joinVoice(receiverSocket, "lobby")]);
     await emitWithAck(receiverSocket, "voice:snapshot", "lobby");
     await emitWithAck(senderSocket, "voice:snapshot", "lobby");
 
@@ -636,7 +690,8 @@ describe("Voxly realtime MVP", () => {
       url: `/api/servers/${secondServerId}/rooms`,
       cookies: owner.cookies
     });
-    const secondLobbyId = secondServerRooms.json().rooms.find((room: { kind: string }) => room.kind === "voice").id as string;
+    const secondLobbyId = secondServerRooms.json().rooms.find((room: { kind: string }) => room.kind === "voice")
+      .id as string;
     const inviteResponse = await app.server.inject({
       method: "POST",
       url: `/api/servers/${secondServerId}/invites`,
@@ -657,15 +712,29 @@ describe("Voxly realtime MVP", () => {
     await joinVoice(memberSocket, "lobby");
     await emitWithAck(memberSocket, "voice:snapshot", "lobby");
     await joinVoice(memberSocket, secondLobbyId);
-    const defaultLobby = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(memberSocket, "voice:snapshot", "lobby");
-    assert.equal(defaultLobby.members.some((entry) => entry.user.userId === member.user.id), false);
+    const defaultLobby = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(
+      memberSocket,
+      "voice:snapshot",
+      "lobby"
+    );
+    assert.equal(
+      defaultLobby.members.some((entry) => entry.user.userId === member.user.id),
+      false
+    );
 
     assert.deepEqual(await joinVoice(outsiderSocket, secondLobbyId), {
       ok: false,
       error: "forbidden"
     });
-    const protectedLobby = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(outsiderSocket, "voice:snapshot", secondLobbyId);
-    assert.equal(protectedLobby.members.some((entry) => entry.user.userId === outsider.user.id), false);
+    const protectedLobby = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(
+      outsiderSocket,
+      "voice:snapshot",
+      secondLobbyId
+    );
+    assert.equal(
+      protectedLobby.members.some((entry) => entry.user.userId === outsider.user.id),
+      false
+    );
   });
 
   it("joins an existing user's live sockets to a newly accepted server", async () => {
@@ -701,7 +770,10 @@ describe("Voxly realtime MVP", () => {
 
     assert.equal(joined.statusCode, 200);
     assert.equal(snapshot.serverId, serverId);
-    assert.equal(snapshot.users.some((user) => user.userId === member.user.id), true);
+    assert.equal(
+      snapshot.users.some((user) => user.userId === member.user.id),
+      true
+    );
   });
 
   it("removes a member from voice immediately when an owner disconnects or bans them", async () => {
@@ -711,10 +783,7 @@ describe("Voxly realtime MVP", () => {
     const memberSocket = await connectSocket(baseUrl, member.cookies.voxly_session);
     sockets.push(ownerSocket, memberSocket);
 
-    await Promise.all([
-      joinVoice(ownerSocket, "lobby"),
-      joinVoice(memberSocket, "lobby")
-    ]);
+    await Promise.all([joinVoice(ownerSocket, "lobby"), joinVoice(memberSocket, "lobby")]);
     await emitWithAck(memberSocket, "voice:snapshot", "lobby");
 
     const disconnected = await app.server.inject({
@@ -723,8 +792,15 @@ describe("Voxly realtime MVP", () => {
       cookies: owner.cookies
     });
     assert.equal(disconnected.statusCode, 204);
-    const afterDisconnect = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(ownerSocket, "voice:snapshot", "lobby");
-    assert.equal(afterDisconnect.members.some((entry) => entry.user.userId === member.user.id), false);
+    const afterDisconnect = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(
+      ownerSocket,
+      "voice:snapshot",
+      "lobby"
+    );
+    assert.equal(
+      afterDisconnect.members.some((entry) => entry.user.userId === member.user.id),
+      false
+    );
 
     await joinVoice(memberSocket, "lobby");
     await emitWithAck(memberSocket, "voice:snapshot", "lobby");
@@ -737,8 +813,15 @@ describe("Voxly realtime MVP", () => {
     const offline = await offlinePromise;
     assert.equal(banned.statusCode, 204);
     assert.deepEqual(offline, { serverId: "the-basement", userId: member.user.id });
-    const afterBan = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(ownerSocket, "voice:snapshot", "lobby");
-    assert.equal(afterBan.members.some((entry) => entry.user.userId === member.user.id), false);
+    const afterBan = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(
+      ownerSocket,
+      "voice:snapshot",
+      "lobby"
+    );
+    assert.equal(
+      afterBan.members.some((entry) => entry.user.userId === member.user.id),
+      false
+    );
   });
 
   it("leaves another server's voice room alone when a member loses access to one server", async () => {
@@ -782,8 +865,15 @@ describe("Voxly realtime MVP", () => {
     assert.equal(kicked.statusCode, 204);
     await stayedInVoice;
 
-    const lobby = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(ownerSocket, "voice:snapshot", "lobby");
-    assert.equal(lobby.members.some((entry) => entry.user.userId === member.user.id), true);
+    const lobby = await emitWithAck<{ members: Array<{ user: { userId: string } }> }>(
+      ownerSocket,
+      "voice:snapshot",
+      "lobby"
+    );
+    assert.equal(
+      lobby.members.some((entry) => entry.user.userId === member.user.id),
+      true
+    );
   });
 
   it("stops kicked and banned members from receiving future text-room messages", async () => {
@@ -1075,8 +1165,10 @@ describe("Voxly realtime MVP", () => {
     sockets.push(ownerSocket, firstTab, secondTab);
     await waitForSocketRoom(app, ownerSocket, "server:the-basement");
 
-    let statuses: string[] = [];
-    ownerSocket.on("presence:serverStatus", (payload: { status: string }) => { statuses.push(payload.status); });
+    const statuses: string[] = [];
+    ownerSocket.on("presence:serverStatus", (payload: { status: string }) => {
+      statuses.push(payload.status);
+    });
     firstTab.emit("presence:setStatus", "idle");
     await new Promise((resolve) => setTimeout(resolve, 80));
     assert.deepEqual(statuses, [], "one idle tab does not make the member away");
@@ -1151,11 +1243,13 @@ describe("Voxly realtime MVP", () => {
       cookies: member.cookies,
       payload: { inviteToken: invite.json().invite.token }
     });
-    const rooms = (await app.server.inject({
-      method: "GET",
-      url: `/api/servers/${serverId}/rooms`,
-      cookies: member.cookies
-    })).json().rooms as Array<{ id: string; kind: string }>;
+    const rooms = (
+      await app.server.inject({
+        method: "GET",
+        url: `/api/servers/${serverId}/rooms`,
+        cookies: member.cookies
+      })
+    ).json().rooms as Array<{ id: string; kind: string }>;
     const voiceRoom = rooms.find((room) => room.kind === "voice");
     assert.ok(voiceRoom);
 
@@ -1399,8 +1493,9 @@ describe("music bot presence", () => {
     // Waiting for the snapshot that carries the mute rather than the next one:
     // joining publishes one of its own, and which of the two arrives first is
     // not something this test is about.
-    const muted = nextSnapshotWhere(botSocket, (snapshot) => snapshot.members
-      .some((member) => member.user.userId === botSession.userId && member.moderation.muted));
+    const muted = nextSnapshotWhere(botSocket, (snapshot) =>
+      snapshot.members.some((member) => member.user.userId === botSession.userId && member.moderation.muted)
+    );
     const patched = await app.server.inject({
       method: "PATCH",
       url: `/api/servers/${botSession.serverId}/members/${botSession.userId}/voice-moderation`,
@@ -1519,7 +1614,7 @@ describe("music bot control", () => {
     const [botSession] = exchange.json().sessions as Array<{ serverId: string; userId: string; token: string }>;
     const botSocket = await connectSocket(baseUrl, botSession.token);
     const received: Array<{ roomId: string; command: MusicCommand; requestedByUserId: string }> = [];
-    botSocket.on("music:command", (payload: typeof received[number], ack: (response: MusicCommandAck) => void) => {
+    botSocket.on("music:command", (payload: (typeof received)[number], ack: (response: MusicCommandAck) => void) => {
       received.push(payload);
       ack(answer);
     });
@@ -1568,11 +1663,13 @@ describe("music bot control", () => {
     // deciding, so it travels on the acknowledgement and never as an event to
     // the room. ADR-0007.
     const owner = await bootstrapOwner(app);
-    const results = [{
-      track: { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 },
-      channel: "A Channel",
-      url: "https://www.youtube.com/watch?v=aB3dE5gH7jK"
-    }];
+    const results = [
+      {
+        track: { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 },
+        channel: "A Channel",
+        url: "https://www.youtube.com/watch?v=aB3dE5gH7jK"
+      }
+    ];
     const { received } = await connectBot({ ok: true, kind: "results", results });
     const ownerSocket = await connectSocket(baseUrl, owner.cookies.voxly_session);
     sockets.push(ownerSocket);
@@ -1583,7 +1680,11 @@ describe("music bot control", () => {
     const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command });
 
     assert.deepEqual(ack, { ok: true, kind: "results", results });
-    assert.deepEqual(received.map((entry) => entry.command), [command], "a name travels on the same verb a link does");
+    assert.deepEqual(
+      received.map((entry) => entry.command),
+      [command],
+      "a name travels on the same verb a link does"
+    );
     await quiet;
   });
 
@@ -1601,7 +1702,10 @@ describe("music bot control", () => {
         kind
       );
     }
-    assert.deepEqual(received.map((entry) => entry.command.kind), ["play", "stop", "leave"]);
+    assert.deepEqual(
+      received.map((entry) => entry.command.kind),
+      ["play", "stop", "leave"]
+    );
   });
 
   it("forwards a skip and a removal with the entry they name", async () => {
@@ -1614,17 +1718,23 @@ describe("music bot control", () => {
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
-    for (const command of [{ kind: "skip", entryId: "entry-1" }, { kind: "remove", entryId: "entry-2" }] as const) {
+    for (const command of [
+      { kind: "skip", entryId: "entry-1" },
+      { kind: "remove", entryId: "entry-2" }
+    ] as const) {
       assert.deepEqual(
         await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command }),
         { ok: true, kind: "track", track: null },
         command.kind
       );
     }
-    assert.deepEqual(received.map((entry) => entry.command), [
-      { kind: "skip", entryId: "entry-1" },
-      { kind: "remove", entryId: "entry-2" }
-    ]);
+    assert.deepEqual(
+      received.map((entry) => entry.command),
+      [
+        { kind: "skip", entryId: "entry-1" },
+        { kind: "remove", entryId: "entry-2" }
+      ]
+    );
   });
 
   it("refuses a member who is in the server but not in that voice room", async () => {
@@ -1634,7 +1744,10 @@ describe("music bot control", () => {
     sockets.push(ownerSocket);
 
     const silence = expectNoEvent(botSocket, "music:command");
-    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: { kind: "play" } });
+    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", {
+      roomId: "lobby",
+      command: { kind: "play" }
+    });
 
     assert.deepEqual(ack, { ok: false, error: "not_in_voice_room" });
     await silence;
@@ -1649,7 +1762,10 @@ describe("music bot control", () => {
     await joinVoice(ownerSocket, afkRoomId);
 
     const silence = expectNoEvent(botSocket, "music:command");
-    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: afkRoomId, command: { kind: "play" } });
+    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", {
+      roomId: afkRoomId,
+      command: { kind: "play" }
+    });
 
     assert.deepEqual(ack, { ok: false, error: "afk_room" });
     await silence;
@@ -1661,7 +1777,10 @@ describe("music bot control", () => {
     sockets.push(ownerSocket);
     await joinVoice(ownerSocket, "lobby");
 
-    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: { kind: "play" } });
+    const ack = await emitWithAck<MusicControlAck>(ownerSocket, "music:control", {
+      roomId: "lobby",
+      command: { kind: "play" }
+    });
 
     assert.deepEqual(ack, { ok: false, error: "bot_offline" });
   });
@@ -1674,11 +1793,17 @@ describe("music bot control", () => {
     await joinVoice(ownerSocket, "lobby");
 
     assert.deepEqual(
-      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "lobby", command: { kind: "drop-the-bass" } }),
+      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", {
+        roomId: "lobby",
+        command: { kind: "drop-the-bass" }
+      }),
       { ok: false, error: "room_not_found" }
     );
     assert.deepEqual(
-      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", { roomId: "general", command: { kind: "play" } }),
+      await emitWithAck<MusicControlAck>(ownerSocket, "music:control", {
+        roomId: "general",
+        command: { kind: "play" }
+      }),
       { ok: false, error: "room_not_found" }
     );
     assert.deepEqual(
@@ -1722,19 +1847,23 @@ describe("music bot control", () => {
 
     const state = {
       playing: true,
-      entries: [{
-        entryId: "entry-1",
-        requestedByUserId: owner.user.id,
-        track: { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 }
-      }],
+      entries: [
+        {
+          entryId: "entry-1",
+          requestedByUserId: owner.user.id,
+          track: { id: "aB3dE5gH7jK", title: "Nocturne in E-flat major", durationSeconds: 273 }
+        }
+      ],
       // The Set log travels with the Queue it describes, so the member who
       // pressed nothing is given the same explanation as the member who did.
-      log: [{
-        lineId: "line-1",
-        action: "added",
-        requestedByUserId: owner.user.id,
-        trackTitle: "Nocturne in E-flat major"
-      }]
+      log: [
+        {
+          lineId: "line-1",
+          action: "added",
+          requestedByUserId: owner.user.id,
+          trackTitle: "Nocturne in E-flat major"
+        }
+      ]
     };
     const seen = Promise.all([
       onceEvent<{ roomId: string; state: typeof state }>(ownerSocket, "music:queue"),
@@ -1896,11 +2025,10 @@ describe("music bot control", () => {
     });
 
     assert.deepEqual(ack, { ok: true });
-    assert.deepEqual((await relayed).log.map((line) => line.action), [
-      "failedUnavailable",
-      "failedSource",
-      "failedBot"
-    ]);
+    assert.deepEqual(
+      (await relayed).log.map((line) => line.action),
+      ["failedUnavailable", "failedSource", "failedBot"]
+    );
   });
 
   it("never writes the Set log down, anywhere", async () => {
@@ -1999,9 +2127,7 @@ function everyTable(app: VoxlyApp) {
   const tables = app.sqlite
     .prepare("select name from sqlite_master where type = 'table' and name not like 'sqlite_%'")
     .all() as Array<{ name: string }>;
-  return tables
-    .map((table) => JSON.stringify(app.sqlite.prepare(`select * from "${table.name}"`).all()))
-    .join("");
+  return tables.map((table) => JSON.stringify(app.sqlite.prepare(`select * from "${table.name}"`).all())).join("");
 }
 
 async function bootstrapOwner(app: VoxlyApp) {
@@ -2045,11 +2171,7 @@ const defaultJoinMedia: VoiceMediaState = {
   speaking: false
 };
 
-function joinVoice(
-  socket: Socket,
-  roomId: string,
-  media: VoiceMediaState = defaultJoinMedia
-): Promise<VoiceJoinAck> {
+function joinVoice(socket: Socket, roomId: string, media: VoiceMediaState = defaultJoinMedia): Promise<VoiceJoinAck> {
   return emitWithAck<VoiceJoinAck>(socket, "voice:join", { roomId, media });
 }
 

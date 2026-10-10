@@ -28,12 +28,7 @@ describe("voice remote stream state", () => {
     const camera = { id: "camera-stream" } as MediaStream;
     const screen = { id: "screen-stream" } as MediaStream;
 
-    const streams = upsertRemoteStream(
-      upsertRemoteStream([], "u1", "camera", camera),
-      "u1",
-      "screen",
-      screen
-    );
+    const streams = upsertRemoteStream(upsertRemoteStream([], "u1", "camera", camera), "u1", "screen", screen);
 
     assert.equal(remoteStreamKey("u1", "camera"), "u1:camera");
     assert.deepEqual(streams, [

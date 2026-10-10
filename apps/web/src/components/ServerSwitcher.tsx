@@ -19,9 +19,15 @@ export function ServerSwitcher(props: ServerSwitcherProps) {
           className="input"
           id="serverSelect"
           value={props.activeServerId}
-          onChange={(event) => { void props.onSelect(event.currentTarget.value); }}
+          onChange={(event) => {
+            void props.onSelect(event.currentTarget.value);
+          }}
         >
-          {props.servers.map((server) => <option key={server.id} value={server.id}>{server.name}</option>)}
+          {props.servers.map((server) => (
+            <option key={server.id} value={server.id}>
+              {server.name}
+            </option>
+          ))}
         </select>
       </label>
     </section>

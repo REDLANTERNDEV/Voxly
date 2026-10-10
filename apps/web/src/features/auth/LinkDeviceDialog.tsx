@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  answerDeviceLink,
-  cancelDeviceLink,
-  createDeviceLink,
-  fetchWaitingDeviceLink
-} from "../../api.js";
+import { answerDeviceLink, cancelDeviceLink, createDeviceLink, fetchWaitingDeviceLink } from "../../api.js";
 import type { Translate } from "../../app/types.js";
 import { RefreshIcon } from "../../components/ui/Icons.js";
 import { copyText } from "../../lib/copyText.js";
@@ -84,7 +79,9 @@ export function LinkDeviceDialog({ t, onClose }: { t: Translate; onClose: () => 
         setCode(link.code);
         setExpiresIn(link.expiresInSeconds);
       })
-      .catch(() => { if (live) setErrorKey("link.mintFailed"); });
+      .catch(() => {
+        if (live) setErrorKey("link.mintFailed");
+      });
     return () => {
       live = false;
       // A code nobody is watching should not stay alive. If the mint has not
@@ -108,18 +105,21 @@ export function LinkDeviceDialog({ t, onClose }: { t: Translate; onClose: () => 
     return () => window.clearInterval(timer);
   }, [code, linked]);
 
-  const answer = useCallback(async (approve: boolean) => {
-    setAnswering(true);
-    try {
-      await answerDeviceLink(approve);
-      setWaiting(null);
-      if (approve) setLinked(true);
-    } catch {
-      setErrorKey("link.answerFailed");
-    } finally {
-      setAnswering(false);
-    }
-  }, [t]);
+  const answer = useCallback(
+    async (approve: boolean) => {
+      setAnswering(true);
+      try {
+        await answerDeviceLink(approve);
+        setWaiting(null);
+        if (approve) setLinked(true);
+      } catch {
+        setErrorKey("link.answerFailed");
+      } finally {
+        setAnswering(false);
+      }
+    },
+    [t]
+  );
 
   return (
     <div className="confirm-backdrop" role="presentation">
@@ -129,7 +129,10 @@ export function LinkDeviceDialog({ t, onClose }: { t: Translate; onClose: () => 
           <>
             <p className="muted small">{t("link.guideCopy")}</p>
             <ol className="link-steps">
-              <li>{t("link.step1")}<code className="link-address">{linkAddress()}</code></li>
+              <li>
+                {t("link.step1")}
+                <code className="link-address">{linkAddress()}</code>
+              </li>
               <li>{t("link.step2")}</li>
               <li>{t("link.step3")}</li>
             </ol>
@@ -137,7 +140,10 @@ export function LinkDeviceDialog({ t, onClose }: { t: Translate; onClose: () => 
               <button
                 className="btn btn-ghost"
                 type="button"
-                onClick={() => { writeLinkGuideDismissed(true); setGuiding(false); }}
+                onClick={() => {
+                  writeLinkGuideDismissed(true);
+                  setGuiding(false);
+                }}
               >
                 {t("link.dontShowAgain")}
               </button>
@@ -147,87 +153,126 @@ export function LinkDeviceDialog({ t, onClose }: { t: Translate; onClose: () => 
             </div>
           </>
         ) : (
-        <>
-        {error ? <p className="small device-error" role="alert">{error}</p> : null}
-        {linked ? (
           <>
-            <p className="muted small">{t("link.linked")}</p>
-            <button className="btn btn-primary" type="button" onClick={onClose}>{t("common.done")}</button>
-          </>
-        ) : waiting ? (
-          <>
-            {/* Named before the number, because "is this mine?" is the question
+            {error ? (
+              <p className="small device-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+            {linked ? (
+              <>
+                <p className="muted small">{t("link.linked")}</p>
+                <button className="btn btn-primary" type="button" onClick={onClose}>
+                  {t("common.done")}
+                </button>
+              </>
+            ) : waiting ? (
+              <>
+                {/* Named before the number, because "is this mine?" is the question
                 being asked and the Device is what answers it. */}
-            <p>{t("link.approveCopy", { device: waiting.label })}</p>
-            <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>{waiting.confirmation}</span>
-            <p className="muted small">{t("link.confirmationHint")}</p>
-            <div className="confirm-actions">
-              <button className="btn btn-ghost" type="button" disabled={answering} onClick={() => void answer(false)}>
-                {t("link.refuse")}
-              </button>
-              <button className="btn btn-primary" type="button" disabled={answering} onClick={() => void answer(true)}>
-                {t("link.approve")}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <ol className="link-steps">
-              <li>{t("link.step1")}<code className="link-address">{linkAddress()}</code></li>
-              <li>{t("link.step2")}</li>
-              <li>{t("link.step3")}</li>
-            </ol>
-            <p className="muted small">{t("link.codeCopy")}</p>
-            {/* Scanning and typing are both offered, always. A camera that will
+                <p>{t("link.approveCopy", { device: waiting.label })}</p>
+                <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>
+                  {waiting.confirmation}
+                </span>
+                <p className="muted small">{t("link.confirmationHint")}</p>
+                <div className="confirm-actions">
+                  <button
+                    className="btn btn-ghost"
+                    type="button"
+                    disabled={answering}
+                    onClick={() => void answer(false)}
+                  >
+                    {t("link.refuse")}
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    type="button"
+                    disabled={answering}
+                    onClick={() => void answer(true)}
+                  >
+                    {t("link.approve")}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <ol className="link-steps">
+                  <li>
+                    {t("link.step1")}
+                    <code className="link-address">{linkAddress()}</code>
+                  </li>
+                  <li>{t("link.step2")}</li>
+                  <li>{t("link.step3")}</li>
+                </ol>
+                <p className="muted small">{t("link.codeCopy")}</p>
+                {/* Scanning and typing are both offered, always. A camera that will
                 not focus, a cracked lens, or a member who simply prefers typing
                 all have to keep working — so the QR is the faster path, never
                 the only one. */}
-            {/* Expired covers both the code and the QR, with the way out on top
+                {/* Expired covers both the code and the QR, with the way out on top
                 of them. A member typing a dead code and being told "invalid"
                 has been left to work out why on their own. */}
-            <div className={`link-code-block ${expired ? "is-expired" : ""}`}>
-              {code ? <LinkQr code={code} label={t("link.scanHint")} /> : null}
-              <span className="link-code code-face">{code || "…"}</span>
-              {expired ? (
-                <button className="btn btn-primary link-renew" type="button" onClick={renew}>
-                  <RefreshIcon />
-                  <span>{t("link.newCode")}</span>
-                </button>
-              ) : null}
-            </div>
-            {/* Nothing to copy once it is dead — offering it invites a member to
+                <div className={`link-code-block ${expired ? "is-expired" : ""}`}>
+                  {code ? <LinkQr code={code} label={t("link.scanHint")} /> : null}
+                  <span className="link-code code-face">{code || "…"}</span>
+                  {expired ? (
+                    <button className="btn btn-primary link-renew" type="button" onClick={renew}>
+                      <RefreshIcon />
+                      <span>{t("link.newCode")}</span>
+                    </button>
+                  ) : null}
+                </div>
+                {/* Nothing to copy once it is dead — offering it invites a member to
                 carry a code that will be refused. It comes back with the code. */}
-            {code && !expired ? (
-              <button className="btn btn-ghost link-copy" type="button" onClick={() => { void copyText(code).then((ok) => setCopied(ok ? "done" : "failed")); }}>
-                {copied === "done" ? t("recovery.copied") : t("recovery.copy")}
-              </button>
-            ) : null}
-            {copied === "failed" ? <p className="small muted">{t("common.copyFailed")}</p> : null}
-            {/* Centred, a size up, and only the number carries the colour —
+                {code && !expired ? (
+                  <button
+                    className="btn btn-ghost link-copy"
+                    type="button"
+                    onClick={() => {
+                      void copyText(code).then((ok) => setCopied(ok ? "done" : "failed"));
+                    }}
+                  >
+                    {copied === "done" ? t("recovery.copied") : t("recovery.copy")}
+                  </button>
+                ) : null}
+                {copied === "failed" ? <p className="small muted">{t("common.copyFailed")}</p> : null}
+                {/* Centred, a size up, and only the number carries the colour —
                 the sentence around it is not the alarming part. */}
-            <p className="link-countdown">
-              {expired ? t("link.expired") : (
-                <>
-                  {t("link.expiresPrefix")}
-                  <strong className={secondsLeft <= 20 ? "is-urgent" : ""}>{secondsLeft}</strong>
-                  {t("link.expiresSuffix")}
-                </>
-              )}
-            </p>
-            <div className="confirm-actions">
-              {/* Always available, whether or not the guide was dismissed —
+                <p className="link-countdown">
+                  {expired ? (
+                    t("link.expired")
+                  ) : (
+                    <>
+                      {t("link.expiresPrefix")}
+                      <strong className={secondsLeft <= 20 ? "is-urgent" : ""}>{secondsLeft}</strong>
+                      {t("link.expiresSuffix")}
+                    </>
+                  )}
+                </p>
+                <div className="confirm-actions">
+                  {/* Always available, whether or not the guide was dismissed —
                   "don't show me again" is not "never let me see this again". */}
-              {/* Reopening the guide retires the code and mints a fresh one on
+                  {/* Reopening the guide retires the code and mints a fresh one on
                   the way back, so a member who stops to re-read never returns
                   to a countdown that ran out while they did. */}
-              <button className="btn btn-ghost" type="button" onClick={() => { setCode(""); setExpiresIn(0); setGuiding(true); }}>
-                {t("link.howItWorks")}
-              </button>
-              <button className="btn btn-ghost" type="button" onClick={onClose}>{t("common.cancel")}</button>
-            </div>
+                  <button
+                    className="btn btn-ghost"
+                    type="button"
+                    onClick={() => {
+                      setCode("");
+                      setExpiresIn(0);
+                      setGuiding(true);
+                    }}
+                  >
+                    {t("link.howItWorks")}
+                  </button>
+                  <button className="btn btn-ghost" type="button" onClick={onClose}>
+                    {t("common.cancel")}
+                  </button>
+                </div>
+              </>
+            )}
           </>
-        )}
-        </>
         )}
       </section>
     </div>

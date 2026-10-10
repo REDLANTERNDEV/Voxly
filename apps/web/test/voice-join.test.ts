@@ -10,30 +10,42 @@ describe("atomic voice join", () => {
   it("reports mic-on only for an enabled live audio track", () => {
     const controls = createInitialVoiceControls();
 
-    assert.equal(effectiveVoiceMediaState(controls, {
-      mic: fakeStream("audio", { enabled: false, readyState: "live" })
-    }).mic, false);
-    assert.equal(effectiveVoiceMediaState(controls, {
-      mic: fakeStream("audio", { enabled: true, readyState: "ended" })
-    }).mic, false);
-    assert.equal(effectiveVoiceMediaState(controls, {
-      mic: fakeStream("audio", { enabled: true, readyState: "live" })
-    }).mic, true);
+    assert.equal(
+      effectiveVoiceMediaState(controls, {
+        mic: fakeStream("audio", { enabled: false, readyState: "live" })
+      }).mic,
+      false
+    );
+    assert.equal(
+      effectiveVoiceMediaState(controls, {
+        mic: fakeStream("audio", { enabled: true, readyState: "ended" })
+      }).mic,
+      false
+    );
+    assert.equal(
+      effectiveVoiceMediaState(controls, {
+        mic: fakeStream("audio", { enabled: true, readyState: "live" })
+      }).mic,
+      true
+    );
   });
 
   it("forces mic and speaking off while deafened", () => {
     const controls = createInitialVoiceControls();
     controls.deafen.on = true;
 
-    assert.deepEqual(effectiveVoiceMediaState(controls, {
-      mic: fakeStream("audio", { enabled: true, readyState: "live" })
-    }), {
-      mic: false,
-      camera: false,
-      screen: false,
-      deafened: true,
-      speaking: false
-    });
+    assert.deepEqual(
+      effectiveVoiceMediaState(controls, {
+        mic: fakeStream("audio", { enabled: true, readyState: "live" })
+      }),
+      {
+        mic: false,
+        camera: false,
+        screen: false,
+        deafened: true,
+        speaking: false
+      }
+    );
   });
 
   it("requires enabled live video tracks for camera and screen", () => {
@@ -83,7 +95,9 @@ describe("atomic voice join", () => {
       getAudioTracks: () => [first, second]
     } as unknown as MediaStream;
     let ended = 0;
-    const cleanup = watchMicrophoneStreamEnd(stream, () => { ended += 1; });
+    const cleanup = watchMicrophoneStreamEnd(stream, () => {
+      ended += 1;
+    });
 
     first.end();
     assert.equal(ended, 0);
@@ -98,7 +112,9 @@ describe("atomic voice join", () => {
     const track = new FakeAudioTrack();
     const stream = { getAudioTracks: () => [track] } as unknown as MediaStream;
     let ended = 0;
-    const cleanup = watchMicrophoneStreamEnd(stream, () => { ended += 1; });
+    const cleanup = watchMicrophoneStreamEnd(stream, () => {
+      ended += 1;
+    });
 
     cleanup();
     track.end();
@@ -112,7 +128,9 @@ describe("atomic voice join", () => {
     const stream = { getAudioTracks: () => [track] } as unknown as MediaStream;
     let ended = 0;
 
-    const cleanup = watchMicrophoneStreamEnd(stream, () => { ended += 1; });
+    const cleanup = watchMicrophoneStreamEnd(stream, () => {
+      ended += 1;
+    });
 
     assert.equal(ended, 1);
     cleanup();
@@ -122,8 +140,8 @@ describe("atomic voice join", () => {
 function fakeStream(kind: "audio" | "video", state: Pick<MediaStreamTrack, "enabled" | "readyState">): MediaStream {
   const track = { kind, ...state } as MediaStreamTrack;
   return {
-    getAudioTracks: () => kind === "audio" ? [track] : [],
-    getVideoTracks: () => kind === "video" ? [track] : []
+    getAudioTracks: () => (kind === "audio" ? [track] : []),
+    getVideoTracks: () => (kind === "video" ? [track] : [])
   } as MediaStream;
 }
 

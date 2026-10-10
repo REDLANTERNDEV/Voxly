@@ -1,5 +1,12 @@
 import type { AfkTimeoutMinutes } from "@voxly/shared";
-import type { CategorySummary, ChatMessage, PresenceUser, PublicUser, RoomSummary, VoiceModerationState } from "@voxly/shared";
+import type {
+  CategorySummary,
+  ChatMessage,
+  PresenceUser,
+  PublicUser,
+  RoomSummary,
+  VoiceModerationState
+} from "@voxly/shared";
 import type { AnalyticsSettings } from "./lib/analytics.js";
 
 export type { CategorySummary, ChatMessage, PresenceUser, PublicUser, RoomSummary };

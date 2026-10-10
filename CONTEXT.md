@@ -39,6 +39,26 @@ _Avoid_: Support ticket, Membership removal request
 
 ### Messages and external content
 
+**Mention**:
+A selected reference to a person, every active member (`@everyone`), or the
+members online when the message was sent (`@here`). A person's Mention refers
+to their identity even when their nickname changes.
+_Avoid_: Tag, username
+
+**Mention code**:
+A stable short identifier for one Membership, shown beside its nickname to
+distinguish people with the same or similar names.
+_Avoid_: Username, discriminator, Account identifier
+
+**Message reaction**:
+An emoji attached to a message by a member. Members sharing an emoji form one
+reaction group; its count is the number of members in that group.
+_Avoid_: Message emoji, rating
+
+**Pinned message**:
+A message selected by the Server owner for the channel's shared pinned list.
+_Avoid_: Bookmark, personal favorite
+
 **External preview**:
 Third-party content displayed from a supported link in a message. Loading one
 contacts its Provider; the ordinary link remains usable without it.
@@ -99,7 +119,7 @@ The record of what happened during a Set — who queued a Track, who skipped one
 _Avoid_: History, audit log, activity feed
 
 **Reply**:
-What the Music bot says back to the one member who just asked for something — whether the request was taken or refused. It belongs to that member, is never shown to the room, and gives way to their next request. Distinct from the Set log, which is the room's record; wider than an *answer*, which in the control protocol names only a request that succeeded.
+What the Music bot says back to the one member who just asked for something — whether the request was taken or refused. It belongs to that member, is never shown to the room, and gives way to their next request. Distinct from the Set log, which is the room's record; wider than an _answer_, which in the control protocol names only a request that succeeded.
 _Avoid_: Answer, response, status, notification, toast
 
 ### Devices and access
@@ -121,18 +141,18 @@ _Avoid_: Backup code, master key, password, seed
 
 **Link**:
 The act of bringing a second Device onto an account with a Link code. Distinct
-from *Recovery*, which is the path taken when no Device is left to link from.
+from _Recovery_, which is the path taken when no Device is left to link from.
 _Avoid_: Pair, connect, transfer, add
 
 **Invite**:
 Unchanged, and deliberately not either of the above: an Invite admits a new
-*person*, and only the owner may issue one. Linking a Device and recovering
+_person_, and only the owner may issue one. Linking a Device and recovering
 access are a member's own business and never route through the owner.
 _Avoid_: using "invite" for anything a member does to their own account
 
 ### Where a source's own words are allowed
 
-**Track** is what *Voxly* calls a piece of audio, and nothing in Voxly should
+**Track** is what _Voxly_ calls a piece of audio, and nothing in Voxly should
 call it a video, a song, an item or media. That rule is about our own concept.
 It does not extend to naming somebody else's: a YouTube video is a video, and
 telling a member "that is not a link to a YouTube video" is more use to them

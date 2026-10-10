@@ -169,6 +169,7 @@ export const servers = sqliteTable("servers", {
 });
 
 export const serverMembers = sqliteTable("server_members", {
+  mentionCode: text("mention_code"),
   messageNotificationsMuted: integer("message_notifications_muted", { mode: "boolean" }).notNull().default(false),
   messageNotificationsMuteUntil: text("message_notifications_mute_until"),
   serverId: text("server_id").notNull(),
@@ -196,6 +197,9 @@ export const accessClaims = sqliteTable("access_claims", {
 });
 
 export const messages = sqliteTable("messages", {
+  mentions: text("mentions").notNull().default("[]"),
+  reactionVersion: integer("reaction_version").notNull().default(0),
+  pinnedAt: text("pinned_at"),
   sequence: integer("sequence").notNull().default(0),
   id: text("id").primaryKey(),
   roomId: text("room_id").notNull(),
@@ -208,6 +212,20 @@ export const messages = sqliteTable("messages", {
   deletedByUserId: text("deleted_by_user_id")
 });
 
+export const messageReactions = sqliteTable(
+  "message_reactions",
+  {
+    messageId: text("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    emoji: text("emoji").notNull()
+  },
+  (table) => [primaryKey({ columns: [table.messageId, table.userId, table.emoji] })]
+);
+
 export const auditEvents = sqliteTable("audit_events", {
   id: text("id").primaryKey(),
   actorUserId: text("actor_user_id"),
@@ -216,7 +234,12 @@ export const auditEvents = sqliteTable("audit_events", {
   createdAt: text("created_at").notNull()
 });
 
-export const roomReadCursors = sqliteTable("room_read_cursors", {
-  userId: text("user_id").notNull(), roomId: text("room_id").notNull(),
-  lastReadSequence: integer("last_read_sequence").notNull().default(0)
-}, (table) => [primaryKey({ columns: [table.userId, table.roomId] })]);
+export const roomReadCursors = sqliteTable(
+  "room_read_cursors",
+  {
+    userId: text("user_id").notNull(),
+    roomId: text("room_id").notNull(),
+    lastReadSequence: integer("last_read_sequence").notNull().default(0)
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.roomId] })]
+);

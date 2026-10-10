@@ -169,9 +169,8 @@ function drawAlignment(grid: Grid, centres: readonly number[]) {
   for (const row of centres) {
     for (const column of centres) {
       // The three finder corners already own their neighbourhoods.
-      const nearFinder = (row <= 8 && column <= 8)
-        || (row <= 8 && column >= grid.size - 9)
-        || (row >= grid.size - 9 && column <= 8);
+      const nearFinder =
+        (row <= 8 && column <= 8) || (row <= 8 && column >= grid.size - 9) || (row >= grid.size - 9 && column <= 8);
       if (nearFinder) continue;
       for (let y = -2; y <= 2; y += 1) {
         for (let x = -2; x <= 2; x += 1) {
@@ -271,8 +270,21 @@ function applyFormat(grid: Grid, mask: number) {
   const size = grid.size;
 
   const copyOne: readonly (readonly [number, number])[] = [
-    [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 7], [8, 8],
-    [7, 8], [5, 8], [4, 8], [3, 8], [2, 8], [1, 8], [0, 8]
+    [8, 0],
+    [8, 1],
+    [8, 2],
+    [8, 3],
+    [8, 4],
+    [8, 5],
+    [8, 7],
+    [8, 8],
+    [7, 8],
+    [5, 8],
+    [4, 8],
+    [3, 8],
+    [2, 8],
+    [1, 8],
+    [0, 8]
   ];
   const copyTwo: [number, number][] = [];
   for (let index = 0; index < 7; index += 1) copyTwo.push([size - 1 - index, 8]);
@@ -319,7 +331,8 @@ function penalty(matrix: readonly boolean[][]) {
         first === matrix[row][column + 1] &&
         first === matrix[row + 1][column] &&
         first === matrix[row + 1][column + 1]
-      ) score += 3;
+      )
+        score += 3;
     }
   }
 

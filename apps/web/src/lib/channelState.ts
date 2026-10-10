@@ -11,12 +11,7 @@ interface RoomHistoryStorage {
 
 const roomHistoryKey = "voxly:room-history:v1";
 
-export function rememberRoom(
-  history: RoomHistory,
-  serverId: string,
-  kind: RoomKind,
-  roomId: string
-): RoomHistory {
+export function rememberRoom(history: RoomHistory, serverId: string, kind: RoomKind, roomId: string): RoomHistory {
   return {
     ...history,
     [serverId]: {

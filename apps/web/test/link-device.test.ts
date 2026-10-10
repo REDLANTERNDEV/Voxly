@@ -5,8 +5,8 @@ import { translate, type LanguageCode, type TranslationKey } from "../src/lib/i1
 import { parsePathRoute } from "../src/lib/navigation.js";
 import { startupSurface } from "../src/lib/startupSurface.js";
 
-const translator = (language: LanguageCode) =>
-  (key: TranslationKey, values?: Record<string, string | number>) => translate(language, key, values);
+const translator = (language: LanguageCode) => (key: TranslationKey, values?: Record<string, string | number>) =>
+  translate(language, key, values);
 
 /**
  * The arriving Device has no session, which is the entire point — so the route
@@ -38,7 +38,7 @@ describe("linking a device", () => {
     // route must be answered above that line or it never renders at all.
     const source = routes();
     const linkAt = source.indexOf('route.name === "link-device"');
-    const inviteFallbackAt = source.indexOf("if (!user || route.name === \"invite\")");
+    const inviteFallbackAt = source.indexOf('if (!user || route.name === "invite")');
 
     assert.ok(linkAt > 0, "the link route is not rendered");
     assert.ok(linkAt < inviteFallbackAt, "the invite fallback would swallow the link route");

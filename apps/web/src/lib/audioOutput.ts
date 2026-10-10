@@ -1,8 +1,4 @@
-import {
-  applyAudioOutputDevice,
-  supportsAudioOutputSelection,
-  type AudioOutputApplication
-} from "./audioDevices.js";
+import { applyAudioOutputDevice, supportsAudioOutputSelection, type AudioOutputApplication } from "./audioDevices.js";
 import { DEFAULT_VOLUME_PERCENT, volumeGain } from "./voiceVolume.js";
 
 let sharedContext: AudioContext | null = null;
@@ -50,8 +46,8 @@ function refreshManagedBoosts() {
 
 function getContext() {
   if (sharedContext) return sharedContext;
-  const AudioContextClass = window.AudioContext
-    ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  const AudioContextClass =
+    window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextClass) return null;
   try {
     try {
@@ -110,8 +106,9 @@ export type AudioOutput = {
 
 export function sharedAudioOutputSelectionSupported(mediaElements: readonly HTMLMediaElement[] = []) {
   if (typeof window === "undefined") return false;
-  const fallbackElements = [window.HTMLMediaElement?.prototype]
-    .filter((element): element is HTMLMediaElement => Boolean(element));
+  const fallbackElements = [window.HTMLMediaElement?.prototype].filter((element): element is HTMLMediaElement =>
+    Boolean(element)
+  );
   return supportsAudioOutputSelection({
     mediaElements: mediaElements.length > 0 ? mediaElements : fallbackElements
   });
@@ -126,27 +123,26 @@ export async function selectSharedAudioOutputDevice(
   mediaElements: readonly HTMLMediaElement[] = []
 ): Promise<AudioOutputApplication> {
   const generation = ++outputSelectionGeneration;
-  outputSelectionQueue = outputSelectionQueue.catch(() => "unsupported").then(async () => {
-    const elements = [...new Set([
-      ...[...managedOutputs].map((output) => output.element),
-      ...mediaElements
-    ])];
-    const supported = sharedAudioOutputSelectionSupported(elements);
-    if (!supported) {
-      if (generation === outputSelectionGeneration) selectedOutputDeviceId = deviceId;
-      return "unsupported";
-    }
-    if (elements.length === 0) {
-      if (generation === outputSelectionGeneration) selectedOutputDeviceId = deviceId;
-      return "media-elements";
-    }
-    const result = await applyAudioOutputDevice(deviceId, { mediaElements: elements });
-    if (generation === outputSelectionGeneration) {
-      selectedOutputDeviceId = deviceId;
-      for (const output of managedOutputs) output.refreshBoost(true);
-    }
-    return result;
-  });
+  outputSelectionQueue = outputSelectionQueue
+    .catch(() => "unsupported")
+    .then(async () => {
+      const elements = [...new Set([...[...managedOutputs].map((output) => output.element), ...mediaElements])];
+      const supported = sharedAudioOutputSelectionSupported(elements);
+      if (!supported) {
+        if (generation === outputSelectionGeneration) selectedOutputDeviceId = deviceId;
+        return "unsupported";
+      }
+      if (elements.length === 0) {
+        if (generation === outputSelectionGeneration) selectedOutputDeviceId = deviceId;
+        return "media-elements";
+      }
+      const result = await applyAudioOutputDevice(deviceId, { mediaElements: elements });
+      if (generation === outputSelectionGeneration) {
+        selectedOutputDeviceId = deviceId;
+        for (const output of managedOutputs) output.refreshBoost(true);
+      }
+      return result;
+    });
   return outputSelectionQueue;
 }
 
@@ -380,7 +376,9 @@ export function connectAudioOutput(
 
   const output: ManagedAudioOutput = {
     element,
-    get nativePlaybackBlocked() { return nativePlaybackBlocked; },
+    get nativePlaybackBlocked() {
+      return nativePlaybackBlocked;
+    },
     ready: Promise.resolve(),
     refreshBoost,
     setVolume(muted, volume) {
@@ -429,8 +427,11 @@ export function voiceOutputDiagnostics() {
   return {
     contextState: sharedContext?.state ?? null,
     outputs: [...managedOutputs].map(({ element, nativePlaybackBlocked }) => ({
-      paused: element.paused, muted: element.muted, volume: element.volume,
-      readyState: element.readyState, errorCode: element.error?.code ?? null,
+      paused: element.paused,
+      muted: element.muted,
+      volume: element.volume,
+      readyState: element.readyState,
+      errorCode: element.error?.code ?? null,
       nativePlaybackBlocked
     })),
     blockedCount: blockedOutputs.size

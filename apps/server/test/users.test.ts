@@ -38,7 +38,10 @@ describe("user accounts", () => {
 
       assert.match(user.id, /^[0-9a-f-]{36}$/);
       assert.deepEqual(user, { id: user.id, nickname: "Rae", role: "member", bannedAt: null });
-      assert.equal(one<{ nickname: string }>(db.sqlite, "select nickname from users where id = ?", [user.id])?.nickname, "Rae");
+      assert.equal(
+        one<{ nickname: string }>(db.sqlite, "select nickname from users where id = ?", [user.id])?.nickname,
+        "Rae"
+      );
       assert.deepEqual(
         all<{ action: string; actor_user_id: string }>(
           db.sqlite,
@@ -53,7 +56,11 @@ describe("user accounts", () => {
       const db = await open();
 
       assert.equal(createUser(db, "Rae", "owner").bannedAt, null);
-      assert.equal(one<{ banned_at: string | null }>(db.sqlite, "select banned_at from users where nickname = ?", ["Rae"])?.banned_at, null);
+      assert.equal(
+        one<{ banned_at: string | null }>(db.sqlite, "select banned_at from users where nickname = ?", ["Rae"])
+          ?.banned_at,
+        null
+      );
     });
   });
 

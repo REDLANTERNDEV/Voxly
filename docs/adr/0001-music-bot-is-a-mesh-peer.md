@@ -10,9 +10,9 @@ Voxly's voice is a full mesh. Every member holds one peer connection to every
 other member in the room, media never touches the server, and the server's whole
 part in a call is forwarding offers, answers and candidates between two people
 it has already established are in the same room. `AGENTS.md` states that plainly
-and defends it: *"Preserve the current peer-to-peer media architecture. Do not
+and defends it: _"Preserve the current peer-to-peer media architecture. Do not
 introduce an SFU, media recording, or server-side media processing as an
-incidental change."*
+incidental change."_
 
 A Music bot has to put sound into a room. Read quickly, the rule above forbids
 the feature outright — playing audio into a call is, on the face of it, exactly
@@ -46,7 +46,7 @@ details of it.
    Nothing in the product asks whether a caller is a bot before deciding what it
    may do.
 3. **The bot enforces its own media state.** This is the price. Because media is
-   peer-to-peer, the server *cannot* silence anything — it never sees the
+   peer-to-peer, the server _cannot_ silence anything — it never sees the
    packets. Server-side moderation is therefore advisory for media, and the bot
    is required to honour its own `moderation.muted` and the AFK room's forced
    mute by not sending. The same asymmetry means nothing measures received
@@ -62,7 +62,7 @@ direction rather than merely intended.
 
 **An SFU, or server-side mixing.** The obvious way to make one audio stream
 reach many people. Rejected because it is the architecture change the rule
-forbids, and not incidentally: an SFU terminates media at the server for *every*
+forbids, and not incidentally: an SFU terminates media at the server for _every_
 call, not only for music. It would make the operator's host a place where
 conversations exist in the clear, which is the one thing the design has been
 protecting since the first commit. It also lands a new scaling and operational
@@ -107,7 +107,7 @@ in the sidebar and be permanently silent.
   which is why each server gets its own bot account rather than one account
   serving them all: a single account could only ever be in one room, in one
   server, at a time.
-- Moderation of the bot's *media* depends on the bot behaving. An operator who
+- Moderation of the bot's _media_ depends on the bot behaving. An operator who
   runs a modified bot can make it ignore a mute — which is true of a modified
   browser client too, and is a property of peer-to-peer media rather than of
   this decision.

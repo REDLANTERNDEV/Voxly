@@ -1,10 +1,14 @@
 import { createOpaqueToken, hashToken } from "./tokens.js";
+import { activateServerMembership } from "../members.js";
 import { all, defaultServerId, one, openDatabase, run, type VoxlyDatabase } from "../db/database.js";
 
 export type OwnerSetupErrorCode = "owner_exists" | "owner_missing" | "invalid_nickname";
 
 export class OwnerSetupError extends Error {
-  constructor(readonly code: OwnerSetupErrorCode, message: string) {
+  constructor(
+    readonly code: OwnerSetupErrorCode,
+    message: string
+  ) {
     super(message);
   }
 }
@@ -86,10 +90,8 @@ export function createOwnerClaimInDatabase(
   database: VoxlyDatabase,
   input: CreateOwnerClaimInDatabaseInput
 ): OwnerClaimResult {
-  const ownerCount = one<{ count: number }>(
-    database.sqlite,
-    "select count(*) as count from users where role = 'owner'"
-  )?.count ?? 0;
+  const ownerCount =
+    one<{ count: number }>(database.sqlite, "select count(*) as count from users where role = 'owner'")?.count ?? 0;
   if (ownerCount > 0) {
     throw new OwnerSetupError("owner_exists", "An owner already exists.");
   }
@@ -104,16 +106,8 @@ export function createOwnerClaimInDatabase(
     bannedAt: null
   };
 
-  run(database.sqlite, "insert into users (id, nickname, role) values (?, ?, ?)", [
-    user.id,
-    user.nickname,
-    user.role
-  ]);
-  run(
-    database.sqlite,
-    "insert into server_members (server_id, user_id, role, joined_at) values (?, ?, ?, ?)",
-    [defaultServerId, user.id, "owner", now.toISOString()]
-  );
+  run(database.sqlite, "insert into users (id, nickname, role) values (?, ?, ?)", [user.id, user.nickname, user.role]);
+  activateServerMembership(database, defaultServerId, user.id, "owner", now.toISOString());
   audit(database, user.id, "owner.created", user.id, now);
   return createClaimForOwner(database, {
     user,
@@ -138,10 +132,7 @@ export function consumeOwnerClaim(database: VoxlyDatabase, token: string, now = 
     return null;
   }
 
-  run(database.sqlite, "update owner_claims set consumed_at = ? where id = ?", [
-    now.toISOString(),
-    claim.id
-  ]);
+  run(database.sqlite, "update owner_claims set consumed_at = ? where id = ?", [now.toISOString(), claim.id]);
   audit(database, claim.user_id, "owner_claim.consumed", claim.user_id, now);
   database.save();
 
@@ -212,7 +203,13 @@ function createClaimForOwner(
   };
 }
 
-function audit(database: VoxlyDatabase, actorUserId: string | null, action: string, targetUserId: string | null, now: Date) {
+function audit(
+  database: VoxlyDatabase,
+  actorUserId: string | null,
+  action: string,
+  targetUserId: string | null,
+  now: Date
+) {
   run(
     database.sqlite,
     "insert into audit_events (id, actor_user_id, action, target_user_id, created_at) values (?, ?, ?, ?, ?)",

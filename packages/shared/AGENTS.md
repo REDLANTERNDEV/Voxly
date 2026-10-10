@@ -137,13 +137,13 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
 - **A Result is the one thing on this wire that is not the room's.** It travels
   back on the acknowledgement to the single socket that asked, never through
   `music:publish` and never inside `MusicQueueState`. The rule beside it — the
-  Queue travels whole, so five members see one list — is the *opposite* rule and
+  Queue travels whole, so five members see one list — is the _opposite_ rule and
   the next person will read it first: ADR-0007 records why a list a member is
   still choosing from belongs to that member alone. `musicSearchResultsMax`
   bounds the count and `musicTitleMaxLength` bounds each title and channel,
   because a title is somebody else's string arriving unbidden and a list of them
   is that problem several times over.
-- `MusicSearchResult.url` is the canonical link the *bot* built, handed back
+- `MusicSearchResult.url` is the canonical link the _bot_ built, handed back
   unread by the browser on the same `add` a paste uses. The browser never
   constructs a link of its own, and the bot re-reads this one exactly as it
   reads a pasted one — nothing is trusted for having been round the loop.
@@ -168,7 +168,7 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   source's string, relayed whole to every browser in the channel. ADR-0008.
 - `MusicSetLogLine.requestedByUserId` is an id, resolved at the browser's end,
   under exactly the rule the Queue entry below states — and it names the member
-  who asked for *that* action, not the Requester of the Track it was about. The
+  who asked for _that_ action, not the Requester of the Track it was about. The
   Track is carried as a **title** rather than an `entryId`, because the point of
   most lines is that the entry has gone and there is nothing left to look it up
   in. `trackTitle` is explicitly `null` for a pause and a resume rather than
@@ -183,7 +183,7 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   opinion there refuses a publish the bot was right to make. ADR-0011.
 - `MusicSetLogAction` is the closed list of things that can be said to have
   happened to a Queue — the five a member can do, and the three ways a Track can
-  fail once its turn comes. A Track *ending* is not one of them: that is the
+  fail once its turn comes. A Track _ending_ is not one of them: that is the
   Queue working and there is nothing to explain. A verb added here must be added
   to the server's validator and to the browser's mapping; both are exhaustive so
   the build says so, which is what makes both languages mandatory.
@@ -203,7 +203,7 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   Naming an entry rather than a position is what makes two members pressing skip
   at the same moment cost one Track: the second request finds the Track it named
   already gone and succeeds without advancing. They stay apart because a skip
-  may only move past the *head* while a removal takes out the entry it names
+  may only move past the _head_ while a removal takes out the entry it names
   wherever it sits — so a stale Skip press can never delete a Track somebody is
   still waiting for. ADR-0006 records both.
 - One bound for every opaque identifier on this wire (`musicIdentifierMaxLength`)
@@ -213,6 +213,24 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
 - `MusicQueueState.playing` is what says whether the head of the Queue is
   sounding. A consumer that renders the first entry as playing without reading
   it announces a Track into a silent room.
+
+## Message Interaction Contracts
+
+- `ChatMessage` always carries `mentions`, `reactionState`, and `pinnedAt`;
+  legacy rows read as empty arrays, version zero and no pin. Reply excerpts
+  carry rebased Mention metadata rather than guessing targets from their text.
+- `MessageMentionInput` carries a person or collective target and UTF-16 ranges.
+  A selected label's occurrence ID survives editing; creation may omit it and
+  receive a server-generated ID. New collective occurrences get new snapshots.
+  Resolved Mentions include frozen recipient IDs and live identity/tombstone data.
+  Names and codes never authorize a target. Keep range rewriting in shared pure
+  helpers so nickname changes and deletion cannot corrupt following labels.
+- `PresenceUser.mentionCode` is absent only for session-derived identities with
+  no Server context; the Server directory and scoped presence provide it.
+- The local emoji catalogue and `maxMessageReactionKinds` own reaction admission.
+  `message:reactions` is a versioned full room-scoped snapshot; pins use the
+  room-scoped `message:pinsChanged` invalidation. Neither event is a new message
+  or advances a personal read cursor.
 
 ## Verification
 

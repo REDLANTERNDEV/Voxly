@@ -4,7 +4,14 @@ import { desktopSurfaceReady, startupSurface } from "../src/lib/startupSurface.j
 
 describe("startup surface", () => {
   it("reveals desktop only after session and protected-route bootstrap, while allowing recovery screens", () => {
-    const state = { routeName: "text" as const, authState: "ready" as const, desktopLaunch: false, existingDesktopSession: false, authenticated: true, rtcConfigReady: true };
+    const state = {
+      routeName: "text" as const,
+      authState: "ready" as const,
+      desktopLaunch: false,
+      existingDesktopSession: false,
+      authenticated: true,
+      rtcConfigReady: true
+    };
     assert.equal(desktopSurfaceReady(state), true);
     assert.equal(desktopSurfaceReady({ ...state, workspaceReady: false }), false);
     assert.equal(desktopSurfaceReady({ ...state, workspaceReady: false, workspaceError: true }), true);
@@ -12,8 +19,20 @@ describe("startup surface", () => {
     assert.equal(desktopSurfaceReady({ ...state, authState: "loading" }), false);
     assert.equal(desktopSurfaceReady({ ...state, rtcConfigReady: false }), false);
     assert.equal(desktopSurfaceReady({ ...state, authState: "error", rtcConfigReady: false }), true);
-    assert.equal(desktopSurfaceReady({ ...state, routeName: "link-device", desktopLaunch: true, existingDesktopSession: true }), false);
-    assert.equal(desktopSurfaceReady({ ...state, routeName: "link-device", desktopLaunch: true, authenticated: false, rtcConfigReady: false }), true);
+    assert.equal(
+      desktopSurfaceReady({ ...state, routeName: "link-device", desktopLaunch: true, existingDesktopSession: true }),
+      false
+    );
+    assert.equal(
+      desktopSurfaceReady({
+        ...state,
+        routeName: "link-device",
+        desktopLaunch: true,
+        authenticated: false,
+        rtcConfigReady: false
+      }),
+      true
+    );
   });
   it("defers the landing page while authentication is loading", () => {
     assert.equal(startupSurface("landing", "loading"), "entry-loading");

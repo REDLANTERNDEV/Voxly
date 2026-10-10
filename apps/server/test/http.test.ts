@@ -163,9 +163,10 @@ describe("the shared route preamble", () => {
       const { reply, sent } = replyDouble();
 
       assert.throws(
-        () => requireOwnedServer(context, requestDouble(token, { serverId, userId: "not-a-uuid" }), reply, {
-          userId: userIdParam
-        }),
+        () =>
+          requireOwnedServer(context, requestDouble(token, { serverId, userId: "not-a-uuid" }), reply, {
+            userId: userIdParam
+          }),
         z.ZodError
       );
       assert.equal(sent.statusCode, null);

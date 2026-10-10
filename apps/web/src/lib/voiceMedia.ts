@@ -5,13 +5,8 @@ export type MediaKind = "mic" | "camera" | "screen";
 
 export type LocalVoiceMediaStreams = Partial<Record<MediaKind, MediaStream>>;
 
-export function effectiveVoiceMediaState(
-  controls: VoiceControls,
-  streams: LocalVoiceMediaStreams
-): VoiceMediaState {
-  const mic = controls.mic.on
-    && !controls.deafen.on
-    && hasEnabledLiveTrack(streams.mic?.getAudioTracks());
+export function effectiveVoiceMediaState(controls: VoiceControls, streams: LocalVoiceMediaStreams): VoiceMediaState {
+  const mic = controls.mic.on && !controls.deafen.on && hasEnabledLiveTrack(streams.mic?.getAudioTracks());
 
   return {
     mic,
@@ -139,9 +134,9 @@ interface PeerWithTransceivers {
  * reuses an unused transceiver of the same kind and turns it into a sending one.
  */
 export function ensureOfferableAudioSection(peer: PeerWithTransceivers) {
-  const carriesAudio = peer.getTransceivers().some(
-    (transceiver) => transceiver.receiver.track.kind === "audio" && transceiver.direction !== "stopped"
-  );
+  const carriesAudio = peer
+    .getTransceivers()
+    .some((transceiver) => transceiver.receiver.track.kind === "audio" && transceiver.direction !== "stopped");
   if (carriesAudio) return;
   peer.addTransceiver("audio", { direction: "recvonly" });
 }
@@ -156,11 +151,16 @@ export async function replaceMicrophoneTrack(
   nextTrack: MediaStreamTrack
 ) {
   if (!previousTrack) return 0;
-  const matchingSenders = [...peers].flatMap((peer) => peer.getSenders().filter((sender) => sender.track === previousTrack));
+  const matchingSenders = [...peers].flatMap((peer) =>
+    peer.getSenders().filter((sender) => sender.track === previousTrack)
+  );
   const results = await Promise.allSettled(matchingSenders.map((sender) => sender.replaceTrack(nextTrack)));
   const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
   if (failures.length > 0) {
-    throw new AggregateError(failures.map((failure) => failure.reason), "Microphone track replacement failed");
+    throw new AggregateError(
+      failures.map((failure) => failure.reason),
+      "Microphone track replacement failed"
+    );
   }
   return matchingSenders.length;
 }

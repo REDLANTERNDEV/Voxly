@@ -32,7 +32,8 @@ const untranslatedByDesign = new Set([
   "Microphone access is unavailable in this browser."
 ]);
 
-const domKeyNames = /^(Escape|Enter|Tab|Backspace|Delete|Arrow(Up|Down|Left|Right)|Shift|Control|Alt|Meta|Super|Ctrl|Win|Home|End|Page(Up|Down))$/;
+const domKeyNames =
+  /^(Escape|Enter|Tab|Backspace|Delete|Arrow(Up|Down|Left|Right)|Shift|Control|Alt|Meta|Super|Ctrl|Win|Home|End|Page(Up|Down))$/;
 const httpMethods = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/;
 const svgPath = /^[Mm][\d.\s-]/;
 
@@ -69,7 +70,8 @@ function withoutTypeArguments(line: string) {
 }
 
 /** Attributes and calls whose string values are addresses, not sentences. */
-const machineFacing = /\b(className|href|id|role|type|name|key|src|rel|target|xmlns|viewBox|fill|stroke|htmlFor|autoComplete|inputMode|method|as|slot|form|sandbox|allow|d|storageKey|emit|on|off|getItem|setItem|removeItem|addEventListener|removeEventListener|querySelector|querySelectorAll|matchMedia|setAttribute|getAttribute|assertNever|AggregateError|Error|data-[\w-]+)\s*[=(,]?\s*$/;
+const machineFacing =
+  /\b(className|href|id|role|type|name|key|src|rel|target|xmlns|viewBox|fill|stroke|htmlFor|autoComplete|inputMode|method|as|slot|form|sandbox|allow|d|storageKey|emit|on|off|getItem|setItem|removeItem|addEventListener|removeEventListener|querySelector|querySelectorAll|matchMedia|setAttribute|getAttribute|assertNever|AggregateError|Error|data-[\w-]+)\s*[=(,]?\s*$/;
 
 function readableEnglish(value: string) {
   if (value.length < 3) return false;
@@ -89,17 +91,19 @@ function readableEnglish(value: string) {
 function untranslatedLiterals() {
   const found: string[] = [];
   for (const path of sourceFiles(sourceRoot)) {
-    withoutComments(readFileSync(path, "utf8")).split("\n").forEach((line, index) => {
-      if (/^\s*import\b|^\s*export (type|interface)\b/.test(line)) return;
-      for (const match of line.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
-        if (machineFacing.test(line.slice(0, match.index))) continue;
-        if (readableEnglish(match[1])) found.push(`${path}:${index + 1}: "${match[1]}"`);
-      }
-      const withoutTags = withoutTypeArguments(line).replace(/<\/?[A-Za-z][\w.]*/g, "<");
-      for (const match of withoutTags.matchAll(/>\s*([A-Z][^<>{}]{2,80}?)\s*</g)) {
-        if (readableEnglish(match[1])) found.push(`${path}:${index + 1}: >${match[1]}<`);
-      }
-    });
+    withoutComments(readFileSync(path, "utf8"))
+      .split("\n")
+      .forEach((line, index) => {
+        if (/^\s*import\b|^\s*export (type|interface)\b/.test(line)) return;
+        for (const match of line.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+          if (machineFacing.test(line.slice(0, match.index))) continue;
+          if (readableEnglish(match[1])) found.push(`${path}:${index + 1}: "${match[1]}"`);
+        }
+        const withoutTags = withoutTypeArguments(line).replace(/<\/?[A-Za-z][\w.]*/g, "<");
+        for (const match of withoutTags.matchAll(/>\s*([A-Z][^<>{}]{2,80}?)\s*</g)) {
+          if (readableEnglish(match[1])) found.push(`${path}:${index + 1}: >${match[1]}<`);
+        }
+      });
   }
   return found;
 }

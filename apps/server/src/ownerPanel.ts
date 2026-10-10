@@ -38,12 +38,7 @@
 
 import { z } from "zod";
 import { audit } from "./audit.js";
-import {
-  allSessions,
-  requireOwner,
-  revokeSession,
-  revokeSessionsForUser
-} from "./auth/sessions.js";
+import { allSessions, requireOwner, revokeSession, revokeSessionsForUser } from "./auth/sessions.js";
 import { rejectBotTarget } from "./bots.js";
 import { all, defaultServerId, one, run } from "./db/database.js";
 import { userIdParam, type RouteContext } from "./http.js";
@@ -108,21 +103,14 @@ export function registerOwnerPanelRoutes(context: RouteContext) {
     // membership row still exists. Banning a bot here is unrecoverable.
     if (rejectBotTarget(database, userId, reply)) return;
     const now = new Date().toISOString();
-    const target = one<{ role: "owner" | "member" }>(
-      database.sqlite,
-      "select role from users where id = ?",
-      [userId]
-    );
+    const target = one<{ role: "owner" | "member" }>(database.sqlite, "select role from users where id = ?", [userId]);
     // An owner is exempt, and the exemption is stated twice because the two
     // statements answer for different things: the update refuses to write the
     // ban, and `bannable` refuses to cascade it. Keeping the guard on the write
     // itself means the row cannot be banned by a future caller that forgot to
     // consult `target` first.
     const bannable = target !== null && target.role !== "owner";
-    run(database.sqlite, "update users set banned_at = ? where id = ? and role != 'owner'", [
-      now,
-      userId
-    ]);
+    run(database.sqlite, "update users set banned_at = ? where id = ? and role != 'owner'", [now, userId]);
     // A ban that leaves the account usable is not a ban. Revoking the sessions
     // closes the HTTP path; evicting the sockets closes the realtime path, which
     // otherwise keeps serving messages and WebRTC signalling on the connection

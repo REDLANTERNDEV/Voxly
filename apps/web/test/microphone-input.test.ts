@@ -37,8 +37,12 @@ function audioGraph() {
   const gainConnections: unknown[] = [];
   const source = {
     disconnects: 0,
-    connect(node: unknown) { sourceConnections.push(node); },
-    disconnect() { this.disconnects += 1; }
+    connect(node: unknown) {
+      sourceConnections.push(node);
+    },
+    disconnect() {
+      this.disconnects += 1;
+    }
   };
   function audioParam(value: number) {
     return {
@@ -57,27 +61,44 @@ function audioGraph() {
     Q: audioParam(1),
     frequency: audioParam(0),
     disconnects: 0,
-    connect(node: unknown) { highPassConnections.push(node); },
-    disconnect() { this.disconnects += 1; }
+    connect(node: unknown) {
+      highPassConnections.push(node);
+    },
+    disconnect() {
+      this.disconnects += 1;
+    }
   };
   const analyser = {
     fftSize: 0,
     reads: 0,
     disconnects: 0,
-    getFloatTimeDomainData(target: Float32Array) { this.reads += 1; target.fill(0); },
-    disconnect() { this.disconnects += 1; }
+    getFloatTimeDomainData(target: Float32Array) {
+      this.reads += 1;
+      target.fill(0);
+    },
+    disconnect() {
+      this.disconnects += 1;
+    }
   };
   const gate = {
     gain: audioParam(1),
     disconnects: 0,
-    connect(node: unknown) { gateConnections.push(node); },
-    disconnect() { this.disconnects += 1; }
+    connect(node: unknown) {
+      gateConnections.push(node);
+    },
+    disconnect() {
+      this.disconnects += 1;
+    }
   };
   const gain = {
     gain: { value: 1 },
     disconnects: 0,
-    connect(node: unknown) { gainConnections.push(node); },
-    disconnect() { this.disconnects += 1; }
+    connect(node: unknown) {
+      gainConnections.push(node);
+    },
+    disconnect() {
+      this.disconnects += 1;
+    }
   };
   const gains = [gate, gain];
   const destinations = [{ stream: voice }, { stream: monitor }];
@@ -93,16 +114,35 @@ function audioGraph() {
     createAnalyser: () => analyser,
     createGain: () => gains.shift(),
     createMediaStreamDestination: () => destinations.shift(),
-    async resume() { this.resumes += 1; },
-    async close() { this.closes += 1; }
+    async resume() {
+      this.resumes += 1;
+    },
+    async close() {
+      this.closes += 1;
+    }
   };
   const ticks: Array<() => void> = [];
   return {
-    analyser, context, gain, gainConnections, gate, gateConnections, highPass, highPassConnections,
-    monitor, raw, source, sourceConnections, ticks, voice,
+    analyser,
+    context,
+    gain,
+    gainConnections,
+    gate,
+    gateConnections,
+    highPass,
+    highPassConnections,
+    monitor,
+    raw,
+    source,
+    sourceConnections,
+    ticks,
+    voice,
     options: {
       createContext: () => context as unknown as AudioContext,
-      setInterval: (handler: () => void) => { ticks.push(handler); return ticks.length; },
+      setInterval: (handler: () => void) => {
+        ticks.push(handler);
+        return ticks.length;
+      },
       clearInterval: () => undefined
     }
   };
@@ -111,17 +151,17 @@ function audioGraph() {
 describe("microphone input processing", () => {
   it("feeds voice and monitor streams through one shared input gain", () => {
     const graph = audioGraph();
-    const input = createMicrophoneInput(
-      graph.raw as unknown as MediaStream,
-      135,
-      graph.options
-    );
+    const input = createMicrophoneInput(graph.raw as unknown as MediaStream, 135, graph.options);
 
     assert.equal(input.voiceStream, graph.voice);
     assert.equal(input.monitorStream, graph.monitor);
     assert.equal(input.analyser, graph.analyser);
     assert.deepEqual(graph.sourceConnections, [graph.highPass]);
-    assert.deepEqual(graph.highPassConnections, [graph.analyser, graph.gate], "the expander measures the filtered signal before its own gain");
+    assert.deepEqual(
+      graph.highPassConnections,
+      [graph.analyser, graph.gate],
+      "the expander measures the filtered signal before its own gain"
+    );
     assert.deepEqual(graph.gateConnections, [graph.gain]);
     assert.deepEqual(graph.gainConnections, [{ stream: graph.voice }, { stream: graph.monitor }]);
     assert.equal(graph.gain.gain.value, 1.35);
@@ -133,11 +173,7 @@ describe("microphone input processing", () => {
 
   it("stops raw and generated tracks exactly once during cleanup", () => {
     const graph = audioGraph();
-    const input = createMicrophoneInput(
-      graph.raw as unknown as MediaStream,
-      100,
-      graph.options
-    );
+    const input = createMicrophoneInput(graph.raw as unknown as MediaStream, 100, graph.options);
 
     input.dispose();
     input.dispose();
@@ -156,11 +192,13 @@ describe("microphone input processing", () => {
   it("stops the raw capture when an audio graph cannot be created", () => {
     const raw = stream("raw");
 
-    assert.throws(() => createMicrophoneInput(
-      raw as unknown as MediaStream,
-      100,
-      { createContext: () => { throw new Error("unavailable"); } }
-    ));
+    assert.throws(() =>
+      createMicrophoneInput(raw as unknown as MediaStream, 100, {
+        createContext: () => {
+          throw new Error("unavailable");
+        }
+      })
+    );
     assert.equal(raw.audioTrack.stops, 1);
   });
 
@@ -171,15 +209,19 @@ describe("microphone input processing", () => {
       createMediaStreamSource: () => ({ disconnect() {}, connect() {} }),
       createBiquadFilter: () => ({ type: "", Q: { value: 1 }, frequency: { value: 0 }, disconnect() {}, connect() {} }),
       createAnalyser: () => ({ fftSize: 0, disconnect() {}, connect() {} }),
-      createGain() { throw new Error("gain unavailable"); },
-      async close() { this.closes += 1; }
+      createGain() {
+        throw new Error("gain unavailable");
+      },
+      async close() {
+        this.closes += 1;
+      }
     };
 
-    assert.throws(() => createMicrophoneInput(
-      raw as unknown as MediaStream,
-      100,
-      { createContext: () => context as unknown as AudioContext }
-    ));
+    assert.throws(() =>
+      createMicrophoneInput(raw as unknown as MediaStream, 100, {
+        createContext: () => context as unknown as AudioContext
+      })
+    );
     await Promise.resolve();
 
     assert.equal(raw.audioTrack.stops, 1);
@@ -285,23 +327,38 @@ describe("optional worklet handoff", () => {
       const nodes: FakeWorklet[] = [];
       class FakeWorklet {
         connected = false;
-        port = { postMessage() { if (failure === "message") throw new Error("message failed"); }, close() {} };
-        constructor() { if (failure === "constructor") throw new Error("construction failed"); nodes.push(this); }
+        port = {
+          postMessage() {
+            if (failure === "message") throw new Error("message failed");
+          },
+          close() {}
+        };
+        constructor() {
+          if (failure === "constructor") throw new Error("construction failed");
+          nodes.push(this);
+        }
         connect() {
           if (failure === "output") throw new Error("output connection failed");
           this.connected = true;
         }
-        disconnect() { this.connected = false; }
+        disconnect() {
+          this.connected = false;
+        }
       }
       const previous = globalThis.AudioWorkletNode;
       globalThis.AudioWorkletNode = FakeWorklet as unknown as typeof AudioWorkletNode;
-      const context = Object.assign(graph.context, { audioWorklet: {
-        async addModule() { if (failure === "module") throw new Error("module failed"); }
-      } });
+      const context = Object.assign(graph.context, {
+        audioWorklet: {
+          async addModule() {
+            if (failure === "module") throw new Error("module failed");
+          }
+        }
+      });
       let input: ReturnType<typeof createMicrophoneInput> | undefined;
       try {
         input = createMicrophoneInput(graph.raw as unknown as MediaStream, 100, {
-          ...graph.options, createContext: () => context as unknown as AudioContext
+          ...graph.options,
+          createContext: () => context as unknown as AudioContext
         });
         assert.ok(edges.has(graph.gate));
         await new Promise<void>((resolve) => setImmediate(resolve));
@@ -310,7 +367,10 @@ describe("optional worklet handoff", () => {
           assert.ok(edges.has(nodes[0]) && nodes[0].connected);
         } else {
           assert.ok(edges.has(graph.gate), "failed optional setup preserves live microphone audio");
-          assert.ok(nodes.every((node) => !edges.has(node) && !node.connected), "no partial worklet route survives");
+          assert.ok(
+            nodes.every((node) => !edges.has(node) && !node.connected),
+            "no partial worklet route survives"
+          );
         }
         assert.equal(graph.raw.audioTrack.stops, 0);
       } finally {

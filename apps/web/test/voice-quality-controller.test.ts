@@ -3,26 +3,57 @@ import { describe, it } from "node:test";
 import { VoiceQualityController, type VoiceStatsPeer } from "../src/lib/voiceQualityController.js";
 
 function report(seconds: number, overrides: Record<string, unknown> = {}) {
-  return { id: "microphone", ssrc: 1, trackIdentifier: "mic", type: "inbound-rtp", kind: "audio",
-    packetsLost: 0, concealedSamples: 0, silentConcealedSamples: 0, removedSamplesForAcceleration: 0, insertedSamplesForDeceleration: 0,
-    packetsReceived: seconds * 50, jitterBufferEmittedCount: seconds * 48000,
-    jitterBufferDelay: seconds * 48000 * 0.04, ...overrides };
+  return {
+    id: "microphone",
+    ssrc: 1,
+    trackIdentifier: "mic",
+    type: "inbound-rtp",
+    kind: "audio",
+    packetsLost: 0,
+    concealedSamples: 0,
+    silentConcealedSamples: 0,
+    removedSamplesForAcceleration: 0,
+    insertedSamplesForDeceleration: 0,
+    packetsReceived: seconds * 50,
+    jitterBufferEmittedCount: seconds * 48000,
+    jitterBufferDelay: seconds * 48000 * 0.04,
+    ...overrides
+  };
 }
 function harness() {
   let entries: Record<string, unknown>[] = [report(0)];
   let now = 0;
-  const peer = { connectionState: "connected", getStats: async () => new Map(entries.map((entry, index) => [String(index), entry])) } as unknown as RTCPeerConnection;
+  const peer = {
+    connectionState: "connected",
+    getStats: async () => new Map(entries.map((entry, index) => [String(index), entry]))
+  } as unknown as RTCPeerConnection;
   let source: VoiceStatsPeer[] = [{ userId: "member", peer, expectingAudio: true, microphoneTrackIds: ["mic"] }];
-  const controller = new VoiceQualityController(() => source, () => now);
-  return { controller, peer, set source(value: VoiceStatsPeer[]) { source = value; },
-    sample(next: Record<string, unknown>[], at = now + 4000) { entries = next; now = at; return controller.sample(); } };
+  const controller = new VoiceQualityController(
+    () => source,
+    () => now
+  );
+  return {
+    controller,
+    peer,
+    set source(value: VoiceStatsPeer[]) {
+      source = value;
+    },
+    sample(next: Record<string, unknown>[], at = now + 4000) {
+      entries = next;
+      now = at;
+      return controller.sample();
+    }
+  };
 }
 
 describe("voice quality controller", () => {
   it("measures per stream so a new screen receiver cannot hide broken microphone audio", async () => {
     const h = harness();
     await h.sample([report(1)]);
-    const next = await h.sample([report(2, { concealedSamples: 4800 }), report(100, { id: "screen", ssrc: 2, trackIdentifier: "screen" })]);
+    const next = await h.sample([
+      report(2, { concealedSamples: 4800 }),
+      report(100, { id: "screen", ssrc: 2, trackIdentifier: "screen" })
+    ]);
     assert.equal(next?.grade, "breaking");
     assert.equal(next?.reading?.concealedMs, 100);
     assert.equal(next?.reading?.bufferMs, 40);
@@ -37,7 +68,16 @@ describe("voice quality controller", () => {
     assert.equal(next?.clearPeers.length, 1);
   });
   it("cannot call absent loss or concealment measurements clear", async () => {
-    for (const field of ["packetsReceived", "packetsLost", "concealedSamples", "silentConcealedSamples", "jitterBufferEmittedCount", "jitterBufferDelay", "removedSamplesForAcceleration", "insertedSamplesForDeceleration"]) {
+    for (const field of [
+      "packetsReceived",
+      "packetsLost",
+      "concealedSamples",
+      "silentConcealedSamples",
+      "jitterBufferEmittedCount",
+      "jitterBufferDelay",
+      "removedSamplesForAcceleration",
+      "insertedSamplesForDeceleration"
+    ]) {
       const h = harness();
       await h.sample([report(1, { [field]: undefined })]);
       assert.equal((await h.sample([report(2, { [field]: undefined })]))?.grade, "measuring");
@@ -52,7 +92,15 @@ describe("voice quality controller", () => {
   });
   it("requires connected transport evidence before treating absent RTP as stalled speech", async () => {
     const h = harness();
-    h.source = [{ userId: "member", peer: h.peer, expectingAudio: true, microphoneTrackIds: ["mic"], activeAudioTrackIds: ["mic"] }];
+    h.source = [
+      {
+        userId: "member",
+        peer: h.peer,
+        expectingAudio: true,
+        microphoneTrackIds: ["mic"],
+        activeAudioTrackIds: ["mic"]
+      }
+    ];
     const transport = { type: "candidate-pair", id: "pair", state: "succeeded", nominated: true };
     const reportOnly = [transport];
     await h.sample(reportOnly);
@@ -85,8 +133,14 @@ describe("voice quality controller", () => {
   it("requires consecutive severe samples and retains cooldown through peer replacement", async () => {
     const h = harness();
     await h.sample([report(0)], 0);
-    assert.equal((await h.sample([report(1, { removedSamplesForAcceleration: 5760 })], 4000))?.recoveryRequests.length, 0);
-    assert.equal((await h.sample([report(2, { removedSamplesForAcceleration: 11520 })], 8000))?.recoveryRequests.length, 1);
+    assert.equal(
+      (await h.sample([report(1, { removedSamplesForAcceleration: 5760 })], 4000))?.recoveryRequests.length,
+      0
+    );
+    assert.equal(
+      (await h.sample([report(2, { removedSamplesForAcceleration: 11520 })], 8000))?.recoveryRequests.length,
+      1
+    );
     const replacement = { connectionState: "connected", getStats: h.peer.getStats } as RTCPeerConnection;
     h.source = [{ userId: "member", peer: replacement, expectingAudio: true }];
     await h.sample([report(0)], 9000);
@@ -122,7 +176,10 @@ describe("voice quality controller", () => {
   it("ignores results from a replaced connection and keeps sampling single-flight", async () => {
     const h = harness();
     let resolve!: (value: RTCStatsReport) => void;
-    h.peer.getStats = () => new Promise(done => { resolve = done; });
+    h.peer.getStats = () =>
+      new Promise((done) => {
+        resolve = done;
+      });
     const pending = h.controller.sample();
     assert.equal(await h.controller.sample(), null);
     h.source = [];
@@ -135,7 +192,10 @@ describe("voice quality controller", () => {
   it("disposal invalidates an in-flight sample", async () => {
     const h = harness();
     let resolve!: (value: RTCStatsReport) => void;
-    h.peer.getStats = () => new Promise(done => { resolve = done; });
+    h.peer.getStats = () =>
+      new Promise((done) => {
+        resolve = done;
+      });
     const pending = h.controller.sample();
     h.controller.dispose();
     resolve(new Map() as RTCStatsReport);

@@ -118,11 +118,11 @@ describe("bot environment", () => {
     const base = { VOXLY_SERVER_URL: "https://chat.example.com", VOXLY_BOT_TOKEN: "secret" };
 
     assert.equal(resolveBotEnvironment(base).extractorClient, "");
-    assert.equal(resolveBotEnvironment({ ...base, VOXLY_YTDLP_CLIENT: "web_safari,tv" }).extractorClient, "web_safari,tv");
-    assert.throws(
-      () => resolveBotEnvironment({ ...base, VOXLY_YTDLP_CLIENT: "web; rm -rf /" }),
-      /VOXLY_YTDLP_CLIENT/
+    assert.equal(
+      resolveBotEnvironment({ ...base, VOXLY_YTDLP_CLIENT: "web_safari,tv" }).extractorClient,
+      "web_safari,tv"
     );
+    assert.throws(() => resolveBotEnvironment({ ...base, VOXLY_YTDLP_CLIENT: "web; rm -rf /" }), /VOXLY_YTDLP_CLIENT/);
   });
 });
 
@@ -144,11 +144,17 @@ describe("bot credentials", () => {
     assert.equal(calls[0].url, "http://127.0.0.1:3000/api/bot/sessions");
     assert.equal(calls[0].headers.authorization, `Bearer ${environment.token}`);
     assert.equal(credentials.cookieName, "voxly_session");
-    assert.deepEqual(credentials.sessions.map((entry) => entry.serverId), ["one"]);
+    assert.deepEqual(
+      credentials.sessions.map((entry) => entry.serverId),
+      ["one"]
+    );
   });
 
   it("says which side is misconfigured rather than reporting a bare status", async () => {
-    await assert.rejects(requestBotCredentials(environment, fetchDouble(401, {}).fetchImpl), /rejected VOXLY_BOT_TOKEN/);
+    await assert.rejects(
+      requestBotCredentials(environment, fetchDouble(401, {}).fetchImpl),
+      /rejected VOXLY_BOT_TOKEN/
+    );
     await assert.rejects(
       requestBotCredentials(environment, fetchDouble(404, {}).fetchImpl),
       /no bot credential configured/
@@ -190,9 +196,18 @@ describe("bot presence", () => {
     await presence.start();
 
     assert.deepEqual(presence.connectedServerIds(), ["one", "two"]);
-    assert.deepEqual(opened.map((entry) => entry.token), ["token-one", "token-two"]);
-    assert.equal(opened.every((entry) => entry.cookieName === "voxly_session"), true);
-    assert.equal(opened.every((entry) => entry.serverUrl === environment.serverUrl), true);
+    assert.deepEqual(
+      opened.map((entry) => entry.token),
+      ["token-one", "token-two"]
+    );
+    assert.equal(
+      opened.every((entry) => entry.cookieName === "voxly_session"),
+      true
+    );
+    assert.equal(
+      opened.every((entry) => entry.serverUrl === environment.serverUrl),
+      true
+    );
     presence.stop();
   });
 
@@ -202,7 +217,9 @@ describe("bot presence", () => {
     const presence = createMusicBotPresence({
       environment,
       log: () => {},
-      wait: async (milliseconds) => { waits.push(milliseconds); },
+      wait: async (milliseconds) => {
+        waits.push(milliseconds);
+      },
       requestCredentials: async () => {
         attempts += 1;
         if (attempts < 3) throw new Error("connect ECONNREFUSED");
@@ -225,12 +242,17 @@ describe("bot presence", () => {
     const presence = createMusicBotPresence({
       environment,
       log: () => {},
-      wait: async (milliseconds) => { waits.push(milliseconds); },
+      wait: async (milliseconds) => {
+        waits.push(milliseconds);
+      },
       requestCredentials: async () => {
         exchanges += 1;
         return {
           cookieName: "voxly_session",
-          sessions: [{ ...session("one"), token: `token-${exchanges}` }, { ...session("two"), token: `token-${exchanges}` }]
+          sessions: [
+            { ...session("one"), token: `token-${exchanges}` },
+            { ...session("two"), token: `token-${exchanges}` }
+          ]
         };
       },
       connect: () => {
@@ -264,7 +286,9 @@ describe("bot presence", () => {
     const presence = createMusicBotPresence({
       environment,
       log: () => {},
-      wait: async (milliseconds) => { waits.push(milliseconds); },
+      wait: async (milliseconds) => {
+        waits.push(milliseconds);
+      },
       requestCredentials: async () => {
         exchanges += 1;
         return { cookieName: "voxly_session", sessions: [session("one")] };
@@ -284,7 +308,9 @@ describe("bot presence", () => {
     const presence = createMusicBotPresence({
       environment,
       log: () => {},
-      wait: async () => { presence.stop(); },
+      wait: async () => {
+        presence.stop();
+      },
       requestCredentials: async () => ({ cookieName: "voxly_session", sessions: [session("one")] }),
       connect: () => {
         const double = socketDouble(false);
@@ -303,8 +329,12 @@ describe("bot presence", () => {
     const presence = createMusicBotPresence({
       environment,
       log: () => {},
-      wait: async () => { presence.stop(); },
-      requestCredentials: async () => { throw new Error("connect ECONNREFUSED"); },
+      wait: async () => {
+        presence.stop();
+      },
+      requestCredentials: async () => {
+        throw new Error("connect ECONNREFUSED");
+      },
       connect: () => socketDouble().socket
     });
 
@@ -329,7 +359,10 @@ describe("bot presence", () => {
 
     await presence.stop();
 
-    assert.equal(doubles.every((double) => double.state.disconnected), true);
+    assert.equal(
+      doubles.every((double) => double.state.disconnected),
+      true
+    );
     assert.deepEqual(presence.connectedServerIds(), []);
   });
 

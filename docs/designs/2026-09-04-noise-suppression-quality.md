@@ -75,4 +75,3 @@ If the additional filter is unsupported, preserve the existing recoverable
 fallback. Native browser microphone processing and basic capture must continue
 to work. Keeping the additional filter out of the default path is the primary
 quality safeguard for microphones that produce artifacts with both layers.
-

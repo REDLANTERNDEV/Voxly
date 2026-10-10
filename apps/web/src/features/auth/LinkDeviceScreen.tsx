@@ -16,7 +16,13 @@ import { DesktopBrowserSignIn } from "./DesktopBrowserSignIn.js";
  * approves on the Device that minted the code. Somebody who read the code off a
  * screen share reaches exactly this screen and gets no further (ADR-0014).
  */
-export function LinkDeviceScreen({ language, t, onLanguageChange, onLinked, turnstileSiteKey }: {
+export function LinkDeviceScreen({
+  language,
+  t,
+  onLanguageChange,
+  onLinked,
+  turnstileSiteKey
+}: {
   language: LanguageCode;
   t: Translate;
   onLanguageChange: (language: LanguageCode) => void;
@@ -79,63 +85,91 @@ export function LinkDeviceScreen({ language, t, onLanguageChange, onLinked, turn
   }, [claimToken, onLinked, outcome]);
 
   const desktop = window.__VOXLY_DESKTOP_V1__?.version === 1;
-  const codeSurface = (claimToken ? (
-        <section className="link-panel">
-          <strong>{t("link.waitingTitle")}</strong>
-          <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>{confirmation}</span>
-          <p className="muted small">
-            {outcome === "pending" ? t("link.waitingCopy")
-              : outcome === "refused" ? t("link.refused")
-                : outcome === "expired" ? t("link.expired")
-                  : t("link.linked")}
-          </p>
-          {outcome === "refused" || outcome === "expired" ? (
-            <button className="btn btn-ghost" type="button" onClick={() => { setClaimToken(""); setOutcome("pending"); setCode(""); }}>
-              {t("link.startOver")}
-            </button>
-          ) : null}
-        </section>
-      ) : (
-        <form className="link-panel" onSubmit={(event) => void submit(event)}>
-          <strong>{t("link.enterTitle")}</strong>
-          <p className="muted small">{t("link.enterCopy")}</p>
-          <input
-            className="input link-input code-face"
-            name="linkCode"
-            autoComplete="one-time-code"
-            inputMode="text"
-            maxLength={12}
-            autoCapitalize="characters"
-            spellCheck={false}
-            aria-label={t("link.codeLabel")}
-            placeholder="XXXX-XXX-XXX"
-            value={code}
-            onChange={(event) => setCode(formatLinkCodeInput(event.currentTarget.value))}
-          />
-          {turnstileSiteKey ? (
-            <TurnstileWidget
-              siteKey={turnstileSiteKey}
-              resetKey={turnstileResetKey}
-              onToken={setTurnstileToken}
-              onUnavailable={() => setTurnstileToken("")}
-            />
-          ) : null}
-          {error ? <p className="small device-error" role="alert">{t("link.codeInvalid")}</p> : null}
-          <button className="btn btn-primary" type="submit" disabled={busy || !isCompleteLinkCode(code) || (Boolean(turnstileSiteKey) && !turnstileToken)}>
-            {t("link.continue")}
-          </button>
-          {/* The case this screen cannot serve: no signed-in Device to read a
+  const codeSurface = claimToken ? (
+    <section className="link-panel">
+      <strong>{t("link.waitingTitle")}</strong>
+      <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>
+        {confirmation}
+      </span>
+      <p className="muted small">
+        {outcome === "pending"
+          ? t("link.waitingCopy")
+          : outcome === "refused"
+            ? t("link.refused")
+            : outcome === "expired"
+              ? t("link.expired")
+              : t("link.linked")}
+      </p>
+      {outcome === "refused" || outcome === "expired" ? (
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={() => {
+            setClaimToken("");
+            setOutcome("pending");
+            setCode("");
+          }}
+        >
+          {t("link.startOver")}
+        </button>
+      ) : null}
+    </section>
+  ) : (
+    <form className="link-panel" onSubmit={(event) => void submit(event)}>
+      <strong>{t("link.enterTitle")}</strong>
+      <p className="muted small">{t("link.enterCopy")}</p>
+      <input
+        className="input link-input code-face"
+        name="linkCode"
+        autoComplete="one-time-code"
+        inputMode="text"
+        maxLength={12}
+        autoCapitalize="characters"
+        spellCheck={false}
+        aria-label={t("link.codeLabel")}
+        placeholder="XXXX-XXX-XXX"
+        value={code}
+        onChange={(event) => setCode(formatLinkCodeInput(event.currentTarget.value))}
+      />
+      {turnstileSiteKey ? (
+        <TurnstileWidget
+          siteKey={turnstileSiteKey}
+          resetKey={turnstileResetKey}
+          onToken={setTurnstileToken}
+          onUnavailable={() => setTurnstileToken("")}
+        />
+      ) : null}
+      {error ? (
+        <p className="small device-error" role="alert">
+          {t("link.codeInvalid")}
+        </p>
+      ) : null}
+      <button
+        className="btn btn-primary"
+        type="submit"
+        disabled={busy || !isCompleteLinkCode(code) || (Boolean(turnstileSiteKey) && !turnstileToken)}
+      >
+        {t("link.continue")}
+      </button>
+      {/* The case this screen cannot serve: no signed-in Device to read a
               code from. Offered plainly, because that is what Recovery is for. */}
-          <a className="small muted recovery-link" href="/recover">{t("recovery.lostDevice")}</a>
-        </form>
-      ));
+      <a className="small muted recovery-link" href="/recover">
+        {t("recovery.lostDevice")}
+      </a>
+    </form>
+  );
 
   return (
     <AuthEntryFrame language={language} t={t} onLanguageChange={onLanguageChange}>
-
       {desktop ? <DesktopBrowserSignIn t={t} onLinked={onLinked} /> : null}
-      {desktop ? <details className="desktop-link-fallback"><summary>{t("desktopSignIn.useCode")}</summary>{codeSurface}</details> : codeSurface}
-
+      {desktop ? (
+        <details className="desktop-link-fallback">
+          <summary>{t("desktopSignIn.useCode")}</summary>
+          {codeSurface}
+        </details>
+      ) : (
+        codeSurface
+      )}
     </AuthEntryFrame>
   );
 }

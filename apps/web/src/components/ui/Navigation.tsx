@@ -1,5 +1,17 @@
-import type { MouseEvent,ReactNode } from "react";
-export function BrandLockup({ title = "Voxly", subtitle = "The Basement", href = "/", onNavigate, onClick }: { title?: string; subtitle?: string; href?: string; onNavigate?: (path: string) => void; onClick?: () => void }) {
+import type { MouseEvent, ReactNode } from "react";
+export function BrandLockup({
+  title = "Voxly",
+  subtitle = "The Basement",
+  href = "/",
+  onNavigate,
+  onClick
+}: {
+  title?: string;
+  subtitle?: string;
+  href?: string;
+  onNavigate?: (path: string) => void;
+  onClick?: () => void;
+}) {
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (onNavigate) {
       linkHandler(href, onNavigate)(event);
@@ -14,15 +26,38 @@ export function BrandLockup({ title = "Voxly", subtitle = "The Basement", href =
   return (
     <a className="brand-lockup brand-button" href={href} onClick={handleClick}>
       <span className="brand-mark">
-        <img className="brand-mark-image-on-light" src="/brand/svg/voxly-mark-monochrome-dark.svg" alt="" width="28" height="28" />
-        <img className="brand-mark-image-on-dark" src="/brand/svg/voxly-mark-monochrome-light.svg" alt="" width="28" height="28" />
+        <img
+          className="brand-mark-image-on-light"
+          src="/brand/svg/voxly-mark-monochrome-dark.svg"
+          alt=""
+          width="28"
+          height="28"
+        />
+        <img
+          className="brand-mark-image-on-dark"
+          src="/brand/svg/voxly-mark-monochrome-light.svg"
+          alt=""
+          width="28"
+          height="28"
+        />
       </span>
-      <span className="brand-copy"><strong>{title}</strong>{subtitle ? <span>{subtitle}</span> : null}</span>
+      <span className="brand-copy">
+        <strong>{title}</strong>
+        {subtitle ? <span>{subtitle}</span> : null}
+      </span>
     </a>
   );
 }
 
-export function NavLink({ href, className, label, current = false, onNavigate, onClick, children }: {
+export function NavLink({
+  href,
+  className,
+  label,
+  current = false,
+  onNavigate,
+  onClick,
+  children
+}: {
   href: string;
   className: string;
   /**
@@ -37,15 +72,33 @@ export function NavLink({ href, className, label, current = false, onNavigate, o
   children: ReactNode;
 }) {
   const navigateOnClick = linkHandler(href, onNavigate);
-  return <a className={className} href={href} aria-label={label} aria-current={current ? "page" : undefined} title={label} onClick={(event) => {
-    onClick?.(event);
-    navigateOnClick(event);
-  }}>{children}</a>;
+  return (
+    <a
+      className={className}
+      href={href}
+      aria-label={label}
+      aria-current={current ? "page" : undefined}
+      title={label}
+      onClick={(event) => {
+        onClick?.(event);
+        navigateOnClick(event);
+      }}
+    >
+      {children}
+    </a>
+  );
 }
 
 export function linkHandler(href: string, onNavigate: (path: string) => void) {
   return (event: MouseEvent<HTMLAnchorElement>) => {
-    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+    if (
+      event.defaultPrevented ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.button !== 0
+    ) {
       return;
     }
     event.preventDefault();

@@ -32,7 +32,7 @@ short-lived credential in use.
 
 1. Each bot account is an ordinary `users` row with `is_bot = 1` and an ordinary
    active `server_members` row. `is_bot` is presentation and moderation policy;
-   nothing in the product consults it to decide what a caller may *do*.
+   nothing in the product consults it to decide what a caller may _do_.
 2. The operator generates one secret and puts it in the environment of both
    processes as `VOXLY_BOT_TOKEN`. The server holds it in memory only — never in
    SQLite, never in a log — the same treatment `TURN_STATIC_AUTH_SECRET` and

@@ -1,4 +1,5 @@
-import type { ChatMessageReply } from "@voxly/shared";
+import { MessageBody } from "./MessageBody.js";
+import type { ChatMessageReply, PresenceUser } from "@voxly/shared";
 import type { Translate } from "../../app/types.js";
 
 /**
@@ -12,8 +13,12 @@ export function ReplyQuote({
   reply,
   t,
   onJump,
-  hideAuthor = false
+  hideAuthor = false,
+  members = [],
+  onlineUsers = []
 }: {
+  members?: PresenceUser[];
+  onlineUsers?: PresenceUser[];
   reply: ChatMessageReply | null;
   t: Translate;
   onJump?: (messageId: string) => void;
@@ -33,16 +38,42 @@ export function ReplyQuote({
     return (
       <p className="reply-quote">
         {author}
-        <span className="reply-quote-body">{reply.body}</span>
+        <span className="reply-quote-body">
+          <MessageBody
+            body={reply.body}
+            mentions={reply.mentions}
+            t={t}
+            members={members}
+            onlineUsers={onlineUsers}
+            links={false}
+            cards={false}
+          />
+        </span>
       </p>
     );
   }
 
   const label = t("room.replyJumpTo", { nickname });
   return (
-    <button className="reply-quote" type="button" aria-label={label} title={label} onClick={() => onJump(reply.messageId)}>
+    <button
+      className="reply-quote"
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={() => onJump(reply.messageId)}
+    >
       {author}
-      <span className="reply-quote-body">{reply.body}</span>
+      <span className="reply-quote-body">
+        <MessageBody
+          body={reply.body}
+          mentions={reply.mentions}
+          t={t}
+          members={members}
+          onlineUsers={onlineUsers}
+          links={false}
+          cards={false}
+        />
+      </span>
     </button>
   );
 }

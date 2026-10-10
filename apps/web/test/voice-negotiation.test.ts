@@ -17,10 +17,13 @@ describe("voice negotiation ownership", () => {
     const staleVoicePeerUserIds = (voiceNegotiation as Record<string, unknown>).staleVoicePeerUserIds;
 
     assert.equal(typeof staleVoicePeerUserIds, "function");
-    assert.deepEqual((staleVoicePeerUserIds as (
-      peerUserIds: Iterable<string>,
-      activeMemberUserIds: Iterable<string>
-    ) => string[])(["active-user", "left-user"], ["active-user", "new-user"]), ["left-user"]);
+    assert.deepEqual(
+      (staleVoicePeerUserIds as (peerUserIds: Iterable<string>, activeMemberUserIds: Iterable<string>) => string[])(
+        ["active-user", "left-user"],
+        ["active-user", "new-user"]
+      ),
+      ["left-user"]
+    );
   });
 
   it("treats an in-progress local offer as glare even while signaling is stable", () => {

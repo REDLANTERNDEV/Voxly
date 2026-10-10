@@ -111,7 +111,11 @@ describe("AFK room index", () => {
   it("clears the entry when the room is gone, leaving nothing to key the mute off", () => {
     const index: Record<string, string> = { s1: "afk-s1" };
 
-    indexAfkRoom(index, "s1", rooms.filter((item) => item.id !== "afk-s1"));
+    indexAfkRoom(
+      index,
+      "s1",
+      rooms.filter((item) => item.id !== "afk-s1")
+    );
 
     assert.deepEqual(index, {});
   });

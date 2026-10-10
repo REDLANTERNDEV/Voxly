@@ -4,9 +4,7 @@ export function medianRtt(samples: number[]) {
   if (samples.length === 0) return null;
   const ordered = [...samples].sort((left, right) => left - right);
   const middle = Math.floor(ordered.length / 2);
-  return ordered.length % 2 === 0
-    ? (ordered[middle - 1] + ordered[middle]) / 2
-    : ordered[middle];
+  return ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
 }
 
 export function connectionQualityForRtt(rttMs: number | null): ConnectionQuality {

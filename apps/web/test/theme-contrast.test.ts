@@ -5,9 +5,10 @@ import { describe, it } from "node:test";
 describe("theme contrast", () => {
   it("applies the monochrome reference palette in the final visual layer", () => {
     const styles = readFileSync("src/visual-refresh.css", "utf8");
-    const explicitDark = [...styles.matchAll(/^:root\[data-theme="dark"\]\s*\{[\s\S]*?^\}/gm)]
-      .map((match) => match[0])
-      .find((block) => block.includes("--surface:")) ?? "";
+    const explicitDark =
+      [...styles.matchAll(/^:root\[data-theme="dark"\]\s*\{[\s\S]*?^\}/gm)]
+        .map((match) => match[0])
+        .find((block) => block.includes("--surface:")) ?? "";
 
     assert.match(explicitDark, /--bg:\s*#0b0d10/i);
     assert.match(explicitDark, /--surface:\s*#12161b/i);
@@ -31,9 +32,10 @@ describe("theme contrast", () => {
 
   it("keeps semantic states separate from ordinary selection", () => {
     const styles = readFileSync("src/visual-refresh.css", "utf8");
-    const explicitDark = [...styles.matchAll(/^:root\[data-theme="dark"\]\s*\{[\s\S]*?^\}/gm)]
-      .map((match) => match[0])
-      .find((block) => block.includes("--surface:")) ?? "";
+    const explicitDark =
+      [...styles.matchAll(/^:root\[data-theme="dark"\]\s*\{[\s\S]*?^\}/gm)]
+        .map((match) => match[0])
+        .find((block) => block.includes("--surface:")) ?? "";
 
     assert.match(explicitDark, /--accent:\s*#e1e8ef/i);
     assert.match(explicitDark, /--success:\s*#35c98a/i);
@@ -55,9 +57,10 @@ describe("theme contrast", () => {
   it("keeps the light rail white with explicit readable foreground tokens", () => {
     const base = readFileSync("src/styles.css", "utf8");
     const visual = readFileSync("src/visual-refresh.css", "utf8");
-    const lightTokens = [...visual.matchAll(/^:root\s*\{[\s\S]*?^\}/gm)]
-      .map((match) => match[0])
-      .find((block) => block.includes("--surface:")) ?? "";
+    const lightTokens =
+      [...visual.matchAll(/^:root\s*\{[\s\S]*?^\}/gm)]
+        .map((match) => match[0])
+        .find((block) => block.includes("--surface:")) ?? "";
     const rail = base.match(/^\.rail\s*\{[\s\S]*?^\}/m)?.[0] ?? "";
 
     assert.match(lightTokens, /--rail-bg:\s*#fff(?:fff)?/i);
@@ -71,7 +74,7 @@ describe("theme contrast", () => {
   it("switches the rail to slate in explicit and automatic dark mode", () => {
     const styles = readFileSync("src/visual-refresh.css", "utf8");
     const explicitDark = styles.match(/^:root\[data-theme="dark"\]\s*\{[\s\S]*?^\}/m)?.[0] ?? "";
-    const automaticDark = styles.match(/@media \(prefers-color-scheme: dark\)\s*\{[\s\S]*?^  \}/m)?.[0] ?? "";
+    const automaticDark = styles.match(/@media \(prefers-color-scheme: dark\)\s*\{[\s\S]*?^ {2}\}/m)?.[0] ?? "";
 
     for (const tokens of [explicitDark, automaticDark]) {
       assert.match(tokens, /--bg:\s*#0b0d10/i);
@@ -86,7 +89,10 @@ describe("theme contrast", () => {
 
     assert.match(styles, /\.rail \.session-card,[\s\S]*?background:\s*var\(--rail-surface\)/);
     assert.match(styles, /\.voice-channel-user\s*\{[^}]*color:\s*var\(--rail-muted\)/s);
-    assert.match(styles, /\.audio-device-card\s*\{[^}]*background:\s*var\(--rail-surface\)[^}]*color:\s*var\(--rail-fg\)/s);
+    assert.match(
+      styles,
+      /\.audio-device-card\s*\{[^}]*background:\s*var\(--rail-surface\)[^}]*color:\s*var\(--rail-fg\)/s
+    );
     assert.match(styles, /\.audio-device-popover\s*\{[^}]*background:\s*var\(--surface\)[^}]*color:\s*var\(--fg\)/s);
     assert.match(styles, /\.audio-device-popover \.input\s*\{[^}]*background:\s*var\(--bg\)[^}]*color:\s*var\(--fg\)/s);
   });
@@ -106,13 +112,16 @@ describe("theme contrast", () => {
 
   it("keeps final explicit dark and automatic dark tokens identical", () => {
     const styles = readFileSync("src/visual-refresh.css", "utf8");
-    const explicitDark = [...styles.matchAll(/^:root\[data-theme="dark"\]\s*\{([\s\S]*?)^\}/gm)]
-      .map((match) => match[1])
-      .find((block) => block.includes("--surface:")) ?? "";
-    const automaticDark = [...styles.matchAll(/:root:not\(\[data-theme="light"\]\)\s*\{([\s\S]*?)^  \}/gm)]
-      .map((match) => match[1])
-      .find((block) => block.includes("--surface:")) ?? "";
-    const declarations = (block: string) => [...block.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((match) => `${match[1]}:${match[2].trim()}`);
+    const explicitDark =
+      [...styles.matchAll(/^:root\[data-theme="dark"\]\s*\{([\s\S]*?)^\}/gm)]
+        .map((match) => match[1])
+        .find((block) => block.includes("--surface:")) ?? "";
+    const automaticDark =
+      [...styles.matchAll(/:root:not\(\[data-theme="light"\]\)\s*\{([\s\S]*?)^ {2}\}/gm)]
+        .map((match) => match[1])
+        .find((block) => block.includes("--surface:")) ?? "";
+    const declarations = (block: string) =>
+      [...block.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((match) => `${match[1]}:${match[2].trim()}`);
 
     assert.notEqual(explicitDark, "");
     assert.notEqual(automaticDark, "");

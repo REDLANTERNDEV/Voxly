@@ -19,14 +19,23 @@ describe("member directory presence", () => {
   it("groups active directory members online first and keeps offline members", () => {
     const grouped = groupDirectoryMembers([owner, ada, ece], [owner, ece], owner);
 
-    assert.deepEqual(grouped.online.map((user) => user.userId), ["ece", "owner"]);
-    assert.deepEqual(grouped.offline.map((user) => user.userId), ["ada"]);
+    assert.deepEqual(
+      grouped.online.map((user) => user.userId),
+      ["ece", "owner"]
+    );
+    assert.deepEqual(
+      grouped.offline.map((user) => user.userId),
+      ["ada"]
+    );
   });
 
   it("keeps live and current users visible while the directory is loading", () => {
     const grouped = groupDirectoryMembers([], [ece], owner);
 
-    assert.deepEqual(grouped.online.map((user) => user.userId), ["ece", "owner"]);
+    assert.deepEqual(
+      grouped.online.map((user) => user.userId),
+      ["ece", "owner"]
+    );
     assert.deepEqual(grouped.offline, []);
   });
 
@@ -55,14 +64,20 @@ describe("member directory presence", () => {
   it("refreshes the directory when membership changes", () => {
     const source = readAppSource();
 
-    assert.match(source, /next\.on\("server:directoryChanged"[\s\S]*handlersRef\.current\.directoryChanged\(serverId\)/);
+    assert.match(
+      source,
+      /next\.on\("server:directoryChanged"[\s\S]*handlersRef\.current\.directoryChanged\(serverId\)/
+    );
     assert.match(source, /directoryChanged: \(serverId\)[\s\S]*workspace\.refreshServerDirectory\(serverId\)/);
   });
 
   it("applies scoped realtime nickname updates to active client caches", () => {
     const source = readAppSource();
 
-    assert.match(source, /next\.on\("server:memberUpdated"[\s\S]*handlersRef\.current\.memberUpdated\(serverId, nextUser\)/);
+    assert.match(
+      source,
+      /next\.on\("server:memberUpdated"[\s\S]*handlersRef\.current\.memberUpdated\(serverId, nextUser\)/
+    );
     assert.match(source, /replacePresenceUser\(current\[serverId\][^)]*next\)/s);
     assert.match(source, /renameMessagesForServer\(current, roomServerIds\.current, serverId, next\)/);
     assert.match(source, /currentNickname:/);

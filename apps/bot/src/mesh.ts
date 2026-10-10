@@ -66,8 +66,12 @@ interface StreamDescriptor {
 /** The signalling the mesh needs, narrowed so tests can stand in for a socket. */
 export interface MeshSignalling {
   emit: (payload: { roomId: string; toUserId: string; signal: RtcSignal }) => void;
-  on: (handler: (payload: { roomId: string; fromUserId: string; mediaInstanceId?: string; signal: RtcSignal }) => void) => void;
-  off: (handler: (payload: { roomId: string; fromUserId: string; mediaInstanceId?: string; signal: RtcSignal }) => void) => void;
+  on: (
+    handler: (payload: { roomId: string; fromUserId: string; mediaInstanceId?: string; signal: RtcSignal }) => void
+  ) => void;
+  off: (
+    handler: (payload: { roomId: string; fromUserId: string; mediaInstanceId?: string; signal: RtcSignal }) => void
+  ) => void;
 }
 
 export interface MeshOptions {
@@ -174,7 +178,12 @@ export class VoiceMesh {
     }
   }
 
-  private readonly onSignal = (payload: { roomId: string; fromUserId: string; mediaInstanceId?: string; signal: RtcSignal }) => {
+  private readonly onSignal = (payload: {
+    roomId: string;
+    fromUserId: string;
+    mediaInstanceId?: string;
+    signal: RtcSignal;
+  }) => {
     if (!this.started || payload.roomId !== this.options.roomId) return;
     const instance = this.mediaInstances.get(payload.fromUserId);
     if (payload.mediaInstanceId && instance && payload.mediaInstanceId !== instance) return;

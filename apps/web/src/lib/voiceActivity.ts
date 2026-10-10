@@ -80,9 +80,7 @@ export function updateVoiceActivity(state: VoiceActivityState, rms: number, now:
   const noiseFloor = nextNoiseFloor(state.noiseFloor, rms);
 
   if (!state.speaking) {
-    return rms >= thresholds.enter
-      ? { speaking: true, lastAudibleAt: now, noiseFloor }
-      : { ...state, noiseFloor };
+    return rms >= thresholds.enter ? { speaking: true, lastAudibleAt: now, noiseFloor } : { ...state, noiseFloor };
   }
 
   if (rms >= thresholds.exit) {
@@ -97,7 +95,5 @@ export function updateVoiceActivity(state: VoiceActivityState, rms: number, now:
 export function updateAudibleActivity(state: AudibleActivityState, rms: number, now: number): AudibleActivityState {
   const threshold = state.speaking ? audibleActivityExitRms : audibleActivityEnterRms;
   if (rms >= threshold) return { speaking: true, lastAudibleAt: now };
-  return state.speaking && now - state.lastAudibleAt >= voiceActivityReleaseMs
-    ? { ...state, speaking: false }
-    : state;
+  return state.speaking && now - state.lastAudibleAt >= voiceActivityReleaseMs ? { ...state, speaking: false } : state;
 }

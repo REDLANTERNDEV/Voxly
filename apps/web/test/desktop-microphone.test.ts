@@ -28,7 +28,10 @@ describe("desktop microphone hold modes", () => {
       gate.update(state, true);
       if (cancel === "lock") gate.update(state, false);
       else if (cancel === "suspend") gate.suspend();
-      else { gate.resetHolds(); gate.apply([track], true); }
+      else {
+        gate.resetHolds();
+        gate.apply([track], true);
+      }
       assert.equal(track.enabled, false);
       gate.update(state, true);
       gate.apply([track], true);

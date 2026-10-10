@@ -22,7 +22,8 @@ export type RoomRow = {
   categoryId: string | null;
 };
 
-export const roomColumns = "id, server_id as serverId, name, kind, position, category_id as categoryId, coalesce(is_afk, 0) as isAfkFlag";
+export const roomColumns =
+  "id, server_id as serverId, name, kind, position, category_id as categoryId, coalesce(is_afk, 0) as isAfkFlag";
 
 export function publicRoom(row: RoomRow): RoomSummary {
   return {
@@ -37,10 +38,6 @@ export function publicRoom(row: RoomRow): RoomSummary {
 }
 
 export function roomById(sqlite: DatabaseSync, roomId: string) {
-  const row = one<RoomRow>(
-    sqlite,
-    `select ${roomColumns} from rooms where id = ?`,
-    [roomId]
-  );
+  const row = one<RoomRow>(sqlite, `select ${roomColumns} from rooms where id = ?`, [roomId]);
   return row ? publicRoom(row) : null;
 }

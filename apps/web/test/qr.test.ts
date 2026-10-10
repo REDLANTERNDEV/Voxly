@@ -24,12 +24,14 @@ describe("qr encoder", () => {
   });
 
   it("grows a version at a time as the payload grows", () => {
-    const sizes = ["a".repeat(10), "a".repeat(30), "a".repeat(50), "a".repeat(70)]
-      .map((text) => encodeQr(text).length);
+    const sizes = ["a".repeat(10), "a".repeat(30), "a".repeat(50), "a".repeat(70)].map((text) => encodeQr(text).length);
 
     assert.deepEqual(sizes, [21, 29, 33, 37]);
     // Never shrinks as the payload grows.
-    assert.deepEqual([...sizes].sort((left, right) => left - right), sizes);
+    assert.deepEqual(
+      [...sizes].sort((left, right) => left - right),
+      sizes
+    );
   });
 
   it("draws the three finder patterns a scanner looks for first", () => {
@@ -146,8 +148,21 @@ describe("qr encoder", () => {
     const bit = (index: number) => ((word >> index) & 1) === 1;
 
     const copyOne = [
-      [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 7], [8, 8],
-      [7, 8], [5, 8], [4, 8], [3, 8], [2, 8], [1, 8], [0, 8]
+      [8, 0],
+      [8, 1],
+      [8, 2],
+      [8, 3],
+      [8, 4],
+      [8, 5],
+      [8, 7],
+      [8, 8],
+      [7, 8],
+      [5, 8],
+      [4, 8],
+      [3, 8],
+      [2, 8],
+      [1, 8],
+      [0, 8]
     ] as const;
     copyOne.forEach(([row, column], index) => {
       assert.equal(matrix[row][column], bit(14 - index), `copy 1 bit ${14 - index} at ${row},${column}`);

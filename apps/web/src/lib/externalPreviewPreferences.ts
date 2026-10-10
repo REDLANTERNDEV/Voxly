@@ -22,12 +22,14 @@ export function readExternalPreviewPreferences(
   try {
     const parsed = JSON.parse(storage.getItem(externalPreviewStorageKey(userId)) ?? "null") as unknown;
     if (!parsed || typeof parsed !== "object") return { ...defaultExternalPreviewPreferences };
-    return Object.fromEntries(externalPreviewProviders.map((provider) => [
-      provider,
-      typeof (parsed as Record<string, unknown>)[provider] === "boolean"
-        ? (parsed as Record<string, boolean>)[provider]
-        : true
-    ])) as ExternalPreviewPreferences;
+    return Object.fromEntries(
+      externalPreviewProviders.map((provider) => [
+        provider,
+        typeof (parsed as Record<string, unknown>)[provider] === "boolean"
+          ? (parsed as Record<string, boolean>)[provider]
+          : true
+      ])
+    ) as ExternalPreviewPreferences;
   } catch {
     return { ...defaultExternalPreviewPreferences };
   }

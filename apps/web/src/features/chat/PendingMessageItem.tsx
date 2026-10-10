@@ -1,3 +1,4 @@
+import { MessageBody } from "./MessageBody.js";
 import { initial } from "../../app/presentation.js";
 import type { Translate } from "../../app/types.js";
 import { type LanguageCode } from "../../lib/i18n.js";
@@ -38,16 +39,24 @@ export function PendingMessageItem({
         <div className="message-meta">
           <span className="message-author">{nickname}</span>
           <span className="message-time mono">
-            <time dateTime={entry.createdAt}>{formatMessageTimestamp(entry.createdAt, language, new Date(), timeFormat)}</time>
+            <time dateTime={entry.createdAt}>
+              {formatMessageTimestamp(entry.createdAt, language, new Date(), timeFormat)}
+            </time>
             <span className="message-pending-state">{hasFailed ? t("room.messageNotSent") : t("common.sending")}</span>
           </span>
         </div>
         {entry.replyTo ? <ReplyQuote reply={entry.replyTo} t={t} /> : null}
-        <div className="message-body">{entry.body}</div>
+        <div className="message-body">
+          <MessageBody body={entry.body} mentions={entry.mentions} t={t} links={false} cards={false} />
+        </div>
         {hasFailed ? (
           <div className="message-actions">
-            <button className="btn btn-ghost" type="button" onClick={() => onRetry(entry.localId)}>{t("room.messageRetry")}</button>
-            <button className="btn btn-ghost" type="button" onClick={() => onDiscard(entry.localId)}>{t("room.messageDiscard")}</button>
+            <button className="btn btn-ghost" type="button" onClick={() => onRetry(entry.localId)}>
+              {t("room.messageRetry")}
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={() => onDiscard(entry.localId)}>
+              {t("room.messageDiscard")}
+            </button>
           </div>
         ) : null}
       </div>

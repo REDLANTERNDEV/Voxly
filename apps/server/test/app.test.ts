@@ -52,52 +52,95 @@ describe("Voxly HTTP MVP", () => {
     `);
     legacy.prepare("insert into users values (?, ?, ?, ?)").run("owner", "Red Lantern", "owner", null);
     legacy.prepare("insert into rooms values (?, ?, ?, ?)").run("history", "history", "text", 50);
-    legacy.prepare("insert into invites values (?, ?, ?, ?, ?, ?, ?, ?, ?)").run("invite", "legacy-token-hash", "Legacy", "owner", "owner", "2026-01-01T00:00:00.000Z", null, null, "2026-01-01T00:00:00.000Z");
+    legacy
+      .prepare("insert into invites values (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(
+        "invite",
+        "legacy-token-hash",
+        "Legacy",
+        "owner",
+        "owner",
+        "2026-01-01T00:00:00.000Z",
+        null,
+        null,
+        "2026-01-01T00:00:00.000Z"
+      );
     legacy.close();
 
     const migrated = await openDatabase(databasePath);
     try {
       const tables = migrated.sqlite;
-      const server = tables.prepare("select id, name from servers where id = ?").get(defaultServerId) as { id: string; name: string };
+      const server = tables.prepare("select id, name from servers where id = ?").get(defaultServerId) as {
+        id: string;
+        name: string;
+      };
       assert.equal(server.id, defaultServerId);
       assert.equal(server.name, "The Basement");
-      assert.equal(tables.prepare("select server_id from rooms where id = 'history'").get()?.server_id, defaultServerId);
+      assert.equal(
+        tables.prepare("select server_id from rooms where id = 'history'").get()?.server_id,
+        defaultServerId
+      );
       assert.equal(tables.prepare("select category_id from rooms where id = 'history'").get()?.category_id, null);
       assert.ok(tables.prepare("select name from sqlite_master where type = 'table' and name = 'categories'").get());
-      assert.equal(tables.prepare("select server_id from invites where id = 'invite'").get()?.server_id, defaultServerId);
-      const membership = tables.prepare("select server_id, role from server_members where user_id = 'owner'").get() as { server_id: string; role: string };
+      assert.equal(
+        tables.prepare("select server_id from invites where id = 'invite'").get()?.server_id,
+        defaultServerId
+      );
+      const membership = tables.prepare("select server_id, role from server_members where user_id = 'owner'").get() as {
+        server_id: string;
+        role: string;
+      };
       assert.equal(membership.server_id, defaultServerId);
       assert.equal(membership.role, "owner");
-      const memberColumns = tables.prepare("pragma table_info(server_members)").all()
+      const memberColumns = tables
+        .prepare("pragma table_info(server_members)")
+        .all()
         .map((column) => (column as { name: string }).name);
       assert.ok(memberColumns.includes("nickname"));
       assert.ok(memberColumns.includes("moderator_muted"));
       assert.ok(memberColumns.includes("moderator_deafened"));
-      assert.equal(
-        tables.prepare("select nickname from server_members where user_id = 'owner'").get()?.nickname,
-        null
+      assert.equal(tables.prepare("select nickname from server_members where user_id = 'owner'").get()?.nickname, null);
+      const indexNames = [...tables.prepare("select name from sqlite_master where type = 'index'").all()].map(
+        (index) => (index as { name: string }).name
       );
-      const indexNames = [
-        ...tables.prepare("select name from sqlite_master where type = 'index'").all()
-      ].map((index) => (index as { name: string }).name);
-      for (const indexName of ["idx_server_members_user", "idx_rooms_server_position", "idx_rooms_category_position", "idx_categories_server_position", "idx_invites_server_created", "idx_messages_room_created"]) {
+      for (const indexName of [
+        "idx_server_members_user",
+        "idx_rooms_server_position",
+        "idx_rooms_category_position",
+        "idx_categories_server_position",
+        "idx_invites_server_created",
+        "idx_messages_room_created"
+      ]) {
         assert.ok(indexNames.includes(indexName));
       }
-      const accessClaimColumns = tables.prepare("pragma table_info(access_claims)").all()
+      const accessClaimColumns = tables
+        .prepare("pragma table_info(access_claims)")
+        .all()
         .map((column) => (column as { name: string }).name);
       assert.ok(accessClaimColumns.includes("revoked_at"));
-      const userColumns = tables.prepare("pragma table_info(users)").all()
+      const userColumns = tables
+        .prepare("pragma table_info(users)")
+        .all()
         .map((column) => (column as { name: string }).name);
       assert.ok(userColumns.includes("deleted_at"));
       assert.ok(userColumns.includes("deletion_source"));
-      const messageColumns = tables.prepare("pragma table_info(messages)").all()
+      const messageColumns = tables
+        .prepare("pragma table_info(messages)")
+        .all()
         .map((column) => (column as { name: string }).name);
       assert.ok(messageColumns.includes("suppressed_embed_keys"));
       assert.equal(tables.prepare("select max_uses from invites where id = 'invite'").get()?.max_uses, 1);
       assert.ok(tables.prepare("select name from sqlite_master where type = 'table' and name = 'invite_uses'").get());
-      assert.ok(tables.prepare("select name from sqlite_master where type = 'table' and name = 'account_deletion_requests'").get());
+      assert.ok(
+        tables
+          .prepare("select name from sqlite_master where type = 'table' and name = 'account_deletion_requests'")
+          .get()
+      );
       assert.ok(indexNames.includes("idx_account_deletion_requests_pending"));
-      assert.equal(tables.prepare("select user_id from invite_uses where invite_id = 'invite'").get()?.user_id, "owner");
+      assert.equal(
+        tables.prepare("select user_id from invite_uses where invite_id = 'invite'").get()?.user_id,
+        "owner"
+      );
     } finally {
       migrated.close();
       await rm(databaseDir, { force: true, recursive: true });
@@ -120,11 +163,14 @@ describe("Voxly HTTP MVP", () => {
     legacy.close();
 
     const migrated = await openDatabase(databasePath);
-    migrated.sqlite.prepare(
-      "insert into session_tokens (token_hash, session_id, superseded_at, replacement_seen_at) values (?, ?, ?, null)"
-    ).run("new", "session", retiredAt);
+    migrated.sqlite
+      .prepare(
+        "insert into session_tokens (token_hash, session_id, superseded_at, replacement_seen_at) values (?, ?, ?, null)"
+      )
+      .run("new", "session", retiredAt);
     assert.equal(
-      migrated.sqlite.prepare("select replacement_seen_at from session_tokens where token_hash = 'legacy'").get()?.replacement_seen_at,
+      migrated.sqlite.prepare("select replacement_seen_at from session_tokens where token_hash = 'legacy'").get()
+        ?.replacement_seen_at,
       retiredAt
     );
     migrated.close();
@@ -132,7 +178,8 @@ describe("Voxly HTTP MVP", () => {
     const reopened = await openDatabase(databasePath);
     try {
       assert.equal(
-        reopened.sqlite.prepare("select replacement_seen_at from session_tokens where token_hash = 'new'").get()?.replacement_seen_at,
+        reopened.sqlite.prepare("select replacement_seen_at from session_tokens where token_hash = 'new'").get()
+          ?.replacement_seen_at,
         null
       );
     } finally {
@@ -148,8 +195,18 @@ describe("Voxly HTTP MVP", () => {
     let initialClosed = false;
 
     try {
-      run(initial.sqlite, "insert into servers (id, name, created_at) values (?, ?, ?)", ["remaining", "Remaining", new Date().toISOString()]);
-      run(initial.sqlite, "insert into rooms (id, server_id, name, kind, position) values (?, ?, ?, ?, ?)", ["remaining-general", "remaining", "general", "text", 10]);
+      run(initial.sqlite, "insert into servers (id, name, created_at) values (?, ?, ?)", [
+        "remaining",
+        "Remaining",
+        new Date().toISOString()
+      ]);
+      run(initial.sqlite, "insert into rooms (id, server_id, name, kind, position) values (?, ?, ?, ?, ?)", [
+        "remaining-general",
+        "remaining",
+        "general",
+        "text",
+        10
+      ]);
       run(initial.sqlite, "delete from rooms where server_id = ?", [defaultServerId]);
       run(initial.sqlite, "delete from server_members where server_id = ?", [defaultServerId]);
       run(initial.sqlite, "delete from servers where id = ?", [defaultServerId]);
@@ -158,8 +215,17 @@ describe("Voxly HTTP MVP", () => {
 
       const reopened = await openDatabase(databasePath);
       try {
-        assert.equal(one<{ count: number }>(reopened.sqlite, "select count(*) as count from servers where id = ?", [defaultServerId])?.count, 0);
-        assert.equal(one<{ count: number }>(reopened.sqlite, "select count(*) as count from servers where id = 'remaining'")?.count, 1);
+        assert.equal(
+          one<{ count: number }>(reopened.sqlite, "select count(*) as count from servers where id = ?", [
+            defaultServerId
+          ])?.count,
+          0
+        );
+        assert.equal(
+          one<{ count: number }>(reopened.sqlite, "select count(*) as count from servers where id = 'remaining'")
+            ?.count,
+          1
+        );
       } finally {
         reopened.close();
       }
@@ -177,13 +243,22 @@ describe("Voxly HTTP MVP", () => {
 
     try {
       const now = new Date().toISOString();
-      run(initial.sqlite, "insert into users (id, nickname, role) values (?, ?, ?)", ["second-member", "Second member", "member"]);
-      run(initial.sqlite, "insert into servers (id, name, created_at) values (?, ?, ?)", ["second-server", "Second server", now]);
-      run(
-        initial.sqlite,
-        "insert into server_members (server_id, user_id, role, joined_at) values (?, ?, ?, ?)",
-        ["second-server", "second-member", "member", now]
-      );
+      run(initial.sqlite, "insert into users (id, nickname, role) values (?, ?, ?)", [
+        "second-member",
+        "Second member",
+        "member"
+      ]);
+      run(initial.sqlite, "insert into servers (id, name, created_at) values (?, ?, ?)", [
+        "second-server",
+        "Second server",
+        now
+      ]);
+      run(initial.sqlite, "insert into server_members (server_id, user_id, role, joined_at) values (?, ?, ?, ?)", [
+        "second-server",
+        "second-member",
+        "member",
+        now
+      ]);
       initial.close();
       initialClosed = true;
 
@@ -247,7 +322,10 @@ describe("Voxly HTTP MVP", () => {
 
       assert.equal(response.statusCode, 404);
       const tables = lockedApp.dumpTables() as { users: Array<{ role: string }> };
-      assert.deepEqual(tables.users.filter((user) => user.role === "owner"), []);
+      assert.deepEqual(
+        tables.users.filter((user) => user.role === "owner"),
+        []
+      );
     } finally {
       await lockedApp.close();
     }
@@ -436,17 +514,13 @@ describe("Voxly HTTP MVP", () => {
     });
     assert.equal(firstResponse.statusCode, 200);
 
-    const sessionCookie = firstResponse.cookies.find(
-      (cookie: { name: string }) => cookie.name === "voxly_session"
-    );
+    const sessionCookie = firstResponse.cookies.find((cookie: { name: string }) => cookie.name === "voxly_session");
     assert.equal(sessionCookie?.name, "voxly_session");
     assert.ok(sessionCookie?.expires instanceof Date);
 
-    const session = one<{ expires_at: string }>(
-      app.sqlite,
-      "select expires_at from sessions where token_hash = ?",
-      [hashToken(owner.cookies.voxly_session)]
-    );
+    const session = one<{ expires_at: string }>(app.sqlite, "select expires_at from sessions where token_hash = ?", [
+      hashToken(owner.cookies.voxly_session)
+    ]);
     assert.ok(session);
     assert.ok(new Date(session.expires_at).getTime() > new Date(soon).getTime());
   });
@@ -568,10 +642,7 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(created.statusCode, 201);
     assert.equal(created.json().invite.maxUses, 5);
     assert.equal(created.json().invite.usedCount, 0);
-    assert.equal(
-      new Date(created.json().invite.expiresAt).getTime() - Date.now() <= 30 * 60 * 1000,
-      true
-    );
+    assert.equal(new Date(created.json().invite.expiresAt).getTime() - Date.now() <= 30 * 60 * 1000, true);
 
     const inviteToken = created.json().invite.token as string;
     for (const nickname of ["Ada", "Ece"]) {
@@ -662,13 +733,19 @@ describe("Voxly HTTP MVP", () => {
       cookies: owner.cookies,
       payload: { label: "Final", expiresInMinutes: null, maxUses: 1 }
     });
-    const attempts = await Promise.all(["Winner A", "Winner B"].map((nickname) => app.server.inject({
-      method: "POST",
-      url: "/api/invites/accept",
-      payload: { inviteToken: finalUse.json().invite.token, nickname }
-    })));
+    const attempts = await Promise.all(
+      ["Winner A", "Winner B"].map((nickname) =>
+        app.server.inject({
+          method: "POST",
+          url: "/api/invites/accept",
+          payload: { inviteToken: finalUse.json().invite.token, nickname }
+        })
+      )
+    );
     assert.deepEqual(attempts.map((response) => response.statusCode).sort(), [201, 404]);
-    const count = one<{ count: number }>(app.sqlite, "select count(*) as count from invite_uses where invite_id = ?", [finalUse.json().invite.id]);
+    const count = one<{ count: number }>(app.sqlite, "select count(*) as count from invite_uses where invite_id = ?", [
+      finalUse.json().invite.id
+    ]);
     assert.equal(count?.count, 1);
   });
 
@@ -1217,7 +1294,10 @@ describe("Voxly HTTP MVP", () => {
     const rooms = roomsResponse.json().rooms as Array<{ id: string }>;
     const fullLayout = {
       groups: [
-        { categoryId: null, roomIds: rooms.filter((room) => room.id !== textRoom.id && room.id !== voiceRoom.id).map((room) => room.id) },
+        {
+          categoryId: null,
+          roomIds: rooms.filter((room) => room.id !== textRoom.id && room.id !== voiceRoom.id).map((room) => room.id)
+        },
         { categoryId: firstCategory.id, roomIds: [textRoom.id, voiceRoom.id] },
         { categoryId: secondCategory.id, roomIds: [] }
       ]
@@ -1229,22 +1309,69 @@ describe("Voxly HTTP MVP", () => {
       payload: fullLayout
     });
     assert.equal(applied.statusCode, 200);
-    assert.equal(applied.json().rooms.find((room: { id: string }) => room.id === textRoom.id).categoryId, firstCategory.id);
-    assert.equal(applied.json().rooms.find((room: { id: string }) => room.id === voiceRoom.id).categoryId, firstCategory.id);
-    assert.equal(applied.json().categories.find((category: { id: string }) => category.id === secondCategory.id).position, 20);
+    assert.equal(
+      applied.json().rooms.find((room: { id: string }) => room.id === textRoom.id).categoryId,
+      firstCategory.id
+    );
+    assert.equal(
+      applied.json().rooms.find((room: { id: string }) => room.id === voiceRoom.id).categoryId,
+      firstCategory.id
+    );
+    assert.equal(
+      applied.json().categories.find((category: { id: string }) => category.id === secondCategory.id).position,
+      20
+    );
 
     const snapshot = (response: { json: () => any }) => ({
-      rooms: response.json().rooms.map((room: { id: string; categoryId: string | null; position: number }) => ({ id: room.id, categoryId: room.categoryId, position: room.position })),
-      categories: response.json().categories.map((category: { id: string; position: number }) => ({ id: category.id, position: category.position })),
+      rooms: response.json().rooms.map((room: { id: string; categoryId: string | null; position: number }) => ({
+        id: room.id,
+        categoryId: room.categoryId,
+        position: room.position
+      })),
+      categories: response.json().categories.map((category: { id: string; position: number }) => ({
+        id: category.id,
+        position: category.position
+      })),
       uncategorizedPosition: response.json().uncategorizedPosition
     });
     const before = snapshot(applied);
     const invalidLayouts = [
-      { ...fullLayout, groups: fullLayout.groups.map((group, index) => index === 0 ? { ...group, roomIds: group.roomIds.slice(1) } : group) },
-      { ...fullLayout, groups: fullLayout.groups.map((group, index) => index === 0 ? { ...group, roomIds: [...group.roomIds, group.roomIds[0]!] } : group) },
-      { ...fullLayout, groups: fullLayout.groups.map((group, index) => index === 0 ? { ...group, roomIds: group.roomIds.map((id, roomIndex) => roomIndex === 0 ? foreignRoomId : id) } : group) },
-      { ...fullLayout, groups: [fullLayout.groups[0]!, { categoryId: firstCategory.id, roomIds: [] }, { categoryId: firstCategory.id, roomIds: [] }] },
-      { ...fullLayout, groups: [fullLayout.groups[0]!, { categoryId: firstCategory.id, roomIds: [] }, { categoryId: foreignCategoryId, roomIds: [] }] },
+      {
+        ...fullLayout,
+        groups: fullLayout.groups.map((group, index) =>
+          index === 0 ? { ...group, roomIds: group.roomIds.slice(1) } : group
+        )
+      },
+      {
+        ...fullLayout,
+        groups: fullLayout.groups.map((group, index) =>
+          index === 0 ? { ...group, roomIds: [...group.roomIds, group.roomIds[0]!] } : group
+        )
+      },
+      {
+        ...fullLayout,
+        groups: fullLayout.groups.map((group, index) =>
+          index === 0
+            ? { ...group, roomIds: group.roomIds.map((id, roomIndex) => (roomIndex === 0 ? foreignRoomId : id)) }
+            : group
+        )
+      },
+      {
+        ...fullLayout,
+        groups: [
+          fullLayout.groups[0]!,
+          { categoryId: firstCategory.id, roomIds: [] },
+          { categoryId: firstCategory.id, roomIds: [] }
+        ]
+      },
+      {
+        ...fullLayout,
+        groups: [
+          fullLayout.groups[0]!,
+          { categoryId: firstCategory.id, roomIds: [] },
+          { categoryId: foreignCategoryId, roomIds: [] }
+        ]
+      },
       { ...fullLayout, groups: fullLayout.groups.filter((group) => group.categoryId !== null) },
       { ...fullLayout, groups: [{ categoryId: null, roomIds: [] }, ...fullLayout.groups] }
     ];
@@ -1281,7 +1408,11 @@ describe("Voxly HTTP MVP", () => {
     });
     assert.equal(movedUncategorized.statusCode, 200);
     assert.equal(movedUncategorized.json().uncategorizedPosition, 10);
-    assert.equal(movedUncategorized.json().categories.find((category: { id: string }) => category.id === firstCategory.id).position, 0);
+    assert.equal(
+      movedUncategorized.json().categories.find((category: { id: string }) => category.id === firstCategory.id)
+        .position,
+      0
+    );
     const reloadedLayout = await app.server.inject({
       method: "GET",
       url: "/api/servers/the-basement/rooms",
@@ -1682,7 +1813,7 @@ describe("Voxly HTTP MVP", () => {
       cookies: member.cookies
     });
     assert.equal(visibleToMember.statusCode, 200);
-    const directoryKeys = ["canInvite", "isBot", "nickname", "role", "userId"];
+    const directoryKeys = ["canInvite", "isBot", "mentionCode", "nickname", "role", "userId"];
     assert.deepEqual(
       visibleToMember.json().members.map((entry: Record<string, unknown>) => Object.keys(entry).sort()),
       [directoryKeys, directoryKeys, directoryKeys]
@@ -1692,8 +1823,9 @@ describe("Voxly HTTP MVP", () => {
       ["Ada", musicBotNickname, owner.user.nickname]
     );
     assert.deepEqual(
-      visibleToMember.json().members
-        .filter((entry: { isBot: boolean }) => entry.isBot)
+      visibleToMember
+        .json()
+        .members.filter((entry: { isBot: boolean }) => entry.isBot)
         .map((entry: { nickname: string }) => entry.nickname),
       [musicBotNickname]
     );
@@ -2013,7 +2145,10 @@ describe("Voxly HTTP MVP", () => {
     });
     assert.equal(visibleServers.statusCode, 200);
     assert.deepEqual(
-      visibleServers.json().servers.map((server: { id: string }) => server.id).sort(),
+      visibleServers
+        .json()
+        .servers.map((server: { id: string }) => server.id)
+        .sort(),
       [defaultServerId, secondServerId].sort()
     );
 
@@ -2080,12 +2215,13 @@ describe("Voxly HTTP MVP", () => {
       payload: { name: "Weekend Crew" }
     });
     const serverId = createdServer.json().server.id as string;
-    const createInvite = (label: string) => app.server.inject({
-      method: "POST",
-      url: `/api/servers/${serverId}/invites`,
-      cookies: owner.cookies,
-      payload: { label, expiresInMinutes: 1440 }
-    });
+    const createInvite = (label: string) =>
+      app.server.inject({
+        method: "POST",
+        url: `/api/servers/${serverId}/invites`,
+        cookies: owner.cookies,
+        payload: { label, expiresInMinutes: 1440 }
+      });
 
     const initialInvite = await createInvite("Initial membership");
     await app.server.inject({
@@ -2106,7 +2242,10 @@ describe("Voxly HTTP MVP", () => {
       cookies: owner.cookies
     });
     assert.equal(afterKick.statusCode, 200);
-    assert.equal(afterKick.json().members.some((entry: { id: string }) => entry.id === member.user.id), false);
+    assert.equal(
+      afterKick.json().members.some((entry: { id: string }) => entry.id === member.user.id),
+      false
+    );
 
     const rejoinInvite = await createInvite("Rejoin after kick");
     const rejoin = await app.server.inject({
@@ -2129,7 +2268,10 @@ describe("Voxly HTTP MVP", () => {
       cookies: owner.cookies
     });
     assert.equal(afterBan.statusCode, 200);
-    assert.equal(afterBan.json().members.some((entry: { id: string }) => entry.id === member.user.id), true);
+    assert.equal(
+      afterBan.json().members.some((entry: { id: string }) => entry.id === member.user.id),
+      true
+    );
     const bannedInvite = await createInvite("Must remain unused");
     const bannedJoin = await app.server.inject({
       method: "POST",
@@ -2146,22 +2288,26 @@ describe("Voxly HTTP MVP", () => {
   it("replaces one-time member access links without exposing their tokens", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Mehmet");
-    const defaultServer = (await app.server.inject({
-      method: "GET",
-      url: "/api/servers",
-      cookies: owner.cookies
-    })).json().servers[0] as { id: string };
+    const defaultServer = (
+      await app.server.inject({
+        method: "GET",
+        url: "/api/servers",
+        cookies: owner.cookies
+      })
+    ).json().servers[0] as { id: string };
 
-    const createAccessLink = () => app.server.inject({
-      method: "POST",
-      url: `/api/servers/${defaultServer.id}/members/${member.user.id}/access-links`,
-      cookies: owner.cookies
-    });
-    const claim = (token: string) => app.server.inject({
-      method: "POST",
-      url: "/api/access/claim",
-      payload: { token }
-    });
+    const createAccessLink = () =>
+      app.server.inject({
+        method: "POST",
+        url: `/api/servers/${defaultServer.id}/members/${member.user.id}/access-links`,
+        cookies: owner.cookies
+      });
+    const claim = (token: string) =>
+      app.server.inject({
+        method: "POST",
+        url: "/api/access/claim",
+        payload: { token }
+      });
 
     const first = await createAccessLink();
     const second = await createAccessLink();
@@ -2271,7 +2417,10 @@ describe("Voxly HTTP MVP", () => {
       url: `/api/servers/${defaultServerId}/rooms`,
       cookies: owner.cookies
     });
-    assert.equal(after.json().rooms.some((room: { isAfk: boolean }) => room.isAfk), false);
+    assert.equal(
+      after.json().rooms.some((room: { isAfk: boolean }) => room.isAfk),
+      false
+    );
   });
 
   it("gives every server its own Music bot account", async () => {
@@ -2291,7 +2440,10 @@ describe("Voxly HTTP MVP", () => {
         url: `/api/servers/${serverId}/directory`,
         cookies: owner.cookies
       });
-      botsByServer.set(serverId, directory.json().members.filter((member: { isBot: boolean }) => member.isBot));
+      botsByServer.set(
+        serverId,
+        directory.json().members.filter((member: { isBot: boolean }) => member.isBot)
+      );
     }
 
     for (const [serverId, bots] of botsByServer) {
@@ -2320,21 +2472,33 @@ describe("Voxly HTTP MVP", () => {
       legacy.close();
 
       const upgraded = await createVoxlyApp({ databasePath, secureCookies: false });
-      const botCount = () => (upgraded.sqlite
-        .prepare(`select count(*) as count from server_members
+      const botCount = () =>
+        (
+          upgraded.sqlite
+            .prepare(
+              `select count(*) as count from server_members
           join users on users.id = server_members.user_id
-          where server_members.server_id = 'legacy-server' and users.is_bot = 1`)
-        .get() as { count: number }).count;
+          where server_members.server_id = 'legacy-server' and users.is_bot = 1`
+            )
+            .get() as { count: number }
+        ).count;
       assert.equal(botCount(), 1);
       await upgraded.close();
 
       // Re-opening must not hand out a second one.
       const restarted = await createVoxlyApp({ databasePath, secureCookies: false });
-      assert.equal((restarted.sqlite
-        .prepare(`select count(*) as count from server_members
+      assert.equal(
+        (
+          restarted.sqlite
+            .prepare(
+              `select count(*) as count from server_members
           join users on users.id = server_members.user_id
-          where server_members.server_id = 'legacy-server' and users.is_bot = 1`)
-        .get() as { count: number }).count, 1);
+          where server_members.server_id = 'legacy-server' and users.is_bot = 1`
+            )
+            .get() as { count: number }
+        ).count,
+        1
+      );
       await restarted.close();
     } finally {
       await rm(directory, { recursive: true, force: true });
@@ -2386,7 +2550,8 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(globallyBanned.statusCode, 409);
     assert.equal(globallyBanned.json().error, "cannot_moderate_bot");
     assert.equal(
-      (app.sqlite.prepare("select banned_at from users where id = ?").get(botId) as { banned_at: string | null }).banned_at,
+      (app.sqlite.prepare("select banned_at from users where id = ?").get(botId) as { banned_at: string | null })
+        .banned_at,
       null
     );
 
@@ -2406,7 +2571,10 @@ describe("Voxly HTTP MVP", () => {
       url: `/api/servers/${defaultServerId}/directory`,
       cookies: owner.cookies
     });
-    assert.equal(stillListed.json().members.some((member: { userId: string }) => member.userId === botId), true);
+    assert.equal(
+      stillListed.json().members.some((member: { userId: string }) => member.userId === botId),
+      true
+    );
   });
 
   it("treats the AFK room as an ordinary room the owner may rename", async () => {
@@ -2459,8 +2627,14 @@ describe("Voxly HTTP MVP", () => {
       cookies: owner.cookies
     });
     assert.equal(deleted.statusCode, 204);
-    assert.equal((app.dumpTables().rooms as Array<{ id: string }>).some((room) => room.id === roomId), false);
-    assert.equal((app.dumpTables().messages as Array<{ room_id: string }>).some((message) => message.room_id === roomId), false);
+    assert.equal(
+      (app.dumpTables().rooms as Array<{ id: string }>).some((room) => room.id === roomId),
+      false
+    );
+    assert.equal(
+      (app.dumpTables().messages as Array<{ room_id: string }>).some((message) => message.room_id === roomId),
+      false
+    );
 
     const lobbyDelete = await app.server.inject({
       method: "DELETE",
@@ -2470,8 +2644,9 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(lobbyDelete.statusCode, 204);
     // The AFK room is an ordinary room and counts towards the floor like any
     // other, so it has to go before `general` becomes the last one.
-    const afkRoom = (app.dumpTables().rooms as Array<{ id: string; server_id: string; is_afk: number }>)
-      .find((room) => room.server_id === defaultServerId && room.is_afk === 1);
+    const afkRoom = (app.dumpTables().rooms as Array<{ id: string; server_id: string; is_afk: number }>).find(
+      (room) => room.server_id === defaultServerId && room.is_afk === 1
+    );
     assert.ok(afkRoom, "every server is seeded with an AFK room");
     const afkDelete = await app.server.inject({
       method: "DELETE",
@@ -2516,11 +2691,13 @@ describe("Voxly HTTP MVP", () => {
       url: `/api/servers/${serverId}/members/${member.user.id}/access-links`,
       cookies: owner.cookies
     });
-    const rooms = (await app.server.inject({
-      method: "GET",
-      url: `/api/servers/${serverId}/rooms`,
-      cookies: owner.cookies
-    })).json().rooms as Array<{ id: string; kind: string }>;
+    const rooms = (
+      await app.server.inject({
+        method: "GET",
+        url: `/api/servers/${serverId}/rooms`,
+        cookies: owner.cookies
+      })
+    ).json().rooms as Array<{ id: string; kind: string }>;
     const textRoom = rooms.find((room) => room.kind === "text");
     assert.ok(textRoom);
     await app.server.inject({
@@ -2546,15 +2723,39 @@ describe("Voxly HTTP MVP", () => {
     });
     assert.equal(deleted.statusCode, 204);
     const tables = app.dumpTables();
-    assert.equal((tables.servers as Array<{ id: string }>).some((server) => server.id === serverId), false);
-    assert.equal((tables.rooms as Array<{ server_id: string }>).some((room) => room.server_id === serverId), false);
-    assert.equal((tables.serverMembers as Array<{ server_id: string }>).some((membership) => membership.server_id === serverId), false);
-    assert.equal((tables.invites as Array<{ server_id: string }>).some((entry) => entry.server_id === serverId), false);
-    assert.equal((tables.accessClaims as Array<{ server_id: string }>).some((entry) => entry.server_id === serverId), false);
-    assert.equal((tables.messages as Array<{ room_id: string }>).some((message) => rooms.some((room) => room.id === message.room_id)), false);
+    assert.equal(
+      (tables.servers as Array<{ id: string }>).some((server) => server.id === serverId),
+      false
+    );
+    assert.equal(
+      (tables.rooms as Array<{ server_id: string }>).some((room) => room.server_id === serverId),
+      false
+    );
+    assert.equal(
+      (tables.serverMembers as Array<{ server_id: string }>).some((membership) => membership.server_id === serverId),
+      false
+    );
+    assert.equal(
+      (tables.invites as Array<{ server_id: string }>).some((entry) => entry.server_id === serverId),
+      false
+    );
+    assert.equal(
+      (tables.accessClaims as Array<{ server_id: string }>).some((entry) => entry.server_id === serverId),
+      false
+    );
+    assert.equal(
+      (tables.messages as Array<{ room_id: string }>).some((message) =>
+        rooms.some((room) => room.id === message.room_id)
+      ),
+      false
+    );
     assert.equal((tables.users as unknown[]).length, usersBefore);
     assert.equal((tables.sessions as unknown[]).length, sessionsBefore);
-    assert.ok((tables.auditEvents as Array<{ action: string; server_id: string }>).some((event) => event.action === "server.deleted" && event.server_id === serverId));
+    assert.ok(
+      (tables.auditEvents as Array<{ action: string; server_id: string }>).some(
+        (event) => event.action === "server.deleted" && event.server_id === serverId
+      )
+    );
 
     const lastServer = await app.server.inject({
       method: "DELETE",
@@ -2574,7 +2775,10 @@ describe("Voxly HTTP MVP", () => {
       payload: { name: "Owned server" }
     });
     const ownedServerId = created.json().server.id as string;
-    run(app.sqlite, "update server_members set role = 'member' where server_id = ? and user_id = ?", [defaultServerId, owner.user.id]);
+    run(app.sqlite, "update server_members set role = 'member' where server_id = ? and user_id = ?", [
+      defaultServerId,
+      owner.user.id
+    ]);
 
     const deleted = await app.server.inject({
       method: "DELETE",
@@ -2590,7 +2794,10 @@ describe("Voxly static web serving", () => {
   it("serves a versioned React build with update-safe cache headers", async () => {
     const webDistPath = await mkdtemp(join(tmpdir(), "voxly-web-"));
     await mkdir(join(webDistPath, "assets"));
-    await writeFile(join(webDistPath, "index.html"), '<!doctype html><title>Voxly web</title><script type="module" src="/assets/index-build123.js"></script>');
+    await writeFile(
+      join(webDistPath, "index.html"),
+      '<!doctype html><title>Voxly web</title><script type="module" src="/assets/index-build123.js"></script>'
+    );
     await writeFile(join(webDistPath, "assets", "index-build123.js"), "console.log('Voxly')");
     const staticApp = await createVoxlyApp({
       databasePath: ":memory:",
@@ -2873,11 +3080,14 @@ describe("music bot credentials", () => {
   it("retires the credential it replaced, so only one bot session is ever live", async () => {
     const app = await createAppWithBot();
     try {
-      const exchange = async () => (await app.server.inject({
-        method: "POST",
-        url: "/api/bot/sessions",
-        headers: { authorization: `Bearer ${botToken}` }
-      })).json() as { cookieName: string; sessions: Array<{ token: string }> };
+      const exchange = async () =>
+        (
+          await app.server.inject({
+            method: "POST",
+            url: "/api/bot/sessions",
+            headers: { authorization: `Bearer ${botToken}` }
+          })
+        ).json() as { cookieName: string; sessions: Array<{ token: string }> };
 
       const first = await exchange();
       const second = await exchange();

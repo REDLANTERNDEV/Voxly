@@ -1,8 +1,4 @@
-import {
-  createVoiceActivityState,
-  updateVoiceActivity,
-  type VoiceActivityState
-} from "./voiceActivity.js";
+import { createVoiceActivityState, updateVoiceActivity, type VoiceActivityState } from "./voiceActivity.js";
 
 /** Vite fingerprints this asset so a new processor cannot reuse an old cache entry. */
 export const noiseSuppressorModuleUrl = new URL("../worklets/noise-suppressor.worklet.js", import.meta.url).href;

@@ -87,7 +87,6 @@ const tokenGraceMs = 2 * 60 * 1000;
  */
 const tokenMemoryMs = 30 * 24 * 60 * 60 * 1000;
 
-
 export interface AuthUser {
   id: string;
   nickname: string;
@@ -181,9 +180,9 @@ function refreshUnknownDeviceLabel(database: VoxlyDatabase, sessionId: string, u
   const label = deviceLabel(userAgent);
   if (label === "Unknown device") return;
 
-  const changed = database.sqlite.prepare(
-    "update sessions set label = ? where id = ? and (label is null or label = 'Unknown device')"
-  ).run(label, sessionId).changes;
+  const changed = database.sqlite
+    .prepare("update sessions set label = ? where id = ? and (label is null or label = 'Unknown device')")
+    .run(label, sessionId).changes;
   if (changed > 0) database.save();
 }
 
@@ -201,11 +200,9 @@ type AuthenticationResult =
  * route only decides which of the two safe errors to send.
  */
 export type HttpAuthenticationResult =
-  | { ok: true; user: AuthUser }
-  | { ok: false; error: "unauthorized" | "session_reused" };
+  { ok: true; user: AuthUser } | { ok: false; error: "unauthorized" | "session_reused" };
 
-const sessionColumns =
-  "id, token_hash, user_id, expires_at, revoked_at, last_seen_at, token_issued_at";
+const sessionColumns = "id, token_hash, user_id, expires_at, revoked_at, last_seen_at, token_issued_at";
 
 function authenticate(sqlite: DatabaseSync, sessionToken: string | undefined): AuthenticationResult {
   if (!sessionToken) {
@@ -213,11 +210,7 @@ function authenticate(sqlite: DatabaseSync, sessionToken: string | undefined): A
   }
 
   const tokenHash = hashToken(sessionToken);
-  let session = one<SessionRow>(
-    sqlite,
-    `select ${sessionColumns} from sessions where token_hash = ?`,
-    [tokenHash]
-  );
+  let session = one<SessionRow>(sqlite, `select ${sessionColumns} from sessions where token_hash = ?`, [tokenHash]);
   // Not the current value. It may be one this session has already retired,
   // which is a different situation from an unknown token and is answered
   // differently.
@@ -232,11 +225,7 @@ function authenticate(sqlite: DatabaseSync, sessionToken: string | undefined): A
     if (!retired) return { status: "unauthorized" };
     const reuseClock = retired.replacement_seen_at ?? retired.superseded_at;
     const retiredFor = Date.now() - new Date(reuseClock).getTime();
-    session = one<SessionRow>(
-      sqlite,
-      `select ${sessionColumns} from sessions where id = ?`,
-      [retired.session_id]
-    );
+    session = one<SessionRow>(sqlite, `select ${sessionColumns} from sessions where id = ?`, [retired.session_id]);
     if (!session) return { status: "unauthorized" };
     if (retiredFor > tokenGraceMs) {
       if (retired.replacement_seen_at) {
@@ -258,9 +247,11 @@ function authenticate(sqlite: DatabaseSync, sessionToken: string | undefined): A
     return { status: "unauthorized" };
   }
 
-  const user = one<SessionUserRow & { deleted_at: string | null }>(sqlite, "select id, nickname, role, banned_at, is_bot, deleted_at from users where id = ?", [
-    session.user_id
-  ]);
+  const user = one<SessionUserRow & { deleted_at: string | null }>(
+    sqlite,
+    "select id, nickname, role, banned_at, is_bot, deleted_at from users where id = ?",
+    [session.user_id]
+  );
   if (!user || user.banned_at || user.deleted_at) {
     return { status: "unauthorized" };
   }
@@ -378,11 +369,10 @@ export function rotateTokenIfNeeded(
     // Guarded on the value we were shown, so two parallel requests that both
     // decide to rotate produce one rotation rather than two — the loser's
     // update matches nothing and it simply keeps the cookie it has.
-    const claimed = one<{ id: string }>(
-      database.sqlite,
-      "select id from sessions where id = ? and token_hash = ?",
-      [user.sessionId, currentHash]
-    );
+    const claimed = one<{ id: string }>(database.sqlite, "select id from sessions where id = ? and token_hash = ?", [
+      user.sessionId,
+      currentHash
+    ]);
     if (!claimed) {
       database.sqlite.exec("rollback");
       return false;
@@ -469,11 +459,12 @@ function recoverUnconfirmedRotation(
       "update session_tokens set superseded_at = ? where session_id = ? and replacement_seen_at is null",
       [now.toISOString(), result.user.sessionId]
     );
-    run(
-      database.sqlite,
-      "update sessions set token_hash = ?, token_issued_at = ? where id = ? and token_hash = ?",
-      [nextHash, now.toISOString(), result.user.sessionId, current.token_hash]
-    );
+    run(database.sqlite, "update sessions set token_hash = ?, token_issued_at = ? where id = ? and token_hash = ?", [
+      nextHash,
+      now.toISOString(),
+      result.user.sessionId,
+      current.token_hash
+    ]);
     database.sqlite.exec("commit");
   } catch (cause) {
     database.sqlite.exec("rollback");
@@ -487,9 +478,9 @@ function recoverUnconfirmedRotation(
 
 /** A returned replacement is the evidence time alone could never provide. */
 function confirmReplacementDelivery(database: VoxlyDatabase, sessionId: string, now = new Date()) {
-  const changed = database.sqlite.prepare(
-    "update session_tokens set replacement_seen_at = ? where session_id = ? and replacement_seen_at is null"
-  ).run(now.toISOString(), sessionId).changes;
+  const changed = database.sqlite
+    .prepare("update session_tokens set replacement_seen_at = ? where session_id = ? and replacement_seen_at is null")
+    .run(now.toISOString(), sessionId).changes;
   if (changed > 0) database.save();
 }
 

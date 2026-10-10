@@ -3,7 +3,10 @@ import type { Translate } from "../app/types.js";
 export function AppShellSkeleton({ t }: { t: Translate }) {
   return (
     <main className="app-shell-skeleton" aria-label={t("system.loadingApp")} aria-busy="true">
-      <aside className="skeleton-panel skeleton-workspaces" aria-hidden="true"><span className="skeleton-line" /><span className="skeleton-line" /></aside>
+      <aside className="skeleton-panel skeleton-workspaces" aria-hidden="true">
+        <span className="skeleton-line" />
+        <span className="skeleton-line" />
+      </aside>
       <aside className="skeleton-panel skeleton-rail">
         <span className="skeleton-line skeleton-brand" />
         <span className="skeleton-line skeleton-control" />
@@ -12,7 +15,9 @@ export function AppShellSkeleton({ t }: { t: Translate }) {
         <span className="skeleton-line skeleton-short" />
       </aside>
       <section className="skeleton-panel skeleton-main">
-        <header className="skeleton-header"><span className="skeleton-line skeleton-title" /></header>
+        <header className="skeleton-header">
+          <span className="skeleton-line skeleton-title" />
+        </header>
         <div className="skeleton-content">
           <span className="skeleton-line" />
           <span className="skeleton-line" />
@@ -24,7 +29,9 @@ export function AppShellSkeleton({ t }: { t: Translate }) {
         <span className="skeleton-line" />
         <span className="skeleton-line skeleton-short" />
       </aside>
-      <footer className="skeleton-dock"><span className="skeleton-line skeleton-control" /></footer>
+      <footer className="skeleton-dock">
+        <span className="skeleton-line skeleton-control" />
+      </footer>
     </main>
   );
 }

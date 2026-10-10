@@ -262,9 +262,10 @@ describe("more than one Listener", () => {
       });
 
       await until(
-        () => bot.removed.includes(listenerMiddle)
-          && listener.offersReceived > beforeOffers
-          && listener.answersSent > beforeAnswers,
+        () =>
+          bot.removed.includes(listenerMiddle) &&
+          listener.offersReceived > beforeOffers &&
+          listener.answersSent > beforeAnswers,
         "the coordinated recovery negotiation"
       );
     } finally {
@@ -336,7 +337,6 @@ describe("the mesh's own bookkeeping", () => {
   });
 });
 
-
 describe("Listener media instance replacement", () => {
   for (const botId of [botBelow, botAbove]) {
     it(`restores audio after reload without a membership departure (${botId})`, async () => {
@@ -355,7 +355,7 @@ describe("Listener media instance replacement", () => {
         await until(() => listener.received.length > 20, "audio before reload");
         const offersBefore = listener.offersReceived;
         bot.mesh.applySnapshot(snapshot("before-reload"));
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         assert.equal(listener.offersReceived, offersBefore, "same media instance must not renegotiate");
         await listener.close();
         listener = new FakeListener({ relay: bot.relay, userId: listenerMiddle, peerUserId: botId });

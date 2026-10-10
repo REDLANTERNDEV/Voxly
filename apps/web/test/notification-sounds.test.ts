@@ -70,7 +70,10 @@ describe("notification sound preferences", () => {
 
   it("keeps the notification level within the slider range", () => {
     const storage = memoryStorage();
-    storage.setItem(notificationSoundStorageKey("loud"), JSON.stringify({ ...DEFAULT_NOTIFICATION_SOUNDS, volume: 400 }));
+    storage.setItem(
+      notificationSoundStorageKey("loud"),
+      JSON.stringify({ ...DEFAULT_NOTIFICATION_SOUNDS, volume: 400 })
+    );
 
     assert.equal(clampNotificationVolume(400), 100);
     assert.equal(clampNotificationVolume(-20), 0);
@@ -99,8 +102,14 @@ describe("notification sound gating", () => {
     assert.equal(notificationSoundAllowed("message", preferences({ enabled: false }), { deafened: false }), false);
     assert.equal(notificationSoundAllowed("message", preferences({ message: false }), { deafened: false }), false);
     assert.equal(notificationSoundAllowed("voicePeerJoin", preferences({ voice: false }), { deafened: false }), false);
-    assert.equal(notificationSoundAllowed("screenShareStart", preferences({ voice: false }), { deafened: false }), false);
-    assert.equal(notificationSoundAllowed("connectionLost", preferences({ connection: false }), { deafened: false }), false);
+    assert.equal(
+      notificationSoundAllowed("screenShareStart", preferences({ voice: false }), { deafened: false }),
+      false
+    );
+    assert.equal(
+      notificationSoundAllowed("connectionLost", preferences({ connection: false }), { deafened: false }),
+      false
+    );
     assert.equal(notificationSoundAllowed("message", preferences(), { deafened: false }), true);
   });
 
@@ -118,10 +127,7 @@ describe("audible voice roster", () => {
   const snapshot = {
     roomId: "voice-1",
     viewerInVoiceRoom: true,
-    members: [
-      { user: { userId: "ada" } },
-      { user: { userId: "lin" } }
-    ]
+    members: [{ user: { userId: "ada" } }, { user: { userId: "lin" } }]
   } as unknown as VoiceSnapshot;
 
   it("uses a snapshot only when it confirms the listener is in that voice room", () => {
@@ -138,10 +144,17 @@ describe("audible voice roster", () => {
   });
 
   it("keeps an observer silent when a stale snapshot still contains the listener", () => {
-    assert.equal(activeVoiceRosterUserIds("voice-1", {
-      ...snapshot,
-      viewerInVoiceRoom: false
-    } as VoiceSnapshot, "ada"), null);
+    assert.equal(
+      activeVoiceRosterUserIds(
+        "voice-1",
+        {
+          ...snapshot,
+          viewerInVoiceRoom: false
+        } as VoiceSnapshot,
+        "ada"
+      ),
+      null
+    );
   });
 });
 
@@ -164,17 +177,34 @@ describe("screen-share cue transitions", () => {
   });
 
   it("does not announce screen changes from an observer snapshot", () => {
-    assert.equal(activeVoiceScreenMembers("voice-1", {
-      ...snapshot,
-      viewerInVoiceRoom: false
-    }, "ada"), null);
+    assert.equal(
+      activeVoiceScreenMembers(
+        "voice-1",
+        {
+          ...snapshot,
+          viewerInVoiceRoom: false
+        },
+        "ada"
+      ),
+      null
+    );
   });
 
   it("reports only start and stop changes for members who remain in the room", () => {
-    assert.deepEqual(screenShareTransitions(
-      [{ userId: "ada", sharing: false }, { userId: "lin", sharing: true }, { userId: "kai", sharing: true }],
-      [{ userId: "ada", sharing: true }, { userId: "lin", sharing: false }]
-    ), { started: ["ada"], stopped: ["lin"] });
+    assert.deepEqual(
+      screenShareTransitions(
+        [
+          { userId: "ada", sharing: false },
+          { userId: "lin", sharing: true },
+          { userId: "kai", sharing: true }
+        ],
+        [
+          { userId: "ada", sharing: true },
+          { userId: "lin", sharing: false }
+        ]
+      ),
+      { started: ["ada"], stopped: ["lin"] }
+    );
   });
 
   it("uses the first snapshot and room changes only as a baseline", () => {
@@ -211,8 +241,14 @@ describe("message cue rule", () => {
 
   it("announces other rooms and messages arriving while the window is away", () => {
     assert.equal(shouldPlayMessageSound({ roomId: "random", userId: "ada" }, context), true);
-    assert.equal(shouldPlayMessageSound({ roomId: "general", userId: "ada" }, { ...context, windowFocused: false }), true);
-    assert.equal(shouldPlayMessageSound({ roomId: "general", userId: "ada" }, { ...context, activeTextRoomId: null }), true);
+    assert.equal(
+      shouldPlayMessageSound({ roomId: "general", userId: "ada" }, { ...context, windowFocused: false }),
+      true
+    );
+    assert.equal(
+      shouldPlayMessageSound({ roomId: "general", userId: "ada" }, { ...context, activeTextRoomId: null }),
+      true
+    );
   });
 });
 

@@ -79,7 +79,11 @@ describe("response security headers", () => {
   it("allows the Umami ingest host as well as the host serving the tag", () => {
     const directives = contentSecurityPolicyDirectives({
       upgradeInsecureRequests: false,
-      analytics: resolveAnalyticsConfig({ provider: "umami", scriptUrl: "https://cloud.umami.is/script.js", websiteId: "abc" })
+      analytics: resolveAnalyticsConfig({
+        provider: "umami",
+        scriptUrl: "https://cloud.umami.is/script.js",
+        websiteId: "abc"
+      })
     });
 
     assert.ok(directives["script-src"].includes("https://cloud.umami.is"));
@@ -150,12 +154,13 @@ describe("rate limiting", () => {
       publicUrl: "https://voxly.example.com"
     });
 
-    const attempt = () => app.server.inject({
-      method: "POST",
-      url: "/api/invites/preview",
-      remoteAddress: "203.0.113.10",
-      payload: { inviteToken: "definitely-not-a-real-token" }
-    });
+    const attempt = () =>
+      app.server.inject({
+        method: "POST",
+        url: "/api/invites/preview",
+        remoteAddress: "203.0.113.10",
+        payload: { inviteToken: "definitely-not-a-real-token" }
+      });
 
     const statuses: number[] = [];
     for (let index = 0; index < 25; index += 1) {
@@ -175,11 +180,15 @@ describe("rate limiting", () => {
 
     const statuses: number[] = [];
     for (let index = 0; index < 40; index += 1) {
-      statuses.push((await app.server.inject({
-        method: "GET",
-        url: "/api/config",
-        remoteAddress: "203.0.113.11"
-      })).statusCode);
+      statuses.push(
+        (
+          await app.server.inject({
+            method: "GET",
+            url: "/api/config",
+            remoteAddress: "203.0.113.11"
+          })
+        ).statusCode
+      );
     }
 
     assert.ok(!statuses.includes(429), "GET /api/config must not be throttled");

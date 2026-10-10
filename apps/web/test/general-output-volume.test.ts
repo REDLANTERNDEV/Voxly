@@ -1,14 +1,22 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { readFileSync } from "node:fs";
 import { readAppSource } from "./app-source.js";
 
 describe("general output volume integration", () => {
   it("combines general output with participant, screen, and microphone test playback", () => {
     const source = readAppSource();
 
-    assert.match(source, /combineOutputVolume\(memberVolumes\[item\.userId\] \?\? DEFAULT_VOLUME_PERCENT, outputVolume\)/);
-    assert.match(source, /combineOutputVolume\(props.screenVolumes\[source.stream!.id\] \?\? DEFAULT_VOLUME_PERCENT, props.audioLevels.output\)/);
-    assert.match(source, /audio\.microphoneTest\.monitorStream[\s\S]*combineOutputVolume\(DEFAULT_VOLUME_PERCENT, audio\.audioLevels\.output\)/);
+    assert.match(
+      source,
+      /combineOutputVolume\(\s*memberVolumes\[item\.userId\]\s+\?\?\s+DEFAULT_VOLUME_PERCENT,\s+outputVolume\s*\)/
+    );
+    assert.match(
+      source,
+      /combineOutputVolume\(\s*props.screenVolumes\[source.stream!.id\]\s+\?\?\s+DEFAULT_VOLUME_PERCENT,\s+props.audioLevels.output\s*\)/
+    );
+    assert.match(
+      source,
+      /audio\.microphoneTest\.monitorStream[\s\S]*combineOutputVolume\(\s*DEFAULT_VOLUME_PERCENT,\s+audio\.audioLevels\.output\s*\)/
+    );
   });
 });

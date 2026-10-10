@@ -46,7 +46,9 @@ export function RecoverySettings({ t }: { t: Translate }) {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const create = useCallback(async () => {
     setBusy(true);
@@ -77,17 +79,21 @@ export function RecoverySettings({ t }: { t: Translate }) {
 
   return (
     <section className="theme-card recovery-card">
-      <div className="theme-card-head"><span className="label">{t("recovery.settingsTitle")}</span></div>
+      <div className="theme-card-head">
+        <span className="label">{t("recovery.settingsTitle")}</span>
+      </div>
       <p className="muted small">{t("recovery.settingsHint")}</p>
-      {error ? <InlineAlert
-        title={t("notification.settingsErrorTitle")}
-        message={error}
-        dismissLabel={t("notification.dismiss")}
-        occurrences={errorOccurrence?.count}
-        occurrenceLabel={t("notification.occurrences", { count: errorOccurrence?.count ?? 1 })}
-        revision={errorOccurrence?.revision}
-        onDismiss={() => setError("")}
-      /> : null}
+      {error ? (
+        <InlineAlert
+          title={t("notification.settingsErrorTitle")}
+          message={error}
+          dismissLabel={t("notification.dismiss")}
+          occurrences={errorOccurrence?.count}
+          occurrenceLabel={t("notification.occurrences", { count: errorOccurrence?.count ?? 1 })}
+          revision={errorOccurrence?.revision}
+          onDismiss={() => setError("")}
+        />
+      ) : null}
       {present === false ? <p className="small recovery-warning">{t("recovery.missing")}</p> : null}
       {present === true ? <p className="muted small">{t("recovery.present")}</p> : null}
       {/* Replacing signs every other Device out, so it asks first. Creating a

@@ -12,8 +12,8 @@ import type { VoiceQuality } from "../src/lib/useVoiceQuality.js";
  * how "my ping is fine" came to be offered as evidence that voice was working.
  * These pin the rule that in a call the signal reports the media instead.
  */
-const translator = (language: LanguageCode) =>
-  (key: TranslationKey, values?: Record<string, string | number>) => translate(language, key, values);
+const translator = (language: LanguageCode) => (key: TranslationKey, values?: Record<string, string | number>) =>
+  translate(language, key, values);
 const t = translator("en");
 
 function health(overrides: Partial<ConnectionHealth> = {}): ConnectionHealth {
@@ -27,7 +27,14 @@ function health(overrides: Partial<ConnectionHealth> = {}): ConnectionHealth {
   };
 }
 
-const measuring: VoiceQuality = { grade: "measuring", symptom: "none", reading: null, transport: null, recoveryRequests: [], clearPeers: [] };
+const measuring: VoiceQuality = {
+  grade: "measuring",
+  symptom: "none",
+  reading: null,
+  transport: null,
+  recoveryRequests: [],
+  clearPeers: []
+};
 
 function quality(overrides: Partial<VoiceQuality> = {}): VoiceQuality {
   return {
@@ -91,18 +98,23 @@ describe("dock connection signal", () => {
   });
 
   it("carries the figures in the detail, which is what gets screenshotted", () => {
-    const signal = voiceSignalPresentation(health(), quality({
-      symptom: "loss",
-      reading: {
-        grade: "breaking",
+    const signal = voiceSignalPresentation(
+      health(),
+      quality({
         symptom: "loss",
-        lossPercent: 9.2,
-        concealedMs: 71,
-        spedUpMs: 0,
-        slowedDownMs: 0,
-        bufferMs: 55
-      }
-    }), true, t);
+        reading: {
+          grade: "breaking",
+          symptom: "loss",
+          lossPercent: 9.2,
+          concealedMs: 71,
+          spedUpMs: 0,
+          slowedDownMs: 0,
+          bufferMs: 55
+        }
+      }),
+      true,
+      t
+    );
 
     assert.match(signal.label, /9\.2%/);
     assert.match(signal.label, /71 ms/);
@@ -110,18 +122,28 @@ describe("dock connection signal", () => {
   });
 
   it("reports the media route separately from the signalling round trip", () => {
-    const signal = voiceSignalPresentation(health(), quality({
-      transport: { rttMs: 210, candidateType: "relay", candidatePairState: "succeeded" }
-    }), true, t);
+    const signal = voiceSignalPresentation(
+      health(),
+      quality({
+        transport: { rttMs: 210, candidateType: "relay", candidatePairState: "succeeded" }
+      }),
+      true,
+      t
+    );
 
     assert.match(signal.label, /TURN/);
     assert.match(signal.label, /210 ms/);
   });
 
   it("stays readable in Turkish, where the reports came from", () => {
-    const signal = voiceSignalPresentation(health(), quality({
-      transport: { rttMs: 210, candidateType: "relay", candidatePairState: "succeeded" }
-    }), true, translator("tr"));
+    const signal = voiceSignalPresentation(
+      health(),
+      quality({
+        transport: { rttMs: 210, candidateType: "relay", candidatePairState: "succeeded" }
+      }),
+      true,
+      translator("tr")
+    );
 
     assert.equal(signal.value, "Dalgalı");
     assert.match(signal.label, /hızlanması/);

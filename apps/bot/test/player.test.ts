@@ -306,7 +306,10 @@ describe("a Track that is still being fetched", () => {
 
   it("does not report the end twice for one pass of a Track", () => {
     const ended: number[] = [];
-    const { player, advance } = testPlayer({ source: TrackBuffer.of(packets.slice(0, 2)), onEnded: () => ended.push(1) });
+    const { player, advance } = testPlayer({
+      source: TrackBuffer.of(packets.slice(0, 2)),
+      onEnded: () => ended.push(1)
+    });
 
     player.start();
     advance(1_000);
@@ -321,7 +324,10 @@ describe("a Track that is still being fetched", () => {
     // mistake above this — and replaying on one would put the wrong Track in
     // front of the room, which is worse than silence and much harder to spot.
     const ended: number[] = [];
-    const { player, advance } = testPlayer({ source: TrackBuffer.of(packets.slice(0, 2)), onEnded: () => ended.push(1) });
+    const { player, advance } = testPlayer({
+      source: TrackBuffer.of(packets.slice(0, 2)),
+      onEnded: () => ended.push(1)
+    });
     const written = capture(player.outputFor("ada"));
 
     player.start();

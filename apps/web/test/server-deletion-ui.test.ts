@@ -7,26 +7,26 @@ describe("server and channel deletion UI", () => {
   it("keeps the shared server switcher focused on navigation", () => {
     const app = readAppSource();
     const switcher = readFileSync("src/components/ServerSwitcher.tsx", "utf8");
-    const channelRail = app.match(/function ChannelRail[\s\S]*?\n}\n\nfunction ChannelDeleteControl/)?.[0] ?? "";
+    const channelRail = app.match(/function\s+ChannelRail[\s\S]*?\n}\n\nfunction\s+ChannelDeleteControl/)?.[0] ?? "";
 
     assert.match(switcher, /id="serverSelect"/);
     assert.doesNotMatch(switcher, /server-create-control/);
     assert.doesNotMatch(switcher, /onCreate/);
     assert.doesNotMatch(switcher, /onRequestDelete/);
-    assert.doesNotMatch(channelRail, /onCreate=\{props\.onCreateServer\}/);
+    assert.doesNotMatch(channelRail, /onCreate=\{\s*props\.onCreateServer\s*\}/);
     assert.doesNotMatch(channelRail, /onRequestDelete=/);
   });
 
   it("places server lifecycle actions in the owner server context", () => {
     const app = readAppSource();
-    const ownerPanel = app.match(/function OwnerPanel[\s\S]*?\n}\n\nfunction AppChrome/)?.[0] ?? "";
+    const ownerPanel = app.match(/function\s+OwnerPanel[\s\S]*?\n}\n\nfunction\s+AppChrome/)?.[0] ?? "";
 
     assert.match(ownerPanel, /className="owner-server-context"/);
-    assert.match(ownerPanel, /function OwnerServerContext/);
-    assert.match(ownerPanel, /encodeURIComponent\(event\.currentTarget\.value\)[\s\S]*?\/owner/);
+    assert.match(ownerPanel, /function\s+OwnerServerContext/);
+    assert.match(ownerPanel, /encodeURIComponent\(\s*event\.currentTarget\.value\s*\)[\s\S]*?\/owner/);
     assert.match(ownerPanel, /props\.onCreateServer/);
     assert.match(ownerPanel, /props\.onUpdateServerName/);
-    assert.match(ownerPanel, /onRename=\{props\.onUpdateServerName\}/);
+    assert.match(ownerPanel, /onRename=\{\s*props\.onUpdateServerName\s*\}/);
     assert.match(ownerPanel, /props\.onDeleteServer/);
     assert.doesNotMatch(ownerPanel, /InviteTargetSelector/);
   });
@@ -34,8 +34,8 @@ describe("server and channel deletion UI", () => {
   it("requires exact-name confirmation for destructive channel and server actions", () => {
     const app = readAppSource();
 
-    assert.match(app, /confirmationText\?: string/);
-    assert.match(app, /confirmationValue === confirmationText/);
+    assert.match(app, /confirmationText\?:\s+string/);
+    assert.match(app, /confirmationValue\s+===\s+confirmationText/);
     assert.match(app, /onDeleteRoom/);
     assert.match(app, /onDeleteServer/);
     assert.match(app, /last_owner_server/);
@@ -44,8 +44,8 @@ describe("server and channel deletion UI", () => {
   it("refreshes navigation for realtime room and server deletion events", () => {
     const app = readAppSource();
 
-    assert.match(app, /next\.on\("server:roomsChanged"/);
-    assert.match(app, /next\.on\("server:deleted"/);
+    assert.match(app, /next\.on\(\s*"server:roomsChanged"/);
+    assert.match(app, /next\.on\(\s*"server:deleted"/);
     assert.match(app, /deletedRoomId/);
   });
 
@@ -55,8 +55,11 @@ describe("server and channel deletion UI", () => {
     const workspace = readFileSync("src/app/useWorkspaceController.ts", "utf8");
     const realtime = readFileSync("src/app/useRealtimeSync.ts", "utf8");
 
-    assert.match(workspace, /refreshRooms = useCallback\(async \(serverId: string, deletedRoomId\?: string\)/);
-    assert.match(realtime, /roomsChanged\(serverId: string, deletedRoomId: string \| undefined\)/);
-    assert.match(workspace, /currentRoute\.roomId === deletedRoomId/);
+    assert.match(
+      workspace,
+      /refreshRooms\s+=\s+useCallback\(\s*async\s+\(\s*serverId:\s+string,\s+deletedRoomId\?:\s+string\s*\)/
+    );
+    assert.match(realtime, /roomsChanged\(\s*serverId:\s+string,\s+deletedRoomId:\s+string\s+\|\s+undefined\s*\)/);
+    assert.match(workspace, /currentRoute\.roomId\s+===\s+deletedRoomId/);
   });
 });

@@ -50,10 +50,7 @@ export type SearchResult = { ok: true; results: MusicSearchResult[] } | { ok: fa
  * `nothing` is an input with no characters in it, which is neither.
  */
 export type ResolverChoice =
-  | { kind: "link"; url: string }
-  | { kind: "search"; name: string }
-  | { kind: "unsupported" }
-  | { kind: "nothing" };
+  { kind: "link"; url: string } | { kind: "search"; name: string } | { kind: "unsupported" } | { kind: "nothing" };
 
 /** Eleven characters of base64url. YouTube has used this shape throughout. */
 const videoIdPattern = /^[A-Za-z0-9_-]{11}$/;
@@ -63,12 +60,7 @@ const videoIdPattern = /^[A-Za-z0-9_-]{11}$/;
  * `youtube.com.evil.example` ends in nothing of the sort, and a suffix test is
  * how that gets missed.
  */
-const watchHosts = new Set([
-  "youtube.com",
-  "www.youtube.com",
-  "m.youtube.com",
-  "music.youtube.com"
-]);
+const watchHosts = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"]);
 const shortHosts = new Set(["youtu.be", "www.youtu.be"]);
 
 /** Paths that carry the video id in the path rather than in `v`. */

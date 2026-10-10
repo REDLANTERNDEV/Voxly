@@ -132,15 +132,17 @@ function requireServerScope<Shape extends z.ZodRawShape>(
   extra: Shape,
   role: "owner" | "member"
 ) {
-  const actor = role === "owner"
-    ? requireOwner(database, request, reply, secureCookies)
-    : requireUser(database, request, reply, secureCookies);
+  const actor =
+    role === "owner"
+      ? requireOwner(database, request, reply, secureCookies)
+      : requireUser(database, request, reply, secureCookies);
   if (!actor) return null;
   // One parse, so a bad `serverId` and a bad `userId` are still answered by the
   // single 400 the error handler turns any ZodError into. The assertion states
   // what the schema literally is; the spread is what TypeScript loses.
-  const params = z.object({ serverId: serverIdParam, ...extra }).parse(request.params) as
-    { serverId: string } & z.output<z.ZodObject<Shape>>;
+  const params = z.object({ serverId: serverIdParam, ...extra }).parse(request.params) as {
+    serverId: string;
+  } & z.output<z.ZodObject<Shape>>;
   const guard = role === "owner" ? requireServerOwner : requireServerMember;
   if (!guard(database, params.serverId, actor.id, reply)) return null;
   return { actor, params };

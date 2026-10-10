@@ -17,6 +17,11 @@ import type { ClientToServerEvents, PresenceUser, ServerToClientEvents } from "@
 export type VoxlyIoServer = Server<ClientToServerEvents, ServerToClientEvents>;
 export type VoxlySocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
+/** Default room changes are synchronous; contain failures from Promise-returning adapters too. */
+export function observeSocketRoomChange(change: void | Promise<void>) {
+  if (change) void change.catch((cause) => console.error("socket room change failed", cause));
+}
+
 export const roomIdPayloadSchema = z.string().min(1);
 
 /**

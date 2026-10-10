@@ -36,7 +36,11 @@ describe("voice media normalization", () => {
   });
 
   it("closes the microphone under an owner mute but leaves the ears open", () => {
-    const next = normalizeVoiceMedia(media({ mic: true, speaking: true }), { muted: true, deafened: false }, ordinaryRoom);
+    const next = normalizeVoiceMedia(
+      media({ mic: true, speaking: true }),
+      { muted: true, deafened: false },
+      ordinaryRoom
+    );
     assert.equal(next.mic, false);
     assert.equal(next.speaking, false);
     assert.equal(next.deafened, false);
@@ -103,7 +107,10 @@ describe("voice snapshots", () => {
       member("kerem", media({ mic: true, speaking: true }))
     );
     const snapshot = voiceSnapshot("stage", members, false, false);
-    assert.deepEqual(snapshot.members.map((entry) => entry.media.speaking), [false, false]);
+    assert.deepEqual(
+      snapshot.members.map((entry) => entry.media.speaking),
+      [false, false]
+    );
     assert.equal(snapshot.viewerInVoiceRoom, false);
   });
 
@@ -114,6 +121,10 @@ describe("voice snapshots", () => {
   });
 
   it("reports an empty room rather than failing when nobody is present", () => {
-    assert.deepEqual(voiceSnapshot("stage", undefined, true, false), { roomId: "stage", viewerInVoiceRoom: false, members: [] });
+    assert.deepEqual(voiceSnapshot("stage", undefined, true, false), {
+      roomId: "stage",
+      viewerInVoiceRoom: false,
+      members: []
+    });
   });
 });

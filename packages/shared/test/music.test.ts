@@ -39,10 +39,14 @@ describe("the Music bot's vocabulary", () => {
       { kind: "leave" }
     ];
 
-    assert.deepEqual(
-      commands.map((command) => command.kind).sort(),
-      ["add", "leave", "play", "remove", "skip", "stop"]
-    );
+    assert.deepEqual(commands.map((command) => command.kind).sort(), [
+      "add",
+      "leave",
+      "play",
+      "remove",
+      "skip",
+      "stop"
+    ]);
   });
 
   it("carries what a member typed only on the verb that takes it", () => {
@@ -98,15 +102,21 @@ describe("what the bot answers", () => {
     // Two nullable fields where exactly one is ever filled is the shape this
     // contract already refused for the command union: nothing would stop an
     // answer arriving as both, or as neither.
-    const queued: MusicAnswer = { ok: true, kind: "track", track: { id: "aB3dE5gH7jK", title: "Nocturne", durationSeconds: 273 } };
+    const queued: MusicAnswer = {
+      ok: true,
+      kind: "track",
+      track: { id: "aB3dE5gH7jK", title: "Nocturne", durationSeconds: 273 }
+    };
     const offered: MusicAnswer = {
       ok: true,
       kind: "results",
-      results: [{
-        track: { id: "aB3dE5gH7jK", title: "Nocturne", durationSeconds: 273 },
-        channel: "A Channel",
-        url: "https://www.youtube.com/watch?v=aB3dE5gH7jK"
-      }]
+      results: [
+        {
+          track: { id: "aB3dE5gH7jK", title: "Nocturne", durationSeconds: 273 },
+          channel: "A Channel",
+          url: "https://www.youtube.com/watch?v=aB3dE5gH7jK"
+        }
+      ]
     };
 
     assert.equal(queued.kind === "track" && queued.track?.title, "Nocturne");

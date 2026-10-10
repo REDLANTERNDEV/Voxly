@@ -32,7 +32,11 @@ describe("analytics configuration", () => {
   it("allows the Umami Cloud ingest host, which is not the host serving the tag", () => {
     // Every regional tag host reports to the one gateway.
     for (const host of ["cloud.umami.is", "eu.umami.is", "us.umami.is", "analytics.umami.is"]) {
-      const config = resolveAnalyticsConfig({ provider: "umami", scriptUrl: `https://${host}/script.js`, websiteId: "abc" });
+      const config = resolveAnalyticsConfig({
+        provider: "umami",
+        scriptUrl: `https://${host}/script.js`,
+        websiteId: "abc"
+      });
 
       // The tracker has this endpoint compiled in. Allowing only the script
       // origin loads the tag and then blocks every event it posts.
@@ -91,15 +95,34 @@ describe("analytics configuration", () => {
     assert.throws(() => resolveAnalyticsConfig({ provider: "plausible", websiteId: "abc" }), /Unsupported/);
     assert.throws(() => resolveAnalyticsConfig({ provider: "umami" }), /ANALYTICS_WEBSITE_ID/);
     assert.throws(() => resolveAnalyticsConfig({ provider: "umami", websiteId: "abc" }), /ANALYTICS_SCRIPT_URL/);
-    assert.throws(() => resolveAnalyticsConfig({ provider: "umami", websiteId: "abc", scriptUrl: "script.js" }), /absolute URL/);
-    assert.throws(() => resolveAnalyticsConfig({ provider: "umami", websiteId: "abc", scriptUrl: "javascript:alert(1)" }), /http or https/);
-    assert.throws(() => resolveAnalyticsConfig({ provider: "umami", websiteId: "abc", scriptUrl: "https://a.example/s.js", hostUrl: "analytics.example.com" }), /ANALYTICS_HOST_URL must be an absolute URL/);
+    assert.throws(
+      () => resolveAnalyticsConfig({ provider: "umami", websiteId: "abc", scriptUrl: "script.js" }),
+      /absolute URL/
+    );
+    assert.throws(
+      () => resolveAnalyticsConfig({ provider: "umami", websiteId: "abc", scriptUrl: "javascript:alert(1)" }),
+      /http or https/
+    );
+    assert.throws(
+      () =>
+        resolveAnalyticsConfig({
+          provider: "umami",
+          websiteId: "abc",
+          scriptUrl: "https://a.example/s.js",
+          hostUrl: "analytics.example.com"
+        }),
+      /ANALYTICS_HOST_URL must be an absolute URL/
+    );
     // A lone host URL is still a half-configuration rather than "disabled".
     assert.throws(() => resolveAnalyticsConfig({ hostUrl: "https://analytics.example.com" }), /ANALYTICS_PROVIDER/);
   });
 
   it("routes Google events to a server-side tagging container without closing off gtag's own", () => {
-    const config = resolveAnalyticsConfig({ provider: "google", websiteId: "G-TEST123", hostUrl: "https://gtm.example.com" });
+    const config = resolveAnalyticsConfig({
+      provider: "google",
+      websiteId: "G-TEST123",
+      hostUrl: "https://gtm.example.com"
+    });
     const origins = analyticsCspOrigins(config);
 
     assert.equal(config?.hostUrl, "https://gtm.example.com/");
@@ -138,11 +161,13 @@ describe("analytics in the public app config", () => {
   });
 
   it("publishes the configured provider to the browser and opens the policy for it", async () => {
-    const server = await start(resolveAnalyticsConfig({
-      provider: "umami",
-      scriptUrl: "https://analytics.example.com/script.js",
-      websiteId: "abc"
-    }));
+    const server = await start(
+      resolveAnalyticsConfig({
+        provider: "umami",
+        scriptUrl: "https://analytics.example.com/script.js",
+        websiteId: "abc"
+      })
+    );
     const response = await server.server.inject({ method: "GET", url: "/api/config" });
 
     assert.deepEqual(response.json().analytics, {
@@ -150,19 +175,27 @@ describe("analytics in the public app config", () => {
       scriptUrl: "https://analytics.example.com/script.js",
       websiteId: "abc"
     });
-    assert.match(response.headers["content-security-policy"] as string, /script-src [^;]*https:\/\/analytics\.example\.com/);
+    assert.match(
+      response.headers["content-security-policy"] as string,
+      /script-src [^;]*https:\/\/analytics\.example\.com/
+    );
   });
 
   it("hands the browser the ingest host so the tracker does not have to guess it", async () => {
-    const server = await start(resolveAnalyticsConfig({
-      provider: "umami",
-      scriptUrl: "https://cloud.umami.is/script.js",
-      websiteId: "abc",
-      hostUrl: "https://gateway.umami.is"
-    }));
+    const server = await start(
+      resolveAnalyticsConfig({
+        provider: "umami",
+        scriptUrl: "https://cloud.umami.is/script.js",
+        websiteId: "abc",
+        hostUrl: "https://gateway.umami.is"
+      })
+    );
     const response = await server.server.inject({ method: "GET", url: "/api/config" });
 
     assert.equal(response.json().analytics.hostUrl, "https://gateway.umami.is/");
-    assert.match(response.headers["content-security-policy"] as string, /connect-src [^;]*https:\/\/gateway\.umami\.is/);
+    assert.match(
+      response.headers["content-security-policy"] as string,
+      /connect-src [^;]*https:\/\/gateway\.umami\.is/
+    );
   });
 });

@@ -101,9 +101,10 @@ export function readNotificationSounds(userId: string, storage = browserStorage(
     const candidate = value as Partial<NotificationSoundPreferences>;
     return {
       enabled: booleanOr(candidate.enabled, DEFAULT_NOTIFICATION_SOUNDS.enabled),
-      volume: typeof candidate.volume === "number"
-        ? clampNotificationVolume(candidate.volume)
-        : DEFAULT_NOTIFICATION_SOUNDS.volume,
+      volume:
+        typeof candidate.volume === "number"
+          ? clampNotificationVolume(candidate.volume)
+          : DEFAULT_NOTIFICATION_SOUNDS.volume,
       voice: booleanOr(candidate.voice, DEFAULT_NOTIFICATION_SOUNDS.voice),
       message: booleanOr(candidate.message, DEFAULT_NOTIFICATION_SOUNDS.message),
       connection: booleanOr(candidate.connection, DEFAULT_NOTIFICATION_SOUNDS.connection)
@@ -120,10 +121,13 @@ export function writeNotificationSounds(
 ) {
   if (!storage) return;
   try {
-    storage.setItem(notificationSoundStorageKey(userId), JSON.stringify({
-      ...preferences,
-      volume: clampNotificationVolume(preferences.volume)
-    }));
+    storage.setItem(
+      notificationSoundStorageKey(userId),
+      JSON.stringify({
+        ...preferences,
+        volume: clampNotificationVolume(preferences.volume)
+      })
+    );
   } catch {
     return;
   }
@@ -197,11 +201,10 @@ export function activeVoiceRosterUserIds(
 ) {
   // A server snapshot can describe a room the listener is observing without
   // being in it; the explicit audience bit is authoritative for audible cues.
-  if (!activeRoomId || !currentUserId || snapshot?.roomId !== activeRoomId || snapshot.viewerInVoiceRoom !== true) return null;
+  if (!activeRoomId || !currentUserId || snapshot?.roomId !== activeRoomId || snapshot.viewerInVoiceRoom !== true)
+    return null;
   if (!snapshot.members.some((member) => member.user.userId === currentUserId)) return null;
-  return snapshot.members
-    .map((member) => member.user.userId)
-    .filter((userId) => userId !== currentUserId);
+  return snapshot.members.map((member) => member.user.userId).filter((userId) => userId !== currentUserId);
 }
 
 // Screen-share cues are heard by everybody in the active voice room, including
@@ -213,7 +216,8 @@ export function activeVoiceScreenMembers(
   snapshot: VoiceSnapshot | undefined,
   currentUserId: string | undefined
 ): VoiceScreenMemberState[] | null {
-  if (!activeRoomId || !currentUserId || snapshot?.roomId !== activeRoomId || snapshot.viewerInVoiceRoom !== true) return null;
+  if (!activeRoomId || !currentUserId || snapshot?.roomId !== activeRoomId || snapshot.viewerInVoiceRoom !== true)
+    return null;
   if (!snapshot.members.some((member) => member.user.userId === currentUserId)) return null;
   return snapshot.members.map((member) => ({
     userId: member.user.userId,

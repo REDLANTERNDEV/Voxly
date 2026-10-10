@@ -94,17 +94,17 @@ remain authoritative.
 
 Use a cool neutral scale with no decorative hue:
 
-| Role | Dark direction | Light direction |
-| --- | --- | --- |
-| Canvas | blue-black near `#0b0d10` | cool off-white near `#f4f5f6` |
-| Raised surface | graphite near `#111317` | white |
-| Secondary surface | cool charcoal near `#181c22` | cool gray near `#eaedf0` |
-| Strong control | silver/off-white | graphite |
-| Primary text | off-white | blue-black |
-| Secondary text | cool gray | slate |
-| Border | low-contrast cool gray | pale slate |
-| Focus | high-contrast silver double ring | graphite double ring |
-| Selected | one tonal step plus inset edge | one tonal step plus inset edge |
+| Role              | Dark direction                   | Light direction                |
+| ----------------- | -------------------------------- | ------------------------------ |
+| Canvas            | blue-black near `#0b0d10`        | cool off-white near `#f4f5f6`  |
+| Raised surface    | graphite near `#111317`          | white                          |
+| Secondary surface | cool charcoal near `#181c22`     | cool gray near `#eaedf0`       |
+| Strong control    | silver/off-white                 | graphite                       |
+| Primary text      | off-white                        | blue-black                     |
+| Secondary text    | cool gray                        | slate                          |
+| Border            | low-contrast cool gray           | pale slate                     |
+| Focus             | high-contrast silver double ring | graphite double ring           |
+| Selected          | one tonal step plus inset edge   | one tonal step plus inset edge |
 
 Keep semantic tokens separate from the neutral scale:
 

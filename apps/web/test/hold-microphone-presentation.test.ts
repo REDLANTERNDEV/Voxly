@@ -10,21 +10,42 @@ function fixture(mic: boolean, manualMic = true) {
   const controls = createInitialVoiceControls();
   controls.mic.on = manualMic;
   return {
-    user: { id: "self", nickname: "Me", role: "member" }, currentNickname: "Me",
-    activeServerId: "server", servers: [], activeVoiceRoomId: "room",
+    user: { id: "self", nickname: "Me", role: "member" },
+    currentNickname: "Me",
+    activeServerId: "server",
+    servers: [],
+    activeVoiceRoomId: "room",
     currentRoom: { id: "room", name: "Room", kind: "voice" },
-    route: { name: "voice", roomId: "room" }, rooms: { text: [], voice: [] },
-    controls, socketState: "live", microphoneTestActive: false, micLockedByRoom: false,
+    route: { name: "voice", roomId: "room" },
+    rooms: { text: [], voice: [] },
+    controls,
+    socketState: "live",
+    microphoneTestActive: false,
+    micLockedByRoom: false,
     voiceModeration: { muted: false, deafened: false },
-    voiceSnapshots: { room: { roomId: "room", viewerInVoiceRoom: true, members: [{
-      user: { userId: "self", nickname: "Me", role: "member" },
-      media: { mic, camera: false, screen: false, deafened: false, speaking: false },
-      moderation: { muted: false, deafened: false }
-    }] } },
+    voiceSnapshots: {
+      room: {
+        roomId: "room",
+        viewerInVoiceRoom: true,
+        members: [
+          {
+            user: { userId: "self", nickname: "Me", role: "member" },
+            media: { mic, camera: false, screen: false, deafened: false, speaking: false },
+            moderation: { muted: false, deafened: false }
+          }
+        ]
+      }
+    },
     connectionHealth: { quality: "good", rttMs: 10 },
-    voiceQuality: { grade: "measuring", symptom: "none" }, connectedCount: 1,
-    remoteStreams: [], localPreviews: [], visualTargets: [], roomHistory: {},
-    musicQueues: {}, screenVolumes: {}, audioLevels: { output: 100 },
+    voiceQuality: { grade: "measuring", symptom: "none" },
+    connectedCount: 1,
+    remoteStreams: [],
+    localPreviews: [],
+    visualTargets: [],
+    roomHistory: {},
+    musicQueues: {},
+    screenVolumes: {},
+    audioLevels: { output: 100 },
     t: (key: string) => key
   };
 }
@@ -33,7 +54,9 @@ function render(mic: boolean, manualMic = true) {
   const props = fixture(mic, manualMic);
   return {
     dock: renderToStaticMarkup(createElement(VoiceDock, props as unknown as ComponentProps<typeof VoiceDock>)),
-    stage: renderToStaticMarkup(createElement(VoiceRoomScreen, props as unknown as ComponentProps<typeof VoiceRoomScreen>))
+    stage: renderToStaticMarkup(
+      createElement(VoiceRoomScreen, props as unknown as ComponentProps<typeof VoiceRoomScreen>)
+    )
   };
 }
 

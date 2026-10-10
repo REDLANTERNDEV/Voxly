@@ -113,10 +113,7 @@ describe("the two secrets", () => {
     assert.match(list, /devices\.arrivedByRecovery/);
     assert.match(list, /devices\.arrivedByLink/);
     for (const language of ["en", "tr"] as const satisfies readonly LanguageCode[]) {
-      assert.notEqual(
-        translate(language, "devices.arrivedByLink"),
-        translate(language, "devices.arrivedByRecovery")
-      );
+      assert.notEqual(translate(language, "devices.arrivedByLink"), translate(language, "devices.arrivedByRecovery"));
     }
   });
 });

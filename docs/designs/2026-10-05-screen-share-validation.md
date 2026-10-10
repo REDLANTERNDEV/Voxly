@@ -13,10 +13,10 @@ native motion-first adaptation; the other used the production sender controller.
 The fixture measured actual video dimensions rather than treating parameter
 changes as delivery. Sampling was once per second.
 
-| Path | First received 720p |
-| --- | --- |
-| Native | 25.247 seconds |
-| Adaptive | 24.246 seconds |
+| Path     | First received 720p |
+| -------- | ------------------- |
+| Native   | 25.247 seconds      |
+| Adaptive | 24.246 seconds      |
 
 Both paths initially delivered 180p while Chromium reported bandwidth limitation.
 The adaptive path honored the startup and low frame-rate ceilings and ultimately

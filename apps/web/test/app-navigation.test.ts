@@ -70,5 +70,4 @@ describe("application theme persistence", () => {
       else Reflect.deleteProperty(globalThis, "document");
     }
   });
-
 });

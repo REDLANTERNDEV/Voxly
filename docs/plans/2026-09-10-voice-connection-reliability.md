@@ -24,10 +24,12 @@
 ### Task 1: Add pure peer-recovery state transitions
 
 **Files:**
+
 - Create: `apps/web/src/lib/voicePeerRecovery.ts`
 - Create: `apps/web/test/voice-peer-recovery.test.ts`
 
 **Interfaces:**
+
 - Produces `PeerRecoveryPhase`, `PeerRecoveryAction`, `PeerRecoveryState`, `initialPeerRecoveryState`, and `advancePeerRecovery` for `useVoiceMedia.ts`.
 - The helper accepts only current state, an event, and a timestamp; it must not access browser APIs, timers, sockets, or React state.
 
@@ -36,11 +38,7 @@
 ```typescript
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
-  advancePeerRecovery,
-  initialPeerRecoveryState,
-  type PeerRecoveryState
-} from "../src/lib/voicePeerRecovery.js";
+import { advancePeerRecovery, initialPeerRecoveryState, type PeerRecoveryState } from "../src/lib/voicePeerRecovery.js";
 
 describe("peer recovery state", () => {
   it("waits through a transient disconnected state", () => {
@@ -50,7 +48,11 @@ describe("peer recovery state", () => {
   });
 
   it("requests one ICE restart after the grace deadline", () => {
-    let current: PeerRecoveryState = advancePeerRecovery(initialPeerRecoveryState(), { type: "disconnected" }, 1_000).state;
+    let current: PeerRecoveryState = advancePeerRecovery(
+      initialPeerRecoveryState(),
+      { type: "disconnected" },
+      1_000
+    ).state;
     const next = advancePeerRecovery(current, { type: "grace_elapsed" }, 4_100);
     assert.equal(next.state.phase, "restarting");
     assert.equal(next.action, "restart_ice");
@@ -95,11 +97,13 @@ Expected: PASS.
 ### Task 2: Separate media transport measurements from Socket.IO RTT
 
 **Files:**
+
 - Modify: `apps/web/src/lib/voiceQuality.ts`
 - Modify: `apps/web/src/lib/useVoiceQuality.ts`
 - Modify: `apps/web/test/voice-quality.test.ts`
 
 **Interfaces:**
+
 - Add `VoiceTransportReading` with `rttMs: number | null`, `candidateType: string | null`, and `candidatePairState: string | null`.
 - Add `readVoiceTransport(report: Iterable<Record<string, unknown>>): VoiceTransportReading`.
 - `useVoiceQuality` may include transport detail in the existing `VoiceQuality` result, but it must not use Socket.IO health values.
@@ -109,7 +113,14 @@ Expected: PASS.
 ```typescript
 it("reads the selected WebRTC candidate pair without using signaling RTT", () => {
   const reading = readVoiceTransport([
-    { type: "candidate-pair", state: "succeeded", nominated: true, currentRoundTripTime: 0.18, localCandidateId: "local", remoteCandidateId: "remote" },
+    {
+      type: "candidate-pair",
+      state: "succeeded",
+      nominated: true,
+      currentRoundTripTime: 0.18,
+      localCandidateId: "local",
+      remoteCandidateId: "remote"
+    },
     { type: "local-candidate", id: "local", candidateType: "relay" },
     { type: "remote-candidate", id: "remote", candidateType: "relay" }
   ]);
@@ -141,12 +152,14 @@ Expected: PASS.
 ### Task 3: Harden peer lifecycle and ICE recovery
 
 **Files:**
+
 - Modify: `apps/web/src/lib/useVoiceMedia.ts`
 - Modify: `apps/web/src/lib/voiceNegotiation.ts`
 - Modify: `apps/web/test/voice-media-lifecycle.test.ts`
 - Modify: `apps/web/test/voice-signal.test.ts`
 
 **Interfaces:**
+
 - `useVoiceMedia` remains the owner of browser side effects and returns the existing public shape plus the existing `recoverPeer` hook used by quality sampling.
 - `voiceNegotiation.ts` may expose only pure state/status helpers; shared offerer rules remain re-exports from `@voxly/shared`.
 
@@ -185,6 +198,7 @@ Expected: PASS with no TypeScript errors.
 ### Task 4: Present bounded recovery and separate media RTT in both languages
 
 **Files:**
+
 - Modify: `apps/web/src/lib/i18n.ts`
 - Modify: `apps/web/src/app/presentation.tsx`
 - Modify: `apps/web/src/components/shell/VoiceDock.tsx`
@@ -192,6 +206,7 @@ Expected: PASS with no TypeScript errors.
 - Modify: `apps/web/test/voice-status-presentation.test.tsx`
 
 **Interfaces:**
+
 - Reuse the existing `Translate` and `VoiceQuality` contracts; no new Socket.IO event or shared DTO is required.
 
 - [x] **Step 1: Add failing presentation assertions**
@@ -217,6 +232,7 @@ Expected: PASS.
 ### Task 5: Verify deployment-sensitive behavior
 
 **Files:**
+
 - Modify: `docs/designs/2026-09-10-voice-connection-reliability.md` only if implementation behavior materially differs from the approved design.
 
 - [x] **Step 1: Run repository hygiene checks**

@@ -1,4 +1,4 @@
-import type { ChatMessageReply } from "@voxly/shared";
+import type { ChatMessageReply, MessageMention } from "@voxly/shared";
 
 /**
  * Local echo for composed messages.
@@ -18,6 +18,7 @@ export interface OutboxEntry {
   status: OutboxStatus;
   /** Carried through a retry so a queued reply never loses its target. */
   replyTo: ChatMessageReply | null;
+  mentions: MessageMention[];
 }
 
 export function appendOutboxEntry(entries: OutboxEntry[], entry: OutboxEntry): OutboxEntry[] {

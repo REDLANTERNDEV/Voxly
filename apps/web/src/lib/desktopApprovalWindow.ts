@@ -14,23 +14,29 @@ export function createDesktopApprovalWindow(target: DesktopApprovalRuntime, isCu
   return {
     minimize(): Promise<boolean> {
       if (minimizing) return minimizing;
-      if (restoring || !isCurrent() || bridge?.version !== 1 || typeof bridge.minimize !== "function") return Promise.resolve(false);
+      if (restoring || !isCurrent() || bridge?.version !== 1 || typeof bridge.minimize !== "function")
+        return Promise.resolve(false);
       minimizing = (async () => {
         try {
           // Finish initial window reveal before minimizing a cold browser launch.
           if (desktopSettingsAvailable(target)) await target.__VOXLY_DESKTOP_SETTINGS_V1__!.apply({ kind: "ready" });
           if (!isCurrent() || restoring) return false;
           return await bridge.minimize!();
-        } catch { return false; }
+        } catch {
+          return false;
+        }
       })();
       return minimizing;
     },
     restore(): Promise<void> {
       if (restoring) return restoring;
       restoring = (async () => {
-        if (!minimizing || !await minimizing || !isCurrent()) return;
-        try { await bridge?.show(); }
-        catch { /* Native focus failure must not undo browser-approved sign-in. */ }
+        if (!minimizing || !(await minimizing) || !isCurrent()) return;
+        try {
+          await bridge?.show();
+        } catch {
+          /* Native focus failure must not undo browser-approved sign-in. */
+        }
       })();
       return restoring;
     }

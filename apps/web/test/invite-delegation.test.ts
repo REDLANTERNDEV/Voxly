@@ -20,7 +20,8 @@ describe("delegated invite permission", () => {
   });
 
   it("ranks owner above the delegated invite role in member lists", () => {
-    const t = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) => translate("en", key, values);
+    const t = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+      translate("en", key, values);
 
     assert.equal(memberRoleLabel({ role: "owner", canInvite: true }, t), "Owner");
     assert.equal(memberRoleLabel({ role: "member", canInvite: true }, t), "Inviter");
@@ -39,8 +40,8 @@ describe("delegated invite permission", () => {
     const styles = readFileSync("src/styles.css", "utf8");
 
     assert.match(rail, /className="rail-head"/);
-    assert.match(rail, /canInvite \? <InviteQuickAction/);
-    assert.match(styles, /\.rail-head\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s);
+    assert.match(rail, /canInvite\s+\?\s+\(?\s*<InviteQuickAction/);
+    assert.match(styles, /\.rail-head\s*\{\s*[^}]*grid-template-columns:\s*minmax\(\s*0,\s+1fr\s*\)\s+auto/s);
   });
 
   it("routes both invite surfaces through one composer", () => {
@@ -56,8 +57,8 @@ describe("delegated invite permission", () => {
     const panel = readFileSync("src/components/shell/MemberPanel.tsx", "utf8");
     const menu = readFileSync("src/components/shell/SidebarMenus.tsx", "utf8");
 
-    assert.match(panel, /const canAssignRoles = canModerate && user\.role === "member"/);
-    assert.match(panel, /onToggleInviteRole=\{canAssignRoles \?/);
+    assert.match(panel, /const\s+canAssignRoles\s+=\s+canModerate\s+&&\s+user\.role\s+===\s+"member"/);
+    assert.match(panel, /onToggleInviteRole=\{\s*canAssignRoles\s+\?/);
     assert.match(menu, /member\.grantInviteRole/);
     assert.match(menu, /member\.revokeInviteRole/);
   });

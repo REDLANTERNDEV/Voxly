@@ -43,11 +43,9 @@ export function readUserVolumes(listenerUserId: string, storage = browserStorage
     }
 
     return Object.fromEntries(
-      Object.entries(value).flatMap(([userId, volume]) => (
-        typeof volume === "number" && Number.isFinite(volume)
-          ? [[userId, clampVolumePercent(volume)]]
-          : []
-      ))
+      Object.entries(value).flatMap(([userId, volume]) =>
+        typeof volume === "number" && Number.isFinite(volume) ? [[userId, clampVolumePercent(volume)]] : []
+      )
     );
   } catch {
     return {};

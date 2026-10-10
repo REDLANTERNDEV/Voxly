@@ -33,7 +33,9 @@ before(async () => {
     port = { onmessage: null, postMessage() {} };
   };
   let captured: unknown = null;
-  scope.registerProcessor = (_name: string, processor: unknown) => { captured = processor; };
+  scope.registerProcessor = (_name: string, processor: unknown) => {
+    captured = processor;
+  };
   await import(pathToFileURL(resolve("src/worklets/noise-suppressor.worklet.js")).href);
   ProcessorClass = captured as new () => Processor;
 });
@@ -75,9 +77,10 @@ function speech(length: number, amplitude: number) {
   for (let index = 0; index < length; index += 1) {
     const seconds = index / SAMPLE_RATE;
     const envelope = Math.max(0, Math.sin(2 * Math.PI * 3 * seconds));
-    const carrier = Math.sin(2 * Math.PI * 220 * index / SAMPLE_RATE)
-      + 0.6 * Math.sin(2 * Math.PI * 440 * index / SAMPLE_RATE)
-      + 0.3 * Math.sin(2 * Math.PI * 880 * index / SAMPLE_RATE);
+    const carrier =
+      Math.sin((2 * Math.PI * 220 * index) / SAMPLE_RATE) +
+      0.6 * Math.sin((2 * Math.PI * 440 * index) / SAMPLE_RATE) +
+      0.3 * Math.sin((2 * Math.PI * 880 * index) / SAMPLE_RATE);
     samples[index] = carrier * envelope * amplitude;
   }
   return samples;

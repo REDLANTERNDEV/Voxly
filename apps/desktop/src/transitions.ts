@@ -16,14 +16,23 @@ export function createQuitRequest(request: () => Promise<void>): () => Promise<v
   let pending: Promise<void> | null = null;
   return () => {
     if (pending) return pending;
-    pending = Promise.resolve().then(request).finally(() => { pending = null; });
+    pending = Promise.resolve()
+      .then(request)
+      .finally(() => {
+        pending = null;
+      });
     return pending;
   };
 }
 
 export function needsConfirmation(active: boolean, report: CallState | null, localMedia: boolean): boolean {
-  return localMedia || (active && (!report || report.version !== 1
-    || Object.entries(report).some(([key, value]) => key !== "version" && value === true)));
+  return (
+    localMedia ||
+    (active &&
+      (!report ||
+        report.version !== 1 ||
+        Object.entries(report).some(([key, value]) => key !== "version" && value === true)))
+  );
 }
 
 /** Native rechecks after health checks; new capture can require another prompt. */
@@ -38,14 +47,15 @@ export async function performTransition<T>(options: {
   const report = options.active ? await options.report().catch(() => null) : null;
   let confirmed = false;
   if (needsConfirmation(options.active, report, options.localMedia())) {
-    if (!await options.confirm(report)) return;
+    if (!(await options.confirm(report))) return;
     confirmed = true;
   }
   options.stop();
-  try { return await options.action(confirmed); }
-  catch (error) {
+  try {
+    return await options.action(confirmed);
+  } catch (error) {
     if (confirmed || error !== "confirmation_required") throw error;
-    if (!await options.confirm(null)) return;
+    if (!(await options.confirm(null))) return;
     options.stop();
     return options.action(true);
   }

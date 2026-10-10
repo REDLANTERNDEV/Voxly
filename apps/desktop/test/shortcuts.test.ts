@@ -6,18 +6,29 @@ import { bindingFromKey, bindingFromMouse, bindingLabel, mountShortcutSettings }
 
 const key = { code: "KeyM", ctrlKey: true, altKey: false, shiftKey: false, metaKey: false, repeat: false };
 const source = readFileSync("src-tauri/src/voice-bridge.js", "utf8");
-interface MicrophoneState { mode: "openMic" | "pushToTalk" | "pushToMute"; talkHeld: boolean; muteHeld: boolean; talkReleasing: boolean }
+interface MicrophoneState {
+  mode: "openMic" | "pushToTalk" | "pushToMute";
+  talkHeld: boolean;
+  muteHeld: boolean;
+  talkReleasing: boolean;
+}
 interface Bridge {
-  version: number; dispatchMute(): void; subscribeMute(handler: () => void): () => void;
-  dispatchDeafen(): void; subscribeDeafen(handler: () => void): () => void;
+  version: number;
+  dispatchMute(): void;
+  subscribeMute(handler: () => void): () => void;
+  dispatchDeafen(): void;
+  subscribeDeafen(handler: () => void): () => void;
   getMicrophoneState(): MicrophoneState;
   subscribeMicrophone(handler: (state: MicrophoneState) => void): () => void;
   dispatchMicrophoneMode(mode: MicrophoneState["mode"]): void;
-  dispatchPushToTalk(pressed: boolean, delayMs?: number): void; dispatchPushToMute(pressed: boolean): void;
+  dispatchPushToTalk(pressed: boolean, delayMs?: number): void;
+  dispatchPushToMute(pressed: boolean): void;
   dispatchPushToTalkRelease(): void;
 }
 function boot(origin = "https://chat.example", topFrame = true) {
-  const window: { top?: unknown; location: { origin: string }; __VOXLY_DESKTOP_V1__?: Bridge } = { location: { origin } };
+  const window: { top?: unknown; location: { origin: string }; __VOXLY_DESKTOP_V1__?: Bridge } = {
+    location: { origin }
+  };
   window.top = topFrame ? window : {};
   runInNewContext(`${source}("https://chat.example");`, { window });
   return window;
@@ -33,9 +44,21 @@ describe("desktop shortcut registration and bridge", () => {
   });
   it("records physical key combinations and avoids ordinary typing and repeat", () => {
     assert.equal(bindingFromKey(key), "Control+KeyM");
-    for (const [modifier, flag] of [["Control", "ctrlKey"], ["Alt", "altKey"], ["Shift", "shiftKey"]] as const) {
+    for (const [modifier, flag] of [
+      ["Control", "ctrlKey"],
+      ["Alt", "altKey"],
+      ["Shift", "shiftKey"]
+    ] as const) {
       for (const side of ["Left", "Right"]) {
-        const event = { code: modifier + side, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, repeat: false, [flag]: true };
+        const event = {
+          code: modifier + side,
+          ctrlKey: false,
+          altKey: false,
+          shiftKey: false,
+          metaKey: false,
+          repeat: false,
+          [flag]: true
+        };
         assert.equal(bindingFromKey(event), modifier);
         assert.equal(bindingFromKey({ ...event, repeat: true }), null);
       }
@@ -44,9 +67,17 @@ describe("desktop shortcut registration and bridge", () => {
     assert.equal(bindingFromKey({ ...key, code: "ControlRight" }), "Control");
     assert.equal(bindingLabel("Control+Alt+KeyM"), "Ctrl + Alt + M");
     assert.equal(bindingLabel("Super+Digit9"), "Win + 9");
-    assert.equal(bindingFromKey({ ...key, altKey: true, shiftKey: true, metaKey: true }), "Control+Alt+Shift+Super+KeyM");
+    assert.equal(
+      bindingFromKey({ ...key, altKey: true, shiftKey: true, metaKey: true }),
+      "Control+Alt+Shift+Super+KeyM"
+    );
     assert.equal(bindingFromKey({ ...key, ctrlKey: false, code: "F8" }), "F8");
-    for (const event of [{ ...key, repeat: true }, { ...key, ctrlKey: false }, { ...key, ctrlKey: false, shiftKey: true }, { ...key, code: "F25" }]) {
+    for (const event of [
+      { ...key, repeat: true },
+      { ...key, ctrlKey: false },
+      { ...key, ctrlKey: false, shiftKey: true },
+      { ...key, code: "F25" }
+    ]) {
       assert.equal(bindingFromKey(event), null);
     }
   });
@@ -68,20 +99,34 @@ describe("desktop shortcut registration and bridge", () => {
       textContent = "";
       value = "";
       focused = false;
-      focus() { this.focused = true; }
+      focus() {
+        this.focused = true;
+      }
     }
-    const elements = new Map(["mute-shortcut", "record-shortcut", "save-shortcut", "clear-shortcut", "shortcut-status"]
-      .map((id) => [id, new Element()] as const));
+    const elements = new Map(
+      ["mute-shortcut", "record-shortcut", "save-shortcut", "clear-shortcut", "shortcut-status"].map(
+        (id) => [id, new Element()] as const
+      )
+    );
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
     const window = new EventTarget();
     Object.assign(globalThis, { document: { getElementById: (id: string) => elements.get(id) }, window });
     try {
-      const settings = mountShortcutSettings({ t: (key) => key === "mouseButton" ? "Mouse" : key, save: async () => {} });
+      const settings = mountShortcutSettings({
+        t: (key) => (key === "mouseButton" ? "Mouse" : key),
+        save: async () => {}
+      });
       settings.render({ preferences: { muteShortcut: null }, registeredMuteShortcut: null, shortcutError: null }, true);
       elements.get("record-shortcut")!.dispatchEvent(new Event("click"));
-      const sideButton = (type: string) => Object.assign(new Event(type, { cancelable: true }),
-        { button: 3, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false });
+      const sideButton = (type: string) =>
+        Object.assign(new Event(type, { cancelable: true }), {
+          button: 3,
+          ctrlKey: false,
+          altKey: false,
+          shiftKey: false,
+          metaKey: false
+        });
       const down = sideButton("mousedown");
       window.dispatchEvent(down);
       assert.equal(down.defaultPrevented, true);
@@ -101,26 +146,56 @@ describe("desktop shortcut registration and bridge", () => {
 
   it("records and saves deafen without taking mute's value or registration error", async () => {
     class Element extends EventTarget {
-      disabled = false; textContent = ""; value = "";
+      disabled = false;
+      textContent = "";
+      value = "";
       focus() {}
     }
-    const elements = new Map(["mute-shortcut", "record-shortcut", "save-shortcut", "clear-shortcut", "shortcut-status",
-      "deafen-shortcut", "record-deafen-shortcut", "save-deafen-shortcut", "clear-deafen-shortcut", "deafen-shortcut-status"]
-      .map((id) => [id, new Element()] as const));
+    const elements = new Map(
+      [
+        "mute-shortcut",
+        "record-shortcut",
+        "save-shortcut",
+        "clear-shortcut",
+        "shortcut-status",
+        "deafen-shortcut",
+        "record-deafen-shortcut",
+        "save-deafen-shortcut",
+        "clear-deafen-shortcut",
+        "deafen-shortcut-status"
+      ].map((id) => [id, new Element()] as const)
+    );
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
-    Object.assign(globalThis, { document: { getElementById: (id: string) => elements.get(id) }, window: new EventTarget() });
+    Object.assign(globalThis, {
+      document: { getElementById: (id: string) => elements.get(id) },
+      window: new EventTarget()
+    });
     try {
       let saved: string | null | undefined;
       const mute = mountShortcutSettings({ t: (key) => key, save: async () => assert.fail("mute cannot save here") });
-      const deafen = mountShortcutSettings({ action: "deafen", t: (key) => key, save: async (binding) => { saved = binding; } });
-      const snapshot = { preferences: { muteShortcut: "Control+KeyM", deafenShortcut: "Control+KeyD" }, registeredMuteShortcut: "Control+KeyM",
-        registeredDeafenShortcut: null, shortcutError: null, deafenShortcutError: "shortcut_unavailable" as const };
-      mute.render(snapshot, true); deafen.render(snapshot, true);
+      const deafen = mountShortcutSettings({
+        action: "deafen",
+        t: (key) => key,
+        save: async (binding) => {
+          saved = binding;
+        }
+      });
+      const snapshot = {
+        preferences: { muteShortcut: "Control+KeyM", deafenShortcut: "Control+KeyD" },
+        registeredMuteShortcut: "Control+KeyM",
+        registeredDeafenShortcut: null,
+        shortcutError: null,
+        deafenShortcutError: "shortcut_unavailable" as const
+      };
+      mute.render(snapshot, true);
+      deafen.render(snapshot, true);
       assert.equal(elements.get("shortcut-status")!.textContent, "shortcutRegistered");
       assert.equal(elements.get("deafen-shortcut-status")!.textContent, "shortcut_unavailable");
       elements.get("record-deafen-shortcut")!.dispatchEvent(new Event("click"));
-      elements.get("deafen-shortcut")!.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), { ...key, code: "KeyN" }));
+      elements
+        .get("deafen-shortcut")!
+        .dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), { ...key, code: "KeyN" }));
       assert.equal(elements.get("deafen-shortcut")!.value, "Ctrl + N");
       assert.equal(elements.get("mute-shortcut")!.value, "Ctrl + M");
       elements.get("save-deafen-shortcut")!.dispatchEvent(new Event("click"));
@@ -129,34 +204,68 @@ describe("desktop shortcut registration and bridge", () => {
       elements.get("clear-deafen-shortcut")!.dispatchEvent(new Event("click"));
       await Promise.resolve();
       assert.equal(saved, null);
-    } finally { Object.assign(globalThis, { document: previousDocument, window: previousWindow }); }
+    } finally {
+      Object.assign(globalThis, { document: previousDocument, window: previousWindow });
+    }
   });
 
   it("records standalone modifiers on release, ignores repeats, and permits longer chords", async () => {
     class Element extends EventTarget {
-      disabled = false; textContent = ""; value = "";
+      disabled = false;
+      textContent = "";
+      value = "";
       focus() {}
     }
-    const elements = new Map(["mute-shortcut", "record-shortcut", "save-shortcut", "clear-shortcut", "shortcut-status"]
-      .map(id => [id, new Element()] as const));
-    const previousDocument = globalThis.document, previousWindow = globalThis.window;
-    Object.assign(globalThis, { document: { getElementById: (id: string) => elements.get(id) }, window: new EventTarget() });
+    const elements = new Map(
+      ["mute-shortcut", "record-shortcut", "save-shortcut", "clear-shortcut", "shortcut-status"].map(
+        (id) => [id, new Element()] as const
+      )
+    );
+    const previousDocument = globalThis.document,
+      previousWindow = globalThis.window;
+    Object.assign(globalThis, {
+      document: { getElementById: (id: string) => elements.get(id) },
+      window: new EventTarget()
+    });
     try {
       let saved: string | null | undefined;
-      const recorder = mountShortcutSettings({ t: key => key, save: async binding => { saved = binding; } });
+      const recorder = mountShortcutSettings({
+        t: (key) => key,
+        save: async (binding) => {
+          saved = binding;
+        }
+      });
       recorder.render({ preferences: { muteShortcut: null }, registeredMuteShortcut: null, shortcutError: null }, true);
       const input = elements.get("mute-shortcut")!;
-      for (const modifier of ["Control", "Alt", "Shift"]) for (const chord of [false, true]) {
-        elements.get("record-shortcut")!.dispatchEvent(new Event("click"));
-        const flags = { ...key, ctrlKey: modifier === "Control", altKey: modifier === "Alt", shiftKey: modifier === "Shift", code: modifier + "Left" };
-        input.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), flags));
-        input.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), { ...flags, repeat: true }));
-        if (chord) input.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), { ...flags, code: "F8" }));
-        input.dispatchEvent(Object.assign(new Event("keyup", { cancelable: true }), { ...flags, ctrlKey: false, altKey: false, shiftKey: false }));
-        elements.get("save-shortcut")!.dispatchEvent(new Event("click")); await Promise.resolve();
-        assert.equal(saved, chord ? modifier + "+F8" : modifier);
-      }
-    } finally { Object.assign(globalThis, { document: previousDocument, window: previousWindow }); }
+      for (const modifier of ["Control", "Alt", "Shift"])
+        for (const chord of [false, true]) {
+          elements.get("record-shortcut")!.dispatchEvent(new Event("click"));
+          const flags = {
+            ...key,
+            ctrlKey: modifier === "Control",
+            altKey: modifier === "Alt",
+            shiftKey: modifier === "Shift",
+            code: modifier + "Left"
+          };
+          input.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), flags));
+          input.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), { ...flags, repeat: true }));
+          if (chord)
+            input.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), { ...flags, code: "F8" }));
+          input.dispatchEvent(
+            Object.assign(new Event("keyup", { cancelable: true }), {
+              ...flags,
+              ctrlKey: false,
+              altKey: false,
+              shiftKey: false
+            })
+          );
+          elements.get("save-shortcut")!.dispatchEvent(new Event("click"));
+          await Promise.resolve();
+          assert.equal(saved, chord ? modifier + "+F8" : modifier);
+        }
+    } finally {
+      Object.assign(globalThis, { document: previousDocument, window: previousWindow });
+    }
   });
 
   it("bootstraps only in the selected origin and top frame", () => {
@@ -174,20 +283,37 @@ describe("desktop shortcut registration and bridge", () => {
     let calls = 0;
     bridge.dispatchMute(); // An old web client has no receiver.
     const first = bridge.subscribeMute(() => assert.fail("stale receiver"));
-    const second = bridge.subscribeMute(() => { calls += 1; });
-    first(); bridge.dispatchMute();
+    const second = bridge.subscribeMute(() => {
+      calls += 1;
+    });
+    first();
+    bridge.dispatchMute();
     assert.equal(calls, 1);
     window.location.origin = "https://evil.example";
     bridge.dispatchMute();
     assert.equal(calls, 1);
     window.location.origin = "https://chat.example";
-    second(); bridge.dispatchMute();
+    second();
+    bridge.dispatchMute();
     assert.equal(calls, 1);
-    assert.deepEqual(Object.keys(bridge).sort(), ["dispatchDeafen", "dispatchMicrophoneMode", "dispatchMute", "dispatchPushToMute", "dispatchPushToTalk", "dispatchPushToTalkRelease", "getMicrophoneState", "subscribeDeafen", "subscribeMicrophone", "subscribeMute", "version"]);
+    assert.deepEqual(Object.keys(bridge).sort(), [
+      "dispatchDeafen",
+      "dispatchMicrophoneMode",
+      "dispatchMute",
+      "dispatchPushToMute",
+      "dispatchPushToTalk",
+      "dispatchPushToTalkRelease",
+      "getMicrophoneState",
+      "subscribeDeafen",
+      "subscribeMicrophone",
+      "subscribeMute",
+      "version"
+    ]);
   });
 
   it("extends a physical release only until native expiry and cancels it on re-press, mode change, or binding reset", () => {
-    const window = boot(); const bridge = window.__VOXLY_DESKTOP_V1__!;
+    const window = boot();
+    const bridge = window.__VOXLY_DESKTOP_V1__!;
     bridge.dispatchMicrophoneMode("pushToTalk");
     bridge.dispatchPushToTalk(false, 200);
     assert.equal(bridge.getMicrophoneState().talkReleasing, false, "a release without a press grants nothing");
@@ -221,7 +347,9 @@ describe("desktop shortcut registration and bridge", () => {
     const states: MicrophoneState[] = [];
     bridge.subscribeMute(() => assert.fail("hold cannot toggle mute"));
     const stale = bridge.subscribeMicrophone(() => {});
-    const stop = bridge.subscribeMicrophone((state) => { states.push({ ...state }); });
+    const stop = bridge.subscribeMicrophone((state) => {
+      states.push({ ...state });
+    });
     stale();
     bridge.dispatchMicrophoneMode("pushToTalk");
     bridge.dispatchPushToTalk(true);
@@ -229,14 +357,23 @@ describe("desktop shortcut registration and bridge", () => {
     bridge.dispatchMicrophoneMode("pushToMute");
     bridge.dispatchPushToMute(true);
     bridge.dispatchPushToMute(false);
-    assert.deepEqual(states.map((state) => [state.mode, state.talkHeld, state.muteHeld]), [
-      ["openMic", false, false], ["pushToTalk", false, false], ["pushToTalk", true, false],
-      ["pushToTalk", false, false], ["pushToMute", false, false], ["pushToMute", false, true], ["pushToMute", false, false]
-    ]);
+    assert.deepEqual(
+      states.map((state) => [state.mode, state.talkHeld, state.muteHeld]),
+      [
+        ["openMic", false, false],
+        ["pushToTalk", false, false],
+        ["pushToTalk", true, false],
+        ["pushToTalk", false, false],
+        ["pushToMute", false, false],
+        ["pushToMute", false, true],
+        ["pushToMute", false, false]
+      ]
+    );
     const state = bridge.getMicrophoneState();
     state.talkHeld = true;
     assert.equal(bridge.getMicrophoneState().talkHeld, false, "readers cannot mutate bridge state");
-    stop(); bridge.dispatchPushToMute(true);
+    stop();
+    bridge.dispatchPushToMute(true);
     assert.equal(states.length, 7);
     window.location.origin = "https://evil.example";
     bridge.dispatchPushToMute(false);
@@ -249,20 +386,29 @@ describe("desktop shortcut registration and bridge", () => {
     let mutes = 0;
     let deafens = 0;
     bridge.dispatchDeafen();
-    const mute = bridge.subscribeMute(() => { mutes++; });
+    const mute = bridge.subscribeMute(() => {
+      mutes++;
+    });
     const stale = bridge.subscribeDeafen(() => assert.fail("stale deafen"));
-    const deafen = bridge.subscribeDeafen(() => { deafens++; });
-    stale(); bridge.dispatchDeafen(); bridge.dispatchMute();
+    const deafen = bridge.subscribeDeafen(() => {
+      deafens++;
+    });
+    stale();
+    bridge.dispatchDeafen();
+    bridge.dispatchMute();
     assert.equal(deafens, 1);
     assert.equal(mutes, 1);
-    mute(); bridge.dispatchDeafen(); bridge.dispatchMute();
+    mute();
+    bridge.dispatchDeafen();
+    bridge.dispatchMute();
     assert.equal(deafens, 2);
     assert.equal(mutes, 1);
     window.location.origin = "https://evil.example";
     bridge.dispatchDeafen();
     assert.equal(deafens, 2);
     window.location.origin = "https://chat.example";
-    deafen(); bridge.dispatchDeafen();
+    deafen();
+    bridge.dispatchDeafen();
     assert.equal(deafens, 2);
   });
 });

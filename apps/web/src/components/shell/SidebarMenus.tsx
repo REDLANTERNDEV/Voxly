@@ -1,8 +1,8 @@
-import type { PresenceUser,RoomSummary,VoiceModerationState } from "@voxly/shared";
+import type { PresenceUser, RoomSummary, VoiceModerationState } from "@voxly/shared";
 import type { MouseEvent } from "react";
 import { useRef } from "react";
-import type { MemberAction,Translate } from "../../app/types.js";
-import { HeadsetIcon,MicIcon,MoreIcon } from "../../components/ui/Icons.js";
+import type { MemberAction, Translate } from "../../app/types.js";
+import { HeadsetIcon, MicIcon, MoreIcon } from "../../components/ui/Icons.js";
 import { VolumeControl } from "../../components/ui/Primitives.js";
 import { type ContextMenuDescriptor } from "../../lib/contextMenu.js";
 import { MenuSubmenu } from "../MenuSubmenu.js";
@@ -78,8 +78,16 @@ export function openSidebarMenuFromPointer(
   });
 }
 
-
-export function memberActionMenuHeight({ hasVolume, canRename, canDisconnect, canModerate, canVoiceModerate = false, canAssignRoles = false, canMove = false, hasSelfControls = false }: {
+export function memberActionMenuHeight({
+  hasVolume,
+  canRename,
+  canDisconnect,
+  canModerate,
+  canVoiceModerate = false,
+  canAssignRoles = false,
+  canMove = false,
+  hasSelfControls = false
+}: {
   hasVolume: boolean;
   canRename: boolean;
   canDisconnect: boolean;
@@ -89,7 +97,17 @@ export function memberActionMenuHeight({ hasVolume, canRename, canDisconnect, ca
   canMove?: boolean;
   hasSelfControls?: boolean;
 }) {
-  return 20 + (hasVolume ? 64 : 0) + (hasSelfControls ? 80 : 0) + (canRename ? 40 : 0) + (canAssignRoles ? 62 : 0) + (canVoiceModerate ? 80 : 0) + (canMove ? 40 : 0) + (canDisconnect ? 40 : 0) + (canModerate ? 80 : 0);
+  return (
+    20 +
+    (hasVolume ? 64 : 0) +
+    (hasSelfControls ? 80 : 0) +
+    (canRename ? 40 : 0) +
+    (canAssignRoles ? 62 : 0) +
+    (canVoiceModerate ? 80 : 0) +
+    (canMove ? 40 : 0) +
+    (canDisconnect ? 40 : 0) +
+    (canModerate ? 80 : 0)
+  );
 }
 
 export function MemberActionMenu({
@@ -165,14 +183,24 @@ export function MemberActionMenu({
   });
   return (
     <>
-      {showTrigger ? <SidebarMenuTrigger actionMenu={actionMenu} menuKey={menuKey} label={label} menuWidth={220} menuHeight={menuHeight} /> : null}
+      {showTrigger ? (
+        <SidebarMenuTrigger
+          actionMenu={actionMenu}
+          menuKey={menuKey}
+          label={label}
+          menuWidth={220}
+          menuHeight={menuHeight}
+        />
+      ) : null}
       {actionMenu.active?.key === menuKey ? (
         <ContextMenu descriptor={actionMenu.active} label={label} onClose={actionMenu.close}>
-          {volume !== undefined && onVolumeChange ? <VolumeControl
-            label={t("voice.memberVolume", { nickname: member.nickname })}
-            value={volume}
-            onChange={onVolumeChange}
-          /> : null}
+          {volume !== undefined && onVolumeChange ? (
+            <VolumeControl
+              label={t("voice.memberVolume", { nickname: member.nickname })}
+              value={volume}
+              onChange={onVolumeChange}
+            />
+          ) : null}
           {selfControls ? (
             <>
               <button
@@ -199,11 +227,18 @@ export function MemberActionMenu({
               </button>
             </>
           ) : null}
-          {canRename ? <button type="button" onClick={() => {
-            const returnFocus = actionMenu.active?.trigger ?? null;
-            actionMenu.close();
-            onRename(returnFocus);
-          }}>{t("member.changeNickname")}</button> : null}
+          {canRename ? (
+            <button
+              type="button"
+              onClick={() => {
+                const returnFocus = actionMenu.active?.trigger ?? null;
+                actionMenu.close();
+                onRename(returnFocus);
+              }}
+            >
+              {t("member.changeNickname")}
+            </button>
+          ) : null}
           {onToggleInviteRole ? (
             <button
               className={member.canInvite ? "is-active" : ""}
@@ -214,10 +249,26 @@ export function MemberActionMenu({
               {member.canInvite ? t("member.revokeInviteRole") : t("member.grantInviteRole")}
             </button>
           ) : null}
-          {moderation && onVoiceModeration ? <>
-            <button className={moderation.muted ? "is-danger" : ""} type="button" aria-pressed={moderation.muted} onClick={() => onVoiceModeration({ muted: !moderation.muted })}>{moderation.muted ? t("member.ownerUnmute") : t("member.ownerMute")}</button>
-            <button className={moderation.deafened ? "is-danger" : ""} type="button" aria-pressed={moderation.deafened} onClick={() => onVoiceModeration({ deafened: !moderation.deafened })}>{moderation.deafened ? t("member.ownerUndeafen") : t("member.ownerDeafen")}</button>
-          </> : null}
+          {moderation && onVoiceModeration ? (
+            <>
+              <button
+                className={moderation.muted ? "is-danger" : ""}
+                type="button"
+                aria-pressed={moderation.muted}
+                onClick={() => onVoiceModeration({ muted: !moderation.muted })}
+              >
+                {moderation.muted ? t("member.ownerUnmute") : t("member.ownerMute")}
+              </button>
+              <button
+                className={moderation.deafened ? "is-danger" : ""}
+                type="button"
+                aria-pressed={moderation.deafened}
+                onClick={() => onVoiceModeration({ deafened: !moderation.deafened })}
+              >
+                {moderation.deafened ? t("member.ownerUndeafen") : t("member.ownerDeafen")}
+              </button>
+            </>
+          ) : null}
           {onMove && moveTargets && moveTargets.length > 0 ? (
             <MemberMoveSubmenu
               label={t("member.moveTo")}
@@ -228,19 +279,37 @@ export function MemberActionMenu({
               }}
             />
           ) : null}
-          {canDisconnect ? <button type="button" onClick={() => onRequestAction("disconnect")}>{t("member.disconnect")}</button> : null}
-          {canModerate ? <>
-            <button className="is-danger" type="button" onClick={() => onRequestAction("kick")}>{t("member.kick")}</button>
-            <button className="is-danger" type="button" onClick={() => onRequestAction("ban")}>{t("member.ban")}</button>
-          </> : null}
+          {canDisconnect ? (
+            <button type="button" onClick={() => onRequestAction("disconnect")}>
+              {t("member.disconnect")}
+            </button>
+          ) : null}
+          {canModerate ? (
+            <>
+              <button className="is-danger" type="button" onClick={() => onRequestAction("kick")}>
+                {t("member.kick")}
+              </button>
+              <button className="is-danger" type="button" onClick={() => onRequestAction("ban")}>
+                {t("member.ban")}
+              </button>
+            </>
+          ) : null}
         </ContextMenu>
       ) : null}
     </>
   );
 }
 
-export function MemberMoveSubmenu({ label, rooms, onSelect }: {
-  label: string; rooms: RoomSummary[]; onSelect: (roomId: string) => void;
+export function MemberMoveSubmenu({
+  label,
+  rooms,
+  onSelect
+}: {
+  label: string;
+  rooms: RoomSummary[];
+  onSelect: (roomId: string) => void;
 }) {
-  return <MenuSubmenu label={label} items={rooms.map(room => ({ id: room.id, label: room.name }))} onSelect={onSelect} />;
+  return (
+    <MenuSubmenu label={label} items={rooms.map((room) => ({ id: room.id, label: room.name }))} onSelect={onSelect} />
+  );
 }

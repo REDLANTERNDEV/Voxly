@@ -57,7 +57,10 @@ describe("application notifications", () => {
     const withBoth = notificationReducer(withFailure, { type: "push", notification: notice });
 
     const dismissed = notificationReducer(withBoth, { type: "dismiss", id: voiceFailure.id });
-    assert.deepEqual(dismissed.map((item) => item.id), [notice.id]);
+    assert.deepEqual(
+      dismissed.map((item) => item.id),
+      [notice.id]
+    );
   });
 
   it("does not let a stale close animation dismiss a repeated notification", () => {

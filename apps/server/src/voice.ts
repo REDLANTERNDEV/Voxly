@@ -41,6 +41,7 @@ import {
 import { roomById } from "./rooms.js";
 import {
   callAck,
+  observeSocketRoomChange,
   roomIdPayloadSchema,
   safeSocketHandler,
   socketsForSession,
@@ -56,30 +57,44 @@ type VisualSubscriptions = Map<string, Map<string, Set<VisualMediaKind>>>;
 
 const visualPublisherLimit = 3;
 
-const visualSubscriptionsPayloadSchema = z.object({
-  roomId: z.string().min(1),
-  targets: z.array(z.object({
-    publisherUserId: z.string().min(1),
-    kind: z.enum(["camera", "screen"])
-  }).strict()).max(6)
-}).strict();
+const visualSubscriptionsPayloadSchema = z
+  .object({
+    roomId: z.string().min(1),
+    targets: z
+      .array(
+        z
+          .object({
+            publisherUserId: z.string().min(1),
+            kind: z.enum(["camera", "screen"])
+          })
+          .strict()
+      )
+      .max(6)
+  })
+  .strict();
 
-const setMediaStatePayloadSchema = z.object({
-  roomId: z.string().min(1),
-  media: z.object({
-    mic: z.boolean(),
-    camera: z.boolean(),
-    screen: z.boolean(),
-    deafened: z.boolean(),
-    speaking: z.boolean()
-  }).partial()
-}).strict();
+const setMediaStatePayloadSchema = z
+  .object({
+    roomId: z.string().min(1),
+    media: z
+      .object({
+        mic: z.boolean(),
+        camera: z.boolean(),
+        screen: z.boolean(),
+        deafened: z.boolean(),
+        speaking: z.boolean()
+      })
+      .partial()
+  })
+  .strict();
 
-const rtcSignalPayloadSchema = z.object({
-  roomId: z.string().min(1),
-  toUserId: z.string().min(1),
-  signal: z.record(z.string(), z.unknown())
-}).strict();
+const rtcSignalPayloadSchema = z
+  .object({
+    roomId: z.string().min(1),
+    toUserId: z.string().min(1),
+    signal: z.record(z.string(), z.unknown())
+  })
+  .strict();
 
 /**
  * Everything a voice operation needs: the socket server it emits through, the
@@ -106,11 +121,14 @@ interface VoiceContext {
   /**
    * Timers for pending disconnects awaiting grace period.
    */
-  pendingDisconnects: Map<string, {
-    socketId: string;
-    sessionId: string;
-    timer: NodeJS.Timeout;
-  }>;
+  pendingDisconnects: Map<
+    string,
+    {
+      socketId: string;
+      sessionId: string;
+      timer: NodeJS.Timeout;
+    }
+  >;
 }
 
 /**
@@ -185,11 +203,11 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
       const sessionId = typeof socket.data.sessionId === "string" ? socket.data.sessionId : "";
       const holder = context.holders.get(userId);
       if (holder && sessionId && holder.sessionId !== sessionId) {
-        socket.leave(`voice:${holder.roomId}`);
+        observeSocketRoomChange(socket.leave(`voice:${holder.roomId}`));
         return;
       }
       if (holder) {
-        socket.leave(`voice:${holder.roomId}`);
+        observeSocketRoomChange(socket.leave(`voice:${holder.roomId}`));
       }
       // Schedule a grace timer for potential reconnect instead of instantly evicting.
       const existingTimer = context.pendingDisconnects.get(userId);
@@ -232,8 +250,9 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
       // connections and the capture. So the move is an instruction, and the
       // ordinary join path carries it out — including the AFK room's forced
       // mute and the automatic leave of the previous room.
-      const currentRoomId = [...context.membership.entries()]
-        .find(([roomId, members]) => members.has(userId) && roomById(database.sqlite, roomId)?.serverId === serverId)?.[0];
+      const currentRoomId = [...context.membership.entries()].find(
+        ([roomId, members]) => members.has(userId) && roomById(database.sqlite, roomId)?.serverId === serverId
+      )?.[0];
       if (!currentRoomId || currentRoomId === targetRoomId) return false;
       for (const socket of socketsForUser(io, userId)) {
         socket.emit("voice:moveTo", { roomId: targetRoomId });
@@ -241,9 +260,8 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
       return true;
     },
     forceLeave(userId, reason, serverId) {
-      const rooms = serverId === undefined
-        ? voiceRoomsOf(context, userId)
-        : serverVoiceRoomsOf(context, serverId, userId);
+      const rooms =
+        serverId === undefined ? voiceRoomsOf(context, userId) : serverVoiceRoomsOf(context, serverId, userId);
       for (const { roomId } of rooms) {
         leaveVoiceMember(context, roomId, userId);
         emitVoiceForceLeave(context, userId, roomId, reason);
@@ -255,7 +273,7 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
       context.subscriptions.delete(roomId);
       for (const socket of io.sockets.sockets.values()) {
         const socketUser = socket.data.user as PresenceUser | undefined;
-        socket.leave(`voice:${roomId}`);
+        observeSocketRoomChange(socket.leave(`voice:${roomId}`));
         if (socketUser && memberUserIds.has(socketUser.userId)) {
           socket.emit("voice:forceLeave", { roomId, reason });
         }
@@ -280,198 +298,229 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
 function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user: PresenceUser) {
   const { database } = context;
 
-  socket.on("voice:join", safeSocketHandler("voice:join", (payload, ack) => {
-    if (typeof ack !== "function") return;
+  socket.on(
+    "voice:join",
+    safeSocketHandler("voice:join", (payload, ack) => {
+      if (typeof ack !== "function") return;
 
-    const candidate = payload as Partial<VoiceJoinRequest> | null;
-    const roomId = typeof candidate?.roomId === "string" ? candidate.roomId : "";
-    const room = roomById(database.sqlite, roomId);
-    if (!room || room.kind !== "voice") {
-      ack({ ok: false, error: "room_not_found" });
-      return;
-    }
-    const membership = activeServerMembership(database.sqlite, room.serverId, user.userId);
-    if (!membership) {
-      ack({ ok: false, error: "forbidden" });
-      return;
-    }
-    const roomUser = serverPresenceUser(database.sqlite, room.serverId, user.userId);
-    if (!roomUser) {
-      ack({ ok: false, error: "forbidden" });
-      return;
-    }
-
-    const suppliedInstance = candidate?.mediaInstanceId;
-    if (suppliedInstance !== undefined && (typeof suppliedInstance !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(suppliedInstance))) {
-      ack({ ok: false, error: "forbidden" });
-      return;
-    }
-    // Older clients get a public id per socket. Updated clients retain their
-    // media id across a signalling-only reconnect, but never across a reload.
-    socket.data.voiceMediaInstanceId ??= randomUUID();
-    const mediaInstanceId = suppliedInstance ?? (socket.data.voiceMediaInstanceId as string);
-
-    const requested = candidate?.media as Partial<VoiceMediaState> | undefined;
-    const moderation = voiceModeration(membership);
-    const media = normalizeVoiceMedia({
-      mic: requested?.mic === true,
-      camera: requested?.camera === true,
-      screen: requested?.screen === true,
-      deafened: requested?.deafened === true,
-      speaking: false
-    }, moderation, room);
-    const members = ensureVoiceRoom(context.membership, roomId);
-    if (visualPublisherCount(members, user.userId, media) > visualPublisherLimit) {
-      ack({ ok: false, error: "visual_limit_reached" });
-      return;
-    }
-
-    // Voice follows the newest Device.
-    //
-    // Membership is keyed by account, so two Devices cannot both hold a call —
-    // the second would overwrite the first's member state while the first kept
-    // its peer connections and went on answering every negotiation. Rather than
-    // let that happen, the Device that was holding it is told plainly that it
-    // has been displaced, and stops.
-    //
-    // Only voice moves. The displaced Device keeps its session, its chat and
-    // its presence; nothing about it is signed out.
-    const sessionId = typeof socket.data.sessionId === "string" ? socket.data.sessionId : "";
-    const holder = context.holders.get(user.userId);
-    if (holder && holder.sessionId !== sessionId) {
-      emitVoiceForceLeave(context, user.userId, holder.roomId, "joined_another_device", holder.sessionId);
-    }
-
-    // A user account is in at most one voice room globally, so joining leaves
-    // whatever they were in before — including the subscriptions it carried.
-    //
-    // Deliberately only *other* rooms. Taking over a call in the room the
-    // member is already in must not emit `voice:left` — to everybody else this
-    // is one member throughout, not a member who left and came back, and a
-    // leave would fire the join and leave cues at the whole room for something
-    // that did not happen to them.
-    for (const [activeRoomId, activeMembers] of context.membership) {
-      if (activeRoomId !== roomId && activeMembers.has(user.userId)) {
-        leaveVoiceMember(context, activeRoomId, user.userId);
+      const candidate = payload as Partial<VoiceJoinRequest> | null;
+      const roomId = typeof candidate?.roomId === "string" ? candidate.roomId : "";
+      const room = roomById(database.sqlite, roomId);
+      if (!room || room.kind !== "voice") {
+        ack({ ok: false, error: "room_not_found" });
+        return;
       }
-    }
-    socket.data.voiceMediaInstanceId = mediaInstanceId;
-    socket.join(`voice:${roomId}`);
-    // Media and moderation are rebuilt from the request and the membership row
-    // above, so the member arrives on the new Device muted if they were muted,
-    // and stays muted if an owner muted them.
-    const memberState: VoiceMemberState = { user: roomUser, media, moderation, mediaInstanceId };
-    members.set(user.userId, memberState);
-    context.holders.set(user.userId, { roomId, sessionId });
-    // Clear any pending disconnect timer for this user (reconnect succeeded)
-    clearPendingDisconnect(context, user.userId);
-    ack({ ok: true, state: memberState });
-    emitVoiceSnapshot(context, roomId, members);
-    socket.to(`server:${room.serverId}`).emit("voice:joined", { roomId, user: roomUser });
-  }));
+      const membership = activeServerMembership(database.sqlite, room.serverId, user.userId);
+      if (!membership) {
+        ack({ ok: false, error: "forbidden" });
+        return;
+      }
+      const roomUser = serverPresenceUser(database.sqlite, room.serverId, user.userId);
+      if (!roomUser) {
+        ack({ ok: false, error: "forbidden" });
+        return;
+      }
 
-  socket.on("voice:leave", safeSocketHandler("voice:leave", (roomId) => {
-    const parsed = roomIdPayloadSchema.safeParse(roomId);
-    if (!parsed.success) return;
-    // Only the Device holding the call may end it.
-    //
-    // A displaced Device answers `voice:forceLeave` by tearing down, and
-    // tearing down emits this. Without the guard the laptop's own goodbye
-    // would remove the account from the room the phone had just taken over —
-    // the handoff would undo itself a moment after it succeeded.
-    const sessionId = typeof socket.data.sessionId === "string" ? socket.data.sessionId : "";
-    const holder = context.holders.get(user.userId);
-    if (holder && sessionId && holder.sessionId !== sessionId) {
-      socket.leave(`voice:${parsed.data}`);
-      return;
-    }
-    leaveVoice(context, socket, parsed.data, user.userId);
-  }));
+      const suppliedInstance = candidate?.mediaInstanceId;
+      if (
+        suppliedInstance !== undefined &&
+        (typeof suppliedInstance !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(suppliedInstance))
+      ) {
+        ack({ ok: false, error: "forbidden" });
+        return;
+      }
+      // Older clients get a public id per socket. Updated clients retain their
+      // media id across a signalling-only reconnect, but never across a reload.
+      socket.data.voiceMediaInstanceId ??= randomUUID();
+      const mediaInstanceId = suppliedInstance ?? (socket.data.voiceMediaInstanceId as string);
 
-  socket.on("voice:snapshot", safeSocketHandler("voice:snapshot", (roomId, ack) => {
-    const parsed = roomIdPayloadSchema.safeParse(roomId);
-    if (!parsed.success) {
-      callAck(ack, { roomId: typeof roomId === "string" ? roomId : "", viewerInVoiceRoom: false, members: [] });
-      return;
-    }
-    const room = roomById(database.sqlite, parsed.data);
-    if (!room || !hasActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
-      callAck(ack, { roomId: parsed.data, viewerInVoiceRoom: false, members: [] });
-      return;
-    }
-    const viewerInVoiceRoom = isVoiceSocketMember(context, parsed.data, user.userId, socket);
-    callAck(ack, voiceSnapshot(parsed.data, context.membership.get(parsed.data), viewerInVoiceRoom, viewerInVoiceRoom));
-  }));
+      const requested = candidate?.media as Partial<VoiceMediaState> | undefined;
+      const moderation = voiceModeration(membership);
+      const media = normalizeVoiceMedia(
+        {
+          mic: requested?.mic === true,
+          camera: requested?.camera === true,
+          screen: requested?.screen === true,
+          deafened: requested?.deafened === true,
+          speaking: false
+        },
+        moderation,
+        room
+      );
+      const members = ensureVoiceRoom(context.membership, roomId);
+      if (visualPublisherCount(members, user.userId, media) > visualPublisherLimit) {
+        ack({ ok: false, error: "visual_limit_reached" });
+        return;
+      }
 
-  socket.on("voice:setMediaState", safeSocketHandler("voice:setMediaState", (payload, ack) => {
-    const parsed = setMediaStatePayloadSchema.safeParse(payload);
-    if (!parsed.success) {
-      callAck(ack, { ok: false, error: "room_not_found" });
-      return;
-    }
-    const room = roomById(database.sqlite, parsed.data.roomId);
-    if (!room || room.kind !== "voice") {
-      callAck(ack, { ok: false, error: "room_not_found" });
-      return;
-    }
-    const members = context.membership.get(parsed.data.roomId);
-    const current = members?.get(user.userId);
-    if (!members || !current || !isVoiceSocketMember(context, parsed.data.roomId, user.userId, socket)) {
-      callAck(ack, { ok: false, error: "not_in_voice_room" });
-      return;
-    }
-    const membership = activeServerMembership(database.sqlite, room.serverId, user.userId);
-    if (!membership) {
-      callAck(ack, { ok: false, error: "not_in_voice_room" });
-      return;
-    }
-    const moderation = voiceModeration(membership);
-    const nextMedia = normalizeVoiceMedia({ ...current.media, ...parsed.data.media }, moderation, room);
-    if (visualPublisherCount(members, user.userId, nextMedia) > visualPublisherLimit) {
-      callAck(ack, { ok: false, error: "visual_limit_reached" });
-      return;
-    }
-    const nextState = { ...current, media: nextMedia, moderation };
-    members.set(user.userId, nextState);
-    clearUnavailableVisualSubscriptions(context, parsed.data.roomId, user.userId, nextMedia);
-    emitVoiceSnapshot(context, parsed.data.roomId, members);
-    callAck(ack, { ok: true, state: nextState });
-  }));
+      // Voice follows the newest Device.
+      //
+      // Membership is keyed by account, so two Devices cannot both hold a call —
+      // the second would overwrite the first's member state while the first kept
+      // its peer connections and went on answering every negotiation. Rather than
+      // let that happen, the Device that was holding it is told plainly that it
+      // has been displaced, and stops.
+      //
+      // Only voice moves. The displaced Device keeps its session, its chat and
+      // its presence; nothing about it is signed out.
+      const sessionId = typeof socket.data.sessionId === "string" ? socket.data.sessionId : "";
+      const holder = context.holders.get(user.userId);
+      if (holder && holder.sessionId !== sessionId) {
+        emitVoiceForceLeave(context, user.userId, holder.roomId, "joined_another_device", holder.sessionId);
+      }
 
-  socket.on("voice:setVisualSubscriptions", safeSocketHandler("voice:setVisualSubscriptions", (payload, ack) => {
-    const parsed = visualSubscriptionsPayloadSchema.safeParse(payload);
-    if (!parsed.success) {
-      callAck(ack, { ok: false, error: "invalid_payload" });
-      return;
-    }
-    if (!isVoiceSocketMember(context, parsed.data.roomId, user.userId, socket)) {
-      callAck(ack, { ok: false, error: "not_in_voice_room" });
-      return;
-    }
-    callAck(ack, setVisualSubscriptions(context, user.userId, parsed.data));
-  }));
+      // A user account is in at most one voice room globally, so joining leaves
+      // whatever they were in before — including the subscriptions it carried.
+      //
+      // Deliberately only *other* rooms. Taking over a call in the room the
+      // member is already in must not emit `voice:left` — to everybody else this
+      // is one member throughout, not a member who left and came back, and a
+      // leave would fire the join and leave cues at the whole room for something
+      // that did not happen to them.
+      for (const [activeRoomId, activeMembers] of context.membership) {
+        if (activeRoomId !== roomId && activeMembers.has(user.userId)) {
+          leaveVoiceMember(context, activeRoomId, user.userId);
+        }
+      }
+      socket.data.voiceMediaInstanceId = mediaInstanceId;
+      observeSocketRoomChange(socket.join(`voice:${roomId}`));
+      // Media and moderation are rebuilt from the request and the membership row
+      // above, so the member arrives on the new Device muted if they were muted,
+      // and stays muted if an owner muted them.
+      const memberState: VoiceMemberState = { user: roomUser, media, moderation, mediaInstanceId };
+      members.set(user.userId, memberState);
+      context.holders.set(user.userId, { roomId, sessionId });
+      // Clear any pending disconnect timer for this user (reconnect succeeded)
+      clearPendingDisconnect(context, user.userId);
+      ack({ ok: true, state: memberState });
+      emitVoiceSnapshot(context, roomId, members);
+      socket.to(`server:${room.serverId}`).emit("voice:joined", { roomId, user: roomUser });
+    })
+  );
 
-  socket.on("rtc:signal", safeSocketHandler("rtc:signal", (payload, ack) => {
-    const parsed = rtcSignalPayloadSchema.safeParse(payload);
-    if (!parsed.success) {
-      callAck(ack, { ok: false, error: "room_not_found" });
-      return;
-    }
-    if (!isVoiceSocketMember(context, parsed.data.roomId, user.userId, socket)) {
-      callAck(ack, { ok: false, error: "not_in_voice_room" });
-      return;
-    }
-    callAck(ack, forwardRtcSignal(context, user.userId, parsed.data));
-  }));
+  socket.on(
+    "voice:leave",
+    safeSocketHandler("voice:leave", (roomId) => {
+      const parsed = roomIdPayloadSchema.safeParse(roomId);
+      if (!parsed.success) return;
+      // Only the Device holding the call may end it.
+      //
+      // A displaced Device answers `voice:forceLeave` by tearing down, and
+      // tearing down emits this. Without the guard the laptop's own goodbye
+      // would remove the account from the room the phone had just taken over —
+      // the handoff would undo itself a moment after it succeeded.
+      const sessionId = typeof socket.data.sessionId === "string" ? socket.data.sessionId : "";
+      const holder = context.holders.get(user.userId);
+      if (holder && sessionId && holder.sessionId !== sessionId) {
+        observeSocketRoomChange(socket.leave(`voice:${parsed.data}`));
+        return;
+      }
+      leaveVoice(context, socket, parsed.data, user.userId);
+    })
+  );
+
+  socket.on(
+    "voice:snapshot",
+    safeSocketHandler("voice:snapshot", (roomId, ack) => {
+      const parsed = roomIdPayloadSchema.safeParse(roomId);
+      if (!parsed.success) {
+        callAck(ack, { roomId: typeof roomId === "string" ? roomId : "", viewerInVoiceRoom: false, members: [] });
+        return;
+      }
+      const room = roomById(database.sqlite, parsed.data);
+      if (!room || !hasActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
+        callAck(ack, { roomId: parsed.data, viewerInVoiceRoom: false, members: [] });
+        return;
+      }
+      const viewerInVoiceRoom = isVoiceSocketMember(context, parsed.data, user.userId, socket);
+      callAck(
+        ack,
+        voiceSnapshot(parsed.data, context.membership.get(parsed.data), viewerInVoiceRoom, viewerInVoiceRoom)
+      );
+    })
+  );
+
+  socket.on(
+    "voice:setMediaState",
+    safeSocketHandler("voice:setMediaState", (payload, ack) => {
+      const parsed = setMediaStatePayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        callAck(ack, { ok: false, error: "room_not_found" });
+        return;
+      }
+      const room = roomById(database.sqlite, parsed.data.roomId);
+      if (!room || room.kind !== "voice") {
+        callAck(ack, { ok: false, error: "room_not_found" });
+        return;
+      }
+      const members = context.membership.get(parsed.data.roomId);
+      const current = members?.get(user.userId);
+      if (!members || !current || !isVoiceSocketMember(context, parsed.data.roomId, user.userId, socket)) {
+        callAck(ack, { ok: false, error: "not_in_voice_room" });
+        return;
+      }
+      const membership = activeServerMembership(database.sqlite, room.serverId, user.userId);
+      if (!membership) {
+        callAck(ack, { ok: false, error: "not_in_voice_room" });
+        return;
+      }
+      const moderation = voiceModeration(membership);
+      const nextMedia = normalizeVoiceMedia({ ...current.media, ...parsed.data.media }, moderation, room);
+      if (visualPublisherCount(members, user.userId, nextMedia) > visualPublisherLimit) {
+        callAck(ack, { ok: false, error: "visual_limit_reached" });
+        return;
+      }
+      const nextState = { ...current, media: nextMedia, moderation };
+      members.set(user.userId, nextState);
+      clearUnavailableVisualSubscriptions(context, parsed.data.roomId, user.userId, nextMedia);
+      emitVoiceSnapshot(context, parsed.data.roomId, members);
+      callAck(ack, { ok: true, state: nextState });
+    })
+  );
+
+  socket.on(
+    "voice:setVisualSubscriptions",
+    safeSocketHandler("voice:setVisualSubscriptions", (payload, ack) => {
+      const parsed = visualSubscriptionsPayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        callAck(ack, { ok: false, error: "invalid_payload" });
+        return;
+      }
+      if (!isVoiceSocketMember(context, parsed.data.roomId, user.userId, socket)) {
+        callAck(ack, { ok: false, error: "not_in_voice_room" });
+        return;
+      }
+      callAck(ack, setVisualSubscriptions(context, user.userId, parsed.data));
+    })
+  );
+
+  socket.on(
+    "rtc:signal",
+    safeSocketHandler("rtc:signal", (payload, ack) => {
+      const parsed = rtcSignalPayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        callAck(ack, { ok: false, error: "room_not_found" });
+        return;
+      }
+      if (!isVoiceSocketMember(context, parsed.data.roomId, user.userId, socket)) {
+        callAck(ack, { ok: false, error: "not_in_voice_room" });
+        return;
+      }
+      callAck(ack, forwardRtcSignal(context, user.userId, parsed.data));
+    })
+  );
 }
 
 function isVoiceSocketMember(context: VoiceContext, roomId: string, userId: string, socket: VoxlySocket): boolean {
   const holder = context.holders.get(userId);
   const member = context.membership.get(roomId)?.get(userId);
-  return Boolean(member && holder?.roomId === roomId
-    && holder.sessionId === socket.data.sessionId
-    && socket.rooms.has(`voice:${roomId}`)
-    && member.mediaInstanceId === socket.data.voiceMediaInstanceId);
+  return Boolean(
+    member &&
+    holder?.roomId === roomId &&
+    holder.sessionId === socket.data.sessionId &&
+    socket.rooms.has(`voice:${roomId}`) &&
+    member.mediaInstanceId === socket.data.voiceMediaInstanceId
+  );
 }
 
 /**
@@ -511,13 +560,11 @@ function emitVoiceForceLeave(
   reason: VoiceForceLeaveReason,
   sessionId?: string
 ) {
-  const sockets = sessionId
-    ? socketsForSession(context.io, userId, sessionId)
-    : socketsForUser(context.io, userId);
+  const sockets = sessionId ? socketsForSession(context.io, userId, sessionId) : socketsForUser(context.io, userId);
   for (const socket of sockets) {
     // Leaving the Socket.IO room is what actually stops signalling reaching
     // this Device: `forwardRtcSignal` addresses whoever is in `voice:<room>`.
-    socket.leave(`voice:${roomId}`);
+    observeSocketRoomChange(socket.leave(`voice:${roomId}`));
     socket.emit("voice:forceLeave", { roomId, reason });
   }
 }
@@ -531,7 +578,7 @@ function clearPendingDisconnect(context: VoiceContext, userId: string) {
 }
 
 function leaveVoice(context: VoiceContext, socket: VoxlySocket, roomId: string, userId: string) {
-  socket.leave(`voice:${roomId}`);
+  observeSocketRoomChange(socket.leave(`voice:${roomId}`));
   leaveVoiceMember(context, roomId, userId);
 }
 
@@ -547,7 +594,7 @@ function leaveVoiceMember(context: VoiceContext, roomId: string, userId: string)
     context.membership.delete(roomId);
   }
   for (const candidate of socketsForUser(context.io, userId)) {
-    candidate.leave(`voice:${roomId}`);
+    observeSocketRoomChange(candidate.leave(`voice:${roomId}`));
   }
   const room = roomById(context.database.sqlite, roomId);
   if (!room) return;
@@ -567,7 +614,10 @@ function emitVoiceSnapshot(context: VoiceContext, roomId: string, members: Voice
   // Observer snapshots intentionally carry the room roster, but they must not
   // be mistaken for proof that the receiving socket is in that voice room.
   context.io.to(voiceRoom).emit("voice:snapshot", voiceSnapshot(roomId, members, true, true));
-  context.io.to(`server:${room.serverId}`).except(voiceRoom).emit("voice:snapshot", voiceSnapshot(roomId, members, false, false));
+  context.io
+    .to(`server:${room.serverId}`)
+    .except(voiceRoom)
+    .emit("voice:snapshot", voiceSnapshot(roomId, members, false, false));
 }
 
 function setVisualSubscriptions(
@@ -595,7 +645,8 @@ function setVisualSubscriptions(
     }
   }
 
-  const roomSubscriptions = context.subscriptions.get(payload.roomId) ?? new Map<string, Map<string, Set<VisualMediaKind>>>();
+  const roomSubscriptions =
+    context.subscriptions.get(payload.roomId) ?? new Map<string, Map<string, Set<VisualMediaKind>>>();
   const previous = roomSubscriptions.get(viewerUserId) ?? new Map<string, Set<VisualMediaKind>>();
   const next = new Map<string, Set<VisualMediaKind>>();
   for (const target of targets) {
@@ -758,9 +809,9 @@ export function voiceSnapshot(
     roomId,
     viewerInVoiceRoom,
     members: members
-      ? [...members.values()].map((member) => includeSpeaking
-        ? member
-        : { ...member, media: { ...member.media, speaking: false } })
+      ? [...members.values()].map((member) =>
+          includeSpeaking ? member : { ...member, media: { ...member.media, speaking: false } }
+        )
       : []
   };
 }
@@ -808,11 +859,7 @@ export function normalizeVoiceMedia(
   return next;
 }
 
-function visualPublisherCount(
-  members: VoiceRoomMembership,
-  currentUserId: string,
-  nextCurrentMedia: VoiceMediaState
-) {
+function visualPublisherCount(members: VoiceRoomMembership, currentUserId: string, nextCurrentMedia: VoiceMediaState) {
   let count = nextCurrentMedia.camera || nextCurrentMedia.screen ? 1 : 0;
   for (const [userId, member] of members) {
     if (userId === currentUserId) {

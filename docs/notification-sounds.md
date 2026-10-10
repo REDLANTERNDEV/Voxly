@@ -10,19 +10,19 @@ The cues are plain files in `apps/web/public/sounds`. The client resolves them
 by name, so replacing a file is enough to change a cue; no code change is
 needed as long as the name and the format stay the same.
 
-| File | Plays when |
-| --- | --- |
-| `voice-join.wav` | You join a voice room |
-| `voice-leave.wav` | You leave a voice room |
-| `voice-peer-join.wav` | Someone else joins the room you are in |
-| `voice-peer-leave.wav` | Someone else leaves the room you are in |
-| `mute.wav` | You mute your microphone |
-| `unmute.wav` | You unmute your microphone |
-| `deafen.wav` | You deafen |
-| `undeafen.wav` | You undeafen |
-| `message.wav` | A message arrives in another room, or while the window is away |
-| `connection-lost.wav` | The reconnect overlay opens |
-| `connection-restored.wav` | The connection recovers |
+| File                      | Plays when                                                     |
+| ------------------------- | -------------------------------------------------------------- |
+| `voice-join.wav`          | You join a voice room                                          |
+| `voice-leave.wav`         | You leave a voice room                                         |
+| `voice-peer-join.wav`     | Someone else joins the room you are in                         |
+| `voice-peer-leave.wav`    | Someone else leaves the room you are in                        |
+| `mute.wav`                | You mute your microphone                                       |
+| `unmute.wav`              | You unmute your microphone                                     |
+| `deafen.wav`              | You deafen                                                     |
+| `undeafen.wav`            | You undeafen                                                   |
+| `message.wav`             | A message arrives in another room, or while the window is away |
+| `connection-lost.wav`     | The reconnect overlay opens                                    |
+| `connection-restored.wav` | The connection recovers                                        |
 
 The files currently in the repository are synthesized placeholder tones. They
 exist so the feature works out of the box and are meant to be replaced.

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { audit } from "./audit.js";
-import { requireOwner,requireUser,revokeSessionsForUser } from "./auth/sessions.js";
-import { all,one,run,type VoxlyDatabase } from "./db/database.js";
-import { authenticatedWriteLimit,userIdParam,type RouteContext } from "./http.js";
+import { requireOwner, requireUser, revokeSessionsForUser } from "./auth/sessions.js";
+import { all, one, run, type VoxlyDatabase } from "./db/database.js";
+import { authenticatedWriteLimit, userIdParam, type RouteContext } from "./http.js";
 
 const deletionCooldownMs = 24 * 60 * 60 * 1000;
 
@@ -42,7 +42,7 @@ function membershipProjection(database: VoxlyDatabase, userId: string) {
     serverName: membership.serverName,
     nickname: membership.nickname,
     role: membership.role,
-    state: membership.removedAt ? "removed" as const : membership.bannedAt ? "banned" as const : "active" as const
+    state: membership.removedAt ? ("removed" as const) : membership.bannedAt ? ("banned" as const) : ("active" as const)
   }));
 }
 
@@ -59,12 +59,13 @@ function deletionRefusal(database: VoxlyDatabase, account: DeletableAccount | nu
   if (account.deleted_at) return "account_already_deleted" as const;
   if (account.role === "owner") return "account_is_installation_owner" as const;
   if (account.is_bot) return "account_is_bot" as const;
-  const ownsServer = one<{ count: number }>(
-    database.sqlite,
-    "select count(*) as count from server_members where user_id = ? and role = 'owner'",
-    [account.id]
-  )?.count ?? 0;
-  return ownsServer > 0 ? "account_owns_server" as const : null;
+  const ownsServer =
+    one<{ count: number }>(
+      database.sqlite,
+      "select count(*) as count from server_members where user_id = ? and role = 'owner'",
+      [account.id]
+    )?.count ?? 0;
+  return ownsServer > 0 ? ("account_owns_server" as const) : null;
 }
 
 function deleteAccount(
@@ -80,21 +81,51 @@ function deleteAccount(
     const refusal = deletionRefusal(database, account);
     if (refusal || !account) {
       database.sqlite.exec("rollback");
-      return { ok: false as const, error: refusal ?? "account_not_found" as const };
+      return { ok: false as const, error: refusal ?? ("account_not_found" as const) };
     }
-    const serverIds = all<{ server_id: string }>(database.sqlite, "select server_id from server_members where user_id = ?", [userId])
-      .map((membership) => membership.server_id);
+    const serverIds = all<{ server_id: string }>(
+      database.sqlite,
+      "select server_id from server_members where user_id = ?",
+      [userId]
+    ).map((membership) => membership.server_id);
     const now = new Date().toISOString();
-    run(database.sqlite, "update users set nickname = '', deleted_at = ?, deletion_source = ? where id = ? and deleted_at is null", [now, source, userId]);
-    run(database.sqlite, "update server_members set nickname = null, removed_at = ?, can_invite = 0 where user_id = ?", [now, userId]);
+    run(
+      database.sqlite,
+      "update users set nickname = '', deleted_at = ?, deletion_source = ? where id = ? and deleted_at is null",
+      [now, source, userId]
+    );
+    run(
+      database.sqlite,
+      "update server_members set nickname = null, removed_at = ?, can_invite = 0 where user_id = ?",
+      [now, userId]
+    );
     revokeSessionsForUser(database.sqlite, userId, now);
-    run(database.sqlite, "delete from session_tokens where session_id in (select id from sessions where user_id = ?)", [userId]);
+    run(database.sqlite, "delete from session_tokens where session_id in (select id from sessions where user_id = ?)", [
+      userId
+    ]);
     run(database.sqlite, "delete from device_links where user_id = ?", [userId]);
-    run(database.sqlite, "update desktop_authorizations set cancelled_at = coalesce(cancelled_at, ?) where approved_user_id = ? and consumed_at is null", [now, userId]);
-    run(database.sqlite, "update recovery_codes set replaced_at = coalesce(replaced_at, ?) where user_id = ?", [now, userId]);
-    run(database.sqlite, "update invites set revoked_at = coalesce(revoked_at, ?) where created_by_user_id = ?", [now, userId]);
-    run(database.sqlite, "update access_claims set revoked_at = coalesce(revoked_at, ?) where user_id = ? or created_by_user_id = ?", [now, userId, userId]);
-    run(database.sqlite, "update owner_claims set consumed_at = coalesce(consumed_at, ?) where user_id = ?", [now, userId]);
+    run(
+      database.sqlite,
+      "update desktop_authorizations set cancelled_at = coalesce(cancelled_at, ?) where approved_user_id = ? and consumed_at is null",
+      [now, userId]
+    );
+    run(database.sqlite, "update recovery_codes set replaced_at = coalesce(replaced_at, ?) where user_id = ?", [
+      now,
+      userId
+    ]);
+    run(database.sqlite, "update invites set revoked_at = coalesce(revoked_at, ?) where created_by_user_id = ?", [
+      now,
+      userId
+    ]);
+    run(
+      database.sqlite,
+      "update access_claims set revoked_at = coalesce(revoked_at, ?) where user_id = ? or created_by_user_id = ?",
+      [now, userId, userId]
+    );
+    run(database.sqlite, "update owner_claims set consumed_at = coalesce(consumed_at, ?) where user_id = ?", [
+      now,
+      userId
+    ]);
     if (requestId) {
       run(
         database.sqlite,
@@ -119,7 +150,7 @@ function deleteAccount(
 }
 
 export function registerAccountDeletionRoutes(context: RouteContext) {
-  const { fastify,database,realtime,secureCookies,io } = context;
+  const { fastify, database, realtime, secureCookies, io } = context;
 
   fastify.get("/api/account/deletion-request", async (request, reply) => {
     const user = requireUser(database, request, reply, secureCookies);
@@ -142,7 +173,8 @@ export function registerAccountDeletionRoutes(context: RouteContext) {
     const account = accountById(database, user.id);
     const refusal = deletionRefusal(database, account);
     if (refusal) return reply.code(409).send({ error: refusal });
-    if (!account || body.nickname !== account.nickname) return reply.code(400).send({ error: "nickname_confirmation_mismatch" });
+    if (!account || body.nickname !== account.nickname)
+      return reply.code(400).send({ error: "nickname_confirmation_mismatch" });
     const existing = one<{ status: string; resolved_at: string | null }>(
       database.sqlite,
       "select status, resolved_at from account_deletion_requests where user_id = ? order by requested_at desc limit 1",
@@ -151,7 +183,8 @@ export function registerAccountDeletionRoutes(context: RouteContext) {
     if (existing?.status === "pending") return reply.code(409).send({ error: "deletion_request_pending" });
     if (existing?.resolved_at && ["cancelled", "rejected"].includes(existing.status)) {
       const retryAt = new Date(existing.resolved_at).getTime() + deletionCooldownMs;
-      if (retryAt > Date.now()) return reply.code(429).send({ error: "deletion_request_cooldown", retryAt: new Date(retryAt).toISOString() });
+      if (retryAt > Date.now())
+        return reply.code(429).send({ error: "deletion_request_cooldown", retryAt: new Date(retryAt).toISOString() });
     }
     const deletionRequest = { id: crypto.randomUUID(), requestedAt: new Date().toISOString() };
     run(
@@ -173,9 +206,11 @@ export function registerAccountDeletionRoutes(context: RouteContext) {
     const user = requireUser(database, request, reply, secureCookies);
     if (!user) return;
     const now = new Date().toISOString();
-    const result = database.sqlite.prepare(
-      "update account_deletion_requests set status = 'cancelled', resolved_at = ? where user_id = ? and status = 'pending'"
-    ).run(now, user.id);
+    const result = database.sqlite
+      .prepare(
+        "update account_deletion_requests set status = 'cancelled', resolved_at = ? where user_id = ? and status = 'pending'"
+      )
+      .run(now, user.id);
     if (result.changes === 0) return reply.code(404).send({ error: "deletion_request_not_found" });
     audit(database, user.id, "account.deletion_cancelled", user.id);
     database.save();
@@ -185,7 +220,13 @@ export function registerAccountDeletionRoutes(context: RouteContext) {
   fastify.get("/api/owner/deletion-requests", async (request, reply) => {
     const owner = requireOwner(database, request, reply, secureCookies);
     if (!owner) return;
-    const requests = all<{ id: string; userId: string; nickname: string; bannedAt: string | null; requestedAt: string }>(
+    const requests = all<{
+      id: string;
+      userId: string;
+      nickname: string;
+      bannedAt: string | null;
+      requestedAt: string;
+    }>(
       database.sqlite,
       `select account_deletion_requests.id, users.id as userId, users.nickname,
         users.banned_at as bannedAt, account_deletion_requests.requested_at as requestedAt
@@ -202,35 +243,49 @@ export function registerAccountDeletionRoutes(context: RouteContext) {
     };
   });
 
-  fastify.post("/api/owner/deletion-requests/:requestId/reject", { config: authenticatedWriteLimit }, async (request, reply) => {
-    const owner = requireOwner(database, request, reply, secureCookies);
-    if (!owner) return;
-    const { requestId } = z.object({ requestId: z.string().uuid() }).parse(request.params);
-    const now = new Date().toISOString();
-    const result = database.sqlite.prepare(
-      "update account_deletion_requests set status = 'rejected', resolved_at = ?, resolved_by_user_id = ? where id = ? and status = 'pending'"
-    ).run(now, owner.id, requestId);
-    if (result.changes === 0) return reply.code(404).send({ error: "deletion_request_not_found" });
-    audit(database, owner.id, "account.deletion_rejected", requestId);
-    database.save();
-    return reply.code(204).send();
-  });
-
-  fastify.post("/api/owner/deletion-requests/:requestId/approve", { config: authenticatedWriteLimit }, async (request, reply) => {
-    const owner = requireOwner(database, request, reply, secureCookies);
-    if (!owner) return;
-    const { requestId } = z.object({ requestId: z.string().uuid() }).parse(request.params);
-    const pending = one<{ user_id: string }>(database.sqlite, "select user_id from account_deletion_requests where id = ? and status = 'pending'", [requestId]);
-    if (!pending) return reply.code(404).send({ error: "deletion_request_not_found" });
-    const result = deleteAccount(database, owner.id, pending.user_id, "request_approved", requestId);
-    if (!result.ok) return reply.code(409).send({ error: result.error });
-    for (const serverId of result.serverIds) {
-      io.to(`server:${serverId}`).emit("server:memberDeleted", { serverId, userId: pending.user_id });
-      io.to(`server:${serverId}`).emit("server:directoryChanged", { serverId });
+  fastify.post(
+    "/api/owner/deletion-requests/:requestId/reject",
+    { config: authenticatedWriteLimit },
+    async (request, reply) => {
+      const owner = requireOwner(database, request, reply, secureCookies);
+      if (!owner) return;
+      const { requestId } = z.object({ requestId: z.string().uuid() }).parse(request.params);
+      const now = new Date().toISOString();
+      const result = database.sqlite
+        .prepare(
+          "update account_deletion_requests set status = 'rejected', resolved_at = ?, resolved_by_user_id = ? where id = ? and status = 'pending'"
+        )
+        .run(now, owner.id, requestId);
+      if (result.changes === 0) return reply.code(404).send({ error: "deletion_request_not_found" });
+      audit(database, owner.id, "account.deletion_rejected", requestId);
+      database.save();
+      return reply.code(204).send();
     }
-    realtime.terminateAccount(pending.user_id, "request_approved");
-    return reply.code(204).send();
-  });
+  );
+
+  fastify.post(
+    "/api/owner/deletion-requests/:requestId/approve",
+    { config: authenticatedWriteLimit },
+    async (request, reply) => {
+      const owner = requireOwner(database, request, reply, secureCookies);
+      if (!owner) return;
+      const { requestId } = z.object({ requestId: z.string().uuid() }).parse(request.params);
+      const pending = one<{ user_id: string }>(
+        database.sqlite,
+        "select user_id from account_deletion_requests where id = ? and status = 'pending'",
+        [requestId]
+      );
+      if (!pending) return reply.code(404).send({ error: "deletion_request_not_found" });
+      const result = deleteAccount(database, owner.id, pending.user_id, "request_approved", requestId);
+      if (!result.ok) return reply.code(409).send({ error: result.error });
+      for (const serverId of result.serverIds) {
+        io.to(`server:${serverId}`).emit("server:memberDeleted", { serverId, userId: pending.user_id });
+        io.to(`server:${serverId}`).emit("server:directoryChanged", { serverId });
+      }
+      realtime.terminateAccount(pending.user_id, "request_approved");
+      return reply.code(204).send();
+    }
+  );
 
   fastify.get("/api/owner/accounts", async (request, reply) => {
     const owner = requireOwner(database, request, reply, secureCookies);
@@ -287,8 +342,13 @@ export function registerAccountDeletionRoutes(context: RouteContext) {
     const account = accountById(database, userId);
     const refusal = deletionRefusal(database, account);
     if (refusal) return reply.code(409).send({ error: refusal });
-    if (!account || body.nickname !== account.nickname) return reply.code(400).send({ error: "nickname_confirmation_mismatch" });
-    const pending = one<{ id: string }>(database.sqlite, "select id from account_deletion_requests where user_id = ? and status = 'pending'", [userId]);
+    if (!account || body.nickname !== account.nickname)
+      return reply.code(400).send({ error: "nickname_confirmation_mismatch" });
+    const pending = one<{ id: string }>(
+      database.sqlite,
+      "select id from account_deletion_requests where user_id = ? and status = 'pending'",
+      [userId]
+    );
     const source: DeletionSource = pending ? "request_approved" : "owner_initiated";
     const result = deleteAccount(database, owner.id, userId, source, pending?.id);
     if (!result.ok) return reply.code(409).send({ error: result.error });

@@ -42,9 +42,9 @@ This is that design, against that failure.
 `failedBot` — rather than one `failed` with a `reason` field next to it.
 
 The alternative is the obvious one and it is wrong for a reason this repository
-has already written down. ADR-0008 §5: *"The browser builds the whole sentence in
+has already written down. ADR-0008 §5: _"The browser builds the whole sentence in
 one translation string per verb, not out of fragments assembled in JSX. Turkish
-does not put these words in English's order."* A `failed` verb with a `reason`
+does not put these words in English's order."_ A `failed` verb with a `reason`
 beside it puts the reason back into a fragment — "a Track failed" plus a
 translated noun phrase substituted into it — which is the same stitching said in
 a different place. Turkish does not build "skipped X because the source refused
@@ -66,7 +66,7 @@ to the bot's logs. The third is not a shade of either — a fetch spawns ffmpeg,
 and an encoder nobody installed is not a blocked video and is emphatically not
 YouTube refusing anything. Telling a room to wait that one out is a wait with
 nothing at the end of it, which is the failure `apps/bot/AGENTS.md` already names
-under *Blame the right thing*. They are the same three answers `MusicCommandAck`
+under _Blame the right thing_. They are the same three answers `MusicCommandAck`
 gives a member whose link would not resolve, said about a Track whose turn came.
 
 ### 2. The actor is empty, and not the bot's own account
@@ -77,7 +77,7 @@ for those three verbs.
 The tempting alternative needs no schema change at all: the bot knows its own
 user id, it is an ordinary member of the voice room, and the browser would
 resolve it to a live nickname off the roster it already has. It was rejected
-because of what it *renders as*. The five existing sentences read "**Ada** skipped
+because of what it _renders as_. The five existing sentences read "**Ada** skipped
 Nocturne", and a sixth reading "**Music bot** skipped Nocturne" is a sentence about
 somebody having pressed something — in whatever the operator happened to call
 the account. The room would be told a member acted, which is the one thing this
@@ -88,7 +88,7 @@ will not play" is the whole line, and nothing in it asks who. That is what makes
 the null safe: the type cannot tie the emptiness to the verb, but no reader ever
 reaches for the field, because no sentence has a place to put it.
 
-`music.requesterUnknown` — "someone who left" — is deliberately *not* the answer
+`music.requesterUnknown` — "someone who left" — is deliberately _not_ the answer
 either. That stand-in is for a member who really was there and has gone; putting
 it in front of a failure would invent a person.
 
@@ -149,8 +149,8 @@ bot joins or an hour later. `stream.ts` gathers the evidence; it decides nothing
 
 That placement follows the rule already at the top of `stream.ts`: what lives
 there are argument lists and timeouts, which only the real binaries can judge,
-and what can be judged by a test was deliberately put in `track.ts`. *Which of
-three things to tell a room* is squarely the second kind.
+and what can be judged by a test was deliberately put in `track.ts`. _Which of
+three things to tell a room_ is squarely the second kind.
 
 The order of the questions is the order of certainty. A cancel explains every
 other signal, so it is asked first — a skip kills both programs mid-sentence,
@@ -163,7 +163,7 @@ same reason: "that video will not play" sends a room to replace a Track that was
 never broken.
 
 **The evidence arrives in stages, so the question is asked more than once.**
-`finish()` runs on the encoder's *stream* ending, and at that moment neither
+`finish()` runs on the encoder's _stream_ ending, and at that moment neither
 program's exit code need have been delivered and the extractor's stderr may
 still be in flight. Two different fetches are lost if that is the only moment
 the question is asked, and they need different answers:
@@ -199,10 +199,10 @@ takes.
   Accepted rather than overlooked: the alternative is to let the Track play out and attach the reason
   to the end that follows, which reads better in that one case and fails
   completely in another — a **paused** Queue never reports an end, so the failure
-  would sit unreported until somebody pressed Play, and a *silenced* bot's player
+  would sit unreported until somebody pressed Play, and a _silenced_ bot's player
   is stopped, so it would never report at all. "Skipped automatically" has to
   mean automatically. If a real Set shows mid-download failures are common
-  enough to matter, the fix is to let the player drain *and* report at once, not
+  enough to matter, the fix is to let the player drain _and_ report at once, not
   to move the report.
 - The Set log is no longer only a record of what members did. `CONTEXT.md`'s
   definition is widened to match, and it is the one place in the panel where the
@@ -216,7 +216,7 @@ takes.
   publisher, no second authorization point and no second delivery.
 - `stream.ts` grew state it did not have: two exit codes, four flags and a
   retained stderr tail. It is still untested and still by the same argument, but
-  the argument now has to stretch one step further than it did: *when* there is
+  the argument now has to stretch one step further than it did: _when_ there is
   enough evidence to answer is a decision, it lives there, and only its
   consequence is guarded — in `track.ts` for what the answer is, and at the
   responder seam for what the ordering buys. `apps/bot/AGENTS.md` says so rather
@@ -230,8 +230,7 @@ takes.
 
 **How long the room hears nothing before the next Track starts.** A failure
 produces a Track boundary exactly as a skip does, and how long that boundary
-runs to is the measurement `apps/bot/AGENTS.md` has been waiting for since ticket
-08. A failure is now the second way to produce one on demand, and the one that
+runs to is the measurement `apps/bot/AGENTS.md` has been waiting for since ticket 08. A failure is now the second way to produce one on demand, and the one that
 does it without anybody pressing anything.
 
 **Whether a Queue where every Track fails should stop asking.** Ten blocked
@@ -243,7 +242,7 @@ a real room, and nothing in this repository has watched one yet.
 
 **Whether a silenced bot's Queue should advance at all.** A bot an owner has
 muted has a stopped player, so no Track ever reports an end and the Queue does
-not move — which predates this ticket and is not changed by it. A failure *does*
+not move — which predates this ticket and is not changed by it. A failure _does_
 now move a silenced Queue, because it does not come from the player. That is an
 inconsistency, it is small, and inventing an answer for it here would be
 guessing at a case nobody has hit.

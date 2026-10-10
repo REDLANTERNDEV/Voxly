@@ -47,7 +47,11 @@ describe("landing analytics", () => {
     const dom = installDom();
     let views = 0;
 
-    trackLandingView({ provider: "umami", scriptUrl: "https://analytics.example.com/umami-one.js", websiteId: "site-1" });
+    trackLandingView({
+      provider: "umami",
+      scriptUrl: "https://analytics.example.com/umami-one.js",
+      websiteId: "site-1"
+    });
     assert.equal(dom.scripts.length, 1);
     const script = dom.scripts[0];
     assert.equal(script.src, "https://analytics.example.com/umami-one.js");
@@ -58,7 +62,11 @@ describe("landing analytics", () => {
     // Unset, so the tracker keeps deriving the endpoint from its own URL.
     assert.equal(script.dataset.hostUrl, undefined);
 
-    dom.window.umami = { track: () => { views += 1; } };
+    dom.window.umami = {
+      track: () => {
+        views += 1;
+      }
+    };
     script.onload?.();
     await settled();
 
@@ -83,7 +91,11 @@ describe("landing analytics", () => {
   it("survives a blocked or unreachable analytics host", async () => {
     const dom = installDom();
 
-    trackLandingView({ provider: "umami", scriptUrl: "https://analytics.example.com/umami-two.js", websiteId: "site-2" });
+    trackLandingView({
+      provider: "umami",
+      scriptUrl: "https://analytics.example.com/umami-two.js",
+      websiteId: "site-2"
+    });
     dom.scripts[0].onerror?.();
     await settled();
   });
@@ -91,7 +103,11 @@ describe("landing analytics", () => {
   it("queues the Google page view before gtag.js loads and adds no inline snippet", async () => {
     const dom = installDom();
 
-    trackLandingView({ provider: "google", scriptUrl: "https://www.googletagmanager.com/gtag/js?id=G-TEST123", websiteId: "G-TEST123" });
+    trackLandingView({
+      provider: "google",
+      scriptUrl: "https://www.googletagmanager.com/gtag/js?id=G-TEST123",
+      websiteId: "G-TEST123"
+    });
 
     const queued = (dom.window.dataLayer ?? []).map((entry) => Array.from(entry as IArguments));
     assert.equal(queued.length, 2);

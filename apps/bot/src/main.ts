@@ -37,12 +37,13 @@ const presence = createMusicBotPresence({
       selfUserId: session.userId,
       environment,
       publish: publishQueueVia(socket, log),
-      loadIceServers: () => fetchIceServers({
-        serverUrl: environment.serverUrl,
-        cookieName,
-        sessionToken: credentials.token,
-        refreshSession: () => credentials.refresh()
-      }),
+      loadIceServers: () =>
+        fetchIceServers({
+          serverUrl: environment.serverUrl,
+          cookieName,
+          sessionToken: credentials.token,
+          refreshSession: () => credentials.refresh()
+        }),
       log
     });
     socket.on("music:command", (payload, ack) => {

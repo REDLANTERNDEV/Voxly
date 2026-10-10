@@ -18,112 +18,260 @@
     </section>
     <main>
       <header class="home-header">
-        <div class="home-brand"><img src="/voxly-icon.png" alt="" /><div><h1>Voxly</h1><p data-i18n="subtitle"></p></div></div>
-        <label><span data-i18n="language"></span><select id="language"><option value="en">English</option><option value="tr">Türkçe</option></select></label>
+        <div class="home-brand">
+          <img src="/voxly-icon.png" alt="" />
+          <div>
+            <h1>Voxly</h1>
+            <p data-i18n="subtitle"></p>
+          </div>
+        </div>
+        <label
+          ><span data-i18n="language"></span
+          ><select id="language">
+            <option value="en">English</option>
+            <option value="tr">Türkçe</option>
+          </select></label
+        >
       </header>
       <h2 class="home-title" data-i18n="home"></h2>
       <p id="browser-preview" class="notice" hidden data-i18n="preview"></p>
-      <div class="home-grid"><div class="connections">
-      <section id="default-panel" class="panel default-panel" aria-labelledby="default-heading">
-        <div class="panel-heading"><h2 id="default-heading" data-i18n="defaultInstallation"></h2><span class="badge" data-i18n="defaultBadge"></span></div>
-        <div class="default-content"><img class="installation-icon" src="/voxly-icon.png" alt="" /><div class="installation-identity"><h3 id="default-name"></h3><p id="default-origin"></p><p class="hint" data-i18n="sessionsSeparate"></p></div><button id="launch-default" class="primary" type="button" data-i18n="launchDefault"></button></div>
-        <label class="check"><input id="open-startup" type="checkbox" /><span data-i18n="alwaysOpen"></span></label>
-      </section>
-      <section class="panel" aria-labelledby="add-heading">
-        <h2 id="add-heading" data-i18n="addInstallation"></h2>
-        <form id="installation-form">
-          <div class="connection-fields"><label><span data-i18n="installationName"></span><input id="installation-name" maxlength="80" autocomplete="off" /></label><label><span data-i18n="address"></span><input id="address" type="url" required autocomplete="url" placeholder="https://chat.example.com" aria-describedby="address-hint" maxlength="2048" /></label></div>
-          <p id="address-hint" class="hint" data-i18n="addressHint"></p>
-          <div class="form-footer">
-            <div class="connection-tools" role="group" aria-labelledby="display-label"><span id="display-label" class="sr-only" data-i18n="displaySettings"></span>
-              <label class="check"><input id="full-addresses" type="checkbox" role="switch" checked /><span data-i18n="fullAddressesShort"></span></label>
-              <label class="check"><input id="compact-list" type="checkbox" role="switch" /><span data-i18n="compactList"></span></label>
+      <div class="home-grid">
+        <div class="connections">
+          <section id="default-panel" class="panel default-panel" aria-labelledby="default-heading">
+            <div class="panel-heading">
+              <h2 id="default-heading" data-i18n="defaultInstallation"></h2>
+              <span class="badge" data-i18n="defaultBadge"></span>
             </div>
-            <div class="connection-launch"><label class="check"><input id="remember" type="checkbox" checked /><span data-i18n="rememberShort"></span></label><button id="save" class="primary" type="submit" data-i18n="connect"></button></div>
+            <div class="default-content">
+              <img class="installation-icon" src="/voxly-icon.png" alt="" />
+              <div class="installation-identity">
+                <h3 id="default-name"></h3>
+                <p id="default-origin"></p>
+                <p class="hint" data-i18n="sessionsSeparate"></p>
+              </div>
+              <button id="launch-default" class="primary" type="button" data-i18n="launchDefault"></button>
+            </div>
+            <label class="check"><input id="open-startup" type="checkbox" /><span data-i18n="alwaysOpen"></span></label>
+          </section>
+          <section class="panel" aria-labelledby="add-heading">
+            <h2 id="add-heading" data-i18n="addInstallation"></h2>
+            <form id="installation-form">
+              <div class="connection-fields">
+                <label
+                  ><span data-i18n="installationName"></span
+                  ><input id="installation-name" maxlength="80" autocomplete="off" /></label
+                ><label
+                  ><span data-i18n="address"></span
+                  ><input
+                    id="address"
+                    type="url"
+                    required
+                    autocomplete="url"
+                    placeholder="https://chat.example.com"
+                    aria-describedby="address-hint"
+                    maxlength="2048"
+                /></label>
+              </div>
+              <p id="address-hint" class="hint" data-i18n="addressHint"></p>
+              <div class="form-footer">
+                <div class="connection-tools" role="group" aria-labelledby="display-label">
+                  <span id="display-label" class="sr-only" data-i18n="displaySettings"></span>
+                  <label class="check"
+                    ><input id="full-addresses" type="checkbox" role="switch" checked /><span
+                      data-i18n="fullAddressesShort"
+                    ></span
+                  ></label>
+                  <label class="check"
+                    ><input id="compact-list" type="checkbox" role="switch" /><span data-i18n="compactList"></span
+                  ></label>
+                </div>
+                <div class="connection-launch">
+                  <label class="check"
+                    ><input id="remember" type="checkbox" checked /><span data-i18n="rememberShort"></span></label
+                  ><button id="save" class="primary" type="submit" data-i18n="connect"></button>
+                </div>
+              </div>
+            </form>
+            <p id="status" role="status" aria-live="polite"></p>
+            <div id="connection-recovery" class="actions" hidden>
+              <button id="retry-failed" type="button" data-i18n="retry"></button
+              ><button id="choose-another" type="button" data-i18n="chooseAnother"></button>
+            </div>
+          </section>
+          <section id="saved-panel" class="panel saved-panel" aria-labelledby="installations-heading">
+            <div class="panel-heading">
+              <h2 id="installations-heading" data-i18n="savedInstallations"></h2>
+              <details class="display-menu">
+                <summary data-i18n="displaySettings"></summary>
+                <div class="display-menu-items">
+                  <label class="check"
+                    ><input id="installation-icons" type="checkbox" role="switch" checked /><span
+                      data-i18n="installationIcons"
+                    ></span
+                  ></label>
+                </div>
+              </details>
+            </div>
+            <ul id="installation-list"></ul>
+            <p id="empty" class="hint" data-i18n="empty"></p>
+          </section>
+          <section class="current-connection" aria-label="Voxly">
+            <p id="connection" role="status"></p>
+            <div class="actions">
+              <button id="disconnect" type="button" data-i18n="disconnect" disabled></button
+              ><button id="retry" type="button" data-i18n="retry" disabled></button>
+            </div>
+          </section>
+        </div>
+        <aside>
+          <section class="panel updater" aria-labelledby="updates-heading">
+            <h2 id="updates-heading" data-i18n="updates">Desktop updates</h2>
+            <p id="update-status" role="status" aria-live="polite"></p>
+            <div class="actions">
+              <button id="update-check" type="button" data-i18n="updateCheck" disabled></button>
+              <button id="update-download" type="button" data-i18n="updateDownload" hidden></button>
+              <button id="update-install" type="button" data-i18n="updateInstall" hidden></button>
+              <button id="update-cancel" type="button" data-i18n="updateCancel" hidden></button>
+            </div>
+          </section>
+        </aside>
+      </div>
+      <details id="diagnostics" hidden>
+        <summary data-i18n="diagnostics"></summary>
+        <section aria-labelledby="shortcuts-heading">
+          <h2 id="shortcuts-heading" data-i18n="shortcuts">Global shortcuts</h2>
+          <p id="shortcut-hint" class="hint" data-i18n="shortcutHint"></p>
+          <label for="microphone-mode" data-i18n="microphoneMode">Microphone mode</label>
+          <select id="microphone-mode" aria-describedby="microphone-mode-hint" disabled>
+            <option value="openMic" data-i18n="openMic">Open mic</option>
+            <option value="pushToTalk" data-i18n="pushToTalk">Push to talk</option>
+            <option value="pushToMute" data-i18n="pushToMute">Push to mute</option>
+          </select>
+          <p id="microphone-mode-hint" class="hint" data-i18n="microphoneModeHint"></p>
+          <label class="release-delay-toggle"
+            ><input id="push-to-talk-delay-enabled" type="checkbox" disabled />
+            <span data-i18n="pushToTalkDelayEnabled">Enable push-to-talk release delay</span></label
+          >
+          <label for="push-to-talk-release-delay" data-i18n="pushToTalkReleaseDelay">Release delay</label>
+          <div class="actions">
+            <input
+              id="push-to-talk-release-delay"
+              type="range"
+              min="0"
+              max="2000"
+              step="10"
+              value="0"
+              aria-describedby="push-to-talk-delay-hint"
+              disabled
+            />
+            <output id="push-to-talk-delay-value" for="push-to-talk-release-delay">0 ms</output>
           </div>
-        </form>
-        <p id="status" role="status" aria-live="polite"></p>
-        <div id="connection-recovery" class="actions" hidden><button id="retry-failed" type="button" data-i18n="retry"></button><button id="choose-another" type="button" data-i18n="chooseAnother"></button></div>
-      </section>
-      <section id="saved-panel" class="panel saved-panel" aria-labelledby="installations-heading"><div class="panel-heading"><h2 id="installations-heading" data-i18n="savedInstallations"></h2><details class="display-menu"><summary data-i18n="displaySettings"></summary><div class="display-menu-items"><label class="check"><input id="installation-icons" type="checkbox" role="switch" checked /><span data-i18n="installationIcons"></span></label></div></details></div><ul id="installation-list"></ul><p id="empty" class="hint" data-i18n="empty"></p></section>
-      <section class="current-connection" aria-label="Voxly"><p id="connection" role="status"></p><div class="actions"><button id="disconnect" type="button" data-i18n="disconnect" disabled></button><button id="retry" type="button" data-i18n="retry" disabled></button></div></section>
-      </div><aside>
-      <section class="panel updater" aria-labelledby="updates-heading">
-        <h2 id="updates-heading" data-i18n="updates">Desktop updates</h2>
-        <p id="update-status" role="status" aria-live="polite"></p>
-        <div class="actions">
-          <button id="update-check" type="button" data-i18n="updateCheck" disabled></button>
-          <button id="update-download" type="button" data-i18n="updateDownload" hidden></button>
-          <button id="update-install" type="button" data-i18n="updateInstall" hidden></button>
-          <button id="update-cancel" type="button" data-i18n="updateCancel" hidden></button>
-        </div>
-      </section>
-      </aside></div>
-      <details id="diagnostics" hidden><summary data-i18n="diagnostics"></summary>
-      <section aria-labelledby="shortcuts-heading">
-        <h2 id="shortcuts-heading" data-i18n="shortcuts">Global shortcuts</h2>
-        <p id="shortcut-hint" class="hint" data-i18n="shortcutHint"></p>
-        <label for="microphone-mode" data-i18n="microphoneMode">Microphone mode</label>
-        <select id="microphone-mode" aria-describedby="microphone-mode-hint" disabled>
-          <option value="openMic" data-i18n="openMic">Open mic</option>
-          <option value="pushToTalk" data-i18n="pushToTalk">Push to talk</option>
-          <option value="pushToMute" data-i18n="pushToMute">Push to mute</option>
-        </select>
-        <p id="microphone-mode-hint" class="hint" data-i18n="microphoneModeHint"></p>
-        <label class="release-delay-toggle"><input id="push-to-talk-delay-enabled" type="checkbox" disabled /> <span data-i18n="pushToTalkDelayEnabled">Enable push-to-talk release delay</span></label>
-        <label for="push-to-talk-release-delay" data-i18n="pushToTalkReleaseDelay">Release delay</label>
-        <div class="actions">
-          <input id="push-to-talk-release-delay" type="range" min="0" max="2000" step="10" value="0" aria-describedby="push-to-talk-delay-hint" disabled />
-          <output id="push-to-talk-delay-value" for="push-to-talk-release-delay">0 ms</output>
-        </div>
-        <p id="push-to-talk-delay-hint" class="hint" data-i18n="pushToTalkDelayHint"></p>
-        <div role="group" aria-labelledby="mute-shortcut-label">
-        <label id="mute-shortcut-label" for="mute-shortcut" data-i18n="muteShortcut">Mute / unmute microphone</label>
-        <input id="mute-shortcut" readonly aria-describedby="shortcut-hint shortcut-status" />
-        <div class="actions"><button id="record-shortcut" type="button" data-i18n="recordShortcut" disabled>Record shortcut</button><button id="save-shortcut" type="button" data-i18n="saveShortcut" disabled>Save shortcut</button><button id="clear-shortcut" type="button" data-i18n="clearShortcut" disabled>Clear shortcut</button></div>
-        <p id="shortcut-status" role="status" aria-live="polite"></p>
-        </div>
-        <div role="group" aria-labelledby="deafen-shortcut-label">
-        <label id="deafen-shortcut-label" for="deafen-shortcut" data-i18n="deafenShortcut">Deafen / undeafen</label>
-        <input id="deafen-shortcut" readonly aria-describedby="shortcut-hint deafen-shortcut-status" />
-        <div class="actions"><button id="record-deafen-shortcut" type="button" data-i18n="recordShortcut" disabled>Record shortcut</button><button id="save-deafen-shortcut" type="button" data-i18n="saveShortcut" disabled>Save shortcut</button><button id="clear-deafen-shortcut" type="button" data-i18n="clearShortcut" disabled>Clear shortcut</button></div>
-        <p id="deafen-shortcut-status" role="status" aria-live="polite"></p>
-        </div>
-        <div role="group" aria-labelledby="push-to-talk-shortcut-label">
-          <label id="push-to-talk-shortcut-label" for="push-to-talk-shortcut" data-i18n="pushToTalk"></label>
-          <input id="push-to-talk-shortcut" readonly aria-describedby="microphone-mode-hint push-to-talk-shortcut-status" />
-          <div class="actions"><button id="record-push-to-talk-shortcut" type="button" data-i18n="recordShortcut" disabled></button><button id="save-push-to-talk-shortcut" type="button" data-i18n="saveShortcut" disabled></button><button id="clear-push-to-talk-shortcut" type="button" data-i18n="clearShortcut" disabled></button></div>
-          <p id="push-to-talk-shortcut-status" role="status" aria-live="polite"></p>
-        </div>
-        <div role="group" aria-labelledby="push-to-mute-shortcut-label">
-          <label id="push-to-mute-shortcut-label" for="push-to-mute-shortcut" data-i18n="pushToMute"></label>
-          <input id="push-to-mute-shortcut" readonly aria-describedby="microphone-mode-hint push-to-mute-shortcut-status" />
-          <div class="actions"><button id="record-push-to-mute-shortcut" type="button" data-i18n="recordShortcut" disabled></button><button id="save-push-to-mute-shortcut" type="button" data-i18n="saveShortcut" disabled></button><button id="clear-push-to-mute-shortcut" type="button" data-i18n="clearShortcut" disabled></button></div>
-          <p id="push-to-mute-shortcut-status" role="status" aria-live="polite"></p>
-        </div>
-      </section>
-      <section aria-labelledby="media-heading">
-        <h2 id="media-heading" data-i18n="media">Media checks</h2>
-        <p class="hint" data-i18n="mediaHint"></p>
-        <div class="actions"><button id="microphone" type="button" data-i18n="microphone">Check microphone</button><button id="camera" type="button" data-i18n="camera">Check camera</button><button id="screen" type="button" data-i18n="screen">Check screen and computer audio</button><button id="stop" type="button" data-i18n="stop">Stop capture</button></div>
-        <p class="hint" data-i18n="screenHint"></p>
-        <video id="preview" autoplay muted playsinline hidden></video>
-        <p id="probe-status" role="status" aria-live="polite"></p>
-        <div class="actions"><label for="output" data-i18n="output">Audio output</label><select id="output"><option value="" data-i18n="defaultOutput">System default</option></select><button id="devices" type="button" data-i18n="refreshDevices">Refresh output devices</button><button id="tone" type="button" data-i18n="tone">Play test sound</button></div>
-        <label for="report" class="report-label" data-i18n="report">Diagnostic report</label>
-        <p id="report-hint" class="hint" data-i18n="reportHint"></p>
-        <textarea id="report" rows="10" readonly spellcheck="false" aria-describedby="report-hint"></textarea>
-        <div class="actions"><button id="refresh-report" type="button" data-i18n="refreshReport">Refresh report</button><button id="copy-report" type="button" data-i18n="copyReport">Copy report</button></div>
-      </section>
+          <p id="push-to-talk-delay-hint" class="hint" data-i18n="pushToTalkDelayHint"></p>
+          <div role="group" aria-labelledby="mute-shortcut-label">
+            <label id="mute-shortcut-label" for="mute-shortcut" data-i18n="muteShortcut"
+              >Mute / unmute microphone</label
+            >
+            <input id="mute-shortcut" readonly aria-describedby="shortcut-hint shortcut-status" />
+            <div class="actions">
+              <button id="record-shortcut" type="button" data-i18n="recordShortcut" disabled>Record shortcut</button
+              ><button id="save-shortcut" type="button" data-i18n="saveShortcut" disabled>Save shortcut</button
+              ><button id="clear-shortcut" type="button" data-i18n="clearShortcut" disabled>Clear shortcut</button>
+            </div>
+            <p id="shortcut-status" role="status" aria-live="polite"></p>
+          </div>
+          <div role="group" aria-labelledby="deafen-shortcut-label">
+            <label id="deafen-shortcut-label" for="deafen-shortcut" data-i18n="deafenShortcut">Deafen / undeafen</label>
+            <input id="deafen-shortcut" readonly aria-describedby="shortcut-hint deafen-shortcut-status" />
+            <div class="actions">
+              <button id="record-deafen-shortcut" type="button" data-i18n="recordShortcut" disabled>
+                Record shortcut</button
+              ><button id="save-deafen-shortcut" type="button" data-i18n="saveShortcut" disabled>Save shortcut</button
+              ><button id="clear-deafen-shortcut" type="button" data-i18n="clearShortcut" disabled>
+                Clear shortcut
+              </button>
+            </div>
+            <p id="deafen-shortcut-status" role="status" aria-live="polite"></p>
+          </div>
+          <div role="group" aria-labelledby="push-to-talk-shortcut-label">
+            <label id="push-to-talk-shortcut-label" for="push-to-talk-shortcut" data-i18n="pushToTalk"></label>
+            <input
+              id="push-to-talk-shortcut"
+              readonly
+              aria-describedby="microphone-mode-hint push-to-talk-shortcut-status"
+            />
+            <div class="actions">
+              <button id="record-push-to-talk-shortcut" type="button" data-i18n="recordShortcut" disabled></button
+              ><button id="save-push-to-talk-shortcut" type="button" data-i18n="saveShortcut" disabled></button
+              ><button id="clear-push-to-talk-shortcut" type="button" data-i18n="clearShortcut" disabled></button>
+            </div>
+            <p id="push-to-talk-shortcut-status" role="status" aria-live="polite"></p>
+          </div>
+          <div role="group" aria-labelledby="push-to-mute-shortcut-label">
+            <label id="push-to-mute-shortcut-label" for="push-to-mute-shortcut" data-i18n="pushToMute"></label>
+            <input
+              id="push-to-mute-shortcut"
+              readonly
+              aria-describedby="microphone-mode-hint push-to-mute-shortcut-status"
+            />
+            <div class="actions">
+              <button id="record-push-to-mute-shortcut" type="button" data-i18n="recordShortcut" disabled></button
+              ><button id="save-push-to-mute-shortcut" type="button" data-i18n="saveShortcut" disabled></button
+              ><button id="clear-push-to-mute-shortcut" type="button" data-i18n="clearShortcut" disabled></button>
+            </div>
+            <p id="push-to-mute-shortcut-status" role="status" aria-live="polite"></p>
+          </div>
+        </section>
+        <section aria-labelledby="media-heading">
+          <h2 id="media-heading" data-i18n="media">Media checks</h2>
+          <p class="hint" data-i18n="mediaHint"></p>
+          <div class="actions">
+            <button id="microphone" type="button" data-i18n="microphone">Check microphone</button
+            ><button id="camera" type="button" data-i18n="camera">Check camera</button
+            ><button id="screen" type="button" data-i18n="screen">Check screen and computer audio</button
+            ><button id="stop" type="button" data-i18n="stop">Stop capture</button>
+          </div>
+          <p class="hint" data-i18n="screenHint"></p>
+          <video id="preview" autoplay muted playsinline hidden></video>
+          <p id="probe-status" role="status" aria-live="polite"></p>
+          <div class="actions">
+            <label for="output" data-i18n="output">Audio output</label
+            ><select id="output">
+              <option value="" data-i18n="defaultOutput">System default</option></select
+            ><button id="devices" type="button" data-i18n="refreshDevices">Refresh output devices</button
+            ><button id="tone" type="button" data-i18n="tone">Play test sound</button>
+          </div>
+          <label for="report" class="report-label" data-i18n="report">Diagnostic report</label>
+          <p id="report-hint" class="hint" data-i18n="reportHint"></p>
+          <textarea id="report" rows="10" readonly spellcheck="false" aria-describedby="report-hint"></textarea>
+          <div class="actions">
+            <button id="refresh-report" type="button" data-i18n="refreshReport">Refresh report</button
+            ><button id="copy-report" type="button" data-i18n="copyReport">Copy report</button>
+          </div>
+        </section>
       </details>
     </main>
-    <dialog id="rename-dialog" aria-labelledby="rename-heading"><h2 id="rename-heading" data-i18n="rename"></h2><form id="rename-form"><label><span data-i18n="installationName"></span><input id="rename-name" maxlength="80" /></label><div class="actions"><button type="submit" data-i18n="saveName"></button><button id="rename-cancel" type="button" data-i18n="cancel"></button></div><p id="rename-status" role="status"></p></form></dialog>
+    <dialog id="rename-dialog" aria-labelledby="rename-heading">
+      <h2 id="rename-heading" data-i18n="rename"></h2>
+      <form id="rename-form">
+        <label><span data-i18n="installationName"></span><input id="rename-name" maxlength="80" /></label>
+        <div class="actions">
+          <button type="submit" data-i18n="saveName"></button
+          ><button id="rename-cancel" type="button" data-i18n="cancel"></button>
+        </div>
+        <p id="rename-status" role="status"></p>
+      </form>
+    </dialog>
     <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-body">
-      <h2 id="confirm-title" data-i18n="confirmationTitle"></h2><p id="confirm-body"></p>
-      <form method="dialog" class="actions"><button value="cancel" autofocus data-i18n="cancel">Cancel</button><button value="confirm" data-i18n="continue">Continue</button></form>
+      <h2 id="confirm-title" data-i18n="confirmationTitle"></h2>
+      <p id="confirm-body"></p>
+      <form method="dialog" class="actions">
+        <button value="cancel" autofocus data-i18n="cancel">Cancel</button
+        ><button value="confirm" data-i18n="continue">Continue</button>
+      </form>
     </dialog>
     <dialog id="tray-dialog" aria-labelledby="tray-title" aria-describedby="tray-body">
-      <h2 id="tray-title" data-i18n="trayTitle"></h2><p id="tray-body" data-i18n="trayBody"></p>
+      <h2 id="tray-title" data-i18n="trayTitle"></h2>
+      <p id="tray-body" data-i18n="trayBody"></p>
       <form method="dialog"><button value="confirm" autofocus data-i18n="understood">Got it</button></form>
     </dialog>
     <script type="module" src="/src/main.ts"></script>

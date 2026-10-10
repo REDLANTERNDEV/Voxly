@@ -77,10 +77,7 @@ export interface MusicTransport {
   muted: boolean;
 }
 
-export function musicTransport(
-  bot: VoiceMemberState | undefined,
-  queue: MusicQueueState | null
-): MusicTransport {
+export function musicTransport(bot: VoiceMemberState | undefined, queue: MusicQueueState | null): MusicTransport {
   return {
     present: Boolean(bot),
     playing: queue?.playing === true && queue.entries.length > 0,
@@ -131,9 +128,19 @@ export function requestMusicCommand(
 }
 
 /** Only the confirmed voice connection may send room controls. */
-export function requestJoinedMusicCommand(socket: MusicSocket | null, roomId: string, command: MusicCommand,
-  activeRoomId: string | null, snapshot: VoiceSnapshot | undefined, userId: string): Promise<MusicControlAck> {
-  if (activeRoomId !== roomId || !snapshot?.viewerInVoiceRoom || !snapshot.members.some((member) => member.user.userId === userId)) {
+export function requestJoinedMusicCommand(
+  socket: MusicSocket | null,
+  roomId: string,
+  command: MusicCommand,
+  activeRoomId: string | null,
+  snapshot: VoiceSnapshot | undefined,
+  userId: string
+): Promise<MusicControlAck> {
+  if (
+    activeRoomId !== roomId ||
+    !snapshot?.viewerInVoiceRoom ||
+    !snapshot.members.some((member) => member.user.userId === userId)
+  ) {
     return Promise.resolve({ ok: false, error: "not_in_voice_room" });
   }
   return requestMusicCommand(socket, roomId, command);
@@ -363,9 +370,9 @@ export function musicSetLogRows(
       // itself name nobody at all, so they never read this; special-casing the
       // null here would only mean a member's line rendering subjectless if one
       // ever arrived malformed. ADR-0011.
-      nickname: (line.requestedByUserId === null
-        ? undefined
-        : nicknames.get(line.requestedByUserId)) ?? t("music.requesterUnknown"),
+      nickname:
+        (line.requestedByUserId === null ? undefined : nicknames.get(line.requestedByUserId)) ??
+        t("music.requesterUnknown"),
       // A pause and a resume carry no Track and their sentences do not name
       // one, so this is only ever read for the three verbs that do. A line that
       // should have carried a title and did not is a fault above; the answer to

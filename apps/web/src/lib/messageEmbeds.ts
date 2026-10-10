@@ -1,6 +1,4 @@
-export type MessageContentSegment =
-  | { kind: "text"; text: string }
-  | { kind: "link"; text: string; href: string };
+export type MessageContentSegment = { kind: "text"; text: string } | { kind: "link"; text: string; href: string };
 
 export type MessageEmbedProvider = "youtube" | "x" | "vimeo" | "spotify";
 
@@ -12,7 +10,7 @@ export interface MessageEmbed {
 }
 
 const urlPattern = /https?:\/\/[^\s<>"']+/giu;
-const trailingPunctuation = /[.,!?;:\)\]\}]+$/u;
+const trailingPunctuation = /[.,!?;:)\]}]+$/u;
 const maximumEmbeds = 4;
 
 export function messageContentSegments(body: string): MessageContentSegment[] {
@@ -58,9 +56,10 @@ const youtubeTimestampPattern = /^(?:(\d{1,3})h)?(?:(\d{1,4})m)?(?:(\d{1,6})s?)?
 const maximumStartSeconds = 24 * 60 * 60;
 
 function youtubeStartSeconds(url: URL): number | null {
-  const raw = url.searchParams.get("t")
-    ?? url.searchParams.get("start")
-    ?? (url.hash.startsWith("#t=") ? url.hash.slice(3) : null);
+  const raw =
+    url.searchParams.get("t") ??
+    url.searchParams.get("start") ??
+    (url.hash.startsWith("#t=") ? url.hash.slice(3) : null);
   if (!raw) return null;
   const match = youtubeTimestampPattern.exec(raw.trim().toLowerCase());
   if (!match) return null;
@@ -77,13 +76,14 @@ function embedForUrl(sourceUrl: string): MessageEmbed | null {
   const parts = url.pathname.split("/").filter(Boolean);
 
   if (host === "youtu.be" || ["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"].includes(host)) {
-    const videoId = host === "youtu.be"
-      ? parts[0]
-      : url.pathname === "/watch"
-        ? url.searchParams.get("v")
-        : ["shorts", "embed", "live"].includes(parts[0] ?? "")
-          ? parts[1]
-          : null;
+    const videoId =
+      host === "youtu.be"
+        ? parts[0]
+        : url.pathname === "/watch"
+          ? url.searchParams.get("v")
+          : ["shorts", "embed", "live"].includes(parts[0] ?? "")
+            ? parts[1]
+            : null;
     if (videoId && /^[A-Za-z0-9_-]{11}$/u.test(videoId)) {
       const start = youtubeStartSeconds(url);
       return {
@@ -122,8 +122,11 @@ function embedForUrl(sourceUrl: string): MessageEmbed | null {
 
   if (host === "open.spotify.com") {
     const [kind, itemId] = parts;
-    if (["track", "album", "playlist", "episode", "show", "artist"].includes(kind ?? "")
-      && itemId && /^[A-Za-z0-9]{1,64}$/u.test(itemId)) {
+    if (
+      ["track", "album", "playlist", "episode", "show", "artist"].includes(kind ?? "") &&
+      itemId &&
+      /^[A-Za-z0-9]{1,64}$/u.test(itemId)
+    ) {
       return {
         key: `spotify:${kind}:${itemId}`,
         provider: "spotify",

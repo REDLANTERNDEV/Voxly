@@ -35,8 +35,7 @@
 export const unavailableVideo = {
   deleted:
     "ERROR: [youtube] G0n3F0r3v3r: Video unavailable. This video is no longer available because the YouTube account associated with this video has been terminated.",
-  private:
-    "ERROR: [youtube] Pr1v4t3V1d: Private video. Sign in if you've been granted access to this video",
+  private: "ERROR: [youtube] Pr1v4t3V1d: Private video. Sign in if you've been granted access to this video",
   geoBlocked:
     "ERROR: [youtube] Bl0ck3dH3r3: Video unavailable. The uploader has not made this video available in your country",
   ageRestricted:
@@ -64,6 +63,5 @@ export const refusedExtractor = {
    * asked for. The metadata resolved fine, and the media URL it named has since
    * expired or been refused.
    */
-  mediaRefused:
-    "ERROR: unable to download video data: HTTP Error 403: Forbidden"
+  mediaRefused: "ERROR: unable to download video data: HTTP Error 403: Forbidden"
 } as const;

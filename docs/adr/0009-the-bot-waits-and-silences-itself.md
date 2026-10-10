@@ -12,9 +12,9 @@ that means for audio nobody else can stop.
 
 The first is leaving. Until now the bot leaves only when a member sends it away,
 is evicted, or is summoned elsewhere — so a room everyone has left keeps a bot in
-it forever. The design asks for the opposite of a bot that leaves promptly: *"as
+it forever. The design asks for the opposite of a bot that leaves promptly: _"as
 a member who reloaded the page, I want the Queue still to be there when I come
-back"*. A page refresh takes a member out of the voice room for a second or two,
+back"_. A page refresh takes a member out of the voice room for a second or two,
 and the whole point of the Grace period is that the evening's Queue survives
 that. So the decision this turns on is not "when does an empty room end a Set"
 but **what tells a member who left apart from a member who is reloading** — and
@@ -26,10 +26,10 @@ The second is moderation. `apps/bot/AGENTS.md` has said since ticket 06 that
 "the bot must enforce its own silence", and until this ticket that sentence was
 half true: `voice:forceLeave` was obeyed and nothing else was. Media in Voxly is
 peer-to-peer by design (ADR-0001), so the server never sees the bot's packets
-and cannot drop them; its moderation state is *advisory* for audio. The ticket 03
+and cannot drop them; its moderation state is _advisory_ for audio. The ticket 03
 spike watched a bot the server had marked muted keep playing into a browser. An
-owner muting the Music bot is design story 30 — *"so that I can stop the music
-using controls I already know"* — and a control that does not do what it says is
+owner muting the Music bot is design story 30 — _"so that I can stop the music
+using controls I already know"_ — and a control that does not do what it says is
 worse than one that is not offered.
 
 Three things had to be settled with them, and each is expensive to change
@@ -53,7 +53,7 @@ instead: **what the module cannot compute arrives on the event, and what it want
 done goes back as an effect.** Two events in — `roomEmptied` and
 `listenerReturned` — and two effects out — `startGracePeriod` and
 `cancelGracePeriod`. `PlaybackState` gains one boolean, `awaitingReturn`, which
-is the *whole* of the Grace period as far as a module with no clock can hold it:
+is the _whole_ of the Grace period as far as a module with no clock can hold it:
 that a wait is on, not how long is left of it.
 
 The effects are named after the product's word rather than the mechanism, which
@@ -85,20 +85,20 @@ made the decision is the state that vetoes it.
 
 That is not quite the whole answer, and the remainder is the interesting part.
 The room can empty, fill and empty **again** while the first expiry is queued —
-at which point `awaitingReturn` is true and *correct*, but it is the second
+at which point `awaitingReturn` is true and _correct_, but it is the second
 wait's, with nearly five minutes still to run. No fact about the Queue can tell
 the two apart, because to the Queue they are the same fact. Which wait is the
 clock's own knowledge, so the clock counts them: `music.ts` numbers the waits it
 starts and an expiry carries the number of the one it belongs to.
 
 So there are three questions before anything is ended, and none of them implies
-another — the Set may have been *replaced* (a Summon into another room), the
-wait may have been *cancelled*, and the wait may have been *superseded*. Missing
+another — the Set may have been _replaced_ (a Summon into another room), the
+wait may have been _cancelled_, and the wait may have been _superseded_. Missing
 the third one ends a Set up to five minutes early, which looks exactly like the
 Grace period not working.
 
 The counter is private to one closure and is not the per-Set sequence number
-ADR-0006 rejected: that was an identifier a *client* would echo back over the
+ADR-0006 rejected: that was an identifier a _client_ would echo back over the
 wire to have its request refused. Nothing here is on the wire, nothing is
 refused, and no member is told anything.
 
@@ -125,7 +125,7 @@ it.
 It stays a **roster** hook rather than a snapshot hook, which is the property
 ADR-0005 established and this ticket leans on harder: a snapshot lands every time
 anyone starts or stops talking, so a Grace period keyed on snapshots would be
-restarted per syllable, and one keyed on the *last* snapshot would never fire at
+restarted per syllable, and one keyed on the _last_ snapshot would never fire at
 all for a room whose last member left silently.
 
 The list is read off the snapshot and **not** from `mesh.listenerUserIds`, which
@@ -139,7 +139,7 @@ one of them is about membership.
 ### 4. Grace expiry is a new trigger for forgetting, not a new kind of forgetting
 
 The expiry calls the same `endCurrentSet()` that a `leave` command, an eviction
-and a lost connection call. That path already discards the Queue *and* the Set
+and a lost connection call. That path already discards the Queue _and_ the Set
 log, publishes the empty Queue **before** the membership goes, and only then
 tears the Set down — an order ADR-0005 and ADR-0008 both depend on, because a
 publish from a member the server has seen leave is refused, and because that one
@@ -218,7 +218,7 @@ bot's `speaking` flag, and its first supporting bullet was:
 > music can be running, and audible, while the flag says otherwise.
 
 **The second sentence is no longer true, and this ticket is what made it false.**
-Surfacing that rather than quietly overriding it: the *decision* stands, and it
+Surfacing that rather than quietly overriding it: the _decision_ stands, and it
 stands on its remaining two reasons — the Queue and the flag arrive in separate
 messages, and `speaking` answers a different question, a stalled player being
 still a playing one. It also stands on a new one that replaces the retired
@@ -232,7 +232,7 @@ bot now does itself — and reads "An owner muted the bot, so nobody in this
 channel can hear it". English and Turkish changed together, as every string in
 this product must.
 
-The rule about *when* it is said does not change: only while the Queue is
+The rule about _when_ it is said does not change: only while the Queue is
 playing. It used to be said for two reasons — that it explains a silence, and
 that it named a control the member could press — and only the first survives.
 The first is the whole of it: playing is the one state where the Queue and the

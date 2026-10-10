@@ -171,16 +171,16 @@ Use the same Windows 11 PC, runtime/build versions, game scene, browser peer,
 network, audio devices, and 720p/30-FPS target for both candidates. Record GPU,
 game settings, viewer count, and whether a direct or TURN connection was used.
 
-| Scenario | Evidence needed |
-| --- | --- |
-| Select game/window | Steps, time to first visible frame, keyboard/focus behavior, cancel behavior; no automatic capture. |
-| Borderless game | Ten-minute share with foreground/alt-tab transitions; receiver frames and audio continuity. |
-| Exclusive fullscreen | Explicit pass/fail, black/frozen-frame behavior, and safe borderless/monitor fallback. |
-| Motion | Sender/receiver WebRTC frame statistics and freeze duration; separate capture failure from bandwidth adaptation. |
-| Audio scope | Play game audio and unrelated audio together; record exactly which the viewer hears, including possible call-audio echo. |
-| Lifecycle | Close game, resize, stop share, leave room, switch installation, hide to tray, and reconnect; no stale tracks or automatic restart. |
-| Resources | Complete native/browser process-tree CPU and memory, plus game performance under the same workload. |
-| Trust boundary | Unselected origins/subframes cannot enumerate titles/thumbnails, select sources, or trigger silent capture. |
+| Scenario             | Evidence needed                                                                                                                     |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Select game/window   | Steps, time to first visible frame, keyboard/focus behavior, cancel behavior; no automatic capture.                                 |
+| Borderless game      | Ten-minute share with foreground/alt-tab transitions; receiver frames and audio continuity.                                         |
+| Exclusive fullscreen | Explicit pass/fail, black/frozen-frame behavior, and safe borderless/monitor fallback.                                              |
+| Motion               | Sender/receiver WebRTC frame statistics and freeze duration; separate capture failure from bandwidth adaptation.                    |
+| Audio scope          | Play game audio and unrelated audio together; record exactly which the viewer hears, including possible call-audio echo.            |
+| Lifecycle            | Close game, resize, stop share, leave room, switch installation, hide to tray, and reconnect; no stale tracks or automatic restart. |
+| Resources            | Complete native/browser process-tree CPU and memory, plus game performance under the same workload.                                 |
+| Trust boundary       | Unselected origins/subframes cannot enumerate titles/thumbnails, select sources, or trigger silent capture.                         |
 
 Choose a replacement only if it materially improves the named requirement
 without regressing voice, audio scope, consent, cleanup, or measured resources.

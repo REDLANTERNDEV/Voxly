@@ -11,10 +11,7 @@ import {
   type AudioDevicePreferenceKind,
   type AudioDeviceStorage
 } from "./audioDevices.js";
-import {
-  selectSharedAudioOutputDevice,
-  sharedAudioOutputSelectionSupported
-} from "./audioOutput.js";
+import { selectSharedAudioOutputDevice, sharedAudioOutputSelectionSupported } from "./audioOutput.js";
 
 export interface UseAudioDevicesOptions {
   userId: string | null | undefined;
@@ -93,56 +90,64 @@ export function useAudioDevices({
     });
   }, [clearError, reportError, storage, userId]);
 
-  const refresh = useCallback(async (requestPermission = false) => {
-    const requestId = ++refreshRequestRef.current;
-    if (!mediaDevices) {
-      devicesRef.current = emptyDevices;
-      setDevices(emptyDevices);
-      reportError("audioError.unavailable");
-      return emptyDevices;
-    }
-
-    setLoading(true);
-    clearError();
-    try {
-      const nextDevices = await enumerateAudioDevices(mediaDevices, { requestPermission });
-      // Device lists can briefly omit a Bluetooth input while the headset
-      // changes profiles. Keep the member's selection so a later devicechange
-      // can find the same input again and recover its interrupted capture.
-      const nextInput = selectedInputRef.current && !nextDevices.inputs.some(
-        (device) => device.deviceId === selectedInputRef.current
-      ) ? selectedInputRef.current : reconcileAudioDevicePreference(selectedInputRef.current, nextDevices.inputs);
-      const nextOutput = reconcileAudioDevicePreference(selectedOutputRef.current, nextDevices.outputs);
-      const unavailable: AudioDevicePreferenceKind[] = [];
-      if (selectedInputRef.current && !nextDevices.inputs.some((device) => device.deviceId === selectedInputRef.current)) unavailable.push("input");
-      if (selectedOutputRef.current && !nextOutput) unavailable.push("output");
-
-      if (requestId !== refreshRequestRef.current) return devicesRef.current;
-
-      selectedInputRef.current = nextInput;
-      selectedOutputRef.current = nextOutput;
-      setSelectedInputId(nextInput);
-      setSelectedOutputId(nextOutput);
-      setUnavailableSelections(unavailable);
-      devicesRef.current = nextDevices;
-      setDevices(nextDevices);
-      setDeviceRevision((revision) => revision + 1);
-
-      if (userId && storage) {
-        if (unavailable.includes("output")) writeAudioDevicePreference(storage, userId, "output", "");
+  const refresh = useCallback(
+    async (requestPermission = false) => {
+      const requestId = ++refreshRequestRef.current;
+      if (!mediaDevices) {
+        devicesRef.current = emptyDevices;
+        setDevices(emptyDevices);
+        reportError("audioError.unavailable");
+        return emptyDevices;
       }
-      if (unavailable.includes("output")) {
-        await selectSharedAudioOutputDevice("");
+
+      setLoading(true);
+      clearError();
+      try {
+        const nextDevices = await enumerateAudioDevices(mediaDevices, { requestPermission });
+        // Device lists can briefly omit a Bluetooth input while the headset
+        // changes profiles. Keep the member's selection so a later devicechange
+        // can find the same input again and recover its interrupted capture.
+        const nextInput =
+          selectedInputRef.current && !nextDevices.inputs.some((device) => device.deviceId === selectedInputRef.current)
+            ? selectedInputRef.current
+            : reconcileAudioDevicePreference(selectedInputRef.current, nextDevices.inputs);
+        const nextOutput = reconcileAudioDevicePreference(selectedOutputRef.current, nextDevices.outputs);
+        const unavailable: AudioDevicePreferenceKind[] = [];
+        if (
+          selectedInputRef.current &&
+          !nextDevices.inputs.some((device) => device.deviceId === selectedInputRef.current)
+        )
+          unavailable.push("input");
+        if (selectedOutputRef.current && !nextOutput) unavailable.push("output");
+
+        if (requestId !== refreshRequestRef.current) return devicesRef.current;
+
+        selectedInputRef.current = nextInput;
+        selectedOutputRef.current = nextOutput;
+        setSelectedInputId(nextInput);
+        setSelectedOutputId(nextOutput);
+        setUnavailableSelections(unavailable);
+        devicesRef.current = nextDevices;
+        setDevices(nextDevices);
+        setDeviceRevision((revision) => revision + 1);
+
+        if (userId && storage) {
+          if (unavailable.includes("output")) writeAudioDevicePreference(storage, userId, "output", "");
+        }
+        if (unavailable.includes("output")) {
+          await selectSharedAudioOutputDevice("");
+        }
+        return nextDevices;
+      } catch (cause) {
+        if (requestId !== refreshRequestRef.current) return devicesRef.current;
+        reportError("audioError.load");
+        throw cause;
+      } finally {
+        if (requestId === refreshRequestRef.current) setLoading(false);
       }
-      return nextDevices;
-    } catch (cause) {
-      if (requestId !== refreshRequestRef.current) return devicesRef.current;
-      reportError("audioError.load");
-      throw cause;
-    } finally {
-      if (requestId === refreshRequestRef.current) setLoading(false);
-    }
-  }, [clearError, mediaDevices, reportError, storage, userId]);
+    },
+    [clearError, mediaDevices, reportError, storage, userId]
+  );
 
   useEffect(() => {
     if (!mediaDevices) return;
@@ -163,29 +168,35 @@ export function useAudioDevices({
     };
   }, [mediaDevices, refresh]);
 
-  const selectInput = useCallback((deviceId: string) => {
-    selectedInputRef.current = deviceId;
-    setSelectedInputId(deviceId);
-    setUnavailableSelections((current) => current.filter((kind) => kind !== "input"));
-    if (userId && storage) writeAudioDevicePreference(storage, userId, "input", deviceId);
-  }, [storage, userId]);
+  const selectInput = useCallback(
+    (deviceId: string) => {
+      selectedInputRef.current = deviceId;
+      setSelectedInputId(deviceId);
+      setUnavailableSelections((current) => current.filter((kind) => kind !== "input"));
+      if (userId && storage) writeAudioDevicePreference(storage, userId, "input", deviceId);
+    },
+    [storage, userId]
+  );
 
-  const selectOutput = useCallback(async (deviceId: string, mediaElements: readonly HTMLMediaElement[] = []) => {
-    const requestId = ++outputSelectionRequestRef.current;
-    clearError();
-    try {
-      await selectSharedAudioOutputDevice(deviceId, mediaElements);
-      if (requestId !== outputSelectionRequestRef.current) return;
-      selectedOutputRef.current = deviceId;
-      setSelectedOutputId(deviceId);
-      setUnavailableSelections((current) => current.filter((kind) => kind !== "output"));
-      if (userId && storage) writeAudioDevicePreference(storage, userId, "output", deviceId);
-    } catch (cause) {
-      if (requestId !== outputSelectionRequestRef.current) return;
-      reportError("audioError.outputChange");
-      throw cause;
-    }
-  }, [clearError, reportError, storage, userId]);
+  const selectOutput = useCallback(
+    async (deviceId: string, mediaElements: readonly HTMLMediaElement[] = []) => {
+      const requestId = ++outputSelectionRequestRef.current;
+      clearError();
+      try {
+        await selectSharedAudioOutputDevice(deviceId, mediaElements);
+        if (requestId !== outputSelectionRequestRef.current) return;
+        selectedOutputRef.current = deviceId;
+        setSelectedOutputId(deviceId);
+        setUnavailableSelections((current) => current.filter((kind) => kind !== "output"));
+        if (userId && storage) writeAudioDevicePreference(storage, userId, "output", deviceId);
+      } catch (cause) {
+        if (requestId !== outputSelectionRequestRef.current) return;
+        reportError("audioError.outputChange");
+        throw cause;
+      }
+    },
+    [clearError, reportError, storage, userId]
+  );
 
   return {
     ...devices,

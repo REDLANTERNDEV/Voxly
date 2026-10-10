@@ -21,7 +21,13 @@ import { readRecoverGuideDismissed, writeRecoverGuideDismissed } from "../../lib
  * spent either way. The settings card then says the account has none, so making
  * a new one is a decision rather than a step to click past.
  */
-export function RecoverScreen({ language, t, onLanguageChange, onRecovered, turnstileSiteKey }: {
+export function RecoverScreen({
+  language,
+  t,
+  onLanguageChange,
+  onRecovered,
+  turnstileSiteKey
+}: {
   language: LanguageCode;
   t: Translate;
   onLanguageChange: (language: LanguageCode) => void;
@@ -39,28 +45,30 @@ export function RecoverScreen({ language, t, onLanguageChange, onRecovered, turn
   // worth more here than anywhere else in the product.
   const [guiding, setGuiding] = useState(() => !readRecoverGuideDismissed());
 
-  const submit = useCallback(async (event: React.FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await redeemRecoveryCode(code, turnstileToken || undefined);
-      onRecovered();
-    } catch {
-      // One answer for unknown, spent and superseded, matching the server.
-      setError("recovery.invalid");
-      if (turnstileSiteKey) {
-        setTurnstileToken("");
-        setTurnstileResetKey((value) => value + 1);
+  const submit = useCallback(
+    async (event: React.FormEvent) => {
+      event.preventDefault();
+      setBusy(true);
+      setError("");
+      try {
+        await redeemRecoveryCode(code, turnstileToken || undefined);
+        onRecovered();
+      } catch {
+        // One answer for unknown, spent and superseded, matching the server.
+        setError("recovery.invalid");
+        if (turnstileSiteKey) {
+          setTurnstileToken("");
+          setTurnstileResetKey((value) => value + 1);
+        }
+      } finally {
+        setBusy(false);
       }
-    } finally {
-      setBusy(false);
-    }
-  }, [code, t]);
+    },
+    [code, t]
+  );
 
   return (
     <AuthEntryFrame language={language} t={t} onLanguageChange={onLanguageChange}>
-
       {guiding ? (
         <section className="link-panel">
           <strong>{t("recovery.guideTitle")}</strong>
@@ -75,7 +83,10 @@ export function RecoverScreen({ language, t, onLanguageChange, onRecovered, turn
             <button
               className="btn btn-ghost"
               type="button"
-              onClick={() => { writeRecoverGuideDismissed(true); setGuiding(false); }}
+              onClick={() => {
+                writeRecoverGuideDismissed(true);
+                setGuiding(false);
+              }}
             >
               {t("link.dontShowAgain")}
             </button>
@@ -90,7 +101,9 @@ export function RecoverScreen({ language, t, onLanguageChange, onRecovered, turn
           <p className="muted small">{t("recovery.enterCopy")}</p>
           {/* Stated before the field, so it cannot be read as a consequence
               somebody discovers after the fact. */}
-          <p className="recovery-warning" role="note">{t("recovery.cost")}</p>
+          <p className="recovery-warning" role="note">
+            {t("recovery.cost")}
+          </p>
           {/* A textarea rather than an input: twenty-five characters and four
               dashes do not fit on one line at a size anybody can check, and an
               input that scrolls sideways hides the half being read. Enter still
@@ -122,8 +135,16 @@ export function RecoverScreen({ language, t, onLanguageChange, onRecovered, turn
               onUnavailable={() => setTurnstileToken("")}
             />
           ) : null}
-          {error ? <p className="small device-error" role="alert">{t("recovery.invalid")}</p> : null}
-          <button className="btn btn-primary" type="submit" disabled={busy || !isCompleteRecoveryCode(code) || (Boolean(turnstileSiteKey) && !turnstileToken)}>
+          {error ? (
+            <p className="small device-error" role="alert">
+              {t("recovery.invalid")}
+            </p>
+          ) : null}
+          <button
+            className="btn btn-primary"
+            type="submit"
+            disabled={busy || !isCompleteRecoveryCode(code) || (Boolean(turnstileSiteKey) && !turnstileToken)}
+          >
             {t("recovery.continue")}
           </button>
           {/* Always available, whether or not the guide was dismissed. */}

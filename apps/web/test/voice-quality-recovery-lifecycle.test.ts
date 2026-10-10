@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import ts from "typescript";
-import { advancePeerRecovery, initialPeerRecoveryState, isPeerConnectionReady, voicePeerConnectionTimeoutMs, type PeerRecoveryState } from "../src/lib/voicePeerRecovery.js";
+import {
+  advancePeerRecovery,
+  initialPeerRecoveryState,
+  isPeerConnectionReady,
+  voicePeerConnectionTimeoutMs,
+  type PeerRecoveryState
+} from "../src/lib/voicePeerRecovery.js";
 
 // Execute the hook's actual callbacks with controlled peer/timer boundaries.
 // These tests cover the orchestration that state-machine-only tests missed.
@@ -11,7 +17,12 @@ function callback(name: string, dependencies: Record<string, unknown>) {
   const file = ts.createSourceFile("useVoiceMedia.ts", source, ts.ScriptTarget.Latest, true);
   let expression = "";
   function visit(node: ts.Node) {
-    if (ts.isVariableDeclaration(node) && node.name.getText(file) === name && node.initializer && ts.isCallExpression(node.initializer)) {
+    if (
+      ts.isVariableDeclaration(node) &&
+      node.name.getText(file) === name &&
+      node.initializer &&
+      ts.isCallExpression(node.initializer)
+    ) {
       expression = node.initializer.arguments[0].getText(file);
     }
     if (ts.isBinaryExpression(node) && node.left.getText(file) === name) expression = node.right.getText(file);
@@ -20,7 +31,9 @@ function callback(name: string, dependencies: Record<string, unknown>) {
   visit(file);
   assert.ok(expression, `${name} must remain a callable hook boundary`);
   const compiled = ts.transpile(`const callback = ${expression};`, { target: ts.ScriptTarget.ES2022 });
-  return new Function(...Object.keys(dependencies), `${compiled}; return callback;`)(...Object.values(dependencies)) as (...args: unknown[]) => void;
+  return new Function(...Object.keys(dependencies), `${compiled}; return callback;`)(
+    ...Object.values(dependencies)
+  ) as (...args: unknown[]) => void;
 }
 
 function harness() {
@@ -35,30 +48,59 @@ function harness() {
   const mediaRequests: boolean[] = [];
   const dependencies = {
     voiceDiagnostics: { record: () => undefined },
-    peersRef, peerRecoveryStatesRef, peerConnectionTimeoutsRef,
-    peer, peerUserId: "member", peerGeneration: 1,
+    peersRef,
+    peerRecoveryStatesRef,
+    peerConnectionTimeoutsRef,
+    peer,
+    peerUserId: "member",
+    peerGeneration: 1,
     peerRecoveryTimersRef: { current: new Map<string, number>() },
     ensurePeer: () => peer,
-    advancePeerRecovery, initialPeerRecoveryState, voicePeerConnectionTimeoutMs,
+    advancePeerRecovery,
+    initialPeerRecoveryState,
+    voicePeerConnectionTimeoutMs,
     isPeerConnectionReady,
     peerGenerationsRef: { current: new Map([["member", 1]]) },
     isCurrentPeer: (id: string, expected: unknown) => peersRef.current.get(id) === expected,
     setPeerConnectionStates: () => undefined,
     requestPeerRecovery: (_id: string, _peer: unknown, recoverMedia = false) => {
-      requests += 1; mediaRequests.push(recoverMedia); return true;
+      requests += 1;
+      mediaRequests.push(recoverMedia);
+      return true;
     },
-    schedulePeerRecovery: () => { rebuilds += 1; },
+    schedulePeerRecovery: () => {
+      rebuilds += 1;
+    },
     window: {
-      setTimeout: (fn: () => void) => { timers.set(++sequence, fn); return sequence; },
-      clearTimeout: (id: number) => { timers.delete(id); }
+      setTimeout: (fn: () => void) => {
+        timers.set(++sequence, fn);
+        return sequence;
+      },
+      clearTimeout: (id: number) => {
+        timers.delete(id);
+      }
     }
   };
   return {
-    peer, peersRef, peerRecoveryStatesRef, timers, dependencies, mediaRequests,
+    peer,
+    peersRef,
+    peerRecoveryStatesRef,
+    timers,
+    dependencies,
+    mediaRequests,
     recover: callback("recoverPeer", dependencies),
-    get requests() { return requests; },
-    get rebuilds() { return rebuilds; },
-    expire() { for (const [id, fn] of [...timers]) { timers.delete(id); fn(); } }
+    get requests() {
+      return requests;
+    },
+    get rebuilds() {
+      return rebuilds;
+    },
+    expire() {
+      for (const [id, fn] of [...timers]) {
+        timers.delete(id);
+        fn();
+      }
+    }
   };
 }
 
@@ -68,7 +110,8 @@ describe("connected peer audio recovery", () => {
     const signals: unknown[] = [];
     const request = callback("requestPeerRecovery", {
       socket: { emit: (_event: string, payload: unknown) => signals.push(payload) },
-      roomRef: { current: "room" }, userIdRef: { current: "a" },
+      roomRef: { current: "room" },
+      userIdRef: { current: "a" },
       peerGenerationsRef: { current: new Map([["b", 1]]) },
       isCurrentPeer: () => true,
       shouldInitiatePeerConnection: () => true,
@@ -198,7 +241,9 @@ describe("initial negotiation and media instance lifecycle", () => {
       isRtcRecoveryRequest: (signal: { type: string }) => signal.type === "recovery-request",
       userIdRef: { current: "b" },
       shouldInitiatePeerConnection: (a: string, b: string) => a < b,
-      schedulePeerRecovery: () => { rebuilds++; }
+      schedulePeerRecovery: () => {
+        rebuilds++;
+      }
     });
     await handle({ fromUserId: "a", signal: { type: "recovery-request" } });
     assert.equal(rebuilds, 1);
@@ -209,10 +254,14 @@ describe("initial negotiation and media instance lifecycle", () => {
     const offeredPeersRef = { current: new Set<unknown>() };
     let offers = 0;
     const offer = callback("ensureInitialOffer", {
-      userIdRef: { current: "a" }, offeredPeersRef,
+      userIdRef: { current: "a" },
+      offeredPeersRef,
       makingOfferPeersRef: { current: new Set() },
       shouldInitiatePeerConnection: (a: string, b: string) => a < b,
-      sendOffer: async (_id: string, connection: unknown) => { offers++; offeredPeersRef.current.add(connection); },
+      sendOffer: async (_id: string, connection: unknown) => {
+        offers++;
+        offeredPeersRef.current.add(connection);
+      },
       setError: () => assert.fail("unexpected offer error")
     });
     // The candidate handler already created this peer before the snapshot.
@@ -227,28 +276,37 @@ describe("initial negotiation and media instance lifecycle", () => {
     let removals = 0;
     let offers = 0;
     const apply = callback("applyVoiceSnapshot", {
-      roomRef: { current: "room" }, userIdRef: { current: "self" },
+      roomRef: { current: "room" },
+      userIdRef: { current: "self" },
       syncScreenRecoveryRef: { current: () => undefined },
-      peersRef, remoteMediaInstancesRef,
+      peersRef,
+      remoteMediaInstancesRef,
       voiceSnapshotsRef: { current: {} },
-      setVoiceSnapshots: () => undefined, setRemoteStreams: () => undefined,
+      setVoiceSnapshots: () => undefined,
+      setRemoteStreams: () => undefined,
       peerRecoveryTimersRef: { current: new Map() },
       activeVoiceMemberUserIdsRef: { current: new Set() },
       visualTargetsRef: { current: [] },
-      staleVoicePeerUserIds: (tracked: Set<string>, active: Set<string>) => [...tracked].filter(id => !active.has(id)),
+      staleVoicePeerUserIds: (tracked: Set<string>, active: Set<string>) =>
+        [...tracked].filter((id) => !active.has(id)),
       removePeer: (id: string, options: { preserveVisualSubscriptions?: boolean }) => {
         assert.equal(options.preserveVisualSubscriptions, true);
-        removals++; peersRef.current.delete(id);
+        removals++;
+        peersRef.current.delete(id);
       },
       ensurePeer: (id: string) => {
         if (!peersRef.current.has(id)) peersRef.current.set(id, {});
         return peersRef.current.get(id);
       },
-      ensureInitialOffer: () => { offers++; }
+      ensureInitialOffer: () => {
+        offers++;
+      }
     });
-    const snapshot = (mediaInstanceId: string) => ({ roomId: "room", viewerInVoiceRoom: true, members: [
-      { user: { userId: "member" }, media: {}, mediaInstanceId }
-    ] });
+    const snapshot = (mediaInstanceId: string) => ({
+      roomId: "room",
+      viewerInVoiceRoom: true,
+      members: [{ user: { userId: "member" }, media: {}, mediaInstanceId }]
+    });
     apply(snapshot("old"));
     assert.equal(removals, 0);
     const old = peersRef.current.get("member");

@@ -10,34 +10,84 @@ const source = readFileSync("src/main.ts", "utf8");
 // Exercise the real launcher orchestration with the native event/IPC boundary
 // replaced. No Windows webview or authenticated Installation is needed.
 const startupSource = source.slice(source.indexOf("async function start()"), source.indexOf("\nvoid start();"));
-const loadingSource = source.slice(source.indexOf("function renderLoading()"), source.indexOf('\nelement("cancel-connection")'));
+const loadingSource = source.slice(
+  source.indexOf("function renderLoading()"),
+  source.indexOf('\nelement("cancel-connection")')
+);
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
   return { promise, resolve };
 }
-async function flush() { await new Promise<void>((resolve) => setImmediate(resolve)); }
+async function flush() {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
 
-function boot(options: { updates?: () => Promise<unknown>; registration?: (event: string) => Promise<unknown>; connection?: Promise<unknown>; handoff?: boolean; tray?: boolean } = {}) {
+function boot(
+  options: {
+    updates?: () => Promise<unknown>;
+    registration?: (event: string) => Promise<unknown>;
+    connection?: Promise<unknown>;
+    handoff?: boolean;
+    tray?: boolean;
+  } = {}
+) {
   const preferred = { id: "preferred", origin: "https://chat.example" };
-  const snapshot = { active: null, shellVersion: "0.1.2", preferences: {
-    language: "en", installations: [preferred], defaultInstallationId: preferred.id,
-    openOnStartup: true, trayAcknowledged: true
-  } };
+  const snapshot = {
+    active: null,
+    shellVersion: "0.1.2",
+    preferences: {
+      language: "en",
+      installations: [preferred],
+      defaultInstallationId: preferred.id,
+      openOnStartup: true,
+      trayAcknowledged: true
+    }
+  };
   const handlers = new Map<string, (event: { payload: unknown }) => void>();
   const connections: unknown[] = [];
   const calls: string[] = [];
   const classes = new Set<string>();
   const nodes = new Map<string, { textContent: string; hidden: boolean; focus(): void; scrollIntoView(): void }>();
   const context: Record<string, any> = {
-    native: true, state: null, language: "en", updateState: null, pendingDesktopLink: null,
-    booting: true, loadingTarget: null, receivedReady: null, failedConnection: null, confirmPending: false,
-    connectionRevision: 0, attemptedConnection: null,
-    document: { body: { classList: { toggle(name: string, enabled: boolean) { if (enabled) classes.add(name); else classes.delete(name); } } } },
-    renderTranslations() {}, renderInstallations() { context.renderLoading(); }, refreshReport() {},
-    renderUpdates() {}, status(message: string) { calls.push(`status:${message}`); }, errorKey: () => "window_failed",
-    t: (key: Parameters<typeof translate>[1]) => translate("en", key), startupInstallation,
-    location: { search: "" }, URLSearchParams,
+    native: true,
+    state: null,
+    language: "en",
+    updateState: null,
+    pendingDesktopLink: null,
+    booting: true,
+    loadingTarget: null,
+    receivedReady: null,
+    failedConnection: null,
+    confirmPending: false,
+    connectionRevision: 0,
+    attemptedConnection: null,
+    document: {
+      body: {
+        classList: {
+          toggle(name: string, enabled: boolean) {
+            if (enabled) classes.add(name);
+            else classes.delete(name);
+          }
+        }
+      }
+    },
+    renderTranslations() {},
+    renderInstallations() {
+      context.renderLoading();
+    },
+    refreshReport() {},
+    renderUpdates() {},
+    status(message: string) {
+      calls.push(`status:${message}`);
+    },
+    errorKey: () => "window_failed",
+    t: (key: Parameters<typeof translate>[1]) => translate("en", key),
+    startupInstallation,
+    location: { search: "" },
+    URLSearchParams,
     element(id: string) {
       if (!nodes.has(id)) nodes.set(id, { textContent: "", hidden: false, focus() {}, scrollIntoView() {} });
       return nodes.get(id);
@@ -57,8 +107,15 @@ function boot(options: { updates?: () => Promise<unknown>; registration?: (event
       if (command === "cancel_connection") return snapshot;
       throw new Error(`Unexpected command: ${command}`);
     },
-    async receiveDesktopLink() { calls.push("handoff"); return options.handoff ?? false; },
-    async connect(saved: unknown) { connections.push(saved); }, quit() {}, run() {}
+    async receiveDesktopLink() {
+      calls.push("handoff");
+      return options.handoff ?? false;
+    },
+    async connect(saved: unknown) {
+      connections.push(saved);
+    },
+    quit() {},
+    run() {}
   };
   const javascript = transpileModule(`${loadingSource}\n${startupSource}`.replaceAll("import.meta.env.DEV", "false"), {
     compilerOptions: { target: ScriptTarget.ES2022, module: ModuleKind.ESNext }
@@ -78,7 +135,11 @@ test("startup connects without waiting for updater presentation, including faile
   await flush();
   assert.equal(delayed.context.updateState.phase, "current");
 
-  const failed = boot({ updates: async () => { throw new Error("unavailable"); } });
+  const failed = boot({
+    updates: async () => {
+      throw new Error("unavailable");
+    }
+  });
   await failed.finished;
   assert.deepEqual(failed.connections, [failed.preferred]);
   assert.equal(failed.context.updateState.phase, "error");
@@ -135,9 +196,18 @@ test("opening feedback lasts until ready, cancellation discards late completion,
 
 test("startup registers independent listeners together and waits before choosing an Installation", async () => {
   const ready = deferred<unknown>();
-  const launched = boot({ registration: (event) => event === "shell:ready" ? ready.promise : Promise.resolve() });
+  const launched = boot({ registration: (event) => (event === "shell:ready" ? ready.promise : Promise.resolve()) });
   await flush();
-  for (const event of ["shell:ready", "shell:show-home", "shell:check-update", "shell:load-failed", "shell:preferences", "shell:quit-requested", "shell:updates", "shell:review-update"]) {
+  for (const event of [
+    "shell:ready",
+    "shell:show-home",
+    "shell:check-update",
+    "shell:load-failed",
+    "shell:preferences",
+    "shell:quit-requested",
+    "shell:updates",
+    "shell:review-update"
+  ]) {
     assert.ok(launched.calls.includes(`listen:${event}`), `${event} registration is blocked by another listener`);
   }
   assert.ok(!launched.calls.includes("handoff"));

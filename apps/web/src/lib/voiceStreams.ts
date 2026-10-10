@@ -28,10 +28,7 @@ export function upsertRemoteStream(
   kind: RemoteMediaKind,
   stream: MediaStream
 ) {
-  return [
-    ...streams.filter((item) => item.userId !== userId || item.kind !== kind),
-    { userId, kind, stream }
-  ];
+  return [...streams.filter((item) => item.userId !== userId || item.kind !== kind), { userId, kind, stream }];
 }
 
 export function removeRemoteStream(
@@ -40,9 +37,7 @@ export function removeRemoteStream(
   kind: RemoteMediaKind,
   expectedStream: MediaStream
 ) {
-  return streams.filter((item) => (
-    item.userId !== userId || item.kind !== kind || item.stream !== expectedStream
-  ));
+  return streams.filter((item) => item.userId !== userId || item.kind !== kind || item.stream !== expectedStream);
 }
 
 export function mediaStreamForTrack(

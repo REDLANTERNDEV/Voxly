@@ -9,7 +9,12 @@ import type { TranslationKey } from "../../lib/i18n.js";
 import { ExternalPreviewSettings } from "../ExternalPreviewSettings.js";
 import { AccountDeletionSettings } from "../AccountDeletionSettings.js";
 import { DesktopNotificationSettings } from "../DesktopNotificationSettings.js";
-import { DesktopGeneralSettings, DesktopHomeButton, DesktopMicrophoneSettings, DesktopShortcutSettings } from "../DesktopSettings.js";
+import {
+  DesktopGeneralSettings,
+  DesktopHomeButton,
+  DesktopMicrophoneSettings,
+  DesktopShortcutSettings
+} from "../DesktopSettings.js";
 import { desktopSettingsAvailable } from "../../lib/desktopSettings.js";
 import { NotificationSoundSettings } from "../NotificationSoundSettings.js";
 import { webReleaseVersion } from "../../lib/applicationUpdates.js";
@@ -29,7 +34,8 @@ import { ApplicationVersionSettings } from "../ApplicationUpdateStatus.js";
  * 260-pixel column ever wanted to be.
  */
 
-export type SettingsSection = "general" | "account" | "audio" | "appearance" | "privacy" | "shortcuts" | "notifications" | "about";
+export type SettingsSection =
+  "general" | "account" | "audio" | "appearance" | "privacy" | "shortcuts" | "notifications" | "about";
 
 const sections: readonly SettingsSection[] = ["account", "audio", "notifications", "appearance", "privacy"];
 const sectionIcons = {
@@ -43,10 +49,13 @@ const sectionIcons = {
   privacy: <ShieldIcon />
 } as const;
 
-export function SettingsDialog(props: ShellModel & ShellActions & { initialSection?: SettingsSection; contextError?: TranslationKey | ""; onClose: () => void }) {
+export function SettingsDialog(
+  props: ShellModel &
+    ShellActions & { initialSection?: SettingsSection; contextError?: TranslationKey | ""; onClose: () => void }
+) {
   const [section, setSection] = useState<SettingsSection>(props.initialSection ?? "account");
   const desktop = typeof window !== "undefined" && desktopSettingsAvailable(window);
-  const visibleSections = desktop ? ["general", ...sections, "shortcuts"] as SettingsSection[] : sections;
+  const visibleSections = desktop ? (["general", ...sections, "shortcuts"] as SettingsSection[]) : sections;
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const onCloseRef = useRef(props.onClose);
   onCloseRef.current = props.onClose;
@@ -55,10 +64,14 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
     const returnFocus = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("dialog[open]")) onCloseRef.current();
+      if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("dialog[open]"))
+        onCloseRef.current();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => { window.removeEventListener("keydown", onKeyDown); if (returnFocus?.isConnected) returnFocus.focus(); };
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      if (returnFocus?.isConnected) returnFocus.focus();
+    };
   }, []);
 
   return (
@@ -80,110 +93,147 @@ export function SettingsDialog(props: ShellModel & ShellActions & { initialSecti
               aria-current={section === item}
               onClick={() => setSection(item)}
             >
-              <span className="settings-nav-icon" aria-hidden="true">{sectionIcons[item]}</span>
+              <span className="settings-nav-icon" aria-hidden="true">
+                {sectionIcons[item]}
+              </span>
               <span>{props.t(`settings.${item}`)}</span>
             </button>
           ))}
           <div className="settings-nav-footer">
             {desktop ? <DesktopHomeButton t={props.t} onOpened={props.onClose} /> : null}
-            <button className="settings-version-link" type="button" aria-current={section === "about"} aria-label={`${props.t("settings.webVersion")}: ${webReleaseVersion ? `v${webReleaseVersion}` : "—"}`} onClick={() => setSection("about")}>
+            <button
+              className="settings-version-link"
+              type="button"
+              aria-current={section === "about"}
+              aria-label={`${props.t("settings.webVersion")}: ${webReleaseVersion ? `v${webReleaseVersion}` : "—"}`}
+              onClick={() => setSection("about")}
+            >
               {props.t("settings.interface")} {webReleaseVersion ? `v${webReleaseVersion}` : "—"}
             </button>
           </div>
         </nav>
         <div className="settings-body">
           <header className="settings-section-header">
-            <div><span className="label">{props.t("settings.title")}</span><h2>{props.t(`settings.${section}`)}</h2></div>
-            <button className="settings-close icon-btn" type="button" title={props.t("common.close")} aria-label={props.t("common.close")} ref={closeRef} onClick={props.onClose}>
+            <div>
+              <span className="label">{props.t("settings.title")}</span>
+              <h2>{props.t(`settings.${section}`)}</h2>
+            </div>
+            <button
+              className="settings-close icon-btn"
+              type="button"
+              title={props.t("common.close")}
+              aria-label={props.t("common.close")}
+              ref={closeRef}
+              onClick={props.onClose}
+            >
               <CloseIcon />
             </button>
           </header>
           <div className="settings-content">
-            {section === "shortcuts" && desktop ? <DesktopShortcutSettings t={props.t} onAudio={() => setSection("audio")} /> : null}
+            {section === "shortcuts" && desktop ? (
+              <DesktopShortcutSettings t={props.t} onAudio={() => setSection("audio")} />
+            ) : null}
             {section === "about" ? <ApplicationVersionSettings t={props.t} /> : null}
             {section === "account" ? (
               <>
                 <DeviceSettings t={props.t} />
                 <RecoverySettings t={props.t} />
-                {props.user.role !== "owner" ? <AccountDeletionSettings nickname={props.user.nickname} t={props.t} /> : null}
+                {props.user.role !== "owner" ? (
+                  <AccountDeletionSettings nickname={props.user.nickname} t={props.t} />
+                ) : null}
               </>
             ) : null}
             {section === "audio" ? (
               <>
-              {props.microphoneHealthWarning ? <p className="microphone-health-warning" role="status">{props.t("audio.captureFault")}</p> : null}
-              <AudioDeviceSettings
-                inline
-                showNotificationSounds={false}
-                microphoneControls={desktop ? <DesktopMicrophoneSettings t={props.t} onShortcuts={() => setSection("shortcuts")} /> : null}
-                inputs={props.audioDevices.inputs}
-                outputs={props.audioDevices.outputs}
-                selectedInputId={props.audioDevices.selectedInputId}
-                selectedOutputId={props.audioDevices.selectedOutputId}
-                inputVolume={props.audioLevels.input}
-                outputVolume={props.audioLevels.output}
-                noiseSuppression={props.noiseSuppression}
-                noiseSuppressionSupported={props.noiseSuppressionSupported}
-                notificationSounds={props.notificationSounds}
-                microphoneTestActive={props.microphoneTestActive}
-                microphoneTestError={props.microphoneTestError}
-                microphoneTestErrorOccurrences={props.microphoneTestErrorOccurrences}
-                microphoneTestErrorRevision={props.microphoneTestErrorRevision}
-                loading={props.audioDevices.loading}
-                error={props.audioDevices.error ? props.t(props.audioDevices.error) : ""}
-                errorOccurrences={props.audioDevices.errorOccurrences}
-                errorRevision={props.audioDevices.errorRevision}
-                contextError={props.contextError ? props.t(props.contextError) : ""}
-                unavailableSelections={props.audioDevices.unavailableSelections}
-                outputSelectionSupported={props.audioDevices.outputSelectionSupported}
-                labels={{
-                  title: props.t("audio.title"),
-                  microphone: props.t("audio.microphone"),
-                  output: props.t("audio.output"),
-                  systemDefault: props.t("audio.systemDefault"),
-                  inputUnavailable: props.t("audio.inputUnavailable"),
-                  browserControlled: props.t("audio.browserControlled"),
-                  refresh: props.t("audio.refresh"),
-                  unavailable: props.t("audio.unavailable"),
-                  inputVolume: props.t("audio.inputVolume"),
-                  outputVolume: props.t("audio.outputVolume"),
-                  noiseSuppression: props.t("audio.noiseSuppression"),
-                  noiseSuppressionHint: props.t("audio.noiseSuppressionHint"),
-                  noiseSuppressionUnsupported: props.t("audio.noiseSuppressionUnsupported"),
-                  notificationSounds: props.t("audio.notificationSounds"),
-                  notificationSoundsHint: props.t("audio.notificationSoundsHint"),
-                  notificationVolume: props.t("audio.notificationVolume"),
-                  notificationVoice: props.t("audio.notificationVoice"),
-                  notificationMessage: props.t("audio.notificationMessage"),
-                  notificationConnection: props.t("audio.notificationConnection"),
-                  startTest: props.t("audio.startTest"),
-                  stopTest: props.t("audio.stopTest"),
-                  testHint: props.t("audio.testHint"),
-                  testPermission: props.t("audio.testPermission"),
-                  testUnavailable: props.t("audio.testUnavailable"),
-                  microphoneTestErrorTitle: props.t("audio.microphoneTestErrorTitle"),
-                  errorTitle: props.t("notification.settingsErrorTitle"),
-                  dismissError: props.t("notification.dismiss"),
-                  occurrences: (count) => props.t("notification.occurrences", { count }),
-                  closeSettings: props.t("audio.closeSettings")
-                }}
-                onOpen={() => props.audioDevices.refresh(true)}
-                onClose={props.onCloseAudioSettings}
-                onRefresh={() => props.audioDevices.refresh(true)}
-                onSelectInput={props.audioDevices.selectInput}
-                onSelectOutput={props.audioDevices.selectOutput}
-                onInputVolumeChange={props.onInputVolumeChange}
-                onOutputVolumeChange={props.onOutputVolumeChange}
-                onNoiseSuppressionChange={props.onNoiseSuppressionChange}
-                onNotificationSoundsChange={props.onNotificationSoundsChange}
-                onToggleMicrophoneTest={props.onToggleMicrophoneTest}
-              />
-
+                {props.microphoneHealthWarning ? (
+                  <p className="microphone-health-warning" role="status">
+                    {props.t("audio.captureFault")}
+                  </p>
+                ) : null}
+                <AudioDeviceSettings
+                  inline
+                  showNotificationSounds={false}
+                  microphoneControls={
+                    desktop ? (
+                      <DesktopMicrophoneSettings t={props.t} onShortcuts={() => setSection("shortcuts")} />
+                    ) : null
+                  }
+                  inputs={props.audioDevices.inputs}
+                  outputs={props.audioDevices.outputs}
+                  selectedInputId={props.audioDevices.selectedInputId}
+                  selectedOutputId={props.audioDevices.selectedOutputId}
+                  inputVolume={props.audioLevels.input}
+                  outputVolume={props.audioLevels.output}
+                  noiseSuppression={props.noiseSuppression}
+                  noiseSuppressionSupported={props.noiseSuppressionSupported}
+                  notificationSounds={props.notificationSounds}
+                  microphoneTestActive={props.microphoneTestActive}
+                  microphoneTestError={props.microphoneTestError}
+                  microphoneTestErrorOccurrences={props.microphoneTestErrorOccurrences}
+                  microphoneTestErrorRevision={props.microphoneTestErrorRevision}
+                  loading={props.audioDevices.loading}
+                  error={props.audioDevices.error ? props.t(props.audioDevices.error) : ""}
+                  errorOccurrences={props.audioDevices.errorOccurrences}
+                  errorRevision={props.audioDevices.errorRevision}
+                  contextError={props.contextError ? props.t(props.contextError) : ""}
+                  unavailableSelections={props.audioDevices.unavailableSelections}
+                  outputSelectionSupported={props.audioDevices.outputSelectionSupported}
+                  labels={{
+                    title: props.t("audio.title"),
+                    microphone: props.t("audio.microphone"),
+                    output: props.t("audio.output"),
+                    systemDefault: props.t("audio.systemDefault"),
+                    inputUnavailable: props.t("audio.inputUnavailable"),
+                    browserControlled: props.t("audio.browserControlled"),
+                    refresh: props.t("audio.refresh"),
+                    unavailable: props.t("audio.unavailable"),
+                    inputVolume: props.t("audio.inputVolume"),
+                    outputVolume: props.t("audio.outputVolume"),
+                    noiseSuppression: props.t("audio.noiseSuppression"),
+                    noiseSuppressionHint: props.t("audio.noiseSuppressionHint"),
+                    noiseSuppressionUnsupported: props.t("audio.noiseSuppressionUnsupported"),
+                    notificationSounds: props.t("audio.notificationSounds"),
+                    notificationSoundsHint: props.t("audio.notificationSoundsHint"),
+                    notificationVolume: props.t("audio.notificationVolume"),
+                    notificationVoice: props.t("audio.notificationVoice"),
+                    notificationMessage: props.t("audio.notificationMessage"),
+                    notificationConnection: props.t("audio.notificationConnection"),
+                    startTest: props.t("audio.startTest"),
+                    stopTest: props.t("audio.stopTest"),
+                    testHint: props.t("audio.testHint"),
+                    testPermission: props.t("audio.testPermission"),
+                    testUnavailable: props.t("audio.testUnavailable"),
+                    microphoneTestErrorTitle: props.t("audio.microphoneTestErrorTitle"),
+                    errorTitle: props.t("notification.settingsErrorTitle"),
+                    dismissError: props.t("notification.dismiss"),
+                    occurrences: (count) => props.t("notification.occurrences", { count }),
+                    closeSettings: props.t("audio.closeSettings")
+                  }}
+                  onOpen={() => props.audioDevices.refresh(true)}
+                  onClose={props.onCloseAudioSettings}
+                  onRefresh={() => props.audioDevices.refresh(true)}
+                  onSelectInput={props.audioDevices.selectInput}
+                  onSelectOutput={props.audioDevices.selectOutput}
+                  onInputVolumeChange={props.onInputVolumeChange}
+                  onOutputVolumeChange={props.onOutputVolumeChange}
+                  onNoiseSuppressionChange={props.onNoiseSuppressionChange}
+                  onNotificationSoundsChange={props.onNotificationSoundsChange}
+                  onToggleMicrophoneTest={props.onToggleMicrophoneTest}
+                />
               </>
             ) : null}
-            {section === "notifications" ? <>
-              <NotificationSoundSettings t={props.t} preferences={props.notificationSounds} onChange={props.onNotificationSoundsChange} />
-              {desktop ? <DesktopNotificationSettings key={props.user.id} userId={props.user.id} t={props.t} /> : null}
-            </> : null}
+            {section === "notifications" ? (
+              <>
+                <NotificationSoundSettings
+                  t={props.t}
+                  preferences={props.notificationSounds}
+                  onChange={props.onNotificationSoundsChange}
+                />
+                {desktop ? (
+                  <DesktopNotificationSettings key={props.user.id} userId={props.user.id} t={props.t} />
+                ) : null}
+              </>
+            ) : null}
             {section === "general" && desktop ? <DesktopGeneralSettings t={props.t} /> : null}
             {section === "appearance" ? (
               <PreferencesCard

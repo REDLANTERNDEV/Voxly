@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { anonymizeMessagesForServer,renameMessagesForServer, replacePresenceUser, replacePresenceUserIfPresent, replaceServerPresenceUserIfPresent } from "../src/lib/memberIdentity.js";
+import {
+  anonymizeMessagesForServer,
+  renameMessagesForServer,
+  replacePresenceUser,
+  replacePresenceUserIfPresent,
+  replaceServerPresenceUserIfPresent
+} from "../src/lib/memberIdentity.js";
 
 describe("server member identity updates", () => {
   it("replaces one presence user without duplicating it", () => {
     assert.deepEqual(
-      replacePresenceUser(
-        [{ userId: "u1", nickname: "Old", role: "member" }],
-        { userId: "u1", nickname: "New", role: "member" }
-      ),
+      replacePresenceUser([{ userId: "u1", nickname: "Old", role: "member" }], {
+        userId: "u1",
+        nickname: "New",
+        role: "member"
+      }),
       [{ userId: "u1", nickname: "New", role: "member" }]
     );
   });
@@ -33,8 +40,46 @@ describe("server member identity updates", () => {
 
   it("renames loaded messages only in the target server", () => {
     const messages = {
-      roomA: [{ id: "a", serverId: "alpha", sequence: 1, roomId: "roomA", userId: "u1", nickname: "Old", authorDeleted: false, body: "A", createdAt: "now", editedAt: null, suppressedEmbedKeys: [], replyToMessageId: null, replyTo: null }],
-      roomB: [{ id: "b", serverId: "beta", sequence: 1, roomId: "roomB", userId: "u1", nickname: "Old", authorDeleted: false, body: "B", createdAt: "now", editedAt: null, suppressedEmbedKeys: [], replyToMessageId: null, replyTo: null }]
+      roomA: [
+        {
+          id: "a",
+          serverId: "alpha",
+          sequence: 1,
+          roomId: "roomA",
+          userId: "u1",
+          nickname: "Old",
+          authorDeleted: false,
+          body: "A",
+          createdAt: "now",
+          editedAt: null,
+          suppressedEmbedKeys: [],
+          mentions: [],
+          reactionState: { version: 0, reactions: [] },
+          pinnedAt: null,
+          replyToMessageId: null,
+          replyTo: null
+        }
+      ],
+      roomB: [
+        {
+          id: "b",
+          serverId: "beta",
+          sequence: 1,
+          roomId: "roomB",
+          userId: "u1",
+          nickname: "Old",
+          authorDeleted: false,
+          body: "B",
+          createdAt: "now",
+          editedAt: null,
+          suppressedEmbedKeys: [],
+          mentions: [],
+          reactionState: { version: 0, reactions: [] },
+          pinnedAt: null,
+          replyToMessageId: null,
+          replyTo: null
+        }
+      ]
     };
     const renamed = renameMessagesForServer(messages, { roomA: "server-a", roomB: "server-b" }, "server-a", {
       userId: "u1",
@@ -48,14 +93,58 @@ describe("server member identity updates", () => {
 
   it("anonymizes loaded messages and reply authors only in the affected server", () => {
     const messages = {
-      roomA: [{ id: "a", serverId: "alpha", sequence: 1, roomId: "roomA", userId: "u1", nickname: "Old", authorDeleted: false, body: "A", createdAt: "now", editedAt: null, suppressedEmbedKeys: [], replyToMessageId: "b", replyTo: { messageId: "b", userId: "u1", nickname: "Old", authorDeleted: false, body: "B" } }],
-      roomB: [{ id: "b", serverId: "beta", sequence: 1, roomId: "roomB", userId: "u1", nickname: "Old", authorDeleted: false, body: "B", createdAt: "now", editedAt: null, suppressedEmbedKeys: [], replyToMessageId: null, replyTo: null }]
+      roomA: [
+        {
+          id: "a",
+          serverId: "alpha",
+          sequence: 1,
+          roomId: "roomA",
+          userId: "u1",
+          nickname: "Old",
+          authorDeleted: false,
+          body: "A",
+          createdAt: "now",
+          editedAt: null,
+          suppressedEmbedKeys: [],
+          mentions: [],
+          reactionState: { version: 0, reactions: [] },
+          pinnedAt: null,
+          replyToMessageId: "b",
+          replyTo: { messageId: "b", userId: "u1", nickname: "Old", authorDeleted: false, body: "B", mentions: [] }
+        }
+      ],
+      roomB: [
+        {
+          id: "b",
+          serverId: "beta",
+          sequence: 1,
+          roomId: "roomB",
+          userId: "u1",
+          nickname: "Old",
+          authorDeleted: false,
+          body: "B",
+          createdAt: "now",
+          editedAt: null,
+          suppressedEmbedKeys: [],
+          mentions: [],
+          reactionState: { version: 0, reactions: [] },
+          pinnedAt: null,
+          replyToMessageId: null,
+          replyTo: null
+        }
+      ]
     };
 
     const anonymized = anonymizeMessagesForServer(messages, { roomA: "server-a", roomB: "server-b" }, "server-a", "u1");
 
-    assert.deepEqual({ nickname: anonymized.roomA[0].nickname, deleted: anonymized.roomA[0].authorDeleted }, { nickname: "", deleted: true });
-    assert.deepEqual({ nickname: anonymized.roomA[0].replyTo?.nickname, deleted: anonymized.roomA[0].replyTo?.authorDeleted }, { nickname: "", deleted: true });
+    assert.deepEqual(
+      { nickname: anonymized.roomA[0].nickname, deleted: anonymized.roomA[0].authorDeleted },
+      { nickname: "", deleted: true }
+    );
+    assert.deepEqual(
+      { nickname: anonymized.roomA[0].replyTo?.nickname, deleted: anonymized.roomA[0].replyTo?.authorDeleted },
+      { nickname: "", deleted: true }
+    );
     assert.equal(anonymized.roomB[0].authorDeleted, false);
   });
 });

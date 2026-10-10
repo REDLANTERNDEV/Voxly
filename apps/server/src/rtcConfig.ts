@@ -120,9 +120,9 @@ function resolvePositiveInteger(value: string | undefined, name: string, fallbac
 
 function isHostname(value: string) {
   if (value.length > 253 || value.includes(":") || value.includes("/") || value.includes("?")) return false;
-  return value.split(".").every((label) =>
-    label.length > 0 &&
-    label.length <= 63 &&
-    /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(label)
-  );
+  return value
+    .split(".")
+    .every(
+      (label) => label.length > 0 && label.length <= 63 && /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(label)
+    );
 }

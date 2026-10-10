@@ -1,4 +1,4 @@
-import type { VoiceMediaState,VoiceModerationState } from "@voxly/shared";
+import type { VoiceMediaState, VoiceModerationState } from "@voxly/shared";
 import type { TranslationKey } from "./i18n.js";
 
 export type VoiceControlKey = "mic" | "deafen" | "camera" | "screenShare";
@@ -10,7 +10,15 @@ export interface VoiceControlState {
 
 export type VoiceControls = Record<VoiceControlKey, VoiceControlState>;
 
-export type VoiceControlAction = "muteMic" | "unmuteMic" | "deafen" | "undeafen" | "startCamera" | "stopCamera" | "startScreenShare" | "stopScreenShare";
+export type VoiceControlAction =
+  | "muteMic"
+  | "unmuteMic"
+  | "deafen"
+  | "undeafen"
+  | "startCamera"
+  | "stopCamera"
+  | "startScreenShare"
+  | "stopScreenShare";
 
 export type VoiceControlTone = "neutral" | "danger";
 
@@ -71,7 +79,10 @@ export function toggleVoiceControl(
   };
 }
 
-export function controlPresentation(key: VoiceControlKey, controls: VoiceControls): { action: VoiceControlAction; tone: VoiceControlTone } {
+export function controlPresentation(
+  key: VoiceControlKey,
+  controls: VoiceControls
+): { action: VoiceControlAction; tone: VoiceControlTone } {
   if (key === "mic") {
     return controls.mic.on ? { action: "muteMic", tone: "neutral" } : { action: "unmuteMic", tone: "neutral" };
   }
@@ -86,7 +97,10 @@ export function controlPresentation(key: VoiceControlKey, controls: VoiceControl
     : { action: "startScreenShare", tone: "neutral" };
 }
 
-export function sidebarVoiceStatusKeys(media: VoiceMediaState, moderation?: VoiceModerationState): SidebarVoiceStatusKey[] {
+export function sidebarVoiceStatusKeys(
+  media: VoiceMediaState,
+  moderation?: VoiceModerationState
+): SidebarVoiceStatusKey[] {
   const statuses: SidebarVoiceStatusKey[] = [];
   if (!moderation?.deafened) {
     if ((!media.mic || media.deafened) && !moderation?.muted) statuses.push("muted");

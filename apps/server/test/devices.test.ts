@@ -46,9 +46,13 @@ describe("a member's own Devices", () => {
   it("keeps no version, so a browser update is not a new Device", async () => {
     const owner = await bootstrapOwner(app, chrome);
 
-    const { devices } = (await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: owner.cookies
-    })).json();
+    const { devices } = (
+      await app.server.inject({
+        method: "GET",
+        url: "/api/devices",
+        cookies: owner.cookies
+      })
+    ).json();
 
     assert.doesNotMatch(devices[0].label, /\d/);
   });
@@ -59,12 +63,20 @@ describe("a member's own Devices", () => {
     const owner = await bootstrapOwner(app, chrome);
     const member = await acceptInvite(app, owner.cookies, "Member", safari);
 
-    const ownerDevices = (await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: owner.cookies
-    })).json().devices;
-    const memberDevices = (await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: member.cookies
-    })).json().devices;
+    const ownerDevices = (
+      await app.server.inject({
+        method: "GET",
+        url: "/api/devices",
+        cookies: owner.cookies
+      })
+    ).json().devices;
+    const memberDevices = (
+      await app.server.inject({
+        method: "GET",
+        url: "/api/devices",
+        cookies: member.cookies
+      })
+    ).json().devices;
 
     assert.equal(ownerDevices.length, 1);
     assert.equal(memberDevices.length, 1);
@@ -77,9 +89,13 @@ describe("a member's own Devices", () => {
     // id is not a way in.
     const owner = await bootstrapOwner(app, chrome);
     const member = await acceptInvite(app, owner.cookies, "Member", safari);
-    const ownerDeviceId = (await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: owner.cookies
-    })).json().devices[0].id;
+    const ownerDeviceId = (
+      await app.server.inject({
+        method: "GET",
+        url: "/api/devices",
+        cookies: owner.cookies
+      })
+    ).json().devices[0].id;
 
     const response = await app.server.inject({
       method: "DELETE",
@@ -88,9 +104,13 @@ describe("a member's own Devices", () => {
     });
 
     assert.equal(response.statusCode, 404);
-    const stillThere = (await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: owner.cookies
-    })).json().devices;
+    const stillThere = (
+      await app.server.inject({
+        method: "GET",
+        url: "/api/devices",
+        cookies: owner.cookies
+      })
+    ).json().devices;
     assert.equal(stillThere.length, 1);
   });
 
@@ -99,9 +119,13 @@ describe("a member's own Devices", () => {
     // cookie in front of you. Two ways to end the current session would have to
     // agree forever.
     const owner = await bootstrapOwner(app, chrome);
-    const current = (await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: owner.cookies
-    })).json().devices[0].id;
+    const current = (
+      await app.server.inject({
+        method: "GET",
+        url: "/api/devices",
+        cookies: owner.cookies
+      })
+    ).json().devices[0].id;
 
     const response = await app.server.inject({
       method: "DELETE",
@@ -116,9 +140,13 @@ describe("a member's own Devices", () => {
   it("signs a Device out and stops its session working", async () => {
     const first = await bootstrapOwner(app, chrome);
     const second = linkAnotherDevice(app, first.user.id, safari);
-    const devices = (await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: second.cookies
-    })).json().devices;
+    const devices = (
+      await app.server.inject({
+        method: "GET",
+        url: "/api/devices",
+        cookies: second.cookies
+      })
+    ).json().devices;
     assert.equal(devices.length, 2);
     const other = devices.find((device: { current: boolean }) => !device.current);
 
@@ -130,7 +158,9 @@ describe("a member's own Devices", () => {
 
     assert.equal(revoked.statusCode, 200);
     const afterwards = await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: first.cookies
+      method: "GET",
+      url: "/api/devices",
+      cookies: first.cookies
     });
     assert.equal(afterwards.statusCode, 401);
   });
@@ -140,12 +170,20 @@ describe("a member's own Devices", () => {
     const owner = await bootstrapOwner(app, chrome);
     const second = linkAnotherDevice(app, owner.user.id, safari);
     const third = linkAnotherDevice(app, owner.user.id, firefox);
-    const stale = (await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: third.cookies
-    })).json().devices.find((device: { label: string }) => device.label === "Chrome on Windows");
+    const stale = (
+      await app.server.inject({
+        method: "GET",
+        url: "/api/devices",
+        cookies: third.cookies
+      })
+    )
+      .json()
+      .devices.find((device: { label: string }) => device.label === "Chrome on Windows");
 
     await app.server.inject({
-      method: "DELETE", url: `/api/devices/${stale.id}`, cookies: third.cookies
+      method: "DELETE",
+      url: `/api/devices/${stale.id}`,
+      cookies: third.cookies
     });
 
     for (const cookies of [second.cookies, third.cookies]) {
@@ -157,12 +195,20 @@ describe("a member's own Devices", () => {
   it("writes an audit line naming who closed it", async () => {
     const owner = await bootstrapOwner(app, chrome);
     const second = linkAnotherDevice(app, owner.user.id, safari);
-    const stale = (await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: second.cookies
-    })).json().devices.find((device: { current: boolean }) => !device.current);
+    const stale = (
+      await app.server.inject({
+        method: "GET",
+        url: "/api/devices",
+        cookies: second.cookies
+      })
+    )
+      .json()
+      .devices.find((device: { current: boolean }) => !device.current);
 
     await app.server.inject({
-      method: "DELETE", url: `/api/devices/${stale.id}`, cookies: second.cookies
+      method: "DELETE",
+      url: `/api/devices/${stale.id}`,
+      cookies: second.cookies
     });
 
     const events = app.dumpTables().auditEvents as Array<{ action: string }>;
@@ -176,8 +222,10 @@ describe("a member's own Devices", () => {
   });
 });
 
-const chrome = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
-const safari = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1";
+const chrome =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+const safari =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1";
 const firefox = "Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0";
 
 async function bootstrapOwner(app: VoxlyApp, userAgent: string) {
@@ -203,7 +251,9 @@ function linkAnotherDevice(app: VoxlyApp, userId: string, userAgent: string) {
   const token = createOpaqueToken();
   const now = new Date();
   app.sqlite
-    .prepare("insert into sessions (id, token_hash, user_id, created_at, expires_at, label, last_seen_at) values (?, ?, ?, ?, ?, ?, ?)")
+    .prepare(
+      "insert into sessions (id, token_hash, user_id, created_at, expires_at, label, last_seen_at) values (?, ?, ?, ?, ?, ?, ?)"
+    )
     .run(
       crypto.randomUUID(),
       hashToken(token),

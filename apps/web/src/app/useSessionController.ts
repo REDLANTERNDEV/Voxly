@@ -1,19 +1,26 @@
 import type { PublicUser } from "@voxly/shared";
-import { useCallback,useEffect,useRef,useState } from "react";
-import { ApiError,fetchConfig,fetchMe,fetchRtcConfig } from "../api.js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ApiError, fetchConfig, fetchMe, fetchRtcConfig } from "../api.js";
 import { createAuthRequestGate } from "../lib/authRequestGate.js";
 import type { VoiceErrorKey } from "../lib/i18n.js";
-import { getInviteTokenFromPath,resolveInitialRoute } from "../lib/navigation.js";
-import type { AppConfigResponse,RtcConfigResponse } from "../types.js";
-import { rtcConfigAfterFetchFailure,rtcConfigRetryMs } from "./rtcConfig.js";
-import type { LoadState,Route } from "./types.js";
+import { getInviteTokenFromPath, resolveInitialRoute } from "../lib/navigation.js";
+import type { AppConfigResponse, RtcConfigResponse } from "../types.js";
+import { rtcConfigAfterFetchFailure, rtcConfigRetryMs } from "./rtcConfig.js";
+import type { LoadState, Route } from "./types.js";
 
 export function useSessionController(route: Route, navigate: (path: string) => void) {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [authState, setAuthState] = useState<LoadState>("loading");
   /** Empty unless the member was signed out for a reason they should be told. */
-  const [signedOutReason, setSignedOutReason] = useState<"" | "reused" | "revoked" | "request_approved" | "owner_initiated">("");
-  const [appConfig, setAppConfig] = useState<AppConfigResponse>({ clientVersion: null, publicUrl: null, turnstile: null, analytics: null });
+  const [signedOutReason, setSignedOutReason] = useState<
+    "" | "reused" | "revoked" | "request_approved" | "owner_initiated"
+  >("");
+  const [appConfig, setAppConfig] = useState<AppConfigResponse>({
+    clientVersion: null,
+    publicUrl: null,
+    turnstile: null,
+    analytics: null
+  });
   const [rtcConfig, setRtcConfig] = useState<RtcConfigResponse>({ iceServers: [], expiresAt: null });
   const [rtcConfigReady, setRtcConfigReady] = useState(false);
   const [rtcConfigError, setRtcConfigError] = useState<VoiceErrorKey | "">("");
@@ -36,11 +43,14 @@ export function useSessionController(route: Route, navigate: (path: string) => v
     setAuthState("ready");
   }, []);
 
-  const finishDeletedAccount = useCallback((reason: "request_approved" | "owner_initiated") => {
-    setSignedOutReason(reason);
-    clearAuthentication();
-    navigate("/");
-  }, [clearAuthentication, navigate]);
+  const finishDeletedAccount = useCallback(
+    (reason: "request_approved" | "owner_initiated") => {
+      setSignedOutReason(reason);
+      clearAuthentication();
+      navigate("/");
+    },
+    [clearAuthentication, navigate]
+  );
 
   /**
    * Ask again whether this Device is still signed in.
@@ -68,9 +78,16 @@ export function useSessionController(route: Route, navigate: (path: string) => v
 
   useEffect(() => {
     let mounted = true;
-    fetchConfig().then((config) => { if (mounted) setAppConfig(config); })
-      .catch(() => { if (mounted) setAppConfig({ clientVersion: null, publicUrl: null, turnstile: null, analytics: null }); });
-    return () => { mounted = false; };
+    fetchConfig()
+      .then((config) => {
+        if (mounted) setAppConfig(config);
+      })
+      .catch(() => {
+        if (mounted) setAppConfig({ clientVersion: null, publicUrl: null, turnstile: null, analytics: null });
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -119,29 +136,61 @@ export function useSessionController(route: Route, navigate: (path: string) => v
     let mounted = true;
     const generation = authRequestGateRef.current.begin();
     setAuthState("loading");
-    fetchMe().then((response) => {
-      if (!mounted || !authRequestGateRef.current.isCurrent(generation)) return;
-      setRtcConfigReady(false);
-      authenticatedUserIdRef.current = response.user.id;
-      setUser(response.user);
-      setAuthState("ready");
-    }).catch((error: unknown) => {
-      if (!mounted || !authRequestGateRef.current.isCurrent(generation)) return;
-      if (error instanceof ApiError && error.status === 401) {
-        authenticatedUserIdRef.current = null;
-        setUser(null);
-        // Being signed out because the session was seen in two places is not
-        // the same as never having been signed in, and the member is owed the
-        // difference (ADR-0015).
-        setSignedOutReason(error.code === "session_reused" ? "reused" : "");
+    fetchMe()
+      .then((response) => {
+        if (!mounted || !authRequestGateRef.current.isCurrent(generation)) return;
+        setRtcConfigReady(false);
+        authenticatedUserIdRef.current = response.user.id;
+        setUser(response.user);
         setAuthState("ready");
-        if (!new Set(["landing", "invite", "owner-claim", "access-claim", "link-device", "desktop-verify", "recover"]).has(route.name)) {
-          navigate(resolveInitialRoute({ isAuthenticated: false, inviteToken: getInviteTokenFromPath(window.location.pathname) || null }));
-        }
-      } else setAuthState("error");
-    });
-    return () => { mounted = false; };
+      })
+      .catch((error: unknown) => {
+        if (!mounted || !authRequestGateRef.current.isCurrent(generation)) return;
+        if (error instanceof ApiError && error.status === 401) {
+          authenticatedUserIdRef.current = null;
+          setUser(null);
+          // Being signed out because the session was seen in two places is not
+          // the same as never having been signed in, and the member is owed the
+          // difference (ADR-0015).
+          setSignedOutReason(error.code === "session_reused" ? "reused" : "");
+          setAuthState("ready");
+          if (
+            !new Set([
+              "landing",
+              "invite",
+              "owner-claim",
+              "access-claim",
+              "link-device",
+              "desktop-verify",
+              "recover"
+            ]).has(route.name)
+          ) {
+            navigate(
+              resolveInitialRoute({
+                isAuthenticated: false,
+                inviteToken: getInviteTokenFromPath(window.location.pathname) || null
+              })
+            );
+          }
+        } else setAuthState("error");
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  return { user, authState, appConfig, rtcConfig, rtcConfigReady, rtcConfigError, rtcConfigErrorRevision, signedOutReason, checkStillSignedIn, completeAuthentication, clearAuthentication, finishDeletedAccount };
+  return {
+    user,
+    authState,
+    appConfig,
+    rtcConfig,
+    rtcConfigReady,
+    rtcConfigError,
+    rtcConfigErrorRevision,
+    signedOutReason,
+    checkStillSignedIn,
+    completeAuthentication,
+    clearAuthentication,
+    finishDeletedAccount
+  };
 }

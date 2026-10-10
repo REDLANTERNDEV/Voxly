@@ -95,10 +95,7 @@ describe("invites and access links", () => {
 
       assert.equal(storedInvite(db, invite.id)?.token_hash, hashToken(invite.token));
       assert.notEqual(storedInvite(db, invite.id)?.token_hash, invite.token);
-      assert.equal(
-        all(db.sqlite, "select id from invites where token_hash = ?", [invite.token]).length,
-        0
-      );
+      assert.equal(all(db.sqlite, "select id from invites where token_hash = ?", [invite.token]).length, 0);
     });
   });
 
@@ -119,7 +116,10 @@ describe("invites and access links", () => {
       const mine = createInviteForServer(db, "server-1", "member-1", { label: "Mine" });
       createInviteForServer(db, "server-1", "member-2", { label: "Theirs" });
       const expired = createInviteForServer(db, "server-1", "member-1", { label: "Old", expiresInMinutes: 30 });
-      run(db.sqlite, "update invites set expires_at = ? where id = ?", [new Date(Date.now() - 1000).toISOString(), expired.id]);
+      run(db.sqlite, "update invites set expires_at = ? where id = ?", [
+        new Date(Date.now() - 1000).toISOString(),
+        expired.id
+      ]);
       const revoked = createInviteForServer(db, "server-1", "member-1", { label: "Gone" });
       run(db.sqlite, "update invites set revoked_at = ? where id = ?", [new Date().toISOString(), revoked.id]);
 
@@ -133,8 +133,16 @@ describe("invites and access links", () => {
       const invite = createInviteForServer(db, "server-1", "owner-1", { label: "Friends", maxUses: 10 });
 
       assert.equal(inviteUseCount(db.sqlite, invite.id), 0);
-      run(db.sqlite, "insert into invite_uses (invite_id, user_id, used_at) values (?, ?, ?)", [invite.id, "user-1", new Date().toISOString()]);
-      run(db.sqlite, "insert into invite_uses (invite_id, user_id, used_at) values (?, ?, ?)", [invite.id, "user-2", new Date().toISOString()]);
+      run(db.sqlite, "insert into invite_uses (invite_id, user_id, used_at) values (?, ?, ?)", [
+        invite.id,
+        "user-1",
+        new Date().toISOString()
+      ]);
+      run(db.sqlite, "insert into invite_uses (invite_id, user_id, used_at) values (?, ?, ?)", [
+        invite.id,
+        "user-2",
+        new Date().toISOString()
+      ]);
 
       assert.equal(inviteUseCount(db.sqlite, invite.id), 2);
     });
@@ -175,11 +183,18 @@ describe("invites and access links", () => {
       const db = await open();
       const invite = createInviteForServer(db, "server-1", "owner-1", { label: "Friends", maxUses: 10 });
       createInviteForServer(db, "server-2", "owner-1", { label: "Elsewhere" });
-      run(db.sqlite, "insert into invite_uses (invite_id, user_id, used_at) values (?, ?, ?)", [invite.id, "user-1", new Date().toISOString()]);
+      run(db.sqlite, "insert into invite_uses (invite_id, user_id, used_at) values (?, ?, ?)", [
+        invite.id,
+        "user-1",
+        new Date().toISOString()
+      ]);
 
       const listed = serverInvites(db.sqlite, "server-1") as { id: string; label: string; usedCount: number }[];
 
-      assert.deepEqual(listed.map((row) => [row.id, row.label, row.usedCount]), [[invite.id, "Friends", 1]]);
+      assert.deepEqual(
+        listed.map((row) => [row.id, row.label, row.usedCount]),
+        [[invite.id, "Friends", 1]]
+      );
     });
 
     it("never hands the token back, only what the link is and how much of it is left", async () => {

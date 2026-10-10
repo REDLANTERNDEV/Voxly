@@ -62,12 +62,13 @@ The session row stays long-lived. The token value does not.
    member who keeps using Voxly is never signed out; a session nobody has
    touched for a whole window ends.
 
-   This replaces an earlier plan for a 30-day idle timeout *alongside* a
+   This replaces an earlier plan for a 30-day idle timeout _alongside_ a
    180-day absolute one. Two rules meant expiry could mean either of two
    things, and neither served the product: asking a self-hosted group to prove
    who they are again — for no event that happened — is exactly the friction
    this whole effort exists to remove. One sliding window says the same thing
    once: **unused for the window means over, used means still yours.**
+
 5. **No client binding.** Sessions are not bound to IP address or User-Agent.
 
 Point 5 is deliberate and is the one most likely to be argued with. Binding to

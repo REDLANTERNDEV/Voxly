@@ -55,11 +55,7 @@ export function afkTimeoutFor(
  * one. Rebuilt from each full room list so a deleted AFK room leaves no id
  * behind for the microphone lock to key off.
  */
-export function indexAfkRoom(
-  afkRoomIdsByServer: Record<string, string>,
-  serverId: string,
-  rooms: RoomSummary[]
-) {
+export function indexAfkRoom(afkRoomIdsByServer: Record<string, string>, serverId: string, rooms: RoomSummary[]) {
   const afkRoom = rooms.find((room) => room.isAfk && room.kind === "voice" && room.serverId === serverId);
   if (afkRoom) afkRoomIdsByServer[serverId] = afkRoom.id;
   else delete afkRoomIdsByServer[serverId];

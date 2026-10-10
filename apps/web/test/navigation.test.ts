@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { firstServerRoomPath, getOwnerClaimTokenFromHash, parsePathRoute, resolveInitialRoute } from "../src/lib/navigation.js";
+import {
+  firstServerRoomPath,
+  getOwnerClaimTokenFromHash,
+  parsePathRoute,
+  resolveInitialRoute
+} from "../src/lib/navigation.js";
 
 describe("frontend navigation", () => {
   it("routes authenticated users to text chat by default", () => {
-    assert.equal(resolveInitialRoute({ isAuthenticated: true, inviteToken: null }), "/app/server/the-basement/text/general");
+    assert.equal(
+      resolveInitialRoute({ isAuthenticated: true, inviteToken: null }),
+      "/app/server/the-basement/text/general"
+    );
   });
 
   it("keeps invite tokens on the invite screen for unauthenticated users", () => {
@@ -41,8 +49,24 @@ describe("frontend navigation", () => {
   });
 
   it("selects a text-first destination after an access claim", () => {
-    const voice = { id: "voice", serverId: "s1", name: "Voice", kind: "voice" as const, categoryId: null, position: 1, isAfk: false };
-    const text = { id: "text", serverId: "s1", name: "Text", kind: "text" as const, categoryId: null, position: 2, isAfk: false };
+    const voice = {
+      id: "voice",
+      serverId: "s1",
+      name: "Voice",
+      kind: "voice" as const,
+      categoryId: null,
+      position: 1,
+      isAfk: false
+    };
+    const text = {
+      id: "text",
+      serverId: "s1",
+      name: "Text",
+      kind: "text" as const,
+      categoryId: null,
+      position: 2,
+      isAfk: false
+    };
 
     assert.equal(firstServerRoomPath("s1", [voice, text]), "/app/server/s1/text/text");
     assert.equal(firstServerRoomPath("s1", [voice]), "/app/server/s1/voice/voice");

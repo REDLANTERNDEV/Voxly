@@ -138,10 +138,10 @@ VOXLY_BOT_TOKEN=<the same value> \
 Three further values are optional, in `.env` for the Compose service or in the
 environment of a bot you start yourself:
 
-| Variable | Default | What it is for |
-| --- | --- | --- |
-| `VOXLY_YTDLP_PATH` | `yt-dlp` | Where yt-dlp is, if it is not on `PATH` |
-| `VOXLY_FFMPEG_PATH` | `ffmpeg` | Where ffmpeg is, if it is not on `PATH` |
+| Variable             | Default             | What it is for                                  |
+| -------------------- | ------------------- | ----------------------------------------------- |
+| `VOXLY_YTDLP_PATH`   | `yt-dlp`            | Where yt-dlp is, if it is not on `PATH`         |
+| `VOXLY_FFMPEG_PATH`  | `ffmpeg`            | Where ffmpeg is, if it is not on `PATH`         |
 | `VOXLY_YTDLP_CLIENT` | yt-dlp's own choice | Which upstream client yt-dlp presents itself as |
 
 Once it is running, anyone in a voice channel gets a Music panel there. Paste a
@@ -279,7 +279,7 @@ records nothing, open the landing page and look for a `Content-Security-Policy`
 violation in the browser console naming a host that is not in `connect-src` —
 that host is the value to put here.
 
-Note what is deliberately *not* counted. Only the public landing page (`/`) is
+Note what is deliberately _not_ counted. Only the public landing page (`/`) is
 reported, and only for visitors who are not signed in. Authenticated routes
 carry server and room IDs, so they are never sent, and no `/invite` or in-app
 navigation appears in your dashboard. A working setup still shows far fewer
@@ -419,7 +419,7 @@ creates one from **Recovery code** in the sidebar. It is worth asking members to
 do that before they need it.
 
 The operator paths below remain the backstop for an owner who has lost
-everything, and for a member who lost their devices *and* their recovery code.
+everything, and for a member who lost their devices _and_ their recovery code.
 
 ### Owner lost browser access
 
@@ -553,7 +553,7 @@ rules must match the host firewall.
 
 The Music bot needs no inbound port at all. It makes outbound HTTPS connections
 to YouTube and outbound UDP for the media it sends to Listeners, so a deployment
-that restricts *egress* has to allow both or the music will resolve and then
+that restricts _egress_ has to allow both or the music will resolve and then
 never play.
 
 ## Troubleshooting

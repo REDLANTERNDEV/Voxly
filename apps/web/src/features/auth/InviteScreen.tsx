@@ -1,18 +1,40 @@
 import { AuthEntryFrame } from "./AuthEntryFrame.js";
 import type { PublicUser } from "@voxly/shared";
 import type { FormEvent } from "react";
-import { useCallback,useEffect,useRef,useState } from "react";
-import { acceptInvite,ApiError,previewInvite } from "../../api.js";
-import { extractInviteToken,inviteAvailabilityCopy,inviteStatusTitle,statusClass } from "../../app/presentation.js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { acceptInvite, ApiError, previewInvite } from "../../api.js";
+import { extractInviteToken, inviteAvailabilityCopy, inviteStatusTitle, statusClass } from "../../app/presentation.js";
 import type { Translate } from "../../app/types.js";
 import { ArrowIcon } from "../../components/ui/Icons.js";
-import { type TranslationKey,type LanguageCode } from "../../lib/i18n.js";
+import { type TranslationKey, type LanguageCode } from "../../lib/i18n.js";
 import { loadTurnstile } from "../../lib/turnstile.js";
 import type { TimeFormatPreference } from "../../lib/timeFormat.js";
-export function InviteScreen({ initialToken, existingUser, currentUser, turnstileSiteKey, onAccepted, language, timeFormat, t, onLanguageChange }: { initialToken: string; existingUser: boolean; currentUser: PublicUser | null; turnstileSiteKey: string | null; onAccepted: (user: PublicUser, serverId: string) => void; language: LanguageCode; timeFormat: TimeFormatPreference; t: Translate; onLanguageChange: (language: LanguageCode) => void }) {
+export function InviteScreen({
+  initialToken,
+  existingUser,
+  currentUser,
+  turnstileSiteKey,
+  onAccepted,
+  language,
+  timeFormat,
+  t,
+  onLanguageChange
+}: {
+  initialToken: string;
+  existingUser: boolean;
+  currentUser: PublicUser | null;
+  turnstileSiteKey: string | null;
+  onAccepted: (user: PublicUser, serverId: string) => void;
+  language: LanguageCode;
+  timeFormat: TimeFormatPreference;
+  t: Translate;
+  onLanguageChange: (language: LanguageCode) => void;
+}) {
   const [inviteToken, setInviteToken] = useState(initialToken);
   const [serverName, setServerName] = useState("");
-  const [invitePreview, setInvitePreview] = useState<{ expiresAt: string | null; remainingUses: number | null } | null>(null);
+  const [invitePreview, setInvitePreview] = useState<{ expiresAt: string | null; remainingUses: number | null } | null>(
+    null
+  );
   const [nickname, setNickname] = useState("");
   const [status, setStatus] = useState<"ready" | "loading" | "valid" | "danger">("ready");
   const [fieldError, setFieldError] = useState<TranslationKey | "">("");
@@ -71,7 +93,11 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
     setFieldError("");
     setStatus("loading");
     try {
-      const response = await acceptInvite(extractInviteToken(inviteToken), nickname.trim(), turnstileToken || undefined);
+      const response = await acceptInvite(
+        extractInviteToken(inviteToken),
+        nickname.trim(),
+        turnstileToken || undefined
+      );
       setStatus("valid");
       onAccepted(response.user, response.serverId);
     } catch (error: unknown) {
@@ -101,7 +127,6 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
     <AuthEntryFrame language={language} t={t} onLanguageChange={onLanguageChange}>
       <div className="invite-layout invite-layout-simple">
         <section className="invite-card">
-
           <div>
             <p className="label">{t("invite.privateInvite")}</p>
             <h1>{serverName ? t("invite.joinServerTitle", { server: serverName }) : t("invite.joinTitle")}</h1>
@@ -109,17 +134,41 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
           </div>
           <div className={`invite-status ${statusClass(status)}`} aria-live="polite">
             <strong>{inviteStatusTitle(status, t)}</strong>
-            <span className="muted small">{status === "danger" ? t("invite.askOwner") : inviteAvailabilityCopy(invitePreview, language, t, timeFormat)}</span>
+            <span className="muted small">
+              {status === "danger"
+                ? t("invite.askOwner")
+                : inviteAvailabilityCopy(invitePreview, language, t, timeFormat)}
+            </span>
           </div>
           <form onSubmit={submit}>
             <label className="form-field" htmlFor="inviteLink">
               <span>{t("invite.codeLabel")}</span>
-              <input className="input" id="inviteLink" name="inviteLink" value={inviteToken} onChange={(event) => setInviteToken(event.target.value)} autoComplete="off" spellCheck={false} placeholder="VX-7K2M…" />
+              <input
+                className="input"
+                id="inviteLink"
+                name="inviteLink"
+                value={inviteToken}
+                onChange={(event) => setInviteToken(event.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="VX-7K2M…"
+              />
             </label>
-            {!existingUser ? <label className="form-field field-gap" htmlFor="nickname">
-              <span>{t("invite.nickname")}</span>
-              <input className="input" id="nickname" name="nickname" value={nickname} onChange={(event) => setNickname(event.target.value)} placeholder={t("invite.nicknamePlaceholder")} autoComplete="nickname" maxLength={32} />
-            </label> : null}
+            {!existingUser ? (
+              <label className="form-field field-gap" htmlFor="nickname">
+                <span>{t("invite.nickname")}</span>
+                <input
+                  className="input"
+                  id="nickname"
+                  name="nickname"
+                  value={nickname}
+                  onChange={(event) => setNickname(event.target.value)}
+                  placeholder={t("invite.nicknamePlaceholder")}
+                  autoComplete="nickname"
+                  maxLength={32}
+                />
+              </label>
+            ) : null}
             {turnstileSiteKey && !existingUser ? (
               <div className="form-field field-gap">
                 <span>{t("invite.humanCheck")}</span>
@@ -131,8 +180,13 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
                 />
               </div>
             ) : null}
-            <p className="error-text" aria-live="polite">{fieldError ? t(fieldError) : ""}</p>
-            <button className="btn btn-primary full-width" type="submit" disabled={status === "loading"}><ArrowIcon /><span>{status === "loading" ? t("common.checking") : t("invite.join")}</span></button>
+            <p className="error-text" aria-live="polite">
+              {fieldError ? t(fieldError) : ""}
+            </p>
+            <button className="btn btn-primary full-width" type="submit" disabled={status === "loading"}>
+              <ArrowIcon />
+              <span>{status === "loading" ? t("common.checking") : t("invite.join")}</span>
+            </button>
           </form>
         </section>
       </div>
@@ -140,7 +194,17 @@ export function InviteScreen({ initialToken, existingUser, currentUser, turnstil
   );
 }
 
-export function TurnstileWidget({ siteKey, resetKey, onToken, onUnavailable }: { siteKey: string; resetKey: number; onToken: (token: string) => void; onUnavailable: () => void }) {
+export function TurnstileWidget({
+  siteKey,
+  resetKey,
+  onToken,
+  onUnavailable
+}: {
+  siteKey: string;
+  resetKey: number;
+  onToken: (token: string) => void;
+  onUnavailable: () => void;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const onTokenRef = useRef(onToken);
   const onUnavailableRef = useRef(onUnavailable);

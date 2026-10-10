@@ -1,35 +1,78 @@
 import type { PresenceUser } from "@voxly/shared";
-import { useCallback,useEffect,useMemo,useReducer,useRef,useState } from "react";
-import { ApiError,createAccessLink,fetchOwnerDeletionRequests,fetchServerOwnerData,revokeServerInvite } from "../../api.js";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+  ApiError,
+  createAccessLink,
+  fetchOwnerDeletionRequests,
+  fetchServerOwnerData,
+  revokeServerInvite
+} from "../../api.js";
 import { serverPath } from "../../app/navigation.js";
-import { formatShortDate,inviteLifecycleKey,isInviteRevocable,memberRoleLabel } from "../../app/presentation.js";
-import type { ShellActions,ShellModel } from "../../app/types.js";
+import { formatShortDate, inviteLifecycleKey, isInviteRevocable, memberRoleLabel } from "../../app/presentation.js";
+import type { ShellActions, ShellModel } from "../../app/types.js";
 import { ContextMenu } from "../../components/ContextMenu.js";
-import { SidebarMenuTrigger,type SidebarActionMenuController } from "../../components/shell/SidebarMenus.js";
-import { ConfirmDialog,NicknameDialog } from "../../components/ui/Dialogs.js";
-import { ChatIcon,CopyIcon,GearIcon,LinkIcon,ShieldIcon,TrashIcon,UserPlusIcon,UsersIcon } from "../../components/ui/Icons.js";
-import { BrandLockup,NavLink } from "../../components/ui/Navigation.js";
-import { EmptyState,MemberRow,StatusPill } from "../../components/ui/Primitives.js";
+import { SidebarMenuTrigger, type SidebarActionMenuController } from "../../components/shell/SidebarMenus.js";
+import { ConfirmDialog, NicknameDialog } from "../../components/ui/Dialogs.js";
+import {
+  ChatIcon,
+  CopyIcon,
+  GearIcon,
+  LinkIcon,
+  ShieldIcon,
+  TrashIcon,
+  UserPlusIcon,
+  UsersIcon
+} from "../../components/ui/Icons.js";
+import { BrandLockup, NavLink } from "../../components/ui/Navigation.js";
+import { EmptyState, MemberRow, StatusPill } from "../../components/ui/Primitives.js";
 import { resolveServerTextRoom } from "../../lib/channelState.js";
-import { contextMenuReducer,createContextMenuDescriptor } from "../../lib/contextMenu.js";
-import { inviteReference,resolveInviteOrigin } from "../../lib/invites.js";
-import type { OwnerInvite,ServerMember } from "../../types.js";
+import { contextMenuReducer, createContextMenuDescriptor } from "../../lib/contextMenu.js";
+import { inviteReference, resolveInviteOrigin } from "../../lib/invites.js";
+import type { OwnerInvite, ServerMember } from "../../types.js";
 import { InviteComposer } from "../invites/InviteComposer.js";
-import { OwnerServerContext,SecretLinkDisplay } from "./OwnerServerContext.js";
-import { OwnerAccountsSection,OwnerDeletionRequestsSection } from "./OwnerAccountSections.js";
+import { OwnerServerContext, SecretLinkDisplay } from "./OwnerServerContext.js";
+import { OwnerAccountsSection, OwnerDeletionRequestsSection } from "./OwnerAccountSections.js";
 
-type OwnerPanelProps = Pick<ShellModel,
-  "user" | "currentNickname" | "servers" | "activeServerId" | "rooms" | "appConfig" |
-  "roomHistory" | "language" | "timeFormat" | "deletionRequestRevision" | "t"
-> & Pick<ShellActions,
-  "onNavigate" | "onCreateServer" |
-  "onUpdateServerName" | "onSetAfkTimeout" | "onDeleteServer" | "onModerateMember" |
-  "onVoiceModeration" | "onUpdateMemberNickname" | "onUpdateMemberPermissions"
->;
+type OwnerPanelProps = Pick<
+  ShellModel,
+  | "user"
+  | "currentNickname"
+  | "servers"
+  | "activeServerId"
+  | "rooms"
+  | "appConfig"
+  | "roomHistory"
+  | "language"
+  | "timeFormat"
+  | "deletionRequestRevision"
+  | "t"
+> &
+  Pick<
+    ShellActions,
+    | "onNavigate"
+    | "onCreateServer"
+    | "onUpdateServerName"
+    | "onSetAfkTimeout"
+    | "onDeleteServer"
+    | "onModerateMember"
+    | "onVoiceModeration"
+    | "onUpdateMemberNickname"
+    | "onUpdateMemberPermissions"
+  >;
 
 type OwnerSection = "overview" | "invites" | "members" | "server" | "deletionRequests" | "accounts";
 
-const ownerSections: Array<{ id: OwnerSection; titleKey: "owner.sectionOverview" | "owner.invites" | "common.members" | "owner.serverContextTitle" | "ownerAccounts.deletionRequests" | "ownerAccounts.accounts"; installationOwnerOnly?: boolean }> = [
+const ownerSections: Array<{
+  id: OwnerSection;
+  titleKey:
+    | "owner.sectionOverview"
+    | "owner.invites"
+    | "common.members"
+    | "owner.serverContextTitle"
+    | "ownerAccounts.deletionRequests"
+    | "ownerAccounts.accounts";
+  installationOwnerOnly?: boolean;
+}> = [
   { id: "overview", titleKey: "owner.sectionOverview" },
   { id: "invites", titleKey: "owner.invites" },
   { id: "members", titleKey: "common.members" },
@@ -56,19 +99,32 @@ export function OwnerPanel(props: OwnerPanelProps) {
   const [status, setStatus] = useState("");
   const [deletingServer, setDeletingServer] = useState(false);
   const [deletionRequestCount, setDeletionRequestCount] = useState(0);
-  const [pendingAction, setPendingAction] = useState<{ title: string; copy: string; confirmLabel: string; perform: () => Promise<void> } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{
+    title: string;
+    copy: string;
+    confirmLabel: string;
+    perform: () => Promise<void>;
+  } | null>(null);
   const [nicknameTarget, setNicknameTarget] = useState<PresenceUser | null>(null);
   const [activeMenu, dispatchMenu] = useReducer(contextMenuReducer, null);
   const reloadRequestRef = useRef(0);
   const closeMenu = useCallback(() => dispatchMenu({ type: "close" }), []);
-  const actionMenu = useMemo<SidebarActionMenuController>(() => ({
-    active: activeMenu,
-    close: closeMenu,
-    open: (input) => dispatchMenu({
-      type: "open",
-      menu: createContextMenuDescriptor({ ...input, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight })
-    })
-  }), [activeMenu, closeMenu]);
+  const actionMenu = useMemo<SidebarActionMenuController>(
+    () => ({
+      active: activeMenu,
+      close: closeMenu,
+      open: (input) =>
+        dispatchMenu({
+          type: "open",
+          menu: createContextMenuDescriptor({
+            ...input,
+            viewportWidth: window.innerWidth,
+            viewportHeight: window.innerHeight
+          })
+        })
+    }),
+    [activeMenu, closeMenu]
+  );
 
   const accessLinkUrl = accessLink
     ? `${resolveInviteOrigin(props.appConfig.publicUrl, window.location.origin)}/access/claim#token=${accessLink.token}`
@@ -83,7 +139,9 @@ export function OwnerPanel(props: OwnerPanelProps) {
   const ownerChatPath = ownerTextRoom
     ? serverPath(props.activeServerId, "text", ownerTextRoom.id)
     : `/app/server/${encodeURIComponent(props.activeServerId)}/owner`;
-  const visibleOwnerSections = ownerSections.filter((item) => !item.installationOwnerOnly || props.user.role === "owner");
+  const visibleOwnerSections = ownerSections.filter(
+    (item) => !item.installationOwnerOnly || props.user.role === "owner"
+  );
 
   const reload = useCallback(async () => {
     const requestId = ++reloadRequestRef.current;
@@ -121,15 +179,33 @@ export function OwnerPanel(props: OwnerPanelProps) {
   const activeMembers = people.filter((member) => !member.bannedAt);
   const stats = [
     { key: "members", label: props.t("common.members"), value: activeMembers.length, icon: <UsersIcon /> },
-    { key: "inviters", label: props.t("owner.statInviters"), value: people.filter((member) => member.role === "member" && member.canInvite).length, icon: <UserPlusIcon /> },
-    { key: "invites", label: props.t("owner.statActiveInvites"), value: invites.filter(isInviteRevocable).length, icon: <LinkIcon /> },
-    { key: "banned", label: props.t("common.banned"), value: people.length - activeMembers.length, icon: <ShieldIcon /> }
+    {
+      key: "inviters",
+      label: props.t("owner.statInviters"),
+      value: people.filter((member) => member.role === "member" && member.canInvite).length,
+      icon: <UserPlusIcon />
+    },
+    {
+      key: "invites",
+      label: props.t("owner.statActiveInvites"),
+      value: invites.filter(isInviteRevocable).length,
+      icon: <LinkIcon />
+    },
+    {
+      key: "banned",
+      label: props.t("common.banned"),
+      value: people.length - activeMembers.length,
+      icon: <ShieldIcon />
+    }
   ];
 
   const requestBan = (member: ServerMember) => {
-    const action = member.bannedAt ? "unban" as const : "ban" as const;
+    const action = member.bannedAt ? ("unban" as const) : ("ban" as const);
     setPendingAction({
-      title: action === "ban" ? props.t("member.banTitle", { nickname: member.nickname }) : props.t("member.unbanTitle", { nickname: member.nickname }),
+      title:
+        action === "ban"
+          ? props.t("member.banTitle", { nickname: member.nickname })
+          : props.t("member.unbanTitle", { nickname: member.nickname }),
       copy: action === "ban" ? props.t("member.banCopy") : props.t("member.unbanCopy"),
       confirmLabel: action === "ban" ? props.t("common.ban") : props.t("common.unban"),
       perform: async () => {
@@ -161,9 +237,13 @@ export function OwnerPanel(props: OwnerPanelProps) {
               aria-current={section === item.id ? "page" : undefined}
               onClick={() => setSection(item.id)}
             >
-              <span className="dash-nav-icon" aria-hidden="true">{ownerSectionIcons[item.id]}</span>
+              <span className="dash-nav-icon" aria-hidden="true">
+                {ownerSectionIcons[item.id]}
+              </span>
               {props.t(item.titleKey)}
-              {item.id === "deletionRequests" && deletionRequestCount > 0 ? <span className="owner-alert-badge">{deletionRequestCount}</span> : null}
+              {item.id === "deletionRequests" && deletionRequestCount > 0 ? (
+                <span className="owner-alert-badge">{deletionRequestCount}</span>
+              ) : null}
             </button>
           ))}
         </nav>
@@ -185,11 +265,17 @@ export function OwnerPanel(props: OwnerPanelProps) {
                 className="input"
                 id="dashServerSelect"
                 value={props.activeServerId}
-                onChange={(event) => props.onNavigate(`/app/server/${encodeURIComponent(event.currentTarget.value)}/owner`)}
+                onChange={(event) =>
+                  props.onNavigate(`/app/server/${encodeURIComponent(event.currentTarget.value)}/owner`)
+                }
               >
-                {props.servers.filter((server) => server.role === "owner").map((server) => (
-                  <option key={server.id} value={server.id}>{server.name}</option>
-                ))}
+                {props.servers
+                  .filter((server) => server.role === "owner")
+                  .map((server) => (
+                    <option key={server.id} value={server.id}>
+                      {server.name}
+                    </option>
+                  ))}
               </select>
             </label>
             <NavLink className="btn" href={ownerChatPath} onNavigate={props.onNavigate}>
@@ -199,14 +285,20 @@ export function OwnerPanel(props: OwnerPanelProps) {
           </div>
         </header>
 
-        {status ? <p className="dash-status" role="status" aria-live="polite">{status}</p> : null}
+        {status ? (
+          <p className="dash-status" role="status" aria-live="polite">
+            {status}
+          </p>
+        ) : null}
 
         {section === "overview" ? (
           <div className="dash-sections">
             <section className="dash-stats" aria-label={props.t("owner.sectionOverview")}>
               {stats.map((stat) => (
                 <article className="dash-stat" key={stat.key}>
-                  <span className="dash-stat-icon" aria-hidden="true">{stat.icon}</span>
+                  <span className="dash-stat-icon" aria-hidden="true">
+                    {stat.icon}
+                  </span>
                   <span className="dash-stat-value">{stat.value}</span>
                   <span className="dash-stat-label">{stat.label}</span>
                 </article>
@@ -226,7 +318,6 @@ export function OwnerPanel(props: OwnerPanelProps) {
                   onCreated={reload}
                 />
               </section>
-
             </div>
           </div>
         ) : null}
@@ -251,7 +342,9 @@ export function OwnerPanel(props: OwnerPanelProps) {
                 <h2>{props.t("owner.invites")}</h2>
                 <p className="muted small">{props.t("owner.inviteTableCopy")}</p>
               </header>
-              {invites.length === 0 ? <EmptyState title={props.t("owner.noInvites")} copy={props.t("owner.noInvitesCopy")} /> : (
+              {invites.length === 0 ? (
+                <EmptyState title={props.t("owner.noInvites")} copy={props.t("owner.noInvitesCopy")} />
+              ) : (
                 <div className="dash-table is-invites" role="table">
                   <div className="dash-table-head" role="row">
                     <span role="columnheader">{props.t("owner.reference")}</span>
@@ -266,23 +359,36 @@ export function OwnerPanel(props: OwnerPanelProps) {
                         <span className="mono muted small">{inviteReference(invite.id)}</span>
                       </span>
                       <span className="dash-cell" role="cell">
-                        <span>{invite.maxUses === null
-                          ? props.t("invite.usedUnlimited", { used: invite.usedCount })
-                          : props.t("invite.usedOfLimit", { used: invite.usedCount, limit: invite.maxUses })}</span>
-                        <StatusPill tone={isInviteRevocable(invite) ? "online" : "warn"}>{props.t(inviteLifecycleKey(invite))}</StatusPill>
+                        <span>
+                          {invite.maxUses === null
+                            ? props.t("invite.usedUnlimited", { used: invite.usedCount })
+                            : props.t("invite.usedOfLimit", { used: invite.usedCount, limit: invite.maxUses })}
+                        </span>
+                        <StatusPill tone={isInviteRevocable(invite) ? "online" : "warn"}>
+                          {props.t(inviteLifecycleKey(invite))}
+                        </StatusPill>
                       </span>
-                      <span className="dash-cell" role="cell">{formatShortDate(invite.expiresAt, props.language, props.t, props.timeFormat)}</span>
+                      <span className="dash-cell" role="cell">
+                        {formatShortDate(invite.expiresAt, props.language, props.t, props.timeFormat)}
+                      </span>
                       <span className="dash-cell is-actions" role="cell">
-                        <button className="btn btn-ghost" type="button" disabled={!isInviteRevocable(invite)} onClick={() => setPendingAction({
-                          title: props.t("owner.revokeInviteTitle"),
-                          copy: props.t("owner.revokeConfirm"),
-                          confirmLabel: props.t("common.revoke"),
-                          perform: async () => {
-                            setStatus("");
-                            await revokeServerInvite(props.activeServerId, invite.id);
-                            await reload();
+                        <button
+                          className="btn btn-ghost"
+                          type="button"
+                          disabled={!isInviteRevocable(invite)}
+                          onClick={() =>
+                            setPendingAction({
+                              title: props.t("owner.revokeInviteTitle"),
+                              copy: props.t("owner.revokeConfirm"),
+                              confirmLabel: props.t("common.revoke"),
+                              perform: async () => {
+                                setStatus("");
+                                await revokeServerInvite(props.activeServerId, invite.id);
+                                await reload();
+                              }
+                            })
                           }
-                        })}>
+                        >
                           <TrashIcon />
                           <span>{props.t("common.revoke")}</span>
                         </button>
@@ -321,14 +427,20 @@ export function OwnerPanel(props: OwnerPanelProps) {
                     <span className="dash-cell" role="cell">
                       <MemberRow
                         user={member.nickname}
-                        detail={member.isBot
-                          ? props.t("member.botRole")
-                          : member.role === "owner" ? props.t("shell.ownerSession") : props.t("shell.memberSession")}
+                        detail={
+                          member.isBot
+                            ? props.t("member.botRole")
+                            : member.role === "owner"
+                              ? props.t("shell.ownerSession")
+                              : props.t("shell.memberSession")
+                        }
                         owner={member.role === "owner"}
                       />
                     </span>
                     <span className="dash-cell" role="cell">
-                      <span className={`dash-role ${member.role === "owner" ? "is-owner" : member.canInvite ? "is-inviter" : ""}`}>
+                      <span
+                        className={`dash-role ${member.role === "owner" ? "is-owner" : member.canInvite ? "is-inviter" : ""}`}
+                      >
                         {memberRoleLabel(member, props.t)}
                       </span>
                     </span>
@@ -345,7 +457,12 @@ export function OwnerPanel(props: OwnerPanelProps) {
                             menuKey={menuKey}
                             label={props.t("member.actionsFor", { nickname: member.nickname })}
                             menuWidth={memberMenuWidth}
-                            menuHeight={ownerMemberMenuHeight(canRename, canVoiceModerate, canManageMembership, Boolean(member.bannedAt))}
+                            menuHeight={ownerMemberMenuHeight(
+                              canRename,
+                              canVoiceModerate,
+                              canManageMembership,
+                              Boolean(member.bannedAt)
+                            )}
                           />
                           {actionMenu.active?.key === menuKey ? (
                             <ContextMenu
@@ -353,10 +470,21 @@ export function OwnerPanel(props: OwnerPanelProps) {
                               label={props.t("member.actionsFor", { nickname: member.nickname })}
                               onClose={closeMenu}
                             >
-                              {canRename ? <button type="button" onClick={() => {
-                                closeMenu();
-                                setNicknameTarget({ userId: member.id, nickname: member.nickname, role: member.role });
-                              }}>{props.t("member.changeNickname")}</button> : null}
+                              {canRename ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    closeMenu();
+                                    setNicknameTarget({
+                                      userId: member.id,
+                                      nickname: member.nickname,
+                                      role: member.role
+                                    });
+                                  }}
+                                >
+                                  {props.t("member.changeNickname")}
+                                </button>
+                              ) : null}
                               {canManageMembership ? (
                                 <button
                                   className={member.canInvite ? "is-active" : ""}
@@ -367,50 +495,97 @@ export function OwnerPanel(props: OwnerPanelProps) {
                                     await props.onUpdateMemberPermissions(member.id, !member.canInvite);
                                     await reload();
                                   }}
-                                >{member.canInvite ? props.t("member.revokeInviteRole") : props.t("member.grantInviteRole")}</button>
+                                >
+                                  {member.canInvite
+                                    ? props.t("member.revokeInviteRole")
+                                    : props.t("member.grantInviteRole")}
+                                </button>
                               ) : null}
-                              {canVoiceModerate ? <>
-                                <button
-                                  className={member.moderation.muted ? "is-danger" : ""}
-                                  type="button"
-                                  aria-pressed={member.moderation.muted}
-                                  onClick={async () => {
-                                    const response = await props.onVoiceModeration(member.id, { muted: !member.moderation.muted });
-                                    setUsers((current) => current.map((item) => item.id === member.id ? { ...item, moderation: response.moderation } : item));
-                                  }}
-                                >{member.moderation.muted ? props.t("member.ownerUnmute") : props.t("member.ownerMute")}</button>
-                                <button
-                                  className={member.moderation.deafened ? "is-danger" : ""}
-                                  type="button"
-                                  aria-pressed={member.moderation.deafened}
-                                  onClick={async () => {
-                                    const response = await props.onVoiceModeration(member.id, { deafened: !member.moderation.deafened });
-                                    setUsers((current) => current.map((item) => item.id === member.id ? { ...item, moderation: response.moderation } : item));
-                                  }}
-                                >{member.moderation.deafened ? props.t("member.ownerUndeafen") : props.t("member.ownerDeafen")}</button>
-                              </> : null}
-                              {canManageMembership ? <>
-                                <button type="button" onClick={() => {
-                                  closeMenu();
-                                  void createMemberAccessLink(member);
-                                }}>{props.t("owner.accessLink")}</button>
-                                <button className="is-danger" type="button" onClick={() => {
-                                  closeMenu();
-                                  requestBan(member);
-                                }}>{member.bannedAt ? props.t("common.unban") : props.t("common.ban")}</button>
-                                {!member.bannedAt ? <button className="is-danger" type="button" onClick={() => {
-                                  closeMenu();
-                                  setPendingAction({
-                                    title: props.t("member.kickTitle", { nickname: member.nickname }),
-                                    copy: props.t("member.kickCopy"),
-                                    confirmLabel: props.t("member.kick"),
-                                    perform: async () => {
-                                      await props.onModerateMember(member.id, "kick");
-                                      await reload();
-                                    }
-                                  });
-                                }}>{props.t("member.kick")}</button> : null}
-                              </> : null}
+                              {canVoiceModerate ? (
+                                <>
+                                  <button
+                                    className={member.moderation.muted ? "is-danger" : ""}
+                                    type="button"
+                                    aria-pressed={member.moderation.muted}
+                                    onClick={async () => {
+                                      const response = await props.onVoiceModeration(member.id, {
+                                        muted: !member.moderation.muted
+                                      });
+                                      setUsers((current) =>
+                                        current.map((item) =>
+                                          item.id === member.id ? { ...item, moderation: response.moderation } : item
+                                        )
+                                      );
+                                    }}
+                                  >
+                                    {member.moderation.muted
+                                      ? props.t("member.ownerUnmute")
+                                      : props.t("member.ownerMute")}
+                                  </button>
+                                  <button
+                                    className={member.moderation.deafened ? "is-danger" : ""}
+                                    type="button"
+                                    aria-pressed={member.moderation.deafened}
+                                    onClick={async () => {
+                                      const response = await props.onVoiceModeration(member.id, {
+                                        deafened: !member.moderation.deafened
+                                      });
+                                      setUsers((current) =>
+                                        current.map((item) =>
+                                          item.id === member.id ? { ...item, moderation: response.moderation } : item
+                                        )
+                                      );
+                                    }}
+                                  >
+                                    {member.moderation.deafened
+                                      ? props.t("member.ownerUndeafen")
+                                      : props.t("member.ownerDeafen")}
+                                  </button>
+                                </>
+                              ) : null}
+                              {canManageMembership ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      closeMenu();
+                                      void createMemberAccessLink(member);
+                                    }}
+                                  >
+                                    {props.t("owner.accessLink")}
+                                  </button>
+                                  <button
+                                    className="is-danger"
+                                    type="button"
+                                    onClick={() => {
+                                      closeMenu();
+                                      requestBan(member);
+                                    }}
+                                  >
+                                    {member.bannedAt ? props.t("common.unban") : props.t("common.ban")}
+                                  </button>
+                                  {!member.bannedAt ? (
+                                    <button
+                                      className="is-danger"
+                                      type="button"
+                                      onClick={() => {
+                                        closeMenu();
+                                        setPendingAction({
+                                          title: props.t("member.kickTitle", { nickname: member.nickname }),
+                                          copy: props.t("member.kickCopy"),
+                                          confirmLabel: props.t("member.kick"),
+                                          perform: async () => {
+                                            await props.onModerateMember(member.id, "kick");
+                                            await reload();
+                                          }
+                                        });
+                                      }}
+                                    >
+                                      {props.t("member.kick")}
+                                    </button>
+                                  ) : null}
+                                </>
+                              ) : null}
                             </ContextMenu>
                           ) : null}
                         </>
@@ -424,8 +599,16 @@ export function OwnerPanel(props: OwnerPanelProps) {
               <div className="dash-callout" aria-live="polite">
                 <strong>{props.t("owner.accessLinkFor", { nickname: accessLink.nickname })}</strong>
                 <SecretLinkDisplay key={accessLinkUrl} value={accessLinkUrl} t={props.t} />
-                <p className="muted small">{props.t("owner.accessLinkCopy", { expiry: formatShortDate(accessLink.expiresAt, props.language, props.t, props.timeFormat) })}</p>
-                <button className="btn btn-ghost" type="button" onClick={() => void navigator.clipboard?.writeText(accessLinkUrl)}>
+                <p className="muted small">
+                  {props.t("owner.accessLinkCopy", {
+                    expiry: formatShortDate(accessLink.expiresAt, props.language, props.t, props.timeFormat)
+                  })}
+                </p>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => void navigator.clipboard?.writeText(accessLinkUrl)}
+                >
                   <CopyIcon />
                   <span>{props.t("common.copy")}</span>
                 </button>
@@ -458,47 +641,55 @@ export function OwnerPanel(props: OwnerPanelProps) {
 
         {section === "accounts" && props.user.role === "owner" ? <OwnerAccountsSection t={props.t} /> : null}
 
-        {pendingAction ? <ConfirmDialog cancelLabel={props.t("common.cancel")}
-          title={pendingAction.title}
-          copy={pendingAction.copy}
-          confirmLabel={pendingAction.confirmLabel}
-          onCancel={() => setPendingAction(null)}
-          onConfirm={() => {
-            const action = pendingAction;
-            setPendingAction(null);
-            void action.perform().catch(() => setStatus(props.t("owner.actionFailed")));
-          }}
-        /> : null}
-        {deletingServer && activeServer ? <ConfirmDialog cancelLabel={props.t("common.cancel")}
-          title={props.t("server.deleteTitle", { server: activeServer.name })}
-          copy={props.t("server.deleteCopy")}
-          confirmLabel={props.t("common.delete")}
-          confirmationText={activeServer.name}
-          confirmationLabel={props.t("common.typeToConfirm")}
-          onCancel={() => setDeletingServer(false)}
-          onConfirm={() => {
-            setDeletingServer(false);
-            setStatus("");
-            void props.onDeleteServer().catch((error: unknown) => {
-              if (error instanceof ApiError && error.code === "last_owner_server") {
-                setStatus(props.t("server.lastServer"));
-                return;
-              }
-              setStatus(props.t("common.deleteFailed"));
-            });
-          }}
-        /> : null}
-        {nicknameTarget ? <NicknameDialog
-          user={nicknameTarget}
-          t={props.t}
-          onCancel={() => setNicknameTarget(null)}
-          onSave={async (nickname) => {
-            await props.onUpdateMemberNickname(nicknameTarget.userId, nickname);
-            setNicknameTarget(null);
-            setStatus(props.t("member.nicknameUpdated"));
-            await reload();
-          }}
-        /> : null}
+        {pendingAction ? (
+          <ConfirmDialog
+            cancelLabel={props.t("common.cancel")}
+            title={pendingAction.title}
+            copy={pendingAction.copy}
+            confirmLabel={pendingAction.confirmLabel}
+            onCancel={() => setPendingAction(null)}
+            onConfirm={() => {
+              const action = pendingAction;
+              setPendingAction(null);
+              void action.perform().catch(() => setStatus(props.t("owner.actionFailed")));
+            }}
+          />
+        ) : null}
+        {deletingServer && activeServer ? (
+          <ConfirmDialog
+            cancelLabel={props.t("common.cancel")}
+            title={props.t("server.deleteTitle", { server: activeServer.name })}
+            copy={props.t("server.deleteCopy")}
+            confirmLabel={props.t("common.delete")}
+            confirmationText={activeServer.name}
+            confirmationLabel={props.t("common.typeToConfirm")}
+            onCancel={() => setDeletingServer(false)}
+            onConfirm={() => {
+              setDeletingServer(false);
+              setStatus("");
+              void props.onDeleteServer().catch((error: unknown) => {
+                if (error instanceof ApiError && error.code === "last_owner_server") {
+                  setStatus(props.t("server.lastServer"));
+                  return;
+                }
+                setStatus(props.t("common.deleteFailed"));
+              });
+            }}
+          />
+        ) : null}
+        {nicknameTarget ? (
+          <NicknameDialog
+            user={nicknameTarget}
+            t={props.t}
+            onCancel={() => setNicknameTarget(null)}
+            onSave={async (nickname) => {
+              await props.onUpdateMemberNickname(nicknameTarget.userId, nickname);
+              setNicknameTarget(null);
+              setStatus(props.t("member.nicknameUpdated"));
+              await reload();
+            }}
+          />
+        ) : null}
       </main>
     </div>
   );

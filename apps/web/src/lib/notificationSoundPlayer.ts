@@ -48,9 +48,7 @@ function defaultApplyOutputDevice(element: NotificationSoundElement) {
   return applySharedAudioOutputToMediaElement(element);
 }
 
-export function createNotificationSoundPlayer(
-  options: NotificationSoundPlayerOptions = {}
-): NotificationSoundPlayer {
+export function createNotificationSoundPlayer(options: NotificationSoundPlayerOptions = {}): NotificationSoundPlayer {
   const createElement = options.createElement ?? defaultCreateElement;
   const applyOutputDevice = options.applyOutputDevice ?? defaultApplyOutputDevice;
   const now = options.now ?? (() => Date.now());
@@ -63,7 +61,7 @@ export function createNotificationSoundPlayer(
 
   const elementFor = (key: NotificationSoundKey) => {
     if (elements.has(key)) return elements.get(key) ?? null;
-    let element: NotificationSoundElement | null = null;
+    let element: NotificationSoundElement | null;
     try {
       element = createElement(notificationSoundSources[key]);
     } catch {
@@ -122,7 +120,9 @@ export function createNotificationSoundPlayer(
         start(element);
         return true;
       }
-      void routing.then(() => { if (!disposed) start(element); });
+      void routing.then(() => {
+        if (!disposed) start(element);
+      });
       return true;
     },
     prime() {

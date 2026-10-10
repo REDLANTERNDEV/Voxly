@@ -27,12 +27,12 @@ them. In this document an Installation is the deployment/domain, such as
 
 ## Settings ownership and placement
 
-| Section | Controls |
-| --- | --- |
-| Audio | Devices, microphone mode (including Push to talk/Push to mute), release delay and microphone behavior |
-| Shortcuts | Independent bindings for mute, deafen, Push to talk and Push to mute; record/change/clear and conflict feedback |
-| Notifications | Sound master/categories/volume and desktop alert opt-in/permission status |
-| Desktop / Installation | Preferred Installation, open-on-startup choice and return to welcome |
+| Section                | Controls                                                                                                        |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Audio                  | Devices, microphone mode (including Push to talk/Push to mute), release delay and microphone behavior           |
+| Shortcuts              | Independent bindings for mute, deafen, Push to talk and Push to mute; record/change/clear and conflict feedback |
+| Notifications          | Sound master/categories/volume and desktop alert opt-in/permission status                                       |
+| Desktop / Installation | Preferred Installation, open-on-startup choice and return to welcome                                            |
 
 Use one Shortcuts section for keybinds; do not duplicate the same bindings in
 another Keybinds chapter. Microphone mode and its assigned binding must explain

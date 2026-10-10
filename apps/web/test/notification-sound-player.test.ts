@@ -39,7 +39,15 @@ function harness(options: { onPlay?: () => unknown; applyOutputDevice?: () => Pr
     },
     now: () => clock
   });
-  return { player, created, elements, outputApplications, advance: (ms: number) => { clock += ms; } };
+  return {
+    player,
+    created,
+    elements,
+    outputApplications,
+    advance: (ms: number) => {
+      clock += ms;
+    }
+  };
 }
 
 describe("notification sound player", () => {
@@ -127,35 +135,41 @@ describe("notification sound wiring", () => {
     const hook = readFileSync("src/app/useNotificationSounds.ts", "utf8");
 
     assert.match(hook, /advanceVoiceRoster\(rosterRef\.current/);
-    assert.match(hook, /activeVoiceRosterUserIds\(activeVoiceRoomId, voiceSnapshot, currentUserId\)/);
+    assert.match(hook, /activeVoiceRosterUserIds\(activeVoiceRoomId,\s+voiceSnapshot,\s+currentUserId\)/);
   });
 
   it("plays screen-share transitions for the confirmed active voice room", () => {
     const hook = readFileSync("src/app/useNotificationSounds.ts", "utf8");
 
-    assert.match(hook, /activeVoiceScreenMembers\(activeVoiceRoomId, voiceSnapshot, currentUserId\)/);
+    assert.match(hook, /activeVoiceScreenMembers\(activeVoiceRoomId,\s+voiceSnapshot,\s+currentUserId\)/);
     assert.match(hook, /advanceVoiceScreenRoster\(screenRosterRef\.current/);
-    assert.match(hook, /started\.length > 0\) play\("screenShareStart"\)/);
-    assert.match(hook, /stopped\.length > 0\) play\("screenShareStop"\)/);
+    assert.match(hook, /started\.length\s+>\s+0\)\s+play\("screenShareStart"\)/);
+    assert.match(hook, /stopped\.length\s+>\s+0\)\s+play\("screenShareStop"\)/);
   });
 
   it("prefers the deafen cue over the microphone change it implies", () => {
     const hook = readFileSync("src/app/useNotificationSounds.ts", "utf8");
 
-    assert.match(hook, /previous\.deafen !== current\.deafen[\s\S]*?play\(current\.deafen \? "deafen" : "undeafen"\);\s*return;/);
+    assert.match(
+      hook,
+      /previous\.deafen\s+!==\s+current\.deafen[\s\S]*?play\(current\.deafen\s+\?\s+"deafen"\s+:\s+"undeafen"\);\s*return;/
+    );
   });
 
   it("plays message cues from the realtime handler without reordering chat state", () => {
     const app = readFileSync("src/App.tsx", "utf8");
 
-    assert.match(app, /messageNew: \(message\) => \{ chat\.applyNewMessage\(message\);[\s\S]*?if \(serverNotifications\.messageAllowed\(message\)\) notifyMessageRef\.current\(message\); \}/);
-    assert.match(app, /notifyMessageRef\.current = audio\.notifyMessage/);
+    assert.match(
+      app,
+      /messageNew:\s+\(message\)\s+=>\s+\{\s+chat\.applyNewMessage\(message\);[\s\S]*?if\s+\(serverNotifications\.messageAllowed\(message\)\)\s+notifyMessageRef\.current\(message\);\s+\}/
+    );
+    assert.match(app, /notifyMessageRef\.current\s+=\s+audio\.notifyMessage/);
   });
 
   it("mutes cues for owner-enforced deafen as well as self deafen", () => {
     const listener = readFileSync("src/app/useListenerAudio.ts", "utf8");
 
-    assert.match(listener, /deafened: voice\.controls\.deafen\.on \|\| voice\.voiceModeration\.deafened/);
-    assert.match(listener, /connectionInterrupted: connectionHealth\.overlayVisible/);
+    assert.match(listener, /deafened:\s+voice\.controls\.deafen\.on\s+\|\|\s+voice\.voiceModeration\.deafened/);
+    assert.match(listener, /connectionInterrupted:\s+connectionHealth\.overlayVisible/);
   });
 });

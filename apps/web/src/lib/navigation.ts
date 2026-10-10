@@ -21,9 +21,7 @@ export const defaultServerId = "the-basement";
 
 export function firstServerRoomPath(serverId: string, rooms: RoomSummary[]) {
   const target = rooms.find((room) => room.kind === "text") ?? rooms[0];
-  return target
-    ? `/app/server/${encodeURIComponent(serverId)}/${target.kind}/${encodeURIComponent(target.id)}`
-    : "/";
+  return target ? `/app/server/${encodeURIComponent(serverId)}/${target.kind}/${encodeURIComponent(target.id)}` : "/";
 }
 
 export function resolveInitialRoute(input: InitialRouteInput) {
@@ -53,7 +51,8 @@ export function parsePathRoute(pathname: string): PathRoute {
   const desktopVerification = pathname.match(/^\/desktop\/verify\/([^/]+)$/);
   if (desktopVerification) return { name: "desktop-verify", id: decodeURIComponent(desktopVerification[1]) };
   if (pathname === "/recover") return { name: "recover" };
-  if (pathname === "/access/claim") return { name: "access-claim", token: getAccessClaimTokenFromHash(window.location.hash) };
+  if (pathname === "/access/claim")
+    return { name: "access-claim", token: getAccessClaimTokenFromHash(window.location.hash) };
   const serverRoute = pathname.match(/^\/app\/server\/([^/]+)\/(text|voice)\/([^/]+)$/);
   if (serverRoute) {
     return {
@@ -64,8 +63,18 @@ export function parsePathRoute(pathname: string): PathRoute {
   }
   const ownerRoute = pathname.match(/^\/app\/server\/([^/]+)\/owner$/);
   if (ownerRoute) return { name: "owner", serverId: decodeURIComponent(ownerRoute[1]) };
-  if (pathname.startsWith("/app/voice/")) return { name: "voice", serverId: defaultServerId, roomId: decodeURIComponent(pathname.slice("/app/voice/".length)) || "lobby" };
-  if (pathname.startsWith("/app/text/")) return { name: "text", serverId: defaultServerId, roomId: decodeURIComponent(pathname.slice("/app/text/".length)) || "general" };
+  if (pathname.startsWith("/app/voice/"))
+    return {
+      name: "voice",
+      serverId: defaultServerId,
+      roomId: decodeURIComponent(pathname.slice("/app/voice/".length)) || "lobby"
+    };
+  if (pathname.startsWith("/app/text/"))
+    return {
+      name: "text",
+      serverId: defaultServerId,
+      roomId: decodeURIComponent(pathname.slice("/app/text/".length)) || "general"
+    };
   if (pathname.startsWith("/invite/")) return { name: "invite", token: getInviteTokenFromPath(pathname) };
   return { name: "landing" };
 }

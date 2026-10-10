@@ -19,37 +19,63 @@ describe("server channel layout", () => {
       30
     );
 
-    assert.deepEqual(groups.map((group) => [group.category?.id ?? null, group.rooms.map((item) => item.id)]), [
-      ["empty", []],
-      ["later", ["voice", "text"]],
-      [null, ["loose"]]
-    ]);
+    assert.deepEqual(
+      groups.map((group) => [group.category?.id ?? null, group.rooms.map((item) => item.id)]),
+      [
+        ["empty", []],
+        ["later", ["voice", "text"]],
+        [null, ["loose"]]
+      ]
+    );
   });
 
   it("moves a room into an empty category and inserts it around another room", () => {
-    const groups = channelGroups([category("one", 10), category("two", 20)], [
-      room("a", "text", "one", 10), room("b", "voice", null, 20), room("c", "voice", "two", 30)
-    ]);
+    const groups = channelGroups(
+      [category("one", 10), category("two", 20)],
+      [room("a", "text", "one", 10), room("b", "voice", null, 20), room("c", "voice", "two", 30)]
+    );
 
     const intoEmpty = moveRoom(groups, "b", { categoryId: "one" });
-    assert.deepEqual(intoEmpty[1].rooms.map((item) => item.id), ["a", "b"]);
+    assert.deepEqual(
+      intoEmpty[1].rooms.map((item) => item.id),
+      ["a", "b"]
+    );
     assert.equal(intoEmpty[0].rooms.length, 0);
     const before = moveRoom(intoEmpty, "c", { categoryId: "one", roomId: "a" });
-    assert.deepEqual(before[1].rooms.map((item) => item.id), ["c", "a", "b"]);
+    assert.deepEqual(
+      before[1].rooms.map((item) => item.id),
+      ["c", "a", "b"]
+    );
     assert.equal(before[1].rooms[0]?.categoryId, "one");
   });
 
   it("reorders all groups, including Uncategorized, and rooms for accessible move controls", () => {
-    const groups = channelGroups([category("one", 10), category("two", 20)], [
-      room("a", "text", "one", 10), room("b", "voice", "one", 20), room("c", "text", "two", 30)
-    ]);
+    const groups = channelGroups(
+      [category("one", 10), category("two", 20)],
+      [room("a", "text", "one", 10), room("b", "voice", "one", 20), room("c", "text", "two", 30)]
+    );
 
-    assert.deepEqual(moveGroup(groups, "two", "one").map((group) => group.category?.id ?? null), [null, "two", "one"]);
-    assert.deepEqual(moveGroup(groups, "one", null).map((group) => group.category?.id ?? null), ["one", null, "two"]);
+    assert.deepEqual(
+      moveGroup(groups, "two", "one").map((group) => group.category?.id ?? null),
+      [null, "two", "one"]
+    );
+    assert.deepEqual(
+      moveGroup(groups, "one", null).map((group) => group.category?.id ?? null),
+      ["one", null, "two"]
+    );
     assert.strictEqual(moveGroup(groups, "one", "two"), groups, "dropping directly before the next group is a no-op");
-    assert.deepEqual(moveGroupBy(groups, "two", -1).map((group) => group.category?.id ?? null), [null, "two", "one"]);
-    assert.deepEqual(moveGroupBy(groups, null, 1).map((group) => group.category?.id ?? null), ["one", null, "two"]);
-    assert.deepEqual(moveRoomBy(groups, "b", -1)[1].rooms.map((item) => item.id), ["b", "a"]);
+    assert.deepEqual(
+      moveGroupBy(groups, "two", -1).map((group) => group.category?.id ?? null),
+      [null, "two", "one"]
+    );
+    assert.deepEqual(
+      moveGroupBy(groups, null, 1).map((group) => group.category?.id ?? null),
+      ["one", null, "two"]
+    );
+    assert.deepEqual(
+      moveRoomBy(groups, "b", -1)[1].rooms.map((item) => item.id),
+      ["b", "a"]
+    );
   });
 
   it("serializes empty categories and each room exactly once", () => {

@@ -47,44 +47,61 @@ export function DeviceSettings({ t }: { t: Translate }) {
     }
   }, [reportError, t]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const signOut = useCallback(async (deviceId: string) => {
-    setBusyId(deviceId);
-    try {
-      await signOutDevice(deviceId);
-      // Re-read rather than splicing the row out locally: the answer to "what
-      // is signed in as me" has to come from the server, or a failed
-      // revocation would leave a Device the member believes is gone.
-      await load();
-    } catch {
-      reportError("sign-out", t("devices.signOutFailed"));
-    } finally {
-      setBusyId("");
-    }
-  }, [load, reportError, t]);
+  const signOut = useCallback(
+    async (deviceId: string) => {
+      setBusyId(deviceId);
+      try {
+        await signOutDevice(deviceId);
+        // Re-read rather than splicing the row out locally: the answer to "what
+        // is signed in as me" has to come from the server, or a failed
+        // revocation would leave a Device the member believes is gone.
+        await load();
+      } catch {
+        reportError("sign-out", t("devices.signOutFailed"));
+      } finally {
+        setBusyId("");
+      }
+    },
+    [load, reportError, t]
+  );
 
   return (
     <section className="theme-card device-card">
-      <div className="theme-card-head"><span className="label">{t("devices.title")}</span></div>
+      <div className="theme-card-head">
+        <span className="label">{t("devices.title")}</span>
+      </div>
       <p className="muted small">{t("devices.hint")}</p>
       <OpenInDesktop t={t} authenticated />
-      {error ? <InlineAlert
-        title={t("notification.settingsErrorTitle")}
-        message={error}
-        dismissLabel={t("notification.dismiss")}
-        occurrences={errorOccurrence?.count}
-        occurrenceLabel={t("notification.occurrences", { count: errorOccurrence?.count ?? 1 })}
-        revision={errorOccurrence?.revision}
-        onDismiss={() => setError("")}
-      /> : null}
+      {error ? (
+        <InlineAlert
+          title={t("notification.settingsErrorTitle")}
+          message={error}
+          dismissLabel={t("notification.dismiss")}
+          occurrences={errorOccurrence?.count}
+          occurrenceLabel={t("notification.occurrences", { count: errorOccurrence?.count ?? 1 })}
+          revision={errorOccurrence?.revision}
+          onDismiss={() => setError("")}
+        />
+      ) : null}
       {devices === null && !error ? <p className="muted small">{t("devices.loading")}</p> : null}
       <button className="btn btn-ghost device-link-action" type="button" onClick={() => setLinking(true)}>
         {t("devices.linkDevice")}
       </button>
       {/* Re-reading on close is what makes a Device the member just linked
           appear without them having to go looking for it. */}
-      {linking ? <LinkDeviceDialog t={t} onClose={() => { setLinking(false); void load(); }} /> : null}
+      {linking ? (
+        <LinkDeviceDialog
+          t={t}
+          onClose={() => {
+            setLinking(false);
+            void load();
+          }}
+        />
+      ) : null}
       <ul className="device-list">
         {(devices ?? []).map((device) => (
           <li className="device-row" key={device.id}>

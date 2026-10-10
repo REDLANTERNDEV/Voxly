@@ -145,7 +145,7 @@ function transform(re, im, reversal, inverse) {
     }
   }
   for (let span = 2; span <= size; span *= 2) {
-    const angle = (inverse ? 2 : -2) * Math.PI / span;
+    const angle = ((inverse ? 2 : -2) * Math.PI) / span;
     const stepRe = Math.cos(angle);
     const stepIm = Math.sin(angle);
     for (let start = 0; start < size; start += span) {
@@ -213,9 +213,7 @@ class NoiseSuppressorProcessor extends AudioWorkletProcessor {
     let totalNoise = 0;
     for (let bin = 0; bin < BIN_COUNT; bin += 1) {
       const instant = this.re[bin] * this.re[bin] + this.im[bin] * this.im[bin];
-      this.power[bin] = this.seeded
-        ? POWER_SMOOTHING * this.power[bin] + (1 - POWER_SMOOTHING) * instant
-        : instant;
+      this.power[bin] = this.seeded ? POWER_SMOOTHING * this.power[bin] + (1 - POWER_SMOOTHING) * instant : instant;
       totalPower += this.power[bin];
       totalNoise += this.noise[bin];
     }
@@ -238,9 +236,8 @@ class NoiseSuppressorProcessor extends AudioWorkletProcessor {
       // with over-subtraction: bands near the floor collapse to it, bands well
       // above it pass almost untouched.
       const snr = measured / Math.max(this.noise[bin] * NOISE_BIAS, TINY);
-      const target = snr <= OVER_SUBTRACTION
-        ? SPECTRAL_FLOOR
-        : Math.max(SPECTRAL_FLOOR, (snr - OVER_SUBTRACTION) / snr);
+      const target =
+        snr <= OVER_SUBTRACTION ? SPECTRAL_FLOOR : Math.max(SPECTRAL_FLOOR, (snr - OVER_SUBTRACTION) / snr);
       this.gain[bin] = GAIN_SMOOTHING * this.gain[bin] + (1 - GAIN_SMOOTHING) * target;
     }
     this.seeded = true;

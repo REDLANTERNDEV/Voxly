@@ -55,7 +55,10 @@ describe("exclusive sidebar context menus", () => {
   it("lays a menu row out as a mark and a label in one column", () => {
     const styles = readFileSync("src/styles.css", "utf8");
 
-    assert.match(styles, /\.context-menu button,\s*\.message-context-menu button \{[^}]*align-items: center;[^}]*display: flex;[^}]*gap: 9px;/s);
+    assert.match(
+      styles,
+      /\.context-menu button,\s*\.message-context-menu button \{[^}]*align-items: center;[^}]*display: flex;[^}]*gap: 9px;/s
+    );
     assert.match(styles, /\.context-menu:has\(\.ui-icon\) button:not\(:has\(> \.ui-icon\)\)/);
   });
 });

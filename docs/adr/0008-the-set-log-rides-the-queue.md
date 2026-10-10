@@ -9,8 +9,8 @@
 The Queue arrived in ticket 08 and grew controls in ticket 09. Between them they
 made a room where five people can change what everybody hears, and left the
 result unexplained: the music stops mid-Track and four people have no idea why.
-The design names it — *"I want to see that someone skipped a Track, so that I
-understand why the music suddenly changed"* — and adds a second story with it,
+The design names it — _"I want to see that someone skipped a Track, so that I
+understand why the music suddenly changed"_ — and adds a second story with it,
 that actions in a shared room should be attributable.
 
 The panel has just acquired an exception to its oldest rule. ADR-0005 and
@@ -37,7 +37,7 @@ anything yet, because it is a question rather than state, and because publishing
 it would put four other people in front of a choice that is not theirs. A log
 line is the opposite on all three counts: the decision has already been taken,
 it is a fact about the room rather than a question, and its whole purpose is to
-reach the people who did *not* act. "Ada skipped Nocturne" shown only to Ada
+reach the people who did _not_ act. "Ada skipped Nocturne" shown only to Ada
 explains a silence to the one person who already knew.
 
 So it goes through `music:publish` and `music:queue`, is authorized by the
@@ -54,7 +54,7 @@ published whole on every change, and it is bounded (`musicQueueMaxEntries`)
 precisely because it is. A log only ever grows, so a log on that payload means
 every line re-sends the whole Queue.
 
-It costs nothing, because of *when* lines are written. Every line is produced by
+It costs nothing, because of _when_ lines are written. Every line is produced by
 a change that was already publishing the Queue — an addition, a skip that
 advanced, a removal, a pause that stopped something. There is no event that
 writes a line without publishing, so there is no message here that would not
@@ -72,7 +72,7 @@ describes the same moment.
 It also settles two things for free. The bot republishes when the room's roster
 changes (ADR-0005), so a member who walks in mid-Set is handed the log along
 with the Queue without a second republish path. And the Queue is published empty
-before the bot leaves the room, so *the same message* takes the log off five
+before the bot leaves the room, so _the same message_ takes the log off five
 panels — which is what makes "the Set log is cleared when the Music bot leaves"
 true, rather than a second thing to remember to clear.
 
@@ -83,12 +83,12 @@ so the member who would lose their Track is told (`queue_full`); a log is a
 record of what already happened, and the part worth keeping when there is not
 room for all of it is the recent part. Twenty rather than a hundred because the
 panel owns no scroll region (`apps/web/AGENTS.md`) and because of what the log
-is *for* — it explains a silence that has just happened, and a log long enough
+is _for_ — it explains a silence that has just happened, and a log long enough
 to need scrolling has stopped answering that question.
 
 ### 3. A line is written only where the Queue publishes
 
-This is the rule the whole thing rests on, and it is enforced by *where* the
+This is the rule the whole thing rests on, and it is enforced by _where_ the
 lines are written rather than by a check beside them: each line is appended in
 the branch of `playback.ts` that makes the change, below the guard that returns
 early.
@@ -119,7 +119,7 @@ carries a `lineId`, minted by `music.ts` beside the `entryId` it already mints.
 
 **There is no timestamp**, and that is a decision rather than an omission.
 Ordering is the list's, identity is `lineId`'s, and neither needs a clock. What
-a rendered time would add is a wall-clock instant from the *bot's host*, which
+a rendered time would add is a wall-clock instant from the _bot's host_, which
 is not the member's, displayed either as an absolute time that needs locale
 formatting or as a relative one that needs a ticking re-render of a block
 nobody is interacting with. Nothing in the design asks for one. Adding the field
@@ -127,7 +127,7 @@ later is additive and cheap, which is why it is safe to leave out now.
 
 Only `added` carried the acting member before this; `music.ts` dropped
 `requestedByUserId` for every other verb. It is now threaded through `apply`, so
-each of the five verbs names the member who asked for *that* action rather than
+each of the five verbs names the member who asked for _that_ action rather than
 the member who queued the Track it happened to.
 
 ### 5. Ids on the wire, sentences in the browser
@@ -203,7 +203,7 @@ note:
   asserted rather than asserted-about — `realtime.test.ts` publishes a line
   carrying a marker string, then reads every table named in `sqlite_master` and
   fails if the marker is in any of them. It also asserts that a string the
-  database *does* hold is found, so the test cannot pass by looking in the wrong
+  database _does_ hold is found, so the test cannot pass by looking in the wrong
   place.
 - The bot has no persistence at all to write to: no database, no HTTP surface,
   no file it opens (`apps/bot/AGENTS.md`, Boundaries). The log lives in
@@ -214,7 +214,7 @@ note:
 
 **A Set log cleared on leaving is not the same thing as the Grace period.** The
 bot leaving an empty room after five minutes is ticket 12, and what expires
-there is the Set. This ticket's clearing is what happens *because* the Set
+there is the Set. This ticket's clearing is what happens _because_ the Set
 ended, whoever ended it.
 
 Nothing here changes what remains unverified in this feature, and this ticket

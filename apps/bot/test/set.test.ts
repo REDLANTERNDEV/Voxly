@@ -125,9 +125,11 @@ function snapshotWithBotMic(mic: boolean, moderationMuted = !mic): VoiceSnapshot
   const snapshot = snapshotOf([botUserId, "ada"]);
   return {
     ...snapshot,
-    members: snapshot.members.map((member) => member.user.userId === botUserId
-      ? { ...member, media: { ...member.media, mic }, moderation: { muted: moderationMuted, deafened: false } }
-      : member)
+    members: snapshot.members.map((member) =>
+      member.user.userId === botUserId
+        ? { ...member, media: { ...member.media, mic }, moderation: { muted: moderationMuted, deafened: false } }
+        : member
+    )
   };
 }
 
@@ -228,7 +230,9 @@ describe("who is in the room", () => {
   it("reports every arrival and every departure", async () => {
     let reported = 0;
     const recorder = recordingSocket();
-    const set = newSet(recorder, () => { reported += 1; });
+    const set = newSet(recorder, () => {
+      reported += 1;
+    });
     await set.begin();
 
     recorder.publish(snapshotOf([botUserId, "ada"]));
@@ -245,7 +249,9 @@ describe("who is in the room", () => {
     // be a broadcast per syllable.
     let reported = 0;
     const recorder = recordingSocket();
-    const set = newSet(recorder, () => { reported += 1; });
+    const set = newSet(recorder, () => {
+      reported += 1;
+    });
     await set.begin();
 
     recorder.publish(snapshotOf([botUserId, "ada"]));
@@ -259,7 +265,9 @@ describe("who is in the room", () => {
   it("ignores another room's snapshot", async () => {
     let reported = 0;
     const recorder = recordingSocket();
-    const set = newSet(recorder, () => { reported += 1; });
+    const set = newSet(recorder, () => {
+      reported += 1;
+    });
     await set.begin();
 
     recorder.publish({ ...snapshotOf([botUserId, "ada"]), roomId: "studio" });
@@ -291,11 +299,13 @@ describe("ending a Set", () => {
     recorder.publish({
       roomId,
       viewerInVoiceRoom: true,
-      members: [{
-        user: { userId: "ada", nickname: "Ada", role: "member" },
-        media: { mic: true, camera: false, screen: false, deafened: false, speaking: false },
-        moderation: { muted: false, deafened: false }
-      }]
+      members: [
+        {
+          user: { userId: "ada", nickname: "Ada", role: "member" },
+          media: { mic: true, camera: false, screen: false, deafened: false, speaking: false },
+          moderation: { muted: false, deafened: false }
+        }
+      ]
     });
 
     assert.deepEqual(set.listenerUserIds, []);

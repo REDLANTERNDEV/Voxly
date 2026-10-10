@@ -14,7 +14,10 @@ describe("owner invite display", () => {
   });
 
   it("prefers configured public URL over local browser origin", () => {
-    assert.equal(resolveInviteOrigin("https://voxly.example.com/", "http://127.0.0.1:3000"), "https://voxly.example.com");
+    assert.equal(
+      resolveInviteOrigin("https://voxly.example.com/", "http://127.0.0.1:3000"),
+      "https://voxly.example.com"
+    );
     assert.equal(resolveInviteOrigin(null, "http://127.0.0.1:3000/"), "http://127.0.0.1:3000");
   });
 
@@ -33,9 +36,9 @@ describe("owner invite display", () => {
 
   it("loads the current server name when an invite link opens", () => {
     const source = readAppSource();
-    const inviteScreen = source.match(/function InviteScreen[\s\S]*?\n}\n\nfunction TurnstileWidget/)?.[0] ?? "";
+    const inviteScreen = source.match(/function\s+InviteScreen[\s\S]*?\n}\n\nfunction\s+TurnstileWidget/)?.[0] ?? "";
 
-    assert.match(inviteScreen, /previewInvite\(extractInviteToken\(initialToken\)\)/);
+    assert.match(inviteScreen, /previewInvite\(\s*extractInviteToken\(\s*initialToken\s*\)\s*\)/);
     assert.match(inviteScreen, /invite\.joinServerTitle/);
     assert.match(inviteScreen, /serverName/);
   });
@@ -43,14 +46,17 @@ describe("owner invite display", () => {
   it("refreshes the switcher and opens the invited server for an existing user", () => {
     const source = readAppSource();
     const switcher = readFileSync("src/components/ServerSwitcher.tsx", "utf8");
-    const inviteRoute = source.match(/function AppRoutes[\s\S]*?function useSessionController/)?.[0] ?? "";
+    const inviteRoute = source.match(/function\s+AppRoutes[\s\S]*?function\s+useSessionController/)?.[0] ?? "";
 
-    assert.match(inviteRoute, /existingUser=\{Boolean\(user\)\}/);
-    assert.match(inviteRoute, /completeAuthentication\(accepted\)/);
-    assert.match(inviteRoute, /loadAcceptedServer\(serverId\)/);
-    assert.match(source, /Promise\.all\(\[fetchServers\(\), fetchServerRooms\(serverId\)\]\)/);
-    assert.match(source, /setServers\(serverResponse\.servers\)/);
-    assert.match(source, /firstServerRoomPath\(serverId, roomResponse\.rooms\)/);
-    assert.match(switcher, /props\.servers\.map\(\(server\) => <option key=\{server\.id\} value=\{server\.id\}>\{server\.name\}<\/option>\)/);
+    assert.match(inviteRoute, /existingUser=\{\s*Boolean\(\s*user\s*\)\s*\}\s*/);
+    assert.match(inviteRoute, /completeAuthentication\(\s*accepted\s*\)/);
+    assert.match(inviteRoute, /loadAcceptedServer\(\s*serverId\s*\)/);
+    assert.match(source, /Promise\.all\(\s*\[fetchServers\(\s*\),\s+fetchServerRooms\(\s*serverId\s*\)\]\s*\)/);
+    assert.match(source, /setServers\(\s*serverResponse\.servers\s*\)/);
+    assert.match(source, /firstServerRoomPath\(\s*serverId,\s+roomResponse\.rooms\s*\)/);
+    assert.match(
+      switcher,
+      /props\.servers\.map\(\s*\(\s*server\s*\)\s+=>\s*\(?\s*<option\s+key=\{\s*server\.id\s*\}\s+value=\{\s*server\.id\s*\}\s*>\s*\{\s*server\.name\s*\}\s*<\/option>\s*\)?\s*\)/
+    );
   });
 });

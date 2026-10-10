@@ -1,11 +1,14 @@
 export interface TurnstileApi {
-  render(container: HTMLElement, options: {
-    sitekey: string;
-    theme: "auto";
-    callback: (token: string) => void;
-    "error-callback": () => void;
-    "expired-callback": () => void;
-  }): string;
+  render(
+    container: HTMLElement,
+    options: {
+      sitekey: string;
+      theme: "auto";
+      callback: (token: string) => void;
+      "error-callback": () => void;
+      "expired-callback": () => void;
+    }
+  ): string;
   remove(widgetId: string): void;
 }
 
@@ -30,7 +33,7 @@ export function loadTurnstile() {
     script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
     script.async = true;
     script.defer = true;
-    script.onload = () => window.turnstile ? resolve(window.turnstile) : reject(new Error("turnstile_unavailable"));
+    script.onload = () => (window.turnstile ? resolve(window.turnstile) : reject(new Error("turnstile_unavailable")));
     script.onerror = () => reject(new Error("turnstile_load_failed"));
     document.head.append(script);
   }).catch((error: unknown) => {

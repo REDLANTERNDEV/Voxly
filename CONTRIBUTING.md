@@ -6,7 +6,7 @@ files and apply to human and agent-assisted changes alike.
 
 ## Before You Start
 
-- Use Node.js 22 or later and npm.
+- Use Node.js 22.13 or later and npm.
 - Read the root [`AGENTS.md`](AGENTS.md).
 - Read the nearest scoped guide for the area you will change:
   - [`apps/web/AGENTS.md`](apps/web/AGENTS.md) for React and UI work.
@@ -51,9 +51,16 @@ keys, or generated build directories.
 6. Run the required workspace or root verification before opening a pull
    request.
 
-Follow the existing strict TypeScript and ESM style. The repository does not
-currently enforce a formatter or linter, so match surrounding code and use
-`git diff --check` to catch whitespace errors.
+Follow the existing strict TypeScript and ESM style. Run `npm run format` to
+apply Prettier, or `npm run format:check` for a read-only check. Root `npm test`
+automatically applies ESLint's safe fixes, formats supported files, and runs
+all workspace type checks before the tests. Unfixed lint errors stop this flow;
+warnings name the affected file, line, and rule. Use `npm run lint` for a read-only
+code check, or `npm run lint:fix` to apply available fixes.
+Workspace-only tests do not run the root validation hook.
+Generated files and native initialization snippets are
+ignored; Rust uses `cargo fmt`. The snippets are function expressions appended
+to argument lists by Rust, so their outer parentheses must remain intact.
 
 Avoid adding dependencies for behavior that can be expressed clearly with the
 platform or a small local helper. If a dependency is necessary, explain why its
@@ -74,6 +81,7 @@ From the repository root:
 ```sh
 npm run typecheck
 npm test
+npm run format:check
 npm run build
 git diff --check
 ```

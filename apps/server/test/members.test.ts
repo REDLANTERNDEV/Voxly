@@ -107,7 +107,11 @@ describe("server membership", () => {
       });
 
       for (const userId of ["banned", "kicked", "globallyBanned", "stranger", "ghost"]) {
-        assert.equal(activeServerMembership(sqlite, defaultServerId, userId), null, `${userId} must have no active membership`);
+        assert.equal(
+          activeServerMembership(sqlite, defaultServerId, userId),
+          null,
+          `${userId} must have no active membership`
+        );
         assert.equal(hasActiveServerMembership(sqlite, defaultServerId, userId), false, `${userId} must be refused`);
       }
     });
@@ -165,7 +169,11 @@ describe("server membership", () => {
     });
 
     it("reserves owner actions for the owner", async () => {
-      const db = await seed({ owner: { role: "owner" }, member: {}, formerOwner: { role: "owner", removedAt: joinedAt } });
+      const db = await seed({
+        owner: { role: "owner" },
+        member: {},
+        formerOwner: { role: "owner", removedAt: joinedAt }
+      });
 
       const admitted = replyDouble();
       assert.equal(requireServerOwner(db, defaultServerId, "owner", admitted.reply)?.role, "owner");

@@ -18,13 +18,32 @@ function harness(origin = "https://chat.example", topFrame = true) {
     state = structuredClone(next);
   };
   const history = {
-    get state() { return state; }, replaceState,
-    pushState: (...args: Parameters<typeof replaceState>) => { nativePushes++; replaceState(...args); },
-    back: () => { documentTraversals++; }, forward: () => { documentTraversals++; },
-    go: (_delta?: number) => { documentTraversals++; }
+    get state() {
+      return state;
+    },
+    replaceState,
+    pushState: (...args: Parameters<typeof replaceState>) => {
+      nativePushes++;
+      replaceState(...args);
+    },
+    back: () => {
+      documentTraversals++;
+    },
+    forward: () => {
+      documentTraversals++;
+    },
+    go: (_delta?: number) => {
+      documentTraversals++;
+    }
   };
   Object.assign(window, { location, history, top: topFrame ? window : {} });
-  class PopStateEvent extends Event { state: unknown; constructor(type: string, options: { state: unknown }) { super(type); this.state = options.state; } }
+  class PopStateEvent extends Event {
+    state: unknown;
+    constructor(type: string, options: { state: unknown }) {
+      super(type);
+      this.state = options.state;
+    }
+  }
   const sourcePath = "src-tauri/src/navigation.js";
   const source = existsSync(sourcePath) ? readFileSync(sourcePath, "utf8") : "(() => {})";
   runInNewContext(`${source}("https://chat.example");`, { window, URL, PopStateEvent });
@@ -36,7 +55,18 @@ function harness(origin = "https://chat.example", topFrame = true) {
       if (type === "mouseup" && !event.defaultPrevented) documentTraversals++;
     }
   };
-  return { window, location, history, mouse, get documentTraversals() { return documentTraversals; }, get nativePushes() { return nativePushes; } };
+  return {
+    window,
+    location,
+    history,
+    mouse,
+    get documentTraversals() {
+      return documentTraversals;
+    },
+    get nativePushes() {
+      return nativePushes;
+    }
+  };
 }
 
 describe("desktop page history", () => {
@@ -78,7 +108,12 @@ describe("desktop page history", () => {
     assert.equal(h.location.pathname, "/app/server/s/voice/call-b");
     assert.equal(h.documentTraversals, 0, "history must never replace the live call document");
     assert.equal(h.nativePushes, 0, "native document history must not own desktop routes");
-    assert.deepEqual(viewed, ["/app/server/s/voice/call-a", "/app/server/s/text/a", "/app/server/s/voice/call-a", "/app/server/s/voice/call-b"]);
+    assert.deepEqual(viewed, [
+      "/app/server/s/voice/call-a",
+      "/app/server/s/text/a",
+      "/app/server/s/voice/call-a",
+      "/app/server/s/voice/call-b"
+    ]);
   });
 
   it("discards forward pages after a new navigation and supports programmatic traversal", () => {

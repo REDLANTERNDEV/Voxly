@@ -71,20 +71,23 @@ export function issueRecoveryCode(database: VoxlyDatabase, userId: string, now =
     "update recovery_codes set replaced_at = ? where user_id = ? and used_at is null and replaced_at is null",
     [now.toISOString(), userId]
   );
-  run(
-    database.sqlite,
-    "insert into recovery_codes (id, token_hash, user_id, created_at) values (?, ?, ?, ?)",
-    [crypto.randomUUID(), hashToken(token), userId, now.toISOString()]
-  );
+  run(database.sqlite, "insert into recovery_codes (id, token_hash, user_id, created_at) values (?, ?, ?, ?)", [
+    crypto.randomUUID(),
+    hashToken(token),
+    userId,
+    now.toISOString()
+  ]);
   return formatRecoveryCode(token);
 }
 
 export function hasRecoveryCode(database: VoxlyDatabase, userId: string) {
-  return Boolean(one<{ id: string }>(
-    database.sqlite,
-    "select id from recovery_codes where user_id = ? and used_at is null and replaced_at is null",
-    [userId]
-  ));
+  return Boolean(
+    one<{ id: string }>(
+      database.sqlite,
+      "select id from recovery_codes where user_id = ? and used_at is null and replaced_at is null",
+      [userId]
+    )
+  );
 }
 
 export function registerRecoveryRoutes({ fastify, database, realtime, secureCookies, turnstile }: RouteContext) {
@@ -142,8 +145,9 @@ export function registerRecoveryRoutes({ fastify, database, realtime, secureCook
     // with no expiry bounding how long guessing is worth attempting. If the
     // operator configured a challenge, this is the first place it belongs.
     if (turnstile?.enabled) {
-      const passed = parsed.success
-        && await verifyTurnstile(turnstile.secretKey, parsed.data.turnstileToken, turnstile.expectedHostname);
+      const passed =
+        parsed.success &&
+        (await verifyTurnstile(turnstile.secretKey, parsed.data.turnstileToken, turnstile.expectedHostname));
       if (!passed) return reply.code(403).send({ error: "turnstile_failed" });
     }
     // The code identifies the account by itself. Asking for a nickname as well
@@ -177,7 +181,7 @@ export function registerRecoveryRoutes({ fastify, database, realtime, secureCook
     }
 
     const now = new Date();
-    let token = "";
+    let token: string;
     database.sqlite.exec("begin immediate");
     try {
       const live = one<{ id: string }>(

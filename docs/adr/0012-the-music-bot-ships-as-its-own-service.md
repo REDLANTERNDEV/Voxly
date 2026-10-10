@@ -101,7 +101,7 @@ Alternatives, in the order they were dismissed:
   refreshes at runtime). It needs a writable install directory, which means
   relaxing the read-only root for the one container that runs a program parsing
   a hostile source's output. ADR-0004 and the design already ruled this out;
-  this ADR is where the *filesystem* consequence is recorded.
+  this ADR is where the _filesystem_ consequence is recorded.
 - **An exact apk pin for ffmpeg.** Alpine drops superseded versions from its
   repository within weeks, so the pin converts a routine security rebuild into a
   build that cannot resolve its own package.

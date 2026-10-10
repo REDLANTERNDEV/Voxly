@@ -89,7 +89,13 @@ describe("sessions", () => {
   }
 
   /** A session row placed directly, so its expiry can be anywhere on the clock. */
-  function placeSession(db: VoxlyDatabase, id: string, userId: string, expiresAt: Date, revokedAt: string | null = null) {
+  function placeSession(
+    db: VoxlyDatabase,
+    id: string,
+    userId: string,
+    expiresAt: Date,
+    revokedAt: string | null = null
+  ) {
     const token = `token-${id}`;
     run(
       db.sqlite,
@@ -101,11 +107,7 @@ describe("sessions", () => {
 
   /** Retires one value beyond the grace window and returns the current value. */
   function retireTokenPastGrace(db: VoxlyDatabase, token: string, confirmed = true) {
-    const session = one<{ id: string }>(
-      db.sqlite,
-      "select id from sessions where token_hash = ?",
-      [hashToken(token)]
-    );
+    const session = one<{ id: string }>(db.sqlite, "select id from sessions where token_hash = ?", [hashToken(token)]);
     assert.ok(session);
     const currentToken = `current-${session.id}`;
     run(
@@ -196,12 +198,7 @@ describe("sessions", () => {
       const reusedReply = replyDouble();
       const unknownReply = replyDouble();
 
-      const reused = authenticateHttp(
-        db,
-        requestDouble({ [sessionCookieName]: token }),
-        reusedReply.reply,
-        false
-      );
+      const reused = authenticateHttp(db, requestDouble({ [sessionCookieName]: token }), reusedReply.reply, false);
       const unknown = authenticateHttp(
         db,
         requestDouble({ [sessionCookieName]: "unknown" }),
@@ -301,11 +298,10 @@ describe("sessions", () => {
       );
       assert.ok(seen?.replacement_seen_at);
 
-      run(
-        db.sqlite,
-        "update session_tokens set replacement_seen_at = ? where token_hash = ?",
-        [new Date(Date.now() - 5 * 60 * 1000).toISOString(), hashToken(token)]
-      );
+      run(db.sqlite, "update session_tokens set replacement_seen_at = ? where token_hash = ?", [
+        new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+        hashToken(token)
+      ]);
       assert.equal(authenticateSocket(db, `${sessionCookieName}=${token}`), null);
     });
   });
@@ -398,7 +394,10 @@ describe("sessions", () => {
       const memberToken = createSession(db, "member");
 
       const allowed = replyDouble();
-      assert.equal(requireOwner(db, requestDouble({ [sessionCookieName]: ownerToken }), allowed.reply, true)?.id, "owner");
+      assert.equal(
+        requireOwner(db, requestDouble({ [sessionCookieName]: ownerToken }), allowed.reply, true)?.id,
+        "owner"
+      );
       assert.equal(allowed.sent.statusCode, null);
 
       const forbidden = replyDouble();
@@ -492,10 +491,7 @@ describe("sessions", () => {
     it("prefers the prefixed cookie when a browser is holding both", () => {
       // Mid-upgrade a browser can carry both. The prefixed one wins because it
       // is the one a subdomain could not have written.
-      assert.equal(
-        readSessionToken({ [sessionCookieName]: "old", [hostSessionCookieName]: "new" }),
-        "new"
-      );
+      assert.equal(readSessionToken({ [sessionCookieName]: "old", [hostSessionCookieName]: "new" }), "new");
       assert.equal(readSessionToken({ [sessionCookieName]: "old" }), "old");
       assert.equal(readSessionToken({}), undefined);
     });

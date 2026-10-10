@@ -39,15 +39,15 @@ or other-platform media parity is claimed by a successful compile.
 
 ## Corrections to the original plan
 
-| Original assumption | Revised implementation requirement |
-| --- | --- |
-| WebView2 implies complete Chromium media parity | Verify actual returned tracks and audible playback at a browser peer; computer audio is a blocking gate. |
-| Hidden windows preserve every voice feature | Tauri's portable background-throttling option is unavailable on Windows. Measure hidden, silent, muted, deafened, and reconnecting calls. |
-| Remote capability configuration alone protects custom commands | Generate custom-command ACLs in `build.rs`, check calling window/origin in Rust, and keep remote grants finite and validate the active exact origin/window generation. |
-| Browser profiles are portable across platforms | Use Windows data directories behind an adapter. Implement and validate each other platform's storage and media behavior before enabling it. |
-| Browser approval plus native HTTP collection signs in the webview | Collection must set the cookie inside the selected installation's own webview store; a Rust HTTP client's cookie jar does not accomplish this. |
-| Updates install now and restart later | On Windows, Tauri updater installation exits the application. Confirm and end media before installation, not only before a later restart. |
-| Desktop saves resources by definition | Compare the complete shell/WebView2 process tree with an equivalent dedicated browser run; set budgets from measurements. |
+| Original assumption                                               | Revised implementation requirement                                                                                                                                     |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WebView2 implies complete Chromium media parity                   | Verify actual returned tracks and audible playback at a browser peer; computer audio is a blocking gate.                                                               |
+| Hidden windows preserve every voice feature                       | Tauri's portable background-throttling option is unavailable on Windows. Measure hidden, silent, muted, deafened, and reconnecting calls.                              |
+| Remote capability configuration alone protects custom commands    | Generate custom-command ACLs in `build.rs`, check calling window/origin in Rust, and keep remote grants finite and validate the active exact origin/window generation. |
+| Browser profiles are portable across platforms                    | Use Windows data directories behind an adapter. Implement and validate each other platform's storage and media behavior before enabling it.                            |
+| Browser approval plus native HTTP collection signs in the webview | Collection must set the cookie inside the selected installation's own webview store; a Rust HTTP client's cookie jar does not accomplish this.                         |
+| Updates install now and restart later                             | On Windows, Tauri updater installation exits the application. Confirm and end media before installation, not only before a later restart.                              |
+| Desktop saves resources by definition                             | Compare the complete shell/WebView2 process tree with an equivalent dedicated browser run; set budgets from measurements.                                              |
 
 ## Milestone 1: Windows feasibility
 

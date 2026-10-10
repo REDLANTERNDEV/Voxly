@@ -4,8 +4,8 @@ import { describe, it } from "node:test";
 import { relativeDay } from "../src/components/DeviceSettings.js";
 import { translate, type LanguageCode, type TranslationKey } from "../src/lib/i18n.js";
 
-const translator = (language: LanguageCode) =>
-  (key: TranslationKey, values?: Record<string, string | number>) => translate(language, key, values);
+const translator = (language: LanguageCode) => (key: TranslationKey, values?: Record<string, string | number>) =>
+  translate(language, key, values);
 
 /**
  * The Device list is the detection half of ADR-0014 — linking a second Device

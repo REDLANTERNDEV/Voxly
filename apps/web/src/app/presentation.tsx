@@ -1,13 +1,21 @@
-import type { ChatMessage,PresenceUser,PublicUser,VoiceForceLeaveReason,VoiceMediaState,VoiceModerationState } from "@voxly/shared";
+import { mergeReactionState } from "../lib/chatInteractions.js";
+import type {
+  ChatMessage,
+  PresenceUser,
+  PublicUser,
+  VoiceForceLeaveReason,
+  VoiceMediaState,
+  VoiceModerationState
+} from "@voxly/shared";
 import type { ReactNode } from "react";
-import { CameraIcon,HeadsetIcon,MicIcon,ScreenIcon } from "../components/ui/Icons.js";
-import { type LanguageCode,type TranslationKey,type VoiceErrorKey } from "../lib/i18n.js";
+import { CameraIcon, HeadsetIcon, MicIcon, ScreenIcon } from "../components/ui/Icons.js";
+import { type LanguageCode, type TranslationKey, type VoiceErrorKey } from "../lib/i18n.js";
 import type { ConnectionHealth } from "../lib/useConnectionHealth.js";
 import type { VoiceQuality } from "../lib/useVoiceQuality.js";
-import { sidebarVoiceStatusKeys,type VoiceControls } from "../lib/voiceControls.js";
+import { sidebarVoiceStatusKeys, type VoiceControls } from "../lib/voiceControls.js";
 import type { OwnerInvite } from "../types.js";
-import type { ShellModel,ThemeChoice,Translate } from "./types.js";
-import { timeFormatOptions,type TimeFormatPreference } from "../lib/timeFormat.js";
+import type { ShellModel, ThemeChoice, Translate } from "./types.js";
+import { timeFormatOptions, type TimeFormatPreference } from "../lib/timeFormat.js";
 
 export function activeServerRole(props: Pick<ShellModel, "activeServerId" | "servers">) {
   return props.servers.find((server) => server.id === props.activeServerId)?.role ?? null;
@@ -34,7 +42,9 @@ export function includeCurrentPresence(users: PresenceUser[], user: PublicUser) 
 }
 
 export function upsertPresence(users: PresenceUser[], next: PresenceUser, currentUser: PublicUser) {
-  const withCurrent = users.some((item) => item.userId === currentUser.id) ? users : [presenceFromUser(currentUser), ...users];
+  const withCurrent = users.some((item) => item.userId === currentUser.id)
+    ? users
+    : [presenceFromUser(currentUser), ...users];
   return withCurrent.some((item) => item.userId === next.userId)
     ? withCurrent.map((item) => (item.userId === next.userId ? next : item))
     : [...withCurrent, next];
@@ -72,9 +82,8 @@ export function voiceSignalPresentation(
     return {
       tone: health.quality === "good" ? "good" : health.quality === "poor" ? "poor" : "fair",
       value: health.rttMs === null ? "-- ms" : `${Math.round(health.rttMs)} ms`,
-      label: health.rttMs === null
-        ? t("connection.measuring")
-        : t("connection.latency", { value: Math.round(health.rttMs) })
+      label:
+        health.rttMs === null ? t("connection.measuring") : t("connection.latency", { value: Math.round(health.rttMs) })
     };
   }
 
@@ -92,16 +101,17 @@ export function voiceSignalPresentation(
 
   const tone = quality.grade === "clear" ? "good" : quality.grade === "unstable" ? "fair" : "poor";
   const reading = quality.reading;
-  const transport = quality.transport?.rttMs === null || quality.transport?.rttMs === undefined
-    ? ""
-    : t(
-      quality.transport.candidateType === "relay"
-        ? "voiceQuality.transport.relay"
-        : quality.transport.candidateType
-          ? "voiceQuality.transport.direct"
-          : "voiceQuality.transport.unknown",
-      { value: Math.round(quality.transport.rttMs) }
-    );
+  const transport =
+    quality.transport?.rttMs === null || quality.transport?.rttMs === undefined
+      ? ""
+      : t(
+          quality.transport.candidateType === "relay"
+            ? "voiceQuality.transport.relay"
+            : quality.transport.candidateType
+              ? "voiceQuality.transport.direct"
+              : "voiceQuality.transport.unknown",
+          { value: Math.round(quality.transport.rttMs) }
+        );
   return {
     tone,
     value: t(`voiceQuality.${quality.grade}` as TranslationKey),
@@ -109,13 +119,17 @@ export function voiceSignalPresentation(
     // carries the figures even though the badge itself shows only the verdict.
     label: [
       t(`voiceQuality.symptom.${quality.symptom}` as TranslationKey),
-      reading ? t("voiceQuality.detail", {
-        loss: reading.lossPercent.toFixed(1),
-        gaps: Math.round(reading.concealedMs),
-        buffer: Math.round(reading.bufferMs)
-      }) : "",
+      reading
+        ? t("voiceQuality.detail", {
+            loss: reading.lossPercent.toFixed(1),
+            gaps: Math.round(reading.concealedMs),
+            buffer: Math.round(reading.bufferMs)
+          })
+        : "",
       transport
-    ].filter(Boolean).join(" · ")
+    ]
+      .filter(Boolean)
+      .join(" · ")
   };
 }
 
@@ -139,11 +153,17 @@ export function inviteStatusTitle(status: "ready" | "loading" | "valid" | "dange
   return t("invite.ready");
 }
 
-export function inviteAvailabilityCopy(preview: { expiresAt: string | null; remainingUses: number | null } | null, language: LanguageCode, t: Translate, timeFormat: TimeFormatPreference = "auto") {
+export function inviteAvailabilityCopy(
+  preview: { expiresAt: string | null; remainingUses: number | null } | null,
+  language: LanguageCode,
+  t: Translate,
+  timeFormat: TimeFormatPreference = "auto"
+) {
   if (!preview) return t("invite.checking");
-  const uses = preview.remainingUses === null
-    ? t("invite.unlimitedUses")
-    : t("invite.remainingUses", { count: preview.remainingUses });
+  const uses =
+    preview.remainingUses === null
+      ? t("invite.unlimitedUses")
+      : t("invite.remainingUses", { count: preview.remainingUses });
   return `${uses} · ${formatShortDate(preview.expiresAt, language, t, timeFormat)}`;
 }
 
@@ -165,7 +185,12 @@ export function extractInviteToken(value: string) {
   return slashIndex >= 0 ? trimmed.slice(slashIndex + 1) : trimmed;
 }
 
-export function formatShortDate(value: string | null, language: LanguageCode, t: Translate, timeFormat: TimeFormatPreference = "auto") {
+export function formatShortDate(
+  value: string | null,
+  language: LanguageCode,
+  t: Translate,
+  timeFormat: TimeFormatPreference = "auto"
+) {
   if (!value) return t("common.noExpiry");
   return new Intl.DateTimeFormat(language, {
     month: "short",
@@ -249,7 +274,11 @@ export function voiceDockStatusLabel(
   return parts.join(" · ");
 }
 
-export function voiceStatusItems(media: VoiceMediaState | undefined, moderation: VoiceModerationState | undefined, t: Translate) {
+export function voiceStatusItems(
+  media: VoiceMediaState | undefined,
+  moderation: VoiceModerationState | undefined,
+  t: Translate
+) {
   if (!media) return [];
   const items: Array<{ label: string; icon: ReactNode; tone: "danger" | "live" | "online" | "neutral" }> = [];
   if (moderation?.deafened) {
@@ -276,32 +305,41 @@ export function voiceStatusItems(media: VoiceMediaState | undefined, moderation:
   return items;
 }
 
-export function voiceMembersForRoom(props: Pick<ShellModel,
-  "activeVoiceRoomId" | "controls" | "currentNickname" | "user" |
-  "voiceModeration" | "voiceSnapshots"
->, roomId: string) {
+export function voiceMembersForRoom(
+  props: Pick<
+    ShellModel,
+    "activeVoiceRoomId" | "controls" | "currentNickname" | "user" | "voiceModeration" | "voiceSnapshots"
+  >,
+  roomId: string
+) {
   if (props.voiceSnapshots[roomId]) {
     return props.voiceSnapshots[roomId].members;
   }
   if (props.activeVoiceRoomId === roomId) {
-    return [{
-      user: presenceFromUser(props.user, props.currentNickname),
-      media: {
-        mic: props.controls.mic.on,
-        camera: props.controls.camera.on,
-        screen: props.controls.screenShare.on,
-        deafened: props.controls.deafen.on,
-        speaking: false
-      },
-      moderation: props.voiceModeration
-    }];
+    return [
+      {
+        user: presenceFromUser(props.user, props.currentNickname),
+        media: {
+          mic: props.controls.mic.on,
+          camera: props.controls.camera.on,
+          screen: props.controls.screenShare.on,
+          deafened: props.controls.deafen.on,
+          speaking: false
+        },
+        moderation: props.voiceModeration
+      }
+    ];
   }
   return [];
 }
 
 export function upsertMessage(messages: ChatMessage[], next: ChatMessage) {
   return messages.some((message) => message.id === next.id)
-    ? messages.map((message) => (message.id === next.id ? next : message))
+    ? messages.map((message) =>
+        message.id === next.id
+          ? { ...next, reactionState: mergeReactionState(message.reactionState, next.reactionState) }
+          : message
+      )
     : [...messages, next].slice(-200);
 }
 

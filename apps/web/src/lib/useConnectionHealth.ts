@@ -48,7 +48,11 @@ export function useConnectionHealth(socket: VoxlySocket | null): ConnectionHealt
       probeInFlightRef.current = false;
       probeTimeoutRef.current = null;
       probeIdRef.current += 1;
-      setHealth((current) => ({ ...current, quality: "poor", reason: navigator.onLine ? "server_unreachable" : "browser_offline" }));
+      setHealth((current) => ({
+        ...current,
+        quality: "poor",
+        reason: navigator.onLine ? "server_unreachable" : "browser_offline"
+      }));
     }, probeTimeoutMs);
     socket.emit("connection:probe", () => {
       if (generation !== generationRef.current || probeId !== probeIdRef.current) return;

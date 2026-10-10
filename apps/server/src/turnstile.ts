@@ -22,7 +22,11 @@ export interface TurnstileConfig {
   expectedHostname?: string;
 }
 
-export function resolveTurnstileConfig(input: { siteKey?: string; secretKey?: string; publicUrl?: string }): TurnstileConfig | undefined {
+export function resolveTurnstileConfig(input: {
+  siteKey?: string;
+  secretKey?: string;
+  publicUrl?: string;
+}): TurnstileConfig | undefined {
   const siteKey = input.siteKey?.trim();
   const secretKey = input.secretKey?.trim();
 

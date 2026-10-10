@@ -56,9 +56,8 @@ function functionModules(size: number, alignment: readonly number[]) {
   }
   for (const row of alignment) {
     for (const column of alignment) {
-      const nearFinder = (row <= 8 && column <= 8)
-        || (row <= 8 && column >= size - 9)
-        || (row >= size - 9 && column <= 8);
+      const nearFinder =
+        (row <= 8 && column <= 8) || (row <= 8 && column >= size - 9) || (row >= size - 9 && column <= 8);
       if (!nearFinder) box(row - 2, column - 2, 5, 5);
     }
   }
@@ -94,8 +93,21 @@ function readFormat(matrix: readonly (readonly boolean[])[]) {
   const read = (row: number, column: number) => (matrix[row][column] ? 1 : 0);
 
   const copyOne: readonly (readonly [number, number])[] = [
-    [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 7], [8, 8],
-    [7, 8], [5, 8], [4, 8], [3, 8], [2, 8], [1, 8], [0, 8]
+    [8, 0],
+    [8, 1],
+    [8, 2],
+    [8, 3],
+    [8, 4],
+    [8, 5],
+    [8, 7],
+    [8, 8],
+    [7, 8],
+    [5, 8],
+    [4, 8],
+    [3, 8],
+    [2, 8],
+    [1, 8],
+    [0, 8]
   ];
   const copyTwo: [number, number][] = [];
   for (let index = 0; index < 7; index += 1) copyTwo.push([size - 1 - index, 8]);

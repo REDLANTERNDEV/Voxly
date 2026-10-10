@@ -18,7 +18,10 @@ describe("notification presentation", () => {
   it("keeps modal-open notifications queued and moves them above the dock on phones", () => {
     assert.match(chrome(), /suspended=\{settingsOpen\}/);
     assert.match(css(), /\.notification-region\.is-suspended/);
-    assert.match(css(), /@media \(max-width: 900px\)[\s\S]*\.notification-region\s*\{[\s\S]*bottom: calc\(var\(--dock\)/);
+    assert.match(
+      css(),
+      /@media \(max-width: 900px\)[\s\S]*\.notification-region\s*\{[\s\S]*bottom: calc\(var\(--dock\)/
+    );
   });
 
   it("moves an actionable voice error into dismissible audio settings context", () => {

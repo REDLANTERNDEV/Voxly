@@ -34,7 +34,9 @@ export type NotificationEvent =
 export function notificationReducer(state: AppNotification[], event: NotificationEvent): AppNotification[] {
   if (event.type === "clear") return [];
   if (event.type === "dismiss") {
-    return state.filter((item) => item.id !== event.id || (event.revision !== undefined && item.revision !== event.revision));
+    return state.filter(
+      (item) => item.id !== event.id || (event.revision !== undefined && item.revision !== event.revision)
+    );
   }
   if (event.type === "expire") {
     return state.filter((item) => item.id !== event.id || item.revision !== event.revision);

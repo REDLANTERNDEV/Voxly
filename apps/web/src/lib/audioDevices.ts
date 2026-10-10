@@ -94,10 +94,7 @@ export function audioDeviceDisplayName(device: Pick<MediaDeviceInfo, "label">, f
   return device.label.trim() || `${fallbackLabel} ${index + 1}`;
 }
 
-export function subscribeToAudioDeviceChanges(
-  mediaDevices: AudioDeviceChangeSource,
-  onDeviceChange: () => void
-) {
+export function subscribeToAudioDeviceChanges(mediaDevices: AudioDeviceChangeSource, onDeviceChange: () => void) {
   mediaDevices.addEventListener("devicechange", onDeviceChange);
   return () => mediaDevices.removeEventListener("devicechange", onDeviceChange);
 }
@@ -121,8 +118,10 @@ export function buildMicrophoneConstraints(
 }
 
 export function supportsAudioOutputSelection(targets: AudioOutputTargets) {
-  return typeof targets.audioContext?.setSinkId === "function"
-    || targets.mediaElements?.some((element) => typeof element.setSinkId === "function") === true;
+  return (
+    typeof targets.audioContext?.setSinkId === "function" ||
+    targets.mediaElements?.some((element) => typeof element.setSinkId === "function") === true
+  );
 }
 
 export async function applyAudioOutputDevice(
@@ -139,9 +138,10 @@ export async function applyAudioOutputDevice(
     }
   }
 
-  const elements = targets.mediaElements?.filter(
-    (element): element is Required<Pick<SinkTarget, "setSinkId">> => typeof element.setSinkId === "function"
-  ) ?? [];
+  const elements =
+    targets.mediaElements?.filter(
+      (element): element is Required<Pick<SinkTarget, "setSinkId">> => typeof element.setSinkId === "function"
+    ) ?? [];
   if (elements.length === 0) {
     if (audioContextError) throw audioContextError;
     return "unsupported";

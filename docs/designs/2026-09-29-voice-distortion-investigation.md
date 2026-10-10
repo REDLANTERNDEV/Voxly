@@ -65,11 +65,11 @@ recovery rule in `apps/web/src/lib/AGENTS.md`.
 Executable probes against the compiled production helper, for one second of
 emitted audio and 5,760 corrected samples:
 
-| Input counter | Result | Correction | Eligible while speaking |
-| --- | --- | --- | --- |
-| `removedSamplesForAcceleration` | `unstable`, `speedUp` | 120 ms/s | No |
-| `insertedSamplesForDeceleration` | `unstable`, `slowDown` | 120 ms/s | No |
-| `concealedSamples` | `breaking`, `jitter` | 120 ms/s | Yes |
+| Input counter                    | Result                 | Correction | Eligible while speaking |
+| -------------------------------- | ---------------------- | ---------- | ----------------------- |
+| `removedSamplesForAcceleration`  | `unstable`, `speedUp`  | 120 ms/s   | No                      |
+| `insertedSamplesForDeceleration` | `unstable`, `slowDown` | 120 ms/s   | No                      |
+| `concealedSamples`               | `breaking`, `jitter`   | 120 ms/s   | Yes                     |
 
 The [WebRTC stats specification](https://www.w3.org/TR/webrtc-stats/#dom-rtcinboundrtpstreamstats-removedsamplesforacceleration)
 defines these as playback speed-correction counters. These synthetic inputs

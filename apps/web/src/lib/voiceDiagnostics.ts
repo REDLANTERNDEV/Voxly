@@ -1,10 +1,24 @@
 /** Bounded, memory-only measurements. Never store audio, SDP, ICE addresses or identities. */
 const audioFields = [
-  "packetsReceived", "packetsSent", "packetsLost", "bytesReceived", "bytesSent", "jitter",
-  "concealedSamples", "silentConcealedSamples", "concealmentEvents", "totalSamplesReceived",
-  "jitterBufferDelay", "jitterBufferEmittedCount", "jitterBufferTargetDelay",
-  "insertedSamplesForDeceleration", "removedSamplesForAcceleration",
-  "audioLevel", "totalAudioEnergy", "totalSamplesDuration", "roundTripTime"
+  "packetsReceived",
+  "packetsSent",
+  "packetsLost",
+  "bytesReceived",
+  "bytesSent",
+  "jitter",
+  "concealedSamples",
+  "silentConcealedSamples",
+  "concealmentEvents",
+  "totalSamplesReceived",
+  "jitterBufferDelay",
+  "jitterBufferEmittedCount",
+  "jitterBufferTargetDelay",
+  "insertedSamplesForDeceleration",
+  "removedSamplesForAcceleration",
+  "audioLevel",
+  "totalAudioEnergy",
+  "totalSamplesDuration",
+  "roundTripTime"
 ] as const;
 
 type Measurement = { atMs: number; event: string; peer?: number; data: unknown };
@@ -12,8 +26,10 @@ type Call = { startedAt: string; start: number; startup: Measurement[]; recent: 
 
 export function safeAudioStats(entries: readonly Record<string, unknown>[]) {
   const audioTypes = new Set(["inbound-rtp", "outbound-rtp", "remote-inbound-rtp", "media-source"]);
-  const audio = entries.filter(entry => audioTypes.has(String(entry.type)) && (entry.kind === "audio" || entry.mediaType === "audio"));
-  return audio.map(entry => {
+  const audio = entries.filter(
+    (entry) => audioTypes.has(String(entry.type)) && (entry.kind === "audio" || entry.mediaType === "audio")
+  );
+  return audio.map((entry) => {
     const sample: Record<string, number | string> = { type: String(entry.type) };
     for (const field of audioFields) {
       const value = entry[field];
@@ -68,15 +84,23 @@ export class VoiceDiagnostics {
   }
 
   report() {
-    return { version: 1, calls: this.calls.map(call => ({ startedAt: call.startedAt, samples: [...call.startup, ...call.recent] })) };
+    return {
+      version: 1,
+      calls: this.calls.map((call) => ({ startedAt: call.startedAt, samples: [...call.startup, ...call.recent] }))
+    };
   }
 }
 
 export const voiceDiagnostics = new VoiceDiagnostics();
 
-declare global { interface Window { __VOXLY_DESKTOP_DIAGNOSTICS_V1__?: {
-  version: 1; save(report: string): Promise<"saved" | "cancelled">;
-} } }
+declare global {
+  interface Window {
+    __VOXLY_DESKTOP_DIAGNOSTICS_V1__?: {
+      version: 1;
+      save(report: string): Promise<"saved" | "cancelled">;
+    };
+  }
+}
 
 export async function downloadVoiceDiagnostics() {
   const report = JSON.stringify(voiceDiagnostics.report(), null, 2);
@@ -100,11 +124,33 @@ export async function downloadVoiceDiagnostics() {
 
 /** Explicit allowlist: no SDP, track/stream identity, candidate address, or content. */
 export function safeScreenStats(entries: readonly Record<string, unknown>[]) {
-  const fields = ["frameWidth", "frameHeight", "framesPerSecond", "framesEncoded", "framesDecoded", "bytesSent", "bytesReceived", "packetsSent", "packetsReceived", "packetsLost", "roundTripTime", "fractionLost", "timestamp"];
-  return entries.filter(entry => ["inbound-rtp", "outbound-rtp", "remote-inbound-rtp"].includes(String(entry.type)) && (entry.kind === "video" || entry.mediaType === "video")).map(entry => {
-    const sample: Record<string, number | string> = { type: String(entry.type) };
-    for (const field of fields) if (typeof entry[field] === "number" && Number.isFinite(entry[field])) sample[field] = entry[field] as number;
-    if (["none", "cpu", "bandwidth", "other"].includes(String(entry.qualityLimitationReason))) sample.qualityLimitationReason = String(entry.qualityLimitationReason);
-    return sample;
-  });
+  const fields = [
+    "frameWidth",
+    "frameHeight",
+    "framesPerSecond",
+    "framesEncoded",
+    "framesDecoded",
+    "bytesSent",
+    "bytesReceived",
+    "packetsSent",
+    "packetsReceived",
+    "packetsLost",
+    "roundTripTime",
+    "fractionLost",
+    "timestamp"
+  ];
+  return entries
+    .filter(
+      (entry) =>
+        ["inbound-rtp", "outbound-rtp", "remote-inbound-rtp"].includes(String(entry.type)) &&
+        (entry.kind === "video" || entry.mediaType === "video")
+    )
+    .map((entry) => {
+      const sample: Record<string, number | string> = { type: String(entry.type) };
+      for (const field of fields)
+        if (typeof entry[field] === "number" && Number.isFinite(entry[field])) sample[field] = entry[field] as number;
+      if (["none", "cpu", "bandwidth", "other"].includes(String(entry.qualityLimitationReason)))
+        sample.qualityLimitationReason = String(entry.qualityLimitationReason);
+      return sample;
+    });
 }

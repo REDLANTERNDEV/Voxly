@@ -13,7 +13,7 @@ again.
 
 The `sessions` table is already many-rows-per-user and nothing enforces one
 device. Multi-device works fine the moment a device holds a session. The gap is
-narrower than it looks: nothing can *mint* a session for an existing account on
+narrower than it looks: nothing can _mint_ a session for an existing account on
 a device that has no cookie. `invites.ts` does `existingUser ?? createUser(...)`,
 so redeeming an invite on a cookieless phone produces a different person rather
 than a second device for the same one.
@@ -49,8 +49,8 @@ they revoke.
    owner claims are. It is **single-use** and **expires in 90 seconds**.
 3. The new device posts the code to `POST /api/devices/links/redeem` and is told
    `pending` — not given a session.
-4. The originating device shows what is asking: *"A device wants to sign in as
-   you"*, with the coarse device description and a confirmation number the new
+4. The originating device shows what is asking: _"A device wants to sign in as
+   you"_, with the coarse device description and a confirmation number the new
    device is displaying. The member approves or refuses.
 5. Only on approval is a session minted and the cookie set. The new device
    polls for the outcome, since it has no identity yet and cannot hold an
@@ -136,7 +136,7 @@ was reported.
 - Recovery necessarily signs the member out everywhere. Somebody who reaches for
   it when they meant to link a device will be surprised. The copy has to make
   the cost plain before the code is entered, not after.
-- A member who loses their device *and* their recovery code has no self-serve
+- A member who loses their device _and_ their recovery code has no self-serve
   way back. That is deliberate — the alternative is a path that does not require
   holding anything, and no such path is safe here. The owner can still ban the
   lost account and invite them fresh, and they lose their history.
@@ -149,12 +149,12 @@ was reported.
   that reachable.** Voice membership is `Map<roomId, Map<userId, …>>` — one slot
   per account — so a second Device joining the same room overwrites the first
   member state while the first Device keeps its peer connections. Worse,
-  `voice.ts` routes every offer, answer and ICE candidate to *all* of a user's
+  `voice.ts` routes every offer, answer and ICE candidate to _all_ of a user's
   sockets, so two Devices signed in as one account would both answer every
   negotiation. Voice must gain an explicit rule before linking ships; see the
   Devices tickets.
 - Session tokens are still worth 180 days each, which is the credential a member
   carries all the time and the one most worth stealing. Linking Devices makes
   that worse by multiplying how many exist. [ADR-0015](0015-session-tokens-rotate-and-report-their-own-theft.md)
-  answers it, and deliberately ships *after* this one — rotation needs a
+  answers it, and deliberately ships _after_ this one — rotation needs a
   self-serve way back in before it can be allowed to sign anybody out.

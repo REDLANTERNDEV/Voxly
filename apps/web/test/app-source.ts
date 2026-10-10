@@ -95,13 +95,16 @@ function declarationSource(path: string, name: string) {
   if (matchIndex < 0) throw new Error(`Missing ${name} in ${path}`);
   const start = starts[matchIndex].index ?? 0;
   const end = starts[matchIndex + 1]?.index ?? source.length;
-  return source.slice(start, end)
-    // A doc comment introducing the next declaration sits before its `function`
-    // keyword, so the naive slice swallows it and moves the boundary these
-    // extracts are matched against.
-    .replace(/\n\/\*\*[\s\S]*?\*\/\s*$/, "")
-    .replace(/^(?:export )/m, "")
-    .trim();
+  return (
+    source
+      .slice(start, end)
+      // A doc comment introducing the next declaration sits before its `function`
+      // keyword, so the naive slice swallows it and moves the boundary these
+      // extracts are matched against.
+      .replace(/\n\/\*\*[\s\S]*?\*\/\s*$/, "")
+      .replace(/^(?:export )/m, "")
+      .trim()
+  );
 }
 
 export function readAppSource() {

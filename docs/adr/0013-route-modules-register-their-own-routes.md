@@ -119,7 +119,7 @@ would have to share `createServerRoom` through a third, and would separate the
 halves of each of those pairs.
 
 `rooms.ts` stays exactly as it is: a leaf owning the row shape and the lookup
-that `voice.ts` and `music.ts` also authorize against. The room *routes* could
+that `voice.ts` and `music.ts` also authorize against. The room _routes_ could
 not go there — they need `io` and the realtime handles, which would buy a cycle
 back through `voice.ts` — and the lookup could not come here, for the same
 reason in reverse. The split is between what everyone may read and what only the

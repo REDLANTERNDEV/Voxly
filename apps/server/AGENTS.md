@@ -124,7 +124,7 @@ web serving, and owner recovery CLIs.
   reaches the bot, and nothing about what the bot then does.
 - `src/rooms.ts` owns the room row shape and the lookup both routes and voice
   authorize against. It stays a leaf that reaches for nothing live, so
-  `servers.ts`, `voice.ts` and `music.ts` may all import it. Room *routes*
+  `servers.ts`, `voice.ts` and `music.ts` may all import it. Room _routes_
   belong in `servers.ts`; they need `io` and the realtime handles, and putting
   them here would buy a cycle back through `voice.ts`.
 - `src/socket.ts` owns the plumbing every socket handler shares: the throwing
@@ -279,7 +279,7 @@ queries across endpoints.
   active owner may update an ordinary member; owner/self targets are rejected.
   Neither kick, ban, rejoin, channel movement, nor restart clears these flags.
 - The member directory is available to active members and exposes only active
-  users' `userId`, `nickname`, `role`, and `canInvite`. Omit banned/removed
+  users' `userId`, `nickname`, `mentionCode`, `role`, `canInvite`, and Bot flag. Omit banned/removed
   memberships and all moderation/session fields.
 - Membership changes emit the existing directory/access events to the correct
   server rooms. Do not broadcast server-scoped data globally.
@@ -314,7 +314,7 @@ credential there first.
   `is_bot = 1` and an ordinary active `server_members` row with the `member`
   role. Server creation makes one, and startup seeds one into every server that
   has none — additively, so a deployment upgrading into the feature gets them.
-- Seeding is keyed on whether the server has *any* bot membership, banned and
+- Seeding is keyed on whether the server has _any_ bot membership, banned and
   removed ones included. That keeps it safe on every restart and stops an
   operator who removed one by hand from being handed it back.
 - Give a bot account a UUID. Every server-scoped moderation route validates
@@ -351,7 +351,7 @@ apply to it unchanged.
   and media instance must match. Another Device on the same Account is an
   observer until it joins. Apply this check to music, media updates, visual
   subscriptions, direct snapshot detail, and RTC signaling.
-- `music:control` is authorized against *live voice membership*, not server
+- `music:control` is authorized against _live voice membership_, not server
   membership. Being in the room is the permission — it is what makes it the
   asker's room to change — and the answer comes from `VoiceRealtime` rather than
   from a second copy of the map.
@@ -390,6 +390,24 @@ before changing it.
   server-side copy would be a second Queue that can differ from the Queue.
 
 ## Messages and Rooms
+
+- Mentions carry validated UTF-16 ranges and explicit same-Server identities.
+  Only active human members may be newly targeted. Freeze collective recipients
+  from active Memberships and live connections when the label is introduced;
+  preserve retained labels' recipients on edit and never replay notifications.
+  Resolve names on read and anonymize generated labels for Deleted accounts.
+- Mention codes are persisted once per Membership with a Server-scoped unique
+  index and collision retries. Backfill missing codes without changing existing
+  ones; reactivation and nickname updates preserve them.
+- Message reactions use the shared Unicode allowlist and kind ceiling. Admission
+  and insertion share one transaction; an existing emoji group stays joinable
+  at the ceiling. Own add/remove is idempotent, while clearing a group or all
+  reactions requires active Server ownership. Persist versioned full snapshots
+  before publishing them only to the text room.
+- Pins require active Server ownership to write and active Membership to read.
+  Resolve pins independently of recent history; context reads deliver the target
+  plus up to 50 live messages on either side, without a read watermark. Delete
+  dependent reactions and pins with their message and invalidate open pin lists.
 
 - Persist messages only in text rooms and enforce server membership before
   history, create, edit, or delete operations.
@@ -491,7 +509,7 @@ Turnstile and analytics are operator options. Both are resolved at startup from
 environment variables, both are published to the browser through `/api/config`,
 and both need the response policy widened for the origins they use.
 
-- Resolve a provider into *both* of its origins: the host serving its script and
+- Resolve a provider into _both_ of its origins: the host serving its script and
   the host receiving its data. These coincide often enough to look like one
   field, and they are not the same thing. `src/analytics.ts` records where each
   provider reports; a provider added without that entry produces a deployment

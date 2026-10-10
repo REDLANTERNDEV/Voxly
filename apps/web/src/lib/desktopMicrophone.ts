@@ -9,9 +9,12 @@ export interface DesktopMicrophoneState {
 export function validDesktopMicrophoneState(value: unknown): value is DesktopMicrophoneState {
   if (!value || typeof value !== "object") return false;
   const state = value as DesktopMicrophoneState;
-  return ["openMic", "pushToTalk", "pushToMute"].includes(state.mode)
-    && typeof state.talkHeld === "boolean" && typeof state.muteHeld === "boolean"
-    && (state.talkReleasing === undefined || typeof state.talkReleasing === "boolean");
+  return (
+    ["openMic", "pushToTalk", "pushToMute"].includes(state.mode) &&
+    typeof state.talkHeld === "boolean" &&
+    typeof state.muteHeld === "boolean" &&
+    (state.talkReleasing === undefined || typeof state.talkReleasing === "boolean")
+  );
 }
 
 /** A publication gate, separate from self mute and microphone capture. */
@@ -24,7 +27,9 @@ export class DesktopMicrophoneGate {
   private talkTailAllowed = false;
   private tracks = new Map<Pick<MediaStreamTrack, "enabled" | "readyState">, boolean>();
 
-  constructor(mode: DesktopMicrophoneMode = "openMic") { this.mode = mode; }
+  constructor(mode: DesktopMicrophoneMode = "openMic") {
+    this.mode = mode;
+  }
 
   update(state: DesktopMicrophoneState, allowed: boolean) {
     if (state.mode !== this.mode) {
@@ -35,8 +40,8 @@ export class DesktopMicrophoneGate {
     else if (!allowed) this.blockedTalk = true;
     this.observedTalkHeld = state.talkHeld;
     // A release tail can extend an existing grant, never create a new one.
-    this.talkTailAllowed = state.talkReleasing === true && allowed && !this.blockedTalk
-      && (this.talkHeld || this.talkTailAllowed);
+    this.talkTailAllowed =
+      state.talkReleasing === true && allowed && !this.blockedTalk && (this.talkHeld || this.talkTailAllowed);
     this.talkHeld = state.talkHeld && allowed && !this.blockedTalk;
     this.muteHeld = state.muteHeld;
     for (const [track, requested] of this.tracks) {
@@ -58,11 +63,17 @@ export class DesktopMicrophoneGate {
     return true;
   }
 
-  usesShortcut() { return this.mode !== "openMic"; }
+  usesShortcut() {
+    return this.mode !== "openMic";
+  }
 
   apply(tracks: ReadonlyArray<Pick<MediaStreamTrack, "enabled" | "readyState">>, requested: boolean) {
     for (const track of tracks) {
-      if (track.readyState === "ended") { this.tracks.delete(track); track.enabled = false; continue; }
+      if (track.readyState === "ended") {
+        this.tracks.delete(track);
+        track.enabled = false;
+        continue;
+      }
       this.tracks.set(track, requested);
       track.enabled = requested && this.allows() && track.readyState === "live";
     }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { existsSync,readFileSync } from "node:fs";
-import { describe,it } from "node:test";
+import { existsSync, readFileSync } from "node:fs";
+import { describe, it } from "node:test";
 
 describe("browser compatibility gate", () => {
   it("blocks Steam GameOverlay before mounting the application", () => {
@@ -14,7 +14,10 @@ describe("browser compatibility gate", () => {
     assert.match(gate, /isSteamGameOverlay\(userAgent\)/);
     assert.match(gate, /<SteamOverlayWarning/);
     assert.match(gate, /return children/);
-    assert.match(main, /<BrowserCompatibilityGate userAgent=\{navigator\.userAgent\}>[\s\S]*?<App \/>[\s\S]*?<\/BrowserCompatibilityGate>/);
+    assert.match(
+      main,
+      /<BrowserCompatibilityGate userAgent=\{navigator\.userAgent\}>[\s\S]*?<App \/>[\s\S]*?<\/BrowserCompatibilityGate>/
+    );
   });
 
   it("renders a localized non-dismissible warning", () => {

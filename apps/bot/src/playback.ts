@@ -377,11 +377,7 @@ function advancePast(
   }
   return {
     state: { entries, playing: state.playing, log, awaitingReturn: state.awaitingReturn },
-    effects: [
-      { kind: "load", entry: next },
-      ...(state.playing ? [{ kind: "play" } as const] : []),
-      { kind: "publish" }
-    ]
+    effects: [{ kind: "load", entry: next }, ...(state.playing ? [{ kind: "play" } as const] : []), { kind: "publish" }]
   };
 }
 

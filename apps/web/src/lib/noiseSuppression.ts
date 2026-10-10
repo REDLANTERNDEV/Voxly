@@ -98,18 +98,14 @@ export async function openMicrophoneCapture(
   { release, mediaDevices = navigator.mediaDevices }: MicrophoneCaptureOpenOptions = {}
 ) {
   release?.();
-  return mediaDevices.getUserMedia(
-    buildMicrophoneConstraints(settings.deviceId, microphoneProcessingConstraints())
-  );
+  return mediaDevices.getUserMedia(buildMicrophoneConstraints(settings.deviceId, microphoneProcessingConstraints()));
 }
 
 // Support now means "can we build the suppression stage", not "does this
 // browser advertise the capture constraint". The constraint is requested
 // unconditionally and its presence says nothing about whether the preference
 // can be honoured; a Web Audio graph is what actually carries it.
-export function supportsNoiseSuppression(
-  audioContextAvailable: boolean
-) {
+export function supportsNoiseSuppression(audioContextAvailable: boolean) {
   return audioContextAvailable === true;
 }
 

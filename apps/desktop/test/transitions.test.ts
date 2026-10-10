@@ -4,7 +4,18 @@ import { describe, it } from "node:test";
 import { runInNewContext } from "node:vm";
 import { createQuitRequest, needsConfirmation, performTransition, type CallState } from "../src/transitions.js";
 
-const idle: CallState = { version: 1, inVoice: false, microphone: false, camera: false, screen: false, computerAudio: false, capture: false, pendingJoin: false, pendingCapture: false, microphoneTest: false };
+const idle: CallState = {
+  version: 1,
+  inVoice: false,
+  microphone: false,
+  camera: false,
+  screen: false,
+  computerAudio: false,
+  capture: false,
+  pendingJoin: false,
+  pendingCapture: false,
+  microphoneTest: false
+};
 
 describe("quit request coalescing", () => {
   it("shares one confirmation and accepts a fresh request after cancellation", async () => {
@@ -12,7 +23,9 @@ describe("quit request coalescing", () => {
     let cancel!: () => void;
     const quit = createQuitRequest(async () => {
       prompts++;
-      await new Promise<void>((resolve) => { cancel = resolve; });
+      await new Promise<void>((resolve) => {
+        cancel = resolve;
+      });
     });
     const first = quit();
     assert.equal(quit(), first);
@@ -29,7 +42,9 @@ describe("quit request coalescing", () => {
 
   it("releases a failed quit request for retry", async () => {
     let attempts = 0;
-    const quit = createQuitRequest(async () => { if (++attempts === 1) throw Error("window_failed"); });
+    const quit = createQuitRequest(async () => {
+      if (++attempts === 1) throw Error("window_failed");
+    });
     await assert.rejects(quit(), /window_failed/);
     await quit();
     assert.equal(attempts, 2);
@@ -49,55 +64,137 @@ describe("call-aware shell transitions", () => {
   it("cancellation leaves all capture and the installation intact", async () => {
     let stopped = false;
     let acted = false;
-    assert.equal(await performTransition({ active: true, report: async () => ({ ...idle, pendingJoin: true }), localMedia: () => false,
-      confirm: async () => false, stop: () => { stopped = true; }, action: async () => { acted = true; } }), undefined);
+    assert.equal(
+      await performTransition({
+        active: true,
+        report: async () => ({ ...idle, pendingJoin: true }),
+        localMedia: () => false,
+        confirm: async () => false,
+        stop: () => {
+          stopped = true;
+        },
+        action: async () => {
+          acted = true;
+        }
+      }),
+      undefined
+    );
     assert.equal(stopped, false);
     assert.equal(acted, false);
   });
   it("fresh idle state skips confirmation; native can detect a join during health check", async () => {
     const events: string[] = [];
-    const result = await performTransition({ active: true, report: async () => idle, localMedia: () => false,
-      confirm: async (report) => { assert.equal(report, null); events.push("confirm"); return true; },
-      stop: () => events.push("stop"), action: async (confirmed) => {
+    const result = await performTransition({
+      active: true,
+      report: async () => idle,
+      localMedia: () => false,
+      confirm: async (report) => {
+        assert.equal(report, null);
+        events.push("confirm");
+        return true;
+      },
+      stop: () => events.push("stop"),
+      action: async (confirmed) => {
         events.push(`action:${confirmed}`);
         if (!confirmed) throw "confirmation_required";
         return "replaced";
-      } });
+      }
+    });
     assert.equal(result, "replaced");
     assert.deepEqual(events, ["stop", "action:false", "confirm", "stop", "action:true"]);
   });
   it("failed health checks do not retry or prompt as a confirmation error", async () => {
-    await assert.rejects(performTransition({ active: true, report: async () => idle, localMedia: () => false,
-      confirm: async () => { assert.fail("unexpected confirmation"); }, stop: () => {},
-      action: async () => { throw new Error("unreachable"); } }), /unreachable/);
+    await assert.rejects(
+      performTransition({
+        active: true,
+        report: async () => idle,
+        localMedia: () => false,
+        confirm: async () => {
+          assert.fail("unexpected confirmation");
+        },
+        stop: () => {},
+        action: async () => {
+          throw new Error("unreachable");
+        }
+      }),
+      /unreachable/
+    );
   });
   it("failed state transport prompts conservatively and cancellation prevents native work", async () => {
     let stopped = false;
-    await performTransition({ active: true, report: async () => { throw new Error("bridge missing"); }, localMedia: () => false,
-      confirm: async (report) => { assert.equal(report, null); return false; }, stop: () => { stopped = true; },
-      action: async () => { assert.fail("cancelled"); } });
+    await performTransition({
+      active: true,
+      report: async () => {
+        throw new Error("bridge missing");
+      },
+      localMedia: () => false,
+      confirm: async (report) => {
+        assert.equal(report, null);
+        return false;
+      },
+      stop: () => {
+        stopped = true;
+      },
+      action: async () => {
+        assert.fail("cancelled");
+      }
+    });
     assert.equal(stopped, false);
   });
   it("cancelling after native detects new media preserves the installation", async () => {
     let actions = 0;
-    await performTransition({ active: true, report: async () => idle, localMedia: () => false,
-      confirm: async () => false, stop: () => {}, action: async () => { actions++; throw "confirmation_required"; } });
+    await performTransition({
+      active: true,
+      report: async () => idle,
+      localMedia: () => false,
+      confirm: async () => false,
+      stop: () => {},
+      action: async () => {
+        actions++;
+        throw "confirmation_required";
+      }
+    });
     assert.equal(actions, 1);
   });
   it("confirmed transitions end chooser capture before awaiting native work", async () => {
     let stopped = false;
-    await performTransition({ active: false, report: async () => { assert.fail("no installation"); }, localMedia: () => true,
-      confirm: async () => true, stop: () => { stopped = true; }, action: async (confirmed) => {
-        assert.equal(confirmed, true); assert.equal(stopped, true);
-      } });
+    await performTransition({
+      active: false,
+      report: async () => {
+        assert.fail("no installation");
+      },
+      localMedia: () => true,
+      confirm: async () => true,
+      stop: () => {
+        stopped = true;
+      },
+      action: async (confirmed) => {
+        assert.equal(confirmed, true);
+        assert.equal(stopped, true);
+      }
+    });
   });
 });
 
-interface StateBridge { version: number; subscribe(provider: () => unknown): () => void; request(id: number): void }
+interface StateBridge {
+  version: number;
+  subscribe(provider: () => unknown): () => void;
+  request(id: number): void;
+}
 const bootstrap = readFileSync("src-tauri/src/call-state.js", "utf8");
 function boot(origin = "https://chat.example", top = true) {
   const calls: { command: string; args: { request: number; report: CallState } }[] = [];
-  const window = { location: { origin }, top: null as unknown, __TAURI_INTERNALS__: { invoke: (command: string, args: { request: number; report: CallState }) => { calls.push({ command, args }); return Promise.resolve(); } }, __VOXLY_DESKTOP_STATE_V1__: undefined as StateBridge | undefined };
+  const window = {
+    location: { origin },
+    top: null as unknown,
+    __TAURI_INTERNALS__: {
+      invoke: (command: string, args: { request: number; report: CallState }) => {
+        calls.push({ command, args });
+        return Promise.resolve();
+      }
+    },
+    __VOXLY_DESKTOP_STATE_V1__: undefined as StateBridge | undefined
+  };
   window.top = top ? window : {};
   runInNewContext(`${bootstrap}("https://chat.example");`, { window });
   return { window, calls };

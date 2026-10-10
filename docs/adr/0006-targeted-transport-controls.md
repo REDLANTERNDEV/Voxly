@@ -17,15 +17,15 @@ The Queue arrived in ticket 08 with one thing anyone could do to it: add to the
 end. Everything else the design promises — pausing, resuming, skipping, taking a
 Track back out — changes a list that five people are looking at, from five
 browsers, at the same time. Two of those actions are destructive, and the design
-names the case it cares about: *"two people pressing skip at the same moment to
-skip only one Track, so that a coincidence does not cost us a song."*
+names the case it cares about: _"two people pressing skip at the same moment to
+skip only one Track, so that a coincidence does not cost us a song."_
 
 That is a concurrency problem with an obvious wrong answer. The bot already
 serialises everything through one promise chain, so the two skips do not
 interleave — but serialising them does not help, because both of them are
 correct requests that arrive one after the other and both of them say "advance".
 A lock does not help either: neither request is waiting on the other. What is
-actually wrong is the *instruction*. "Advance" is a request about a position,
+actually wrong is the _instruction_. "Advance" is a request about a position,
 and a position means something different by the time the second one lands.
 
 Three further things had to be settled with it, and each is expensive to change
@@ -121,7 +121,7 @@ where it explains something and where the control it names is on offer.
 ### 4. Advancing keeps the Queue's playing state
 
 Skipping or removing the Track at the head of a **paused** Queue advances it and
-leaves it paused. Skipping says *which Track*, not *whether to play*, and
+leaves it paused. Skipping says _which Track_, not _whether to play_, and
 somebody who paused the music to talk should not have the next Track start under
 them.
 
@@ -139,7 +139,7 @@ the grounds that a Play button which did nothing would look broken. The Queue
 took that argument away: what follows a Track is the Queue's answer, the Queue
 loads whatever it wants played, and the button is now disabled when there is
 nothing queued. A `play` for audio the Queue did not just load can only be a
-mistake somewhere above — and replaying on one puts the *wrong Track* in front of
+mistake somewhere above — and replaying on one puts the _wrong Track_ in front of
 the room, which is a worse failure than silence and a far harder one to
 recognise. Loading a Track still clears it, so every real advance still plays.
 
@@ -168,7 +168,7 @@ Whether a Track boundary is audible as silence, and how long for, is still
 unmeasured — `apps/bot/AGENTS.md` carries that with its reasoning, and a skip is
 now the easiest way to produce one on demand. A Track that fails mid-playback is
 ticket 13 and will be another event through the same targeted path. The Set log
-is ticket 11, and it is what will let the room see *that* somebody skipped
+is ticket 11, and it is what will let the room see _that_ somebody skipped
 rather than only hearing the result.
 
 **Both arrived.** The Set log is ADR-0008. A failed Track is ADR-0011, and it is

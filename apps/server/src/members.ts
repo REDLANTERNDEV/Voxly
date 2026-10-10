@@ -12,7 +12,7 @@ import type { FastifyReply } from "fastify";
 import type { DatabaseSync } from "node:sqlite";
 import type { PresenceStatus, PresenceUser, UserRole } from "@voxly/shared";
 import { baselineMembershipReadState } from "./readState.js";
-import { all, one, run, type VoxlyDatabase } from "./db/database.js";
+import { all, one, run, assignMentionCode, type VoxlyDatabase } from "./db/database.js";
 
 export type ServerMemberRow = {
   server_id: string;
@@ -41,6 +41,7 @@ export function activateServerMembership(
     [serverId, userId, role, joinedAt]
   );
   if (!previous || previous.removed_at) baselineMembershipReadState(database.sqlite, serverId, userId);
+  assignMentionCode(database.sqlite, serverId, userId);
 }
 
 export function serverMembership(sqlite: DatabaseSync, serverId: string, userId: string) {
@@ -144,6 +145,7 @@ interface PresenceUserRow extends Record<string, unknown>, Omit<PresenceUser, "c
 }
 
 const presenceColumns = `select users.id as userId,
+      server_members.mention_code as mentionCode,
       coalesce(server_members.nickname, users.nickname) as nickname,
       server_members.role,
       server_members.can_invite as canInvite,
@@ -152,6 +154,7 @@ const presenceColumns = `select users.id as userId,
 function toPresenceUser(row: PresenceUserRow): PresenceUser {
   return {
     userId: row.userId,
+    mentionCode: row.mentionCode,
     nickname: row.nickname,
     role: row.role,
     canInvite: Boolean(row.canInvite),
@@ -159,11 +162,7 @@ function toPresenceUser(row: PresenceUserRow): PresenceUser {
   };
 }
 
-export function serverPresenceUser(
-  sqlite: DatabaseSync,
-  serverId: string,
-  userId: string
-): PresenceUser | null {
+export function serverPresenceUser(sqlite: DatabaseSync, serverId: string, userId: string): PresenceUser | null {
   const row = one<PresenceUserRow>(
     sqlite,
     `${presenceColumns}
@@ -195,11 +194,7 @@ export function serverPresenceUserIncludingBanned(
 }
 
 /** Active members of a server, restricted to the given user ids. */
-function activePresenceUsers(
-  sqlite: DatabaseSync,
-  serverId: string,
-  userIds: Iterable<string>
-): PresenceUser[] {
+function activePresenceUsers(sqlite: DatabaseSync, serverId: string, userIds: Iterable<string>): PresenceUser[] {
   const activeIds = new Set(userIds);
   if (activeIds.size === 0) return [];
   return all<PresenceUserRow>(
@@ -212,7 +207,9 @@ function activePresenceUsers(
        and server_members.removed_at is null
      order by nickname asc`,
     [serverId]
-  ).filter((user) => activeIds.has(user.userId)).map(toPresenceUser);
+  )
+    .filter((user) => activeIds.has(user.userId))
+    .map(toPresenceUser);
 }
 
 /**
@@ -228,13 +225,11 @@ export function presenceStatusOf(online: OnlineRegistry, userId: string): Presen
   return entry.idleSockets.size >= entry.sockets.size ? "idle" : "online";
 }
 
-export function serverPresenceUsers(
-  sqlite: DatabaseSync,
-  online: OnlineRegistry,
-  serverId: string
-) {
-  return activePresenceUsers(sqlite, serverId, online.keys())
-    .map((presence) => ({ ...presence, status: presenceStatusOf(online, presence.userId) }));
+export function serverPresenceUsers(sqlite: DatabaseSync, online: OnlineRegistry, serverId: string) {
+  return activePresenceUsers(sqlite, serverId, online.keys()).map((presence) => ({
+    ...presence,
+    status: presenceStatusOf(online, presence.userId)
+  }));
 }
 
 /**

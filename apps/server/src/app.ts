@@ -5,11 +5,7 @@ import staticPlugin from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Server } from "socket.io";
 import { z } from "zod";
-import type {
-  ClientToServerEvents,
-  PresenceUser,
-  ServerToClientEvents
-} from "@voxly/shared";
+import type { ClientToServerEvents, PresenceUser, ServerToClientEvents } from "@voxly/shared";
 import type { DatabaseSync } from "node:sqlite";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -76,7 +72,13 @@ import { registerOwnerPanelRoutes } from "./ownerPanel.js";
 import { registerAccountDeletionRoutes } from "./accountDeletion.js";
 import { registerServerRoutes } from "./servers.js";
 import { createUser, nicknameSchema, publicUser } from "./users.js";
-import { roomIdPayloadSchema, safeSocketHandler, socketsForSession, socketsForUser } from "./socket.js";
+import {
+  observeSocketRoomChange,
+  roomIdPayloadSchema,
+  safeSocketHandler,
+  socketsForSession,
+  socketsForUser
+} from "./socket.js";
 import { createMusicRealtime } from "./music.js";
 import { createVoiceRealtime } from "./voice.js";
 import type { TurnstileConfig } from "./turnstile.js";
@@ -123,10 +125,13 @@ function errorStatusCode(error: unknown) {
   return typeof candidate === "number" ? candidate : 500;
 }
 
-const voiceModerationBodySchema = z.object({
-  muted: z.boolean().optional(),
-  deafened: z.boolean().optional()
-}).strict().refine((body) => body.muted !== undefined || body.deafened !== undefined);
+const voiceModerationBodySchema = z
+  .object({
+    muted: z.boolean().optional(),
+    deafened: z.boolean().optional()
+  })
+  .strict()
+  .refine((body) => body.muted !== undefined || body.deafened !== undefined);
 
 export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<VoxlyApp> {
   const database = await openDatabase(options.databasePath);
@@ -314,19 +319,19 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
 
   if (options.allowHttpOwnerBootstrap && options.ownerBootstrapToken) {
     server.post("/api/bootstrap/owner", { config: unauthenticatedWriteLimit }, async (request, reply) => {
-      const body = z.object({
-        bootstrapToken: z.string().min(1),
-        nickname: nicknameSchema
-      }).parse(request.body);
+      const body = z
+        .object({
+          bootstrapToken: z.string().min(1),
+          nickname: nicknameSchema
+        })
+        .parse(request.body);
 
       if (body.bootstrapToken !== options.ownerBootstrapToken) {
         return reply.code(403).send({ error: "forbidden" });
       }
 
-      const ownerCount = one<{ count: number }>(
-        database.sqlite,
-        "select count(*) as count from users where role = 'owner'"
-      )?.count ?? 0;
+      const ownerCount =
+        one<{ count: number }>(database.sqlite, "select count(*) as count from users where role = 'owner'")?.count ?? 0;
       if (ownerCount > 0) {
         return reply.code(409).send({ error: "owner_exists" });
       }
@@ -373,9 +378,11 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
   }
 
   server.post("/api/setup/owner/claim", { config: unauthenticatedWriteLimit }, async (request, reply) => {
-    const body = z.object({
-      claimToken: z.string().min(24)
-    }).parse(request.body);
+    const body = z
+      .object({
+        claimToken: z.string().min(24)
+      })
+      .parse(request.body);
 
     const user = consumeOwnerClaim(database, body.claimToken);
     if (!user) {
@@ -402,9 +409,15 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     const scope = requireJoinedServer(context, request, reply);
     if (!scope) return;
     const { serverId } = scope;
-    const members = all<{ userId: string; nickname: string; role: "owner" | "member"; canInvite: number; isBot: number }>(
+    const members = all<{
+      userId: string;
+      nickname: string;
+      role: "owner" | "member";
+      canInvite: number;
+      isBot: number;
+    }>(
       database.sqlite,
-      `select users.id as userId,
+      `select users.id as userId, server_members.mention_code as mentionCode,
         coalesce(server_members.nickname, users.nickname) as nickname,
         server_members.role,
         server_members.can_invite as canInvite,
@@ -490,11 +503,11 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     if (rejectBotTarget(database, userId, reply)) return;
     database.sqlite.exec("begin immediate");
     try {
-      run(
-        database.sqlite,
-        "update server_members set can_invite = ? where server_id = ? and user_id = ?",
-        [canInvite ? 1 : 0, serverId, userId]
-      );
+      run(database.sqlite, "update server_members set can_invite = ? where server_id = ? and user_id = ?", [
+        canInvite ? 1 : 0,
+        serverId,
+        userId
+      ]);
       // Revoking the grant has to take its products with it, or the links the
       // member already issued keep admitting people after the owner believes the
       // delegation ended.
@@ -539,11 +552,11 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     if (target.role === "owner" && !renamingSelf) {
       return reply.code(409).send({ error: "cannot_rename_owner" });
     }
-    run(
-      database.sqlite,
-      "update server_members set nickname = ? where server_id = ? and user_id = ?",
-      [nickname, serverId, userId]
-    );
+    run(database.sqlite, "update server_members set nickname = ? where server_id = ? and user_id = ?", [
+      nickname,
+      serverId,
+      userId
+    ]);
     audit(database, caller.id, "member.nickname_updated", userId, serverId);
     database.save();
     const updated = realtime.refreshMemberIdentity(serverId, userId);
@@ -609,11 +622,22 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     database.sqlite.exec("begin immediate");
     try {
       if (action === "ban") {
-        run(database.sqlite, "update server_members set banned_at = ?, removed_at = null, can_invite = 0 where server_id = ? and user_id = ?", [now, serverId, userId]);
+        run(
+          database.sqlite,
+          "update server_members set banned_at = ?, removed_at = null, can_invite = 0 where server_id = ? and user_id = ?",
+          [now, serverId, userId]
+        );
       } else if (action === "unban") {
-        run(database.sqlite, "update server_members set banned_at = null where server_id = ? and user_id = ?", [serverId, userId]);
+        run(database.sqlite, "update server_members set banned_at = null where server_id = ? and user_id = ?", [
+          serverId,
+          userId
+        ]);
       } else {
-        run(database.sqlite, "update server_members set removed_at = ?, can_invite = 0 where server_id = ? and user_id = ?", [now, serverId, userId]);
+        run(
+          database.sqlite,
+          "update server_members set removed_at = ?, can_invite = 0 where server_id = ? and user_id = ?",
+          [now, serverId, userId]
+        );
       }
       if (action === "ban" || action === "kick") {
         revokeInvitesCreatedBy(database, serverId, userId, now);
@@ -637,8 +661,10 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     if (!scope) return;
     const { owner, serverId, roomId, userId } = scope;
     const room = roomById(database.sqlite, roomId);
-    if (!room || room.serverId !== serverId || room.kind !== "voice") return reply.code(404).send({ error: "room_not_found" });
-    if (!realtime.disconnectVoice(serverId, roomId, userId)) return reply.code(409).send({ error: "member_not_in_voice" });
+    if (!room || room.serverId !== serverId || room.kind !== "voice")
+      return reply.code(404).send({ error: "room_not_found" });
+    if (!realtime.disconnectVoice(serverId, roomId, userId))
+      return reply.code(409).send({ error: "member_not_in_voice" });
     audit(database, owner.id, "voice.disconnected", userId, serverId);
     database.save();
     return reply.code(204).send();
@@ -680,11 +706,7 @@ function registerRealtime(
   const music = createMusicRealtime(io, database, voice);
 
   io.use((socket, next) => {
-    const user = authenticateSocket(
-      database,
-      socket.handshake.headers.cookie,
-      socket.handshake.headers["user-agent"]
-    );
+    const user = authenticateSocket(database, socket.handshake.headers.cookie, socket.handshake.headers["user-agent"]);
     if (!user) {
       next(new Error("unauthorized"));
       return;
@@ -702,26 +724,32 @@ function registerRealtime(
     const user = socket.data.user as PresenceUser;
     const serverIds = activeServerIds(database.sqlite, user.userId);
     for (const serverId of serverIds) {
-      socket.join(`server:${serverId}`);
+      observeSocketRoomChange(socket.join(`server:${serverId}`));
     }
 
-    socket.on("connection:probe", safeSocketHandler("connection:probe", (ack) => {
-      if (typeof ack === "function") ack();
-    }));
+    socket.on(
+      "connection:probe",
+      safeSocketHandler("connection:probe", (ack) => {
+        if (typeof ack === "function") ack();
+      })
+    );
 
-    socket.on("presence:setStatus", safeSocketHandler("presence:setStatus", (status) => {
-      if (status !== "online" && status !== "idle") return;
-      const presence = online.get(user.userId);
-      if (!presence) return;
-      const before = presenceStatusOf(online, user.userId);
-      if (status === "idle") presence.idleSockets.add(socket.id);
-      else presence.idleSockets.delete(socket.id);
-      const after = presenceStatusOf(online, user.userId);
-      if (before === after) return;
-      for (const serverId of serverIds) {
-        io.to(`server:${serverId}`).emit("presence:serverStatus", { serverId, userId: user.userId, status: after });
-      }
-    }));
+    socket.on(
+      "presence:setStatus",
+      safeSocketHandler("presence:setStatus", (status) => {
+        if (status !== "online" && status !== "idle") return;
+        const presence = online.get(user.userId);
+        if (!presence) return;
+        const before = presenceStatusOf(online, user.userId);
+        if (status === "idle") presence.idleSockets.add(socket.id);
+        else presence.idleSockets.delete(socket.id);
+        const after = presenceStatusOf(online, user.userId);
+        if (before === after) return;
+        for (const serverId of serverIds) {
+          io.to(`server:${serverId}`).emit("presence:serverStatus", { serverId, userId: user.userId, status: after });
+        }
+      })
+    );
     const entry = online.get(user.userId);
     const isNewPresence = !entry;
     if (entry) {
@@ -740,21 +768,31 @@ function registerRealtime(
       }
     }
 
-    socket.on("room:join", safeSocketHandler("room:join", (roomId) => {
-      const parsed = roomIdPayloadSchema.safeParse(roomId);
-      if (!parsed.success) return;
-      const room = roomById(database.sqlite, parsed.data);
-      if (!room || !serverMembership(database.sqlite, room.serverId, user.userId) || !hasActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
-        return;
-      }
-      socket.join(`room:${parsed.data}`);
-    }));
+    socket.on(
+      "room:join",
+      safeSocketHandler("room:join", (roomId) => {
+        const parsed = roomIdPayloadSchema.safeParse(roomId);
+        if (!parsed.success) return;
+        const room = roomById(database.sqlite, parsed.data);
+        if (
+          !room ||
+          !serverMembership(database.sqlite, room.serverId, user.userId) ||
+          !hasActiveServerMembership(database.sqlite, room.serverId, user.userId)
+        ) {
+          return;
+        }
+        observeSocketRoomChange(socket.join(`room:${parsed.data}`));
+      })
+    );
 
-    socket.on("room:leave", safeSocketHandler("room:leave", (roomId) => {
-      const parsed = roomIdPayloadSchema.safeParse(roomId);
-      if (!parsed.success) return;
-      socket.leave(`room:${parsed.data}`);
-    }));
+    socket.on(
+      "room:leave",
+      safeSocketHandler("room:leave", (roomId) => {
+        const parsed = roomIdPayloadSchema.safeParse(roomId);
+        if (!parsed.success) return;
+        observeSocketRoomChange(socket.leave(`room:${parsed.data}`));
+      })
+    );
 
     voice.registerHandlers(socket, user);
     music.registerHandlers(socket, user);
@@ -772,7 +810,11 @@ function registerRealtime(
       const wasIdle = current.idleSockets.delete(socket.id);
       if (wasIdle && current.sockets.size > 0 && presenceStatusOf(online, user.userId) === "online") {
         for (const serverId of serverIds) {
-          io.to(`server:${serverId}`).emit("presence:serverStatus", { serverId, userId: user.userId, status: "online" });
+          io.to(`server:${serverId}`).emit("presence:serverStatus", {
+            serverId,
+            userId: user.userId,
+            status: "online"
+          });
         }
       }
       if (current.sockets.size === 0) {
@@ -813,7 +855,7 @@ function registerRealtime(
     },
     deleteRoom(_serverId, roomId) {
       voice.deleteRoom(roomId, "room_deleted");
-      for (const socket of io.sockets.sockets.values()) socket.leave(`room:${roomId}`);
+      for (const socket of io.sockets.sockets.values()) observeSocketRoomChange(socket.leave(`room:${roomId}`));
     },
     deleteServer(serverId, roomIds, affectedUserIds) {
       for (const roomId of roomIds) {
@@ -823,8 +865,8 @@ function registerRealtime(
       for (const socket of io.sockets.sockets.values()) {
         const socketUser = socket.data.user as PresenceUser | undefined;
         if (!socketUser || !affected.has(socketUser.userId)) continue;
-        socket.leave(`server:${serverId}`);
-        for (const roomId of roomIds) socket.leave(`room:${roomId}`);
+        observeSocketRoomChange(socket.leave(`server:${serverId}`));
+        for (const roomId of roomIds) observeSocketRoomChange(socket.leave(`room:${roomId}`));
         socket.emit("server:deleted", { serverId });
       }
     },
@@ -833,7 +875,11 @@ function registerRealtime(
       if (!entry) return;
 
       const userSockets = socketsForUser(io, userId);
-      await Promise.all(userSockets.map((socket) => socket.join(`server:${serverId}`)));
+      await Promise.all(
+        userSockets.map(async (socket) => {
+          await socket.join(`server:${serverId}`);
+        })
+      );
 
       const users = serverPresenceUsers(database.sqlite, online, serverId);
       const serverUser = serverPresenceUser(database.sqlite, serverId, userId);
@@ -862,9 +908,9 @@ function registerRealtime(
       ).map((room) => room.id);
       voice.forceLeave(userId, "server_access_revoked", serverId);
       for (const socket of socketsForUser(io, userId)) {
-        socket.leave(`server:${serverId}`);
+        observeSocketRoomChange(socket.leave(`server:${serverId}`));
         for (const roomId of textRoomIds) {
-          socket.leave(`room:${roomId}`);
+          observeSocketRoomChange(socket.leave(`room:${roomId}`));
         }
         socket.emit("server:accessRevoked", { serverId, reason });
       }

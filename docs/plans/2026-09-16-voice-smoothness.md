@@ -56,6 +56,7 @@ Extend the `PeerRecoveryEvent` union in `apps/web/src/lib/voicePeerRecovery.ts` 
 ## Task 1: Make the optional AudioWorklet filter transparent when disabled
 
 **Files:**
+
 - Modify `apps/web/public/noise-suppressor.worklet.js`.
 - Modify `apps/web/src/lib/microphoneInput.ts`.
 - Test `apps/web/test/noise-suppressor-worklet.test.ts` and `apps/web/test/voice-media-lifecycle.test.ts`.

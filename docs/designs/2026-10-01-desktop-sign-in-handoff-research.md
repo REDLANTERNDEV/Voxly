@@ -6,11 +6,11 @@ the appearance of another app's sign-in screen.
 
 ## What popular apps document
 
-| App | Documented behavior | Relevant lesson |
-| --- | --- | --- |
-| GitHub Desktop | Opens the default browser for authentication. An Account already signed in there can follow the return prompts without entering credentials again. | Reuse the trusted browser session through an explicit authorization flow. |
-| Slack | Supports app and browser sign-in, workspace selection, and signing into mobile from a signed-in desktop using a QR code. | Keep the destination and workspace clear; multiple Installations require deliberate selection. |
-| Discord | A signed-in mobile app scans a desktop/browser QR code, then asks for approval. The request expires after two minutes. Discord warns against approving a request the member did not initiate. | Avoid repeated credentials while retaining a visible approval on the trusted Device. |
+| App            | Documented behavior                                                                                                                                                                           | Relevant lesson                                                                                |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| GitHub Desktop | Opens the default browser for authentication. An Account already signed in there can follow the return prompts without entering credentials again.                                            | Reuse the trusted browser session through an explicit authorization flow.                      |
+| Slack          | Supports app and browser sign-in, workspace selection, and signing into mobile from a signed-in desktop using a QR code.                                                                      | Keep the destination and workspace clear; multiple Installations require deliberate selection. |
+| Discord        | A signed-in mobile app scans a desktop/browser QR code, then asks for approval. The request expires after two minutes. Discord warns against approving a request the member did not initiate. | Avoid repeated credentials while retaining a visible approval on the trusted Device.           |
 
 Sources: [GitHub Desktop authentication](https://docs.github.com/en/desktop/installing-and-authenticating-to-github-desktop/authenticating-to-github-in-github-desktop?platform=windows),
 [Slack sign-in](https://slack.com/help/articles/212681477-Sign-in-to-Slack-Sign-in-to-Slack),

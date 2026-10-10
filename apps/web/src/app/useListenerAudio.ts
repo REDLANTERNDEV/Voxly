@@ -1,24 +1,43 @@
 import type { PublicUser } from "@voxly/shared";
-import { useCallback,useEffect,useRef,useState } from "react";
-import { DEFAULT_AUDIO_LEVELS,readAudioLevels,writeAudioLevels,type AudioLevels } from "../lib/audioLevels.js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { DEFAULT_AUDIO_LEVELS, readAudioLevels, writeAudioLevels, type AudioLevels } from "../lib/audioLevels.js";
 import { subscribeBlockedAudioOutputs } from "../lib/audioOutput.js";
 import { subscribeDesktopCallState } from "../lib/desktopCallState.js";
-import { createDesktopDeafenReceiver,subscribeDesktopDeafen } from "../lib/desktopVoice.js";
-import { claimMicrophoneTestDeafen,shouldRestoreMicrophoneTestDeafen,type MicrophoneTestDeafenLease } from "../lib/microphoneTestIsolation.js";
-import { browserSupportsNoiseSuppression,DEFAULT_NOISE_SUPPRESSION,readNoiseSuppression,writeNoiseSuppression } from "../lib/noiseSuppression.js";
+import { createDesktopDeafenReceiver, subscribeDesktopDeafen } from "../lib/desktopVoice.js";
+import {
+  claimMicrophoneTestDeafen,
+  shouldRestoreMicrophoneTestDeafen,
+  type MicrophoneTestDeafenLease
+} from "../lib/microphoneTestIsolation.js";
+import {
+  browserSupportsNoiseSuppression,
+  DEFAULT_NOISE_SUPPRESSION,
+  readNoiseSuppression,
+  writeNoiseSuppression
+} from "../lib/noiseSuppression.js";
 import { useAudioDevices } from "../lib/useAudioDevices.js";
 import { useConnectionHealth } from "../lib/useConnectionHealth.js";
 import { useMicrophoneTest } from "../lib/useMicrophoneTest.js";
 import { useVoiceMedia } from "../lib/useVoiceMedia.js";
 import { useScreenConnectionQuality } from "../lib/useScreenConnectionQuality.js";
 import { useVoiceQuality } from "../lib/useVoiceQuality.js";
-import { clampVolumePercent,pruneVolumes,readUserVolumes,setVolume,writeUserVolumes } from "../lib/voiceVolume.js";
+import { clampVolumePercent, pruneVolumes, readUserVolumes, setVolume, writeUserVolumes } from "../lib/voiceVolume.js";
 import type { VoxlySocket } from "../socket.js";
 import type { LiveWatchRequest } from "./types.js";
 import { useNotificationSounds } from "./useNotificationSounds.js";
 import type { DesktopNotificationTarget } from "../lib/desktopNotifications.js";
 
-export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRoomIds, activeVoiceRoomRef, leaveVoiceRef, activeTextRoomIdRef, onNotificationActivate }: {
+export function useListenerAudio({
+  socket,
+  user,
+  iceServers,
+  voiceRoomIds,
+  afkRoomIds,
+  activeVoiceRoomRef,
+  leaveVoiceRef,
+  activeTextRoomIdRef,
+  onNotificationActivate
+}: {
   socket: VoxlySocket | null;
   user: PublicUser | null;
   iceServers: RTCIceServer[];
@@ -51,7 +70,10 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
   // exactly right; inside one it is the wrong path to be looking at.
   const screenConnectionWarnings = useScreenConnectionQuality(voice.activeRoomId ? voice.screenReceivers : null);
   const measuredQuality = useVoiceQuality(voice.activeRoomId ? voice.peerConnections : null);
-  const voiceQuality = { ...measuredQuality, recovering: Object.values(voice.peerConnectionStates).some(state => state === "reconnecting") };
+  const voiceQuality = {
+    ...measuredQuality,
+    recovering: Object.values(voice.peerConnectionStates).some((state) => state === "reconnecting")
+  };
   useEffect(() => {
     for (const request of voiceQuality.recoveryRequests) {
       voice.recoverPeer(request.peerUserId, request.peer);
@@ -70,13 +92,23 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
     activeTextRoomIdRef,
     onNotificationActivate
   });
-  const microphoneTest = useMicrophoneTest(audioDevices.selectedInputId, audioLevels.input, voice.microphoneMonitorStream, noiseSuppression);
+  const microphoneTest = useMicrophoneTest(
+    audioDevices.selectedInputId,
+    audioLevels.input,
+    voice.microphoneMonitorStream,
+    noiseSuppression
+  );
   const microphoneTestDeafenRef = useRef<MicrophoneTestDeafenLease | null>(null);
   const microphoneTestStartingRef = useRef(false);
-  useEffect(() => subscribeDesktopCallState(window, () => ({
-    ...voice.getDesktopCallState(),
-    microphoneTest: microphoneTest.isBusy() || microphoneTestStartingRef.current || Boolean(microphoneTestDeafenRef.current)
-  })), [voice.getDesktopCallState, microphoneTest.isBusy]);
+  useEffect(
+    () =>
+      subscribeDesktopCallState(window, () => ({
+        ...voice.getDesktopCallState(),
+        microphoneTest:
+          microphoneTest.isBusy() || microphoneTestStartingRef.current || Boolean(microphoneTestDeafenRef.current)
+      })),
+    [voice.getDesktopCallState, microphoneTest.isBusy]
+  );
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
   const [screenVolumes, setScreenVolumes] = useState<Record<string, number>>({});
   const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
@@ -98,18 +130,24 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
     setScreenVolumes((current) => pruneVolumes(current, ids));
   }, [voice.remoteStreams]);
 
-  const changeAudioLevel = useCallback((kind: keyof AudioLevels, volume: number) => {
-    setAudioLevels((current) => {
-      const next = { ...current, [kind]: clampVolumePercent(volume) };
-      if (user) writeAudioLevels(user.id, next);
-      return next;
-    });
-  }, [user?.id]);
+  const changeAudioLevel = useCallback(
+    (kind: keyof AudioLevels, volume: number) => {
+      setAudioLevels((current) => {
+        const next = { ...current, [kind]: clampVolumePercent(volume) };
+        if (user) writeAudioLevels(user.id, next);
+        return next;
+      });
+    },
+    [user?.id]
+  );
 
-  const changeNoiseSuppression = useCallback((enabled: boolean) => {
-    setNoiseSuppression(enabled);
-    if (user) writeNoiseSuppression(user.id, enabled);
-  }, [user?.id]);
+  const changeNoiseSuppression = useCallback(
+    (enabled: boolean) => {
+      setNoiseSuppression(enabled);
+      if (user) writeNoiseSuppression(user.id, enabled);
+    },
+    [user?.id]
+  );
 
   const isolateMicrophoneTest = useCallback(async () => {
     const roomId = voice.activeRoomId;
@@ -136,7 +174,9 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
     try {
       if (!(await isolateMicrophoneTest())) return;
       if (!(await microphoneTest.start())) await stopMicrophoneTest();
-    } finally { microphoneTestStartingRef.current = false; }
+    } finally {
+      microphoneTestStartingRef.current = false;
+    }
   }, [isolateMicrophoneTest, microphoneTest.start, stopMicrophoneTest]);
 
   const toggleMicrophoneTest = useCallback(async () => {
@@ -144,11 +184,23 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
     else await startMicrophoneTest();
   }, [microphoneTest.active, startMicrophoneTest, stopMicrophoneTest]);
 
-  useEffect(() => subscribeDesktopDeafen(window, createDesktopDeafenReceiver(() => ({
-    inVoice: Boolean(voice.activeRoomId), connected: Boolean(socket?.connected),
-    ownerDeafened: voice.voiceModeration.deafened,
-    microphoneTest: microphoneTest.active || microphoneTestStartingRef.current || Boolean(microphoneTestDeafenRef.current)
-  }), voice.toggleDeafen)), [socket, voice.activeRoomId, voice.voiceModeration.deafened, voice.toggleDeafen, microphoneTest.active]);
+  useEffect(
+    () =>
+      subscribeDesktopDeafen(
+        window,
+        createDesktopDeafenReceiver(
+          () => ({
+            inVoice: Boolean(voice.activeRoomId),
+            connected: Boolean(socket?.connected),
+            ownerDeafened: voice.voiceModeration.deafened,
+            microphoneTest:
+              microphoneTest.active || microphoneTestStartingRef.current || Boolean(microphoneTestDeafenRef.current)
+          }),
+          voice.toggleDeafen
+        )
+      ),
+    [socket, voice.activeRoomId, voice.voiceModeration.deafened, voice.toggleDeafen, microphoneTest.active]
+  );
 
   useEffect(() => {
     if (!microphoneTest.active) return;
@@ -157,30 +209,51 @@ export function useListenerAudio({ socket, user, iceServers, voiceRoomIds, afkRo
       return;
     }
     if (microphoneTestDeafenRef.current?.roomId === voice.activeRoomId) return;
-    void isolateMicrophoneTest().then((isolated) => { if (!isolated) microphoneTest.stop(); });
+    void isolateMicrophoneTest().then((isolated) => {
+      if (!isolated) microphoneTest.stop();
+    });
   }, [isolateMicrophoneTest, microphoneTest.active, microphoneTest.stop, voice.activeRoomId]);
 
-  const changeMemberVolume = useCallback((userId: string, volume: number) => {
-    if (!user) return;
-    setMemberVolumes((current) => {
-      const next = setVolume(current, userId, volume);
-      writeUserVolumes(user.id, next);
-      return next;
-    });
-  }, [user]);
+  const changeMemberVolume = useCallback(
+    (userId: string, volume: number) => {
+      if (!user) return;
+      setMemberVolumes((current) => {
+        const next = setVolume(current, userId, volume);
+        writeUserVolumes(user.id, next);
+        return next;
+      });
+    },
+    [user]
+  );
   const changeScreenVolume = useCallback((streamId: string, volume: number) => {
     setScreenVolumes((current) => setVolume(current, streamId, volume));
   }, []);
 
   return {
-    voice, connectionHealth, voiceQuality, screenConnectionWarnings, audioDevices, audioLevels, microphoneTest,
-    noiseSuppression, noiseSuppressionSupported,
+    voice,
+    connectionHealth,
+    voiceQuality,
+    screenConnectionWarnings,
+    audioDevices,
+    audioLevels,
+    microphoneTest,
+    noiseSuppression,
+    noiseSuppressionSupported,
     notificationSounds: notifications.notificationSounds,
     notifyMessage: notifications.notifyMessage,
-    memberVolumes, screenVolumes, audioPlaybackBlocked, pendingLiveWatch,
-    activeVoiceRoomRef, leaveVoiceRef, setPendingLiveWatch,
-    changeMemberVolume, changeScreenVolume, changeAudioLevel, changeNoiseSuppression,
+    memberVolumes,
+    screenVolumes,
+    audioPlaybackBlocked,
+    pendingLiveWatch,
+    activeVoiceRoomRef,
+    leaveVoiceRef,
+    setPendingLiveWatch,
+    changeMemberVolume,
+    changeScreenVolume,
+    changeAudioLevel,
+    changeNoiseSuppression,
     changeNotificationSounds: notifications.changeNotificationSounds,
-    toggleMicrophoneTest, stopMicrophoneTest
+    toggleMicrophoneTest,
+    stopMicrophoneTest
   };
 }

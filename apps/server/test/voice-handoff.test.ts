@@ -47,15 +47,37 @@ describe("voice follows the newest Device", () => {
       await joinVoice(laptop, "lobby");
       if (displaced) await joinVoice(phone, "lobby");
       const observer = displaced ? laptop : phone;
-      const ask = (event: string, payload: unknown): Promise<unknown> => new Promise((resolve, reject) => {
-        observer.timeout(2_000).emit(event, payload, (error: Error | null, result: unknown) => error ? reject(error) : resolve(result));
-      });
-      for (const command of [{ kind: "play" }, { kind: "add", input: "A Track" }, { kind: "stop" }, { kind: "leave" }, { kind: "skip", entryId: "entry" }, { kind: "remove", entryId: "entry" }]) {
-        assert.deepEqual(await ask("music:control", { roomId: "lobby", command }), { ok: false, error: "not_in_voice_room" });
+      const ask = (event: string, payload: unknown): Promise<unknown> =>
+        new Promise((resolve, reject) => {
+          observer
+            .timeout(2_000)
+            .emit(event, payload, (error: Error | null, result: unknown) => (error ? reject(error) : resolve(result)));
+        });
+      for (const command of [
+        { kind: "play" },
+        { kind: "add", input: "A Track" },
+        { kind: "stop" },
+        { kind: "leave" },
+        { kind: "skip", entryId: "entry" },
+        { kind: "remove", entryId: "entry" }
+      ]) {
+        assert.deepEqual(await ask("music:control", { roomId: "lobby", command }), {
+          ok: false,
+          error: "not_in_voice_room"
+        });
       }
-      assert.deepEqual(await ask("voice:setMediaState", { roomId: "lobby", media: { mic: false } }), { ok: false, error: "not_in_voice_room" });
-      assert.deepEqual(await ask("voice:setVisualSubscriptions", { roomId: "lobby", targets: [] }), { ok: false, error: "not_in_voice_room" });
-      assert.deepEqual(await ask("rtc:signal", { roomId: "lobby", toUserId: owner.user.id, signal: { type: "recovery-request" } }), { ok: false, error: "not_in_voice_room" });
+      assert.deepEqual(await ask("voice:setMediaState", { roomId: "lobby", media: { mic: false } }), {
+        ok: false,
+        error: "not_in_voice_room"
+      });
+      assert.deepEqual(await ask("voice:setVisualSubscriptions", { roomId: "lobby", targets: [] }), {
+        ok: false,
+        error: "not_in_voice_room"
+      });
+      assert.deepEqual(
+        await ask("rtc:signal", { roomId: "lobby", toUserId: owner.user.id, signal: { type: "recovery-request" } }),
+        { ok: false, error: "not_in_voice_room" }
+      );
       const snapshot = await snapshotOf(observer, "lobby");
       assert.equal(snapshot.viewerInVoiceRoom, false);
       assert.equal(snapshot.members[0]?.media.mic, true, "the observer must not mute the holding Device");
@@ -187,8 +209,10 @@ describe("voice follows the newest Device", () => {
     const owner = await bootstrapOwner(app);
     const first = await connect(owner.cookies.voxly_session);
     const joinInstance = (socket: Socket, mediaInstanceId: string): Promise<VoiceJoinAck> =>
-      new Promise((resolve) => socket.emit("voice:join", { roomId: "lobby", media: joinMedia, mediaInstanceId }, resolve));
-    const instance = (ack: VoiceJoinAck) => ack.ok ? ack.state.mediaInstanceId : undefined;
+      new Promise((resolve) =>
+        socket.emit("voice:join", { roomId: "lobby", media: joinMedia, mediaInstanceId }, resolve)
+      );
+    const instance = (ack: VoiceJoinAck) => (ack.ok ? ack.state.mediaInstanceId : undefined);
     const initial = await joinInstance(first, "page-one");
     assert.equal(instance(initial), "page-one");
     first.disconnect();
@@ -214,9 +238,14 @@ describe("voice follows the newest Device", () => {
     const newPage = await connect(owner.cookies.voxly_session);
     const joined = await joinVoice(newPage, "lobby");
     assert.ok(joined.ok);
-    const send = (socket: Socket): Promise<{ ok: boolean; error?: string }> => new Promise(resolve => {
-      socket.emit("rtc:signal", { roomId: "lobby", toUserId: other.user.id, signal: { type: "recovery-request" } }, resolve);
-    });
+    const send = (socket: Socket): Promise<{ ok: boolean; error?: string }> =>
+      new Promise((resolve) => {
+        socket.emit(
+          "rtc:signal",
+          { roomId: "lobby", toUserId: other.user.id, signal: { type: "recovery-request" } },
+          resolve
+        );
+      });
     assert.deepEqual(await send(oldPage), { ok: false, error: "not_in_voice_room" });
     const forwarded = onceEvent<{ mediaInstanceId: string }>(listener, "rtc:signal");
     assert.deepEqual(await send(newPage), { ok: true });
@@ -228,9 +257,7 @@ describe("voice follows the newest Device", () => {
     // be able to shed a mute by picking up their phone.
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ece");
-    app.sqlite
-      .prepare("update server_members set moderator_muted = 1 where user_id = ?")
-      .run(member.user.id);
+    app.sqlite.prepare("update server_members set moderator_muted = 1 where user_id = ?").run(member.user.id);
     const laptop = await connect(member.cookies.voxly_session);
     await joinVoice(laptop, "lobby");
     const phoneToken = linkAnotherDevice(app, member.user.id);
@@ -255,14 +282,18 @@ function linkAnotherDevice(app: VoxlyApp, userId: string) {
   const token = createOpaqueToken();
   const now = new Date();
   app.sqlite
-    .prepare("insert into sessions (id, token_hash, user_id, created_at, expires_at, label, last_seen_at) values (?, ?, ?, ?, ?, ?, ?)")
+    .prepare(
+      "insert into sessions (id, token_hash, user_id, created_at, expires_at, label, last_seen_at) values (?, ?, ?, ?, ?, ?, ?)"
+    )
     .run(
       crypto.randomUUID(),
       hashToken(token),
       userId,
       now.toISOString(),
       new Date(now.getTime() + 86_400_000).toISOString(),
-      deviceLabel("Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1"),
+      deviceLabel(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1"
+      ),
       now.toISOString()
     );
   return token;

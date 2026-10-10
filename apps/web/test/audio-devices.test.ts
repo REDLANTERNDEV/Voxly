@@ -66,7 +66,15 @@ describe("audio device discovery", () => {
     const mediaDevices = {
       async getUserMedia() {
         events.push("permission");
-        return { getTracks: () => [{ stop: () => { stopped = true; } }] } as unknown as MediaStream;
+        return {
+          getTracks: () => [
+            {
+              stop: () => {
+                stopped = true;
+              }
+            }
+          ]
+        } as unknown as MediaStream;
       },
       async enumerateDevices() {
         events.push("enumerate");
@@ -78,8 +86,14 @@ describe("audio device discovery", () => {
 
     assert.deepEqual(events, ["permission", "enumerate"]);
     assert.equal(stopped, true);
-    assert.deepEqual(result.inputs.map(({ deviceId }) => deviceId), ["mic"]);
-    assert.deepEqual(result.outputs.map(({ deviceId }) => deviceId), ["speaker"]);
+    assert.deepEqual(
+      result.inputs.map(({ deviceId }) => deviceId),
+      ["mic"]
+    );
+    assert.deepEqual(
+      result.outputs.map(({ deviceId }) => deviceId),
+      ["speaker"]
+    );
   });
 
   it("falls back to system default when a selected device disappears", () => {
@@ -103,7 +117,9 @@ describe("audio device discovery", () => {
       }
     };
 
-    const unsubscribe = subscribeToAudioDeviceChanges(mediaDevices, () => { calls += 1; });
+    const unsubscribe = subscribeToAudioDeviceChanges(mediaDevices, () => {
+      calls += 1;
+    });
     handler?.();
     unsubscribe();
 
@@ -112,7 +128,10 @@ describe("audio device discovery", () => {
   });
 
   it("shows browser device names and uses human labels only when a name is unavailable", () => {
-    assert.equal(audioDeviceDisplayName(device("mic-a", "audioinput", "MacBook Pro Microphone"), "Microphone", 0), "MacBook Pro Microphone");
+    assert.equal(
+      audioDeviceDisplayName(device("mic-a", "audioinput", "MacBook Pro Microphone"), "Microphone", 0),
+      "MacBook Pro Microphone"
+    );
     assert.equal(audioDeviceDisplayName(device("mic-b", "audioinput", ""), "Microphone", 1), "Microphone 2");
     assert.equal(audioDeviceDisplayName(device("speaker-a", "audiooutput", ""), "Audio output", 0), "Audio output 1");
   });
@@ -133,14 +152,25 @@ describe("audio device application", () => {
     assert.deepEqual(buildMicrophoneConstraints("mic-a", {}), buildMicrophoneConstraints("mic-a"));
     assert.deepEqual(buildMicrophoneConstraints("", {}), buildMicrophoneConstraints(""));
 
-    assert.deepEqual(buildMicrophoneConstraints("", { noiseSuppression: true, autoGainControl: true, echoCancellation: true }), {
-      audio: { noiseSuppression: true, autoGainControl: true, echoCancellation: true },
-      video: false
-    });
-    assert.deepEqual(buildMicrophoneConstraints("mic-a", { noiseSuppression: false, autoGainControl: false, echoCancellation: true }), {
-      audio: { deviceId: { exact: "mic-a" }, noiseSuppression: false, autoGainControl: false, echoCancellation: true },
-      video: false
-    });
+    assert.deepEqual(
+      buildMicrophoneConstraints("", { noiseSuppression: true, autoGainControl: true, echoCancellation: true }),
+      {
+        audio: { noiseSuppression: true, autoGainControl: true, echoCancellation: true },
+        video: false
+      }
+    );
+    assert.deepEqual(
+      buildMicrophoneConstraints("mic-a", { noiseSuppression: false, autoGainControl: false, echoCancellation: true }),
+      {
+        audio: {
+          deviceId: { exact: "mic-a" },
+          noiseSuppression: false,
+          autoGainControl: false,
+          echoCancellation: true
+        },
+        video: false
+      }
+    );
   });
 
   it("keeps every processing flag ideal rather than exact", () => {
@@ -155,11 +185,22 @@ describe("audio device application", () => {
 
   it("prefers AudioContext output routing and maps system default to an empty sink", async () => {
     const sinks: string[] = [];
-    const context = { setSinkId: async (sinkId: string) => { sinks.push(sinkId); } };
-    const element = { setSinkId: async () => { throw new Error("element fallback should not run"); } };
+    const context = {
+      setSinkId: async (sinkId: string) => {
+        sinks.push(sinkId);
+      }
+    };
+    const element = {
+      setSinkId: async () => {
+        throw new Error("element fallback should not run");
+      }
+    };
 
     assert.equal(supportsAudioOutputSelection({ audioContext: context, mediaElements: [element] }), true);
-    assert.equal(await applyAudioOutputDevice("speaker-a", { audioContext: context, mediaElements: [element] }), "audio-context");
+    assert.equal(
+      await applyAudioOutputDevice("speaker-a", { audioContext: context, mediaElements: [element] }),
+      "audio-context"
+    );
     assert.equal(await applyAudioOutputDevice("", { audioContext: context }), "audio-context");
     assert.deepEqual(sinks, ["speaker-a", ""]);
   });
@@ -168,8 +209,16 @@ describe("audio device application", () => {
     const first: string[] = [];
     const second: string[] = [];
     const mediaElements = [
-      { setSinkId: async (sinkId: string) => { first.push(sinkId); } },
-      { setSinkId: async (sinkId: string) => { second.push(sinkId); } }
+      {
+        setSinkId: async (sinkId: string) => {
+          first.push(sinkId);
+        }
+      },
+      {
+        setSinkId: async (sinkId: string) => {
+          second.push(sinkId);
+        }
+      }
     ];
 
     assert.equal(supportsAudioOutputSelection({ audioContext: {}, mediaElements }), true);
@@ -180,8 +229,18 @@ describe("audio device application", () => {
 
   it("falls back to media elements when AudioContext rejects the sink change", async () => {
     const sinks: string[] = [];
-    const audioContext = { setSinkId: async () => { throw new Error("not allowed"); } };
-    const mediaElements = [{ setSinkId: async (sinkId: string) => { sinks.push(sinkId); } }];
+    const audioContext = {
+      setSinkId: async () => {
+        throw new Error("not allowed");
+      }
+    };
+    const mediaElements = [
+      {
+        setSinkId: async (sinkId: string) => {
+          sinks.push(sinkId);
+        }
+      }
+    ];
 
     assert.equal(await applyAudioOutputDevice("speaker-c", { audioContext, mediaElements }), "media-elements");
     assert.deepEqual(sinks, ["speaker-c"]);

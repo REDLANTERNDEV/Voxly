@@ -4,14 +4,22 @@ export function createPendingMediaOperation(changed: (pending: boolean) => void)
   let pending = false;
   return {
     isPending: () => pending,
-    cancel() { generation += 1; pending = false; changed(false); },
+    cancel() {
+      generation += 1;
+      pending = false;
+      changed(false);
+    },
     async run<T>(action: () => Promise<T>): Promise<T> {
       const ticket = ++generation;
       pending = true;
       changed(true);
-      try { return await action(); }
-      finally {
-        if (ticket === generation) { pending = false; changed(false); }
+      try {
+        return await action();
+      } finally {
+        if (ticket === generation) {
+          pending = false;
+          changed(false);
+        }
       }
     }
   };

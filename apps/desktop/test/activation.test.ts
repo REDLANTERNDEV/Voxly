@@ -7,12 +7,17 @@ const source = readFileSync("src-tauri/src/activation.js", "utf8");
 function boot(origin = "https://chat.example", top = true, fail = false) {
   const calls: unknown[][] = [];
   const window = {
-    location: { origin }, top: null as unknown,
-    __TAURI_INTERNALS__: { invoke: (...args: unknown[]) => {
-      calls.push(args);
-      return fail ? Promise.reject(Error("denied")) : Promise.resolve();
-    } },
-    __VOXLY_DESKTOP_ACTIVATION_V1__: undefined as { version: number; show(...args: unknown[]): Promise<boolean>; minimize(...args: unknown[]): Promise<boolean> } | undefined
+    location: { origin },
+    top: null as unknown,
+    __TAURI_INTERNALS__: {
+      invoke: (...args: unknown[]) => {
+        calls.push(args);
+        return fail ? Promise.reject(Error("denied")) : Promise.resolve();
+      }
+    },
+    __VOXLY_DESKTOP_ACTIVATION_V1__: undefined as
+      | { version: number; show(...args: unknown[]): Promise<boolean>; minimize(...args: unknown[]): Promise<boolean> }
+      | undefined
   };
   window.top = top ? window : {};
   runInNewContext(`${source}("https://chat.example");`, { window });
@@ -40,11 +45,17 @@ describe("desktop activation boundary", () => {
   });
   it("minimizes only its own window without a caller-supplied payload", async () => {
     const { window, calls } = boot();
-    assert.equal(await window.__VOXLY_DESKTOP_ACTIVATION_V1__!.minimize({ command: "quit_app", origin: "https://evil.example" }), true);
+    assert.equal(
+      await window.__VOXLY_DESKTOP_ACTIVATION_V1__!.minimize({ command: "quit_app", origin: "https://evil.example" }),
+      true
+    );
     assert.deepEqual(calls, [["minimize_installation"]]);
   });
   it("contains minimize denial and refuses navigation away or a subframe", async () => {
-    assert.equal(await boot("https://chat.example", true, true).window.__VOXLY_DESKTOP_ACTIVATION_V1__!.minimize(), false);
+    assert.equal(
+      await boot("https://chat.example", true, true).window.__VOXLY_DESKTOP_ACTIVATION_V1__!.minimize(),
+      false
+    );
     const { window, calls } = boot();
     window.location.origin = "https://evil.example";
     assert.equal(await window.__VOXLY_DESKTOP_ACTIVATION_V1__!.minimize(), false);

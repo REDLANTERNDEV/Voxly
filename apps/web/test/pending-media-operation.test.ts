@@ -5,7 +5,9 @@ import { clientUpdateDisposition } from "../src/lib/useClientUpdate.js";
 
 function deferred<T>() {
   let resolve: (value: T) => void = () => {};
-  const promise = new Promise<T>((done) => { resolve = done; });
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
   return { promise, resolve };
 }
 
@@ -54,7 +56,12 @@ describe("pending media update guard", () => {
 
   it("releases the guard when an operation throws", async () => {
     const gate = createPendingMediaOperation(() => {});
-    await assert.rejects(gate.run(async () => { throw new Error("denied"); }), /denied/);
+    await assert.rejects(
+      gate.run(async () => {
+        throw new Error("denied");
+      }),
+      /denied/
+    );
     assert.equal(gate.isPending(), false);
   });
 });

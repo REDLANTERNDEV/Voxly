@@ -1,4 +1,4 @@
-import { useCallback,useEffect,useReducer,useRef,useState,type CSSProperties } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState, type CSSProperties } from "react";
 import type { Translate } from "../../app/types.js";
 import {
   notificationReducer,
@@ -10,15 +10,37 @@ import { CloseIcon } from "./Icons.js";
 
 function NotificationMark({ tone }: { tone: NotificationTone }) {
   if (tone === "success") {
-    return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.25 4.25L19 7" /></svg>;
+    return (
+      <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m5 12.5 4.25 4.25L19 7" />
+      </svg>
+    );
   }
   if (tone === "warning") {
-    return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 4.2 2.5 18a2 2 0 0 0 1.75 3h15.5a2 2 0 0 0 1.75-3L13.7 4.2a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4.5" /><path d="M12 17.4h.01" /></svg>;
+    return (
+      <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M10.3 4.2 2.5 18a2 2 0 0 0 1.75 3h15.5a2 2 0 0 0 1.75-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
+        <path d="M12 9v4.5" />
+        <path d="M12 17.4h.01" />
+      </svg>
+    );
   }
   if (tone === "danger") {
-    return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.8v5.3" /><path d="M12 16.7h.01" /></svg>;
+    return (
+      <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7.8v5.3" />
+        <path d="M12 16.7h.01" />
+      </svg>
+    );
   }
-  return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 10.5v6" /><path d="M12 7.2h.01" /></svg>;
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 10.5v6" />
+      <path d="M12 7.2h.01" />
+    </svg>
+  );
 }
 
 export function useNotificationCenter() {
@@ -30,7 +52,14 @@ export function useNotificationCenter() {
   return { notifications, push, dismiss, expire, clear };
 }
 
-function NotificationCard({ item, suspended, t, onDismiss, onExpire, onAction }: {
+function NotificationCard({
+  item,
+  suspended,
+  t,
+  onDismiss,
+  onExpire,
+  onAction
+}: {
   item: AppNotification;
   suspended: boolean;
   t: Translate;
@@ -52,14 +81,17 @@ function NotificationCard({ item, suspended, t, onDismiss, onExpire, onAction }:
     remainingRef.current = Math.max(0, remainingRef.current - (performance.now() - startedAtRef.current));
   }, []);
 
-  const finish = useCallback((kind: "dismiss" | "expire") => {
-    stopTimer();
-    setLeaving(true);
-    window.setTimeout(() => {
-      if (kind === "expire") onExpire(item.id, item.revision);
-      else onDismiss(item.id, item.revision);
-    }, 180);
-  }, [item.id, item.revision, onDismiss, onExpire, stopTimer]);
+  const finish = useCallback(
+    (kind: "dismiss" | "expire") => {
+      stopTimer();
+      setLeaving(true);
+      window.setTimeout(() => {
+        if (kind === "expire") onExpire(item.id, item.revision);
+        else onDismiss(item.id, item.revision);
+      }, 180);
+    },
+    [item.id, item.revision, onDismiss, onExpire, stopTimer]
+  );
 
   const startTimer = useCallback(() => {
     if (item.timeoutMs === null || suspended || leaving || timeoutRef.current !== null) return;
@@ -97,30 +129,63 @@ function NotificationCard({ item, suspended, t, onDismiss, onExpire, onAction }:
         if (!event.currentTarget.contains(event.relatedTarget)) startTimer();
       }}
     >
-      <span className="notification-mark"><NotificationMark tone={item.tone} /></span>
+      <span className="notification-mark">
+        <NotificationMark tone={item.tone} />
+      </span>
       <span className="notification-copy">
         <span className="notification-title-row">
           <strong>{t(item.titleKey)}</strong>
           {item.occurrences > 1 ? (
-            <span key={item.revision} className="notification-count" aria-label={t("notification.occurrences", { count: item.occurrences })}>×{item.occurrences}</span>
+            <span
+              key={item.revision}
+              className="notification-count"
+              aria-label={t("notification.occurrences", { count: item.occurrences })}
+            >
+              ×{item.occurrences}
+            </span>
           ) : null}
         </span>
         <span className="notification-message">{t(item.messageKey)}</span>
         {item.action && onAction ? (
-          <button className="notification-action" type="button" onClick={() => { onAction(item); finish("dismiss"); }}>
+          <button
+            className="notification-action"
+            type="button"
+            onClick={() => {
+              onAction(item);
+              finish("dismiss");
+            }}
+          >
             {t("settings.audio")}
           </button>
         ) : null}
       </span>
-      <button className="notification-close" type="button" aria-label={t("notification.dismiss")} onClick={() => finish("dismiss")}>
+      <button
+        className="notification-close"
+        type="button"
+        aria-label={t("notification.dismiss")}
+        onClick={() => finish("dismiss")}
+      >
         <CloseIcon />
       </button>
-      {item.timeoutMs === null ? null : <span key={item.revision} className="notification-timer" style={{ "--notification-duration": `${item.timeoutMs}ms` } as CSSProperties} />}
+      {item.timeoutMs === null ? null : (
+        <span
+          key={item.revision}
+          className="notification-timer"
+          style={{ "--notification-duration": `${item.timeoutMs}ms` } as CSSProperties}
+        />
+      )}
     </article>
   );
 }
 
-export function NotificationViewport({ items, suspended = false, t, onDismiss, onExpire, onAction }: {
+export function NotificationViewport({
+  items,
+  suspended = false,
+  t,
+  onDismiss,
+  onExpire,
+  onAction
+}: {
   items: AppNotification[];
   suspended?: boolean;
   t: Translate;
@@ -130,12 +195,32 @@ export function NotificationViewport({ items, suspended = false, t, onDismiss, o
 }) {
   return (
     <section className={`notification-region ${suspended ? "is-suspended" : ""}`} aria-label={t("notification.region")}>
-      {items.map((item) => <NotificationCard key={item.id} item={item} suspended={suspended} t={t} onDismiss={onDismiss} onExpire={onExpire} onAction={onAction} />)}
+      {items.map((item) => (
+        <NotificationCard
+          key={item.id}
+          item={item}
+          suspended={suspended}
+          t={t}
+          onDismiss={onDismiss}
+          onExpire={onExpire}
+          onAction={onAction}
+        />
+      ))}
     </section>
   );
 }
 
-export function InlineAlert({ title, message, dismissLabel, occurrences = 1, occurrenceLabel, revision = 0, actionLabel, onAction, onDismiss }: {
+export function InlineAlert({
+  title,
+  message,
+  dismissLabel,
+  occurrences = 1,
+  occurrenceLabel,
+  revision = 0,
+  actionLabel,
+  onAction,
+  onDismiss
+}: {
   title: string;
   message: string;
   dismissLabel: string;
@@ -148,17 +233,29 @@ export function InlineAlert({ title, message, dismissLabel, occurrences = 1, occ
 }) {
   return (
     <div className="inline-alert" role="alert">
-      <span className="inline-alert-mark"><NotificationMark tone="danger" /></span>
+      <span className="inline-alert-mark">
+        <NotificationMark tone="danger" />
+      </span>
       <span className="inline-alert-copy">
         <span className="inline-alert-title-row">
           <strong>{title}</strong>
-          {occurrences > 1 ? <span key={revision} className="notification-count" aria-label={occurrenceLabel}>×{occurrences}</span> : null}
+          {occurrences > 1 ? (
+            <span key={revision} className="notification-count" aria-label={occurrenceLabel}>
+              ×{occurrences}
+            </span>
+          ) : null}
         </span>
         <span>{message}</span>
       </span>
       <span className="inline-alert-actions">
-        {actionLabel && onAction ? <button className="inline-alert-action" type="button" onClick={onAction}>{actionLabel}</button> : null}
-        <button className="inline-alert-close" type="button" aria-label={dismissLabel} onClick={onDismiss}><CloseIcon /></button>
+        {actionLabel && onAction ? (
+          <button className="inline-alert-action" type="button" onClick={onAction}>
+            {actionLabel}
+          </button>
+        ) : null}
+        <button className="inline-alert-close" type="button" aria-label={dismissLabel} onClick={onDismiss}>
+          <CloseIcon />
+        </button>
       </span>
     </div>
   );

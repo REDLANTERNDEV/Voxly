@@ -7,7 +7,10 @@ describe("microphone test capture", () => {
     const source = readFileSync("src/lib/useMicrophoneTest.ts", "utf8");
 
     assert.match(source, /openMicrophoneCapture\(\s*\{ deviceId: deviceIdRef\.current \},/);
-    assert.match(source, /createMicrophoneInput\(rawStream, volumeRef\.current, \{\s*\n\s*noiseSuppression: noiseSuppressionRef\.current\s*\n\s*\}\)/);
+    assert.match(
+      source,
+      /createMicrophoneInput\(rawStream, volumeRef\.current, \{\s*\n\s*noiseSuppression: noiseSuppressionRef\.current\s*\n\s*\}\)/
+    );
     assert.match(source, /if \(sharedStreamRef\.current\) \{[\s\S]*setMonitorStream\(sharedStreamRef\.current\)/);
     assert.match(source, /setMonitorStream\(input\.monitorStream\)/);
     assert.match(source, /inputRef\.current\?\.setVolume\(volume\)/);
@@ -16,7 +19,10 @@ describe("microphone test capture", () => {
   it("restarts a self-owned capture for a device change only", () => {
     const source = readFileSync("src/lib/useMicrophoneTest.ts", "utf8");
 
-    assert.match(source, /const change = microphoneCaptureChange\(\{ deviceId: deviceIdRef\.current \}, \{ deviceId \}\)/);
+    assert.match(
+      source,
+      /const change = microphoneCaptureChange\(\{ deviceId: deviceIdRef\.current \}, \{ deviceId \}\)/
+    );
     // A test riding the shared voice monitor owns no input and must not open a
     // second device when the voice graph re-captures.
     assert.match(source, /if \(change === "none" \|\| !inputRef\.current\) return/);

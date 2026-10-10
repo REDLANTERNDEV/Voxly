@@ -48,12 +48,14 @@
 ### Task 1: Add Server Nickname Persistence and Identity Helpers
 
 **Files:**
+
 - Modify: `apps/server/src/db/schema.ts:52-66`
 - Modify: `apps/server/src/db/database.ts:130-180`
 - Create: `apps/server/src/serverNicknames.ts`
 - Modify: `apps/server/test/app.test.ts:20-85`
 
 **Interfaces:**
+
 - Produces: `serverPresenceUser(sqlite: DatabaseSync, serverId: string, userId: string): PresenceUser | null`
 - Produces: `serverPresenceUsers(sqlite: DatabaseSync, serverId: string, userIds: Iterable<string>): PresenceUser[]`
 - Produces: nullable SQL column `server_members.nickname`
@@ -63,13 +65,12 @@
 Add these assertions to the existing legacy migration test after reading `server_members`:
 
 ```ts
-const memberColumns = tables.prepare("pragma table_info(server_members)").all()
+const memberColumns = tables
+  .prepare("pragma table_info(server_members)")
+  .all()
   .map((column) => (column as { name: string }).name);
 assert.ok(memberColumns.includes("nickname"));
-assert.equal(
-  tables.prepare("select nickname from server_members where user_id = 'owner'").get()?.nickname,
-  null
-);
+assert.equal(tables.prepare("select nickname from server_members where user_id = 'owner'").get()?.nickname, null);
 ```
 
 - [ ] **Step 2: Run the server test and verify the new assertion fails**
@@ -107,14 +108,11 @@ import type { PresenceUser } from "@voxly/shared";
 import type { DatabaseSync } from "node:sqlite";
 import { all, one } from "./db/database.js";
 
-export function serverPresenceUser(
-  sqlite: DatabaseSync,
-  serverId: string,
-  userId: string
-): PresenceUser | null {
-  return one<PresenceUser>(
-    sqlite,
-    `select users.id as userId,
+export function serverPresenceUser(sqlite: DatabaseSync, serverId: string, userId: string): PresenceUser | null {
+  return (
+    one<PresenceUser>(
+      sqlite,
+      `select users.id as userId,
       coalesce(server_members.nickname, users.nickname) as nickname,
       server_members.role
      from server_members
@@ -122,15 +120,12 @@ export function serverPresenceUser(
      where server_members.server_id = ? and server_members.user_id = ?
        and server_members.banned_at is null
        and server_members.removed_at is null`,
-    [serverId, userId]
-  ) ?? null;
+      [serverId, userId]
+    ) ?? null
+  );
 }
 
-export function serverPresenceUsers(
-  sqlite: DatabaseSync,
-  serverId: string,
-  userIds: Iterable<string>
-): PresenceUser[] {
+export function serverPresenceUsers(sqlite: DatabaseSync, serverId: string, userIds: Iterable<string>): PresenceUser[] {
   const activeIds = new Set(userIds);
   if (activeIds.size === 0) return [];
   return all<PresenceUser>(
@@ -165,10 +160,12 @@ Expected: both commands PASS.
 ### Task 2: Add the Owner Rename API and Effective HTTP Queries
 
 **Files:**
+
 - Modify: `apps/server/src/app.ts:420-590, 650-840, 1380-1695`
 - Modify: `apps/server/test/app.test.ts`
 
 **Interfaces:**
+
 - Consumes: `serverPresenceUser(...)` from Task 1.
 - Produces: `PATCH /api/servers/:serverId/members/:userId/nickname` with body `{ nickname: string }` and response `{ user: PresenceUser }`.
 - Produces stable errors: `member_not_found`, `cannot_rename_owner`, and Zod validation response for invalid nicknames.
@@ -216,10 +213,12 @@ Add a route beside the existing member moderation route:
 server.patch("/api/servers/:serverId/members/:userId/nickname", async (request, reply) => {
   const owner = requireOwner(database, request, reply, options.secureCookies);
   if (!owner) return;
-  const { serverId, userId } = z.object({
-    serverId: z.string().min(1),
-    userId: z.string().uuid()
-  }).parse(request.params);
+  const { serverId, userId } = z
+    .object({
+      serverId: z.string().min(1),
+      userId: z.string().uuid()
+    })
+    .parse(request.params);
   const { nickname } = z.object({ nickname: nicknameSchema }).parse(request.body);
   if (!requireServerOwner(database, serverId, owner.id, reply)) return;
   const target = serverMembership(database.sqlite, serverId, userId);
@@ -229,10 +228,11 @@ server.patch("/api/servers/:serverId/members/:userId/nickname", async (request, 
   if (target.role === "owner" && userId !== owner.id) {
     return reply.code(409).send({ error: "cannot_rename_owner" });
   }
-  run(database.sqlite,
-    "update server_members set nickname = ? where server_id = ? and user_id = ?",
-    [nickname, serverId, userId]
-  );
+  run(database.sqlite, "update server_members set nickname = ? where server_id = ? and user_id = ?", [
+    nickname,
+    serverId,
+    userId
+  ]);
   audit(database, owner.id, "member.nickname_updated", userId, serverId);
   database.save();
   const user = serverPresenceUserIncludingBanned(database.sqlite, serverId, userId);
@@ -292,11 +292,13 @@ Expected: both commands PASS, including legacy migration and nickname isolation.
 ### Task 3: Publish Server-Scoped Realtime Identity Updates
 
 **Files:**
+
 - Modify: `packages/shared/src/index.ts:96-130`
 - Modify: `apps/server/src/app.ts:100-120, 880-1235, 1435-1460`
 - Modify: `apps/server/test/realtime.test.ts`
 
 **Interfaces:**
+
 - Consumes: nickname endpoint and identity helpers from Tasks 1-2.
 - Produces: `ServerToClientEvents["server:memberUpdated"]` payload `{ serverId: string; user: PresenceUser }`.
 - Produces: `RealtimeModeration.refreshMemberIdentity(serverId: string, userId: string): PresenceUser | null`.
@@ -386,12 +388,14 @@ Expected: all commands PASS.
 ### Task 4: Update Client Identity Caches and API Boundaries
 
 **Files:**
+
 - Create: `apps/web/src/lib/memberIdentity.ts`
 - Create: `apps/web/test/member-identity.test.ts`
 - Modify: `apps/web/src/api.ts:180-205`
 - Modify: `apps/web/src/App.tsx:170-265, 535-610, 730-815, 945-990`
 
 **Interfaces:**
+
 - Produces: `updateServerMemberNickname(serverId: string, userId: string, nickname: string): Promise<{ user: PresenceUser }>`.
 - Produces: `replacePresenceUser(users: PresenceUser[], next: PresenceUser): PresenceUser[]`.
 - Produces: `renameMessagesForServer(messagesByRoom, roomServerIds, serverId, user): Record<string, ChatMessage[]>`.
@@ -409,10 +413,11 @@ import { renameMessagesForServer, replacePresenceUser } from "../src/lib/memberI
 describe("server member identity updates", () => {
   it("replaces one presence user without duplicating it", () => {
     assert.deepEqual(
-      replacePresenceUser(
-        [{ userId: "u1", nickname: "Old", role: "member" }],
-        { userId: "u1", nickname: "New", role: "member" }
-      ),
+      replacePresenceUser([{ userId: "u1", nickname: "Old", role: "member" }], {
+        userId: "u1",
+        nickname: "New",
+        role: "member"
+      }),
       [{ userId: "u1", nickname: "New", role: "member" }]
     );
   });
@@ -423,7 +428,9 @@ describe("server member identity updates", () => {
       roomB: [{ id: "b", roomId: "roomB", userId: "u1", nickname: "Old", body: "B", createdAt: "now", editedAt: null }]
     };
     const renamed = renameMessagesForServer(messages, { roomA: "server-a", roomB: "server-b" }, "server-a", {
-      userId: "u1", nickname: "New", role: "member"
+      userId: "u1",
+      nickname: "New",
+      role: "member"
     });
     assert.equal(renamed.roomA[0].nickname, "New");
     assert.equal(renamed.roomB[0].nickname, "Old");
@@ -446,7 +453,7 @@ import type { ChatMessage, PresenceUser } from "@voxly/shared";
 
 export function replacePresenceUser(users: PresenceUser[], next: PresenceUser) {
   return users.some((user) => user.userId === next.userId)
-    ? users.map((user) => user.userId === next.userId ? next : user)
+    ? users.map((user) => (user.userId === next.userId ? next : user))
     : [...users, next];
 }
 
@@ -456,14 +463,16 @@ export function renameMessagesForServer(
   serverId: string,
   user: PresenceUser
 ) {
-  return Object.fromEntries(Object.entries(messagesByRoom).map(([roomId, messages]) => [
-    roomId,
-    roomServerIds[roomId] === serverId
-      ? messages.map((message) => message.userId === user.userId
-        ? { ...message, nickname: user.nickname }
-        : message)
-      : messages
-  ]));
+  return Object.fromEntries(
+    Object.entries(messagesByRoom).map(([roomId, messages]) => [
+      roomId,
+      roomServerIds[roomId] === serverId
+        ? messages.map((message) =>
+            message.userId === user.userId ? { ...message, nickname: user.nickname } : message
+          )
+        : messages
+    ])
+  );
 }
 ```
 
@@ -494,9 +503,10 @@ const indexRooms = useCallback((nextRooms: RoomSummary[]) => {
 Handle `server:memberUpdated` by updating only `onlineUsersByServer[serverId]`, `serverMembersByServer[serverId]`, and message entries belonging to that server through the new helpers. Define:
 
 ```ts
-const currentNickname = serverMembers.find((member) => member.userId === user.id)?.nickname
-  ?? onlineUsers.find((member) => member.userId === user.id)?.nickname
-  ?? user.nickname;
+const currentNickname =
+  serverMembers.find((member) => member.userId === user.id)?.nickname ??
+  onlineUsers.find((member) => member.userId === user.id)?.nickname ??
+  user.nickname;
 ```
 
 Pass `currentNickname` and an `onUpdateMemberNickname` callback through `ShellProps`. The callback calls the API and applies the same cache update immediately; the realtime event remains idempotent.
@@ -517,6 +527,7 @@ Expected: both commands PASS.
 ### Task 5: Add Accessible Nickname Editing to Existing Menus
 
 **Files:**
+
 - Modify: `apps/web/src/lib/i18n.ts`
 - Modify: `apps/web/src/App.tsx:1378-1590, 1765-2218, 2229-2280`
 - Modify: `apps/web/src/styles.css`
@@ -525,6 +536,7 @@ Expected: both commands PASS.
 - Modify: `apps/web/test/member-volume-menu.test.ts`
 
 **Interfaces:**
+
 - Consumes: `ShellProps.onUpdateMemberNickname` and `currentNickname` from Task 4.
 - Produces: reusable `NicknameDialog` with `{ user, onCancel, onSave, t }`.
 
@@ -533,11 +545,11 @@ Expected: both commands PASS.
 Assert English and Turkish values for these keys:
 
 ```ts
-"member.changeNickname"
-"member.nicknameLabel"
-"member.nicknameUpdated"
-"member.nicknameUpdateFailed"
-"member.nicknameLength"
+"member.changeNickname";
+"member.nicknameLabel";
+"member.nicknameUpdated";
+"member.nicknameUpdateFailed";
+"member.nicknameLength";
 ```
 
 Extend sidebar tests to require `RailMemberActionControl` and `MemberPanel` to render `member.changeNickname` only when `canRename` is true, and to retain `VolumeControl` only for remote active voice users. Extend the owner table source test to require a nickname action for both the owner row and normal member rows.
@@ -579,9 +591,7 @@ Change `RailMemberActionControl` to accept optional volume props plus `canRename
 ```ts
 const canRename = canModerate && (user.role === "member" || user.userId === currentUser.id);
 const hasActions = Boolean(
-  (user.userId !== currentUser.id && voiceRoom) ||
-  canRename ||
-  (canModerate && user.userId !== currentUser.id)
+  (user.userId !== currentUser.id && voiceRoom) || canRename || (canModerate && user.userId !== currentUser.id)
 );
 ```
 
@@ -607,6 +617,7 @@ Expected: both commands PASS; existing personal-volume and owner moderation test
 ### Task 6: Activate Voice Channels from the Channel Name
 
 **Files:**
+
 - Create: `apps/web/src/lib/voiceChannelActivation.ts`
 - Create: `apps/web/test/voice-channel-activation.test.ts`
 - Modify: `apps/web/src/App.tsx:127-160, 790-810, 1834-1965`
@@ -615,6 +626,7 @@ Expected: both commands PASS; existing personal-volume and owner moderation test
 - Modify: `apps/web/test/voice-rail-live.test.ts`
 
 **Interfaces:**
+
 - Produces: `voiceChannelActivation(activeRoomId: string | null, targetRoomId: string): "join" | "open" | "confirm-move"`.
 - Changes: `joinVoiceWithAudioUnlock(...)` and `ShellProps.onJoinVoice(...)` return `Promise<boolean>`.
 
@@ -661,13 +673,16 @@ export function voiceChannelActivation(activeRoomId: string | null, targetRoomId
 Change `joinVoiceWithAudioUnlock` to return `joined` after releasing on failure:
 
 ```ts
-return join(roomId).then((joined) => {
-  if (!joined) release();
-  return joined;
-}, (cause: unknown) => {
-  release();
-  throw cause;
-});
+return join(roomId).then(
+  (joined) => {
+    if (!joined) release();
+    return joined;
+  },
+  (cause: unknown) => {
+    release();
+    throw cause;
+  }
+);
 ```
 
 Change `ShellProps.onJoinVoice` to `Promise<boolean>` and keep all callers awaiting or intentionally discarding the result.
@@ -682,9 +697,12 @@ if (action === "open") {
   props.onNavigate(serverPath(props.activeServerId, "voice", room.id));
 } else if (action === "join") {
   setJoiningRoomId(room.id);
-  void props.onJoinVoice(room.id).then((joined) => {
-    if (joined) props.onNavigate(serverPath(props.activeServerId, "voice", room.id));
-  }).finally(() => setJoiningRoomId(null));
+  void props
+    .onJoinVoice(room.id)
+    .then((joined) => {
+      if (joined) props.onNavigate(serverPath(props.activeServerId, "voice", room.id));
+    })
+    .finally(() => setJoiningRoomId(null));
 } else {
   setMoveTarget(room);
 }
@@ -724,6 +742,7 @@ Expected: both commands PASS; direct join, LIVE watch, reconnect, and atomic joi
 ### Task 7: Align Voice Sidebar and Dock Icons
 
 **Files:**
+
 - Modify: `apps/web/src/lib/voiceControls.ts:95-105`
 - Modify: `apps/web/src/App.tsx:1865-1935, 3175-3205`
 - Modify: `apps/web/src/styles.css:525-610, 2035-2060`
@@ -732,6 +751,7 @@ Expected: both commands PASS; direct join, LIVE watch, reconnect, and atomic joi
 - Modify: `apps/web/test/screen-share-control.test.ts`
 
 **Interfaces:**
+
 - Changes: a deafened member returns `["muted", "deafened"]` from `sidebarVoiceStatusKeys`.
 - Produces: inline microphone prefix for voice channel rows.
 - Produces: screen-share SVG with effective stroke weight matching 24px dock glyphs.
@@ -771,7 +791,9 @@ return statuses;
 Render:
 
 ```tsx
-<span className="channel-prefix" aria-hidden="true"><MicIcon off={false} /></span>
+<span className="channel-prefix" aria-hidden="true">
+  <MicIcon off={false} />
+</span>
 ```
 
 Keep the 18px prefix column and size the nested icon to 15px in CSS.
@@ -797,10 +819,12 @@ Expected: all commands PASS.
 ### Task 8: Perform Full Regression and Visual Verification
 
 **Files:**
+
 - Review: all files changed in Tasks 1-7
 - Preserve: `.gitignore`
 
 **Interfaces:**
+
 - Consumes all prior task outputs.
 - Produces a verified, unstaged working-tree implementation.
 

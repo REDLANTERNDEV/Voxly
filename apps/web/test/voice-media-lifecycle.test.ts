@@ -16,47 +16,70 @@ function readSource(path: string) {
 describe("voice snapshot reconciliation", () => {
   it("moves a LIVE card selection into voice without a second confirmation", () => {
     const source = readAppSource();
-    const voiceRoom = source.match(/function VoiceRoomScreen[\s\S]*?\n}\n\nfunction OwnerPanel/)?.[0] ?? "";
+    const voiceRoom = source.match(/function\s+VoiceRoomScreen[\s\S]*?\n}\n\nfunction\s+OwnerPanel/)?.[0] ?? "";
 
     assert.match(voiceRoom, /liveWatchAttemptRef/);
     assert.match(voiceRoom, /microphoneEnabled:\s*true/);
-    assert.doesNotMatch(voiceRoom, /onClick=\{joinAndWatchLive\}/);
+    assert.doesNotMatch(voiceRoom, /onClick=\{\s*joinAndWatchLive\s*\}\s*/);
   });
 
   it("supports receive-only joins and lazily opens the microphone", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
 
-    assert.match(source, /interface VoiceJoinOptions[\s\S]*?microphoneEnabled\?: boolean/);
+    assert.match(source, /interface\s+VoiceJoinOptions[\s\S]*?microphoneEnabled\?:\s+boolean/);
     assert.match(source, /options\.microphoneEnabled\s*\?\?\s*true/);
-    assert.match(source, /if \(!stream\)[\s\S]*?getUserMedia[\s\S]*?renegotiatePeers\(\)/);
+    assert.match(source, /if\s+\(\s*!stream\s*\)[\s\S]*?getUserMedia[\s\S]*?renegotiatePeers\(\s*\)/);
     assert.match(source, /record\.microphoneEnabled/);
   });
   it("navigates away from the access claim route after authentication", () => {
     const source = readAppSource();
 
-    assert.match(source, /const completeAuthentication = useCallback\([\s\S]*?authRequestGateRef\.current\.invalidate\(\)[\s\S]*?setUser\(nextUser\)[\s\S]*?setAuthState\("ready"\)/);
-    assert.match(source, /const authenticatedUserIdRef = useRef<string \| null>\(null\)/);
-    assert.match(source, /if \(authenticatedUserIdRef\.current !== nextUser\.id\) setRtcConfigReady\(false\)[\s\S]*?authenticatedUserIdRef\.current = nextUser\.id[\s\S]*?\}, \[\]\)/);
-    assert.match(source, /fetchMe\(\)[\s\S]*?authenticatedUserIdRef\.current = response\.user\.id[\s\S]*?setUser\(response\.user\)/);
-    assert.match(source, /const generation = authRequestGateRef\.current\.begin\(\)[\s\S]*?authRequestGateRef\.current\.isCurrent\(generation\)/);
-    assert.match(source, /const handleAccessClaimed = useCallback\([\s\S]*?completeAuthentication\(claimed\)[\s\S]*?loadAcceptedServer\(serverId\)/);
-    assert.match(source, /<AccessClaimScreen[\s\S]*?onClaimed=\{onAccessClaimed\}/);
+    assert.match(
+      source,
+      /const\s+completeAuthentication\s+=\s+useCallback\(\s*[\s\S]*?authRequestGateRef\.current\.invalidate\(\s*\)[\s\S]*?setUser\(\s*nextUser\s*\)[\s\S]*?setAuthState\(\s*"ready"\s*\)/
+    );
+    assert.match(source, /const\s+authenticatedUserIdRef\s+=\s+useRef<string\s+\|\s+null>\s*\(\s*null\s*\)/);
+    assert.match(
+      source,
+      /if\s+\(\s*authenticatedUserIdRef\.current\s+!==\s+nextUser\.id\s*\)\s+setRtcConfigReady\(\s*false\s*\)[\s\S]*?authenticatedUserIdRef\.current\s+=\s+nextUser\.id[\s\S]*?\s*\}\s*,\s+\[\]\s*\)/
+    );
+    assert.match(
+      source,
+      /fetchMe\(\s*\)[\s\S]*?authenticatedUserIdRef\.current\s+=\s+response\.user\.id[\s\S]*?setUser\(\s*response\.user\s*\)/
+    );
+    assert.match(
+      source,
+      /const\s+generation\s+=\s+authRequestGateRef\.current\.begin\(\s*\)[\s\S]*?authRequestGateRef\.current\.isCurrent\(\s*generation\s*\)/
+    );
+    assert.match(
+      source,
+      /const\s+handleAccessClaimed\s+=\s+useCallback\(\s*[\s\S]*?completeAuthentication\(\s*claimed\s*\)[\s\S]*?loadAcceptedServer\(\s*serverId\s*\)/
+    );
+    assert.match(source, /<AccessClaimScreen[\s\S]*?onClaimed=\{\s*onAccessClaimed\s*\}\s*/);
   });
 
   it("does not reserve a blank stage status row", () => {
     const source = readAppSource();
 
-    assert.match(source, /\{stageStatus \? <p className="voice-stage-status" aria-live="polite">\{stageStatus\}<\/p> : null\}/);
+    assert.match(
+      source,
+      /\{\s*stageStatus\s+\?\s+\(?\s*<p\s+className="voice-stage-status"\s+aria-live="polite">\s*\{\s*stageStatus\s*\}\s*<\/p>\s*\)?\s*:\s+null\s*\}\s*/
+    );
   });
 
   it("unlocks audio playback synchronously before starting voice join", async () => {
     const events: string[] = [];
 
     assert.equal(typeof joinVoiceWithAudioUnlock, "function");
-    await joinVoiceWithAudioUnlock("voice-room", () => events.push("unlock"), () => events.push("release"), async (roomId) => {
-      events.push(`join:${roomId}`);
-      return true;
-    });
+    await joinVoiceWithAudioUnlock(
+      "voice-room",
+      () => events.push("unlock"),
+      () => events.push("release"),
+      async (roomId) => {
+        events.push(`join:${roomId}`);
+        return true;
+      }
+    );
 
     assert.deepEqual(events, ["unlock", "join:voice-room"]);
   });
@@ -65,17 +88,22 @@ describe("voice snapshot reconciliation", () => {
     const events: string[] = [];
 
     assert.equal(typeof joinVoiceWithAudioUnlock, "function");
-    await joinVoiceWithAudioUnlock("voice-room", () => events.push("unlock"), () => events.push("release"), async () => {
-      events.push("join");
-      return false;
-    });
+    await joinVoiceWithAudioUnlock(
+      "voice-room",
+      () => events.push("unlock"),
+      () => events.push("release"),
+      async () => {
+        events.push("join");
+        return false;
+      }
+    );
 
     assert.deepEqual(events, ["unlock", "join", "release"]);
   });
 
   it("stops a pre-join microphone test before opening voice capture", () => {
     const source = readAppSource();
-    const join = source.match(/const onJoinVoice[\s\S]*?onJoinVoice,/)?.[0] ?? "";
+    const join = source.match(/const\s+onJoinVoice[\s\S]*?onJoinVoice,/)?.[0] ?? "";
 
     assert.match(join, /audio\.microphoneTest\.active/);
     assert.match(join, /audio\.stopMicrophoneTest/);
@@ -85,9 +113,11 @@ describe("voice snapshot reconciliation", () => {
 
   it("releases unused audio playback in the canonical voice leave path", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
-    const leave = source.match(/const leave = useCallback\(\(\) => \{[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+    const leave =
+      source.match(/const\s+leave\s+=\s+useCallback\(\s*\(\s*\)\s+=>\s+\{\s*[\s\S]*?\n\s+},\s+\[[^\]]*\]\s*\);/)?.[0] ??
+      "";
 
-    assert.match(leave, /releaseUnusedSharedAudioOutput\(\)/);
+    assert.match(leave, /releaseUnusedSharedAudioOutput\(\s*\)/);
   });
 
   it("keeps one voice-audio sibling mounted for every authenticated surface", () => {
@@ -96,10 +126,12 @@ describe("voice snapshot reconciliation", () => {
 
     assert.equal(typeof Surface, "function");
     for (const route of ["text", "voice", "owner", "invite"]) {
-      const html = renderToStaticMarkup(createElement(Surface as ComponentType<SurfaceProps>, {
-        audio: createElement("audio", { "data-voice-runtime": "true" }),
-        children: createElement("main", { "data-route": route })
-      }));
+      const html = renderToStaticMarkup(
+        createElement(Surface as ComponentType<SurfaceProps>, {
+          audio: createElement("audio", { "data-voice-runtime": "true" }),
+          children: createElement("main", { "data-route": route })
+        })
+      );
       assert.match(html, /data-voice-runtime="true"/);
       assert.match(html, new RegExp(`data-route="${route}"`));
     }
@@ -107,34 +139,41 @@ describe("voice snapshot reconciliation", () => {
 
   it("handles Back/Forward as route changes without leaving or remounting voice", () => {
     const app = readSource("src/App.tsx");
-    const pop = app.match(/const handlePop = \(\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
-    assert.match(pop, /parseRoute\(window.location.pathname\)/);
-    assert.match(pop, /setRoute\(nextRoute\)/);
+    const pop = app.match(/const\s+handlePop\s+=\s+\(\s*\)\s+=>\s+\{\s*[\s\S]*?\n\s+\}\s*;/)?.[0] ?? "";
+    assert.match(pop, /parseRoute\(\s*window.location.pathname\s*\)/);
+    assert.match(pop, /setRoute\(\s*nextRoute\s*\)/);
     assert.doesNotMatch(pop, /leave|reload|location\.(?:assign|replace)|joinVoice/);
-    assert.match(app, /window.addEventListener\("popstate", handlePop\)/);
+    assert.match(app, /window.addEventListener\(\s*"popstate",\s+handlePop\s*\)/);
     assert.doesNotMatch(app, /<AuthenticatedAppSurface[^>]*key=/);
   });
 
   it("keeps the native remote audio element mounted as the only hardware sink", () => {
     const source = readAppSource();
-    const remoteAudio = source.match(/function RemoteAudio[\s\S]*?\n}\n\nfunction GlobalVoiceAudio/)?.[0] ?? "";
+    const remoteAudio = source.match(/function\s+RemoteAudio[\s\S]*?\n}\n\nfunction\s+GlobalVoiceAudio/)?.[0] ?? "";
 
-    assert.match(remoteAudio, /connectAudioOutput\(audio, stream, \{ muted, volume \}\)/);
-    assert.doesNotMatch(remoteAudio, /if \(!useFallback\) return null/);
-    assert.match(remoteAudio, /return <audio[^>]*ref=\{audioRef\}/);
+    assert.match(remoteAudio, /connectAudioOutput\(\s*audio,\s+stream,\s+\{\s+muted,\s+volume\s+\}\s*\)/);
+    assert.doesNotMatch(remoteAudio, /if\s+\(\s*!useFallback\s*\)\s+return\s+null/);
+    assert.match(remoteAudio, /return\s+<audio[^>]*ref=\{\s*audioRef\s*\}\s*/);
   });
 
   it("keeps watched screen-share audio independent of stage and participant deafen", () => {
     const source = readAppSource();
-    const globalVoiceAudio = source.match(/function GlobalVoiceAudio[\s\S]*?\n}\n\nfunction VisualStage/)?.[0] ?? "";
-    const visualStage = source.match(/function VisualStage[\s\S]*?\n}\n\nfunction StatusPill/)?.[0] ?? "";
-    const voiceRoom = source.match(/function VoiceRoomScreen[\s\S]*?\n}\n\nfunction OwnerPanel/)?.[0] ?? "";
+    const globalVoiceAudio =
+      source.match(/function\s+GlobalVoiceAudio[\s\S]*?\n}\n\nfunction\s+VisualStage/)?.[0] ?? "";
+    const visualStage = source.match(/function\s+VisualStage[\s\S]*?\n}\n\nfunction\s+StatusPill/)?.[0] ?? "";
+    const voiceRoom = source.match(/function\s+VoiceRoomScreen[\s\S]*?\n}\n\nfunction\s+OwnerPanel/)?.[0] ?? "";
 
-    assert.match(globalVoiceAudio, /<RemoteAudio[\s\S]*?muted=\{muted \|\| mutedUserIds\.has\(item\.userId\)\}/);
+    assert.match(
+      globalVoiceAudio,
+      /<RemoteAudio[\s\S]*?muted=\{\s*muted\s+\|\|\s+mutedUserIds\.has\(\s*item\.userId\s*\)\s*\}\s*/
+    );
     assert.doesNotMatch(visualStage, /<RemoteAudio/);
-    assert.match(voiceRoom, /<RemoteAudio key=\{source.key\} stream=\{source.stream!\} muted=\{false\}/);
+    assert.match(
+      voiceRoom,
+      /<RemoteAudio\s+key=\{\s*source.key\s*\}\s+stream=\{\s*source.stream!\s*\}\s+muted=\{\s*false\s*\}\s*/
+    );
     assert.doesNotMatch(visualStage, /^\s*muted:\s*boolean;/m);
-    assert.doesNotMatch(voiceRoom, /<VisualStage[\s\S]*?muted=\{props\.controls\.deafen\.on\}/);
+    assert.doesNotMatch(voiceRoom, /<VisualStage[\s\S]*?muted=\{\s*props\.controls\.deafen\.on\s*\}\s*/);
   });
 
   it("exposes a retry action only when native audio playback is blocked", () => {
@@ -147,37 +186,47 @@ describe("voice snapshot reconciliation", () => {
 
   it("runs peer reconciliation for acknowledged and pushed snapshots", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
-    const acknowledgedSnapshots = source.match(/socket\.emit\("voice:snapshot"[\s\S]{0,240}applyVoiceSnapshot\(nextSnapshot\)/g) ?? [];
+    const acknowledgedSnapshots =
+      source.match(/socket\.emit\(\s*"voice:snapshot"[\s\S]{0,240}applyVoiceSnapshot\(\s*nextSnapshot\s*\)/g) ?? [];
 
     assert.equal(acknowledgedSnapshots.length, 2);
-    assert.match(source, /const onSnapshot = \(nextSnapshot: VoiceSnapshot\) => applyVoiceSnapshot\(nextSnapshot\)/);
+    assert.match(
+      source,
+      /const\s+onSnapshot\s+=\s+\(\s*nextSnapshot:\s+VoiceSnapshot\s*\)\s+=>\s+applyVoiceSnapshot\(\s*nextSnapshot\s*\)/
+    );
   });
 
   it("closes stale media peers when signaling disconnects", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
 
-    const disconnect = source.match(/const onDisconnect = \(\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
-    assert.match(disconnect, /closePeers\(\)/);
-    assert.match(disconnect, /desktopMicrophone\.suspend\(\)/);
+    const disconnect = source.match(/const\s+onDisconnect\s+=\s+\(\s*\)\s+=>\s+\{\s*[\s\S]*?\n\s+\}\s*;/)?.[0] ?? "";
+    assert.match(disconnect, /closePeers\(\s*\)/);
+    assert.match(disconnect, /desktopMicrophone\.suspend\(\s*\)/);
   });
 
   it("cancels failed-peer recovery after an authoritative member leave", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
 
-    assert.match(source, /activeVoiceMemberUserIdsRef\.current = activeMemberUserIds/);
-    assert.match(source, /\.\.\.peerRecoveryTimersRef\.current\.keys\(\)/);
-    assert.match(source, /if \(!activeVoiceMemberUserIdsRef\.current\.has\(peerUserId\)\) return/);
+    assert.match(source, /activeVoiceMemberUserIdsRef\.current\s+=\s+activeMemberUserIds/);
+    assert.match(source, /\.\.\.peerRecoveryTimersRef\.current\.keys\(\s*\)/);
+    assert.match(source, /if\s+\(\s*!activeVoiceMemberUserIdsRef\.current\.has\(\s*peerUserId\s*\)\s*\)\s+return/);
   });
 
   it("preserves visual subscriptions during transient peer recovery", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
 
-    assert.match(source, /removePeer\(peerUserId, \{[\s\S]*?preserveVisualSubscriptions: true,[\s\S]*?preserveRecoveryState: true/);
+    assert.match(
+      source,
+      /removePeer\(\s*peerUserId,\s+\{\s*[\s\S]*?preserveVisualSubscriptions:\s+true,[\s\S]*?preserveRecoveryState:\s+true/
+    );
   });
 
   it("rejoins with effective media before requesting reconnect snapshots", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
-    const recovery = source.match(/const attemptRecovery = async \(\) => \{([\s\S]*?)\n    \};\n    const onConnect/)?.[1] ?? "";
+    const recovery =
+      source.match(
+        /const\s+attemptRecovery\s+=\s+async\s+\(\s*\)\s+=>\s+\{\s*([\s\S]*?)\n\s+\}\s*;\n\s+const\s+onConnect/
+      )?.[1] ?? "";
 
     const effectiveStateIndex = recovery.indexOf("effectiveVoiceMediaState(");
     const joinIndex = recovery.indexOf("requestVoiceJoin(");
@@ -187,78 +236,100 @@ describe("voice snapshot reconciliation", () => {
     assert.notEqual(snapshotIndex, -1);
     assert.ok(effectiveStateIndex < joinIndex);
     assert.ok(joinIndex < snapshotIndex);
-    assert.doesNotMatch(recovery, /Boolean\(localStreamsRef\.current\.mic\)/);
-    assert.doesNotMatch(recovery, /emitMediaState\(/);
+    assert.doesNotMatch(recovery, /Boolean\(\s*localStreamsRef\.current\.mic\s*\)/);
+    assert.doesNotMatch(recovery, /emitMediaState\(\s*/);
   });
 
   it("retries connected recovery until join and visual subscriptions are acknowledged", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
 
-    assert.match(source, /const recoveryRetryTimerRef = useRef<number \| null>\(null\)/);
-    assert.match(source, /const recoveryAttemptInFlightRef = useRef\(false\)/);
+    assert.match(source, /const\s+recoveryRetryTimerRef\s+=\s+useRef<number\s+\|\s+null>\s*\(\s*null\s*\)/);
+    assert.match(source, /const\s+recoveryAttemptInFlightRef\s+=\s+useRef\(\s*false\s*\)/);
     assert.match(source, /voiceRecoveryRetryDelayMs/);
-    assert.match(source, /const subscription = await setVisualSubscriptions\(visualTargetsRef\.current\)/);
-    assert.match(source, /if \(!subscription\.ok\)[\s\S]*?retry = true/);
-    assert.match(source, /scheduleRecovery\(voiceRecoveryRetryDelayMs\)/);
-    assert.match(source, /window\.clearTimeout\(recoveryRetryTimerRef\.current\)/);
+    assert.match(
+      source,
+      /const\s+subscription\s+=\s+await\s+setVisualSubscriptions\(\s*visualTargetsRef\.current\s*\)/
+    );
+    assert.match(source, /if\s+\(\s*!subscription\.ok\s*\)[\s\S]*?retry\s+=\s+true/);
+    assert.match(source, /scheduleRecovery\(\s*voiceRecoveryRetryDelayMs\s*\)/);
+    assert.match(source, /window\.clearTimeout\(\s*recoveryRetryTimerRef\.current\s*\)/);
   });
 
   it("uses the acknowledged atomic join for explicit room entry", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
-    const join = source.match(/const join = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+    const join = source.match(/const\s+join\s+=\s+useCallback[\s\S]*?\n\s+},\s+\[[^\]]*\]\s*\);/)?.[0] ?? "";
 
-    assert.match(join, /effectiveVoiceMediaState\(/);
-    assert.match(join, /await requestVoiceJoin\(/);
+    assert.match(join, /effectiveVoiceMediaState\(\s*/);
+    assert.match(join, /await\s+requestVoiceJoin\(\s*/);
     assert.match(join, /response\.state\.media\.mic/);
-    assert.doesNotMatch(join, /socket\.emit\("voice:join"/);
-    assert.doesNotMatch(join, /await emitMediaState\(/);
+    assert.doesNotMatch(join, /socket\.emit\(\s*"voice:join"/);
+    assert.doesNotMatch(join, /await\s+emitMediaState\(\s*/);
   });
 
   it("derives undeafen and ended microphone state from live tracks", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
-    const setDeafened = source.match(/const setDeafened = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+    const setDeafened =
+      source.match(/const\s+setDeafened\s+=\s+useCallback[\s\S]*?\n\s+},\s+\[[^\]]*\]\s*\);/)?.[0] ?? "";
 
-    assert.match(source, /watchMicrophoneStreamEnd\(/);
-    assert.match(setDeafened, /effectiveVoiceMediaState\(/);
-    assert.doesNotMatch(setDeafened, /Boolean\(localStreamsRef\.current\.mic\)/);
+    assert.match(source, /watchMicrophoneStreamEnd\(\s*/);
+    assert.match(setDeafened, /effectiveVoiceMediaState\(\s*/);
+    assert.doesNotMatch(setDeafened, /Boolean\(\s*localStreamsRef\.current\.mic\s*\)/);
   });
 
   it("preserves only the pre-deafen microphone preference through undeafen", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
-    const toggleMic = source.match(/const toggleMic = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
-    const setDeafened = source.match(/const setDeafened = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+    const toggleMic = source.match(/const\s+toggleMic\s+=\s+useCallback[\s\S]*?\n\s+},\s+\[[^\]]*\]\s*\);/)?.[0] ?? "";
+    const setDeafened =
+      source.match(/const\s+setDeafened\s+=\s+useCallback[\s\S]*?\n\s+},\s+\[[^\]]*\]\s*\);/)?.[0] ?? "";
 
-    assert.match(source, /const microphoneOnBeforeDeafenRef = useRef\(true\)/);
-    assert.match(source, /const deafenTransitionRef = useRef\(0\)/);
-    assert.match(setDeafened, /microphoneOnBeforeDeafenRef\.current = moderationRef\.current\.muted[\s\S]*?microphoneOnBeforeModerationMuteRef\.current[\s\S]*?: controlsRef\.current\.mic\.on/);
-    assert.match(setDeafened, /const restoreMicrophoneOn = !moderationRef\.current\.muted[\s\S]*?&& microphoneOnBeforeDeafenRef\.current/);
-    assert.match(setDeafened, /desktopMicrophone\.apply\(\[track\], restoreMicrophoneOn && track\.readyState === "live"\)/);
+    assert.match(source, /const\s+microphoneOnBeforeDeafenRef\s+=\s+useRef\(\s*true\s*\)/);
+    assert.match(source, /const\s+deafenTransitionRef\s+=\s+useRef\(\s*0\s*\)/);
+    assert.match(
+      setDeafened,
+      /microphoneOnBeforeDeafenRef\.current\s+=\s+moderationRef\.current\.muted[\s\S]*?microphoneOnBeforeModerationMuteRef\.current[\s\S]*?:\s+controlsRef\.current\.mic\.on/
+    );
+    assert.match(
+      setDeafened,
+      /const\s+restoreMicrophoneOn\s+=\s+!moderationRef\.current\.muted[\s\S]*?&&\s+microphoneOnBeforeDeafenRef\.current/
+    );
+    assert.match(
+      setDeafened,
+      /desktopMicrophone\.apply\(\s*\[track\],\s+restoreMicrophoneOn\s+&&\s+track\.readyState\s+===\s+"live"\s*\)/
+    );
     assert.match(setDeafened, /restoreMicrophoneOn/);
-    assert.match(setDeafened, /effectiveVoiceMediaState\(nextControls, localStreamsRef\.current\)/);
-    assert.match(setDeafened, /const response = await emitMediaState/);
-    assert.match(setDeafened, /transition !== deafenTransitionRef\.current/);
-    assert.match(setDeafened, /const failedControls: VoiceControls = \{[\s\S]*?\.\.\.controlsRef\.current,[\s\S]*?deafen:[\s\S]*?on: true/);
+    assert.match(setDeafened, /effectiveVoiceMediaState\(\s*nextControls,\s+localStreamsRef\.current\s*\)/);
+    assert.match(setDeafened, /const\s+response\s+=\s+await\s+emitMediaState/);
+    assert.match(setDeafened, /transition\s+!==\s+deafenTransitionRef\.current/);
+    assert.match(
+      setDeafened,
+      /const\s+failedControls:\s+VoiceControls\s+=\s+\{\s*[\s\S]*?\.\.\.controlsRef\.current,[\s\S]*?deafen:[\s\S]*?on:\s+true/
+    );
     assert.doesNotMatch(toggleMic, /microphoneOnBeforeDeafenRef/);
   });
 
   it("retains microphone intent for recovery while a lost microphone stays unpublished", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
-    const handleMicrophoneLost = source.match(/const handleMicrophoneLost = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
-    const activateMicrophoneInput = source.match(/const activateMicrophoneInput = useCallback[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+    const handleMicrophoneLost =
+      source.match(/const\s+handleMicrophoneLost\s+=\s+useCallback[\s\S]*?\n\s+},\s+\[[^\]]*\]\s*\);/)?.[0] ?? "";
+    const activateMicrophoneInput =
+      source.match(/const\s+activateMicrophoneInput\s+=\s+useCallback[\s\S]*?\n\s+},\s+\[[^\]]*\]\s*\);/)?.[0] ?? "";
 
-    assert.match(handleMicrophoneLost, /microphoneRecoveryRef.current =/);
-    assert.match(handleMicrophoneLost, /controlsRef.current.deafen.on && microphoneOnBeforeDeafenRef.current/);
-    assert.match(handleMicrophoneLost, /mic: \{ \.\.\.controlsRef.current.mic, on: false \}/);
+    assert.match(handleMicrophoneLost, /microphoneRecoveryRef.current\s+=/);
+    assert.match(handleMicrophoneLost, /controlsRef.current.deafen.on\s+&&\s+microphoneOnBeforeDeafenRef.current/);
+    assert.match(handleMicrophoneLost, /mic:\s+\{\s+\.\.\.controlsRef.current.mic,\s+on:\s+false\s+\}\s*/);
     // Only the input that is still current may report itself as lost.
-    assert.match(activateMicrophoneInput, /if \(microphoneInputRef\.current !== input\) return;\s*\n\s*handleMicrophoneLost\(/);
+    assert.match(
+      activateMicrophoneInput,
+      /if\s+\(\s*microphoneInputRef\.current\s+!==\s+input\s*\)\s+return;\s*\n\s*handleMicrophoneLost\(\s*/
+    );
   });
 
   it("does not treat a microphone selection as a socket reconnect", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
-    const join = source.match(/const join = useCallback[\s\S]*?\n  }, \[([^\]]*)\]\);/) ?? [];
+    const join = source.match(/const\s+join\s+=\s+useCallback[\s\S]*?\n\s+},\s+\[([^\]]*)\]\s*\);/) ?? [];
 
-    assert.match(source, /const microphoneDeviceIdRef = useRef\(microphoneDeviceId\)/);
-    assert.match(join[0] ?? "", /openMicrophoneCapture\(\{ deviceId: microphoneDeviceIdRef\.current \}\)/);
+    assert.match(source, /const\s+microphoneDeviceIdRef\s+=\s+useRef\(\s*microphoneDeviceId\s*\)/);
+    assert.match(join[0] ?? "", /openMicrophoneCapture\(\s*\{\s+deviceId:\s+microphoneDeviceIdRef\.current\s+\}\s*\)/);
     assert.doesNotMatch(join[1] ?? "", /\bmicrophoneDeviceId\b/);
     assert.doesNotMatch(join[1] ?? "", /\bnoiseSuppression\b/);
   });
@@ -268,41 +339,56 @@ describe("voice snapshot reconciliation", () => {
     // which took seconds, published silence in between, and could end with no
     // microphone at all if the reopen failed.
     const source = readSource("src/lib/useVoiceMedia.ts");
-    const effect = source.match(/useEffect\(\(\) => \{\n    noiseSuppressionRef\.current = noiseSuppression;[\s\S]*?\n  }, \[([^\]]*)\]\);/) ?? [];
+    const effect =
+      source.match(
+        /useEffect\(\s*\(\s*\)\s+=>\s+\{\s*\n\s+noiseSuppressionRef\.current\s+=\s+noiseSuppression;[\s\S]*?\n\s+},\s+\[([^\]]*)\]\s*\);/
+      ) ?? [];
 
-    assert.match(source, /const noiseSuppressionRef = useRef\(noiseSuppression\)/);
-    assert.match(effect[0] ?? "", /microphoneInputRef\.current\?\.setNoiseSuppression\(noiseSuppression\)/);
+    assert.match(source, /const\s+noiseSuppressionRef\s+=\s+useRef\(\s*noiseSuppression\s*\)/);
+    assert.match(effect[0] ?? "", /microphoneInputRef\.current\?\.setNoiseSuppression\(\s*noiseSuppression\s*\)/);
     assert.equal((effect[1] ?? "").trim(), "noiseSuppression");
-    assert.doesNotMatch(source, /openMicrophoneCapture\([^)]*noiseSuppression/);
+    assert.doesNotMatch(source, /openMicrophoneCapture\(\s*[^)]*noiseSuppression/);
   });
 
   it("initializes the optional worklet with the current preference", () => {
     const source = readSource("src/lib/microphoneInput.ts");
 
-    assert.match(source, /processorOptions: \{ enabled: noiseSuppression \}/);
+    assert.match(source, /processorOptions:\s+\{\s+enabled:\s+noiseSuppression\s+\}\s*/);
   });
 
   it("reopens the capture for a device change and for nothing else", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
-    const effect = source.match(/useEffect\(\(\) => \{\n    const previousStream = localStreamsRef\.current\.mic;[\s\S]*?\n  }, \[([^\]]*)\]\);/) ?? [];
+    const effect =
+      source.match(
+        /useEffect\(\s*\(\s*\)\s+=>\s+\{\s*\n\s+const\s+previousStream\s+=\s+localStreamsRef\.current\.mic;[\s\S]*?\n\s+},\s+\[([^\]]*)\]\s*\);/
+      ) ?? [];
 
     assert.doesNotMatch(effect[1] ?? "", /\bnoiseSuppression\b/, "the preference no longer drives a re-capture");
-    assert.match(effect[0] ?? "", /openMicrophoneCapture\(\{ deviceId: microphoneDeviceId \}\)/);
+    assert.match(effect[0] ?? "", /openMicrophoneCapture\(\s*\{\s+deviceId:\s+microphoneDeviceId\s+\}\s*\)/);
     // The replacement track must inherit mute, deafen, and owner-mute state.
-    assert.match(effect[0] ?? "", /desktopMicrophone\.apply\(\[nextTrack\], controlsRef\.current\.mic\.on && !controlsRef\.current\.deafen\.on/);
-    assert.match(effect[0] ?? "", /replaceMicrophoneTrack\(peersRef\.current\.values\(\), nextTrack, previousTrack\)/);
+    assert.match(
+      effect[0] ?? "",
+      /desktopMicrophone\.apply\(\s*\[nextTrack\],\s+controlsRef\.current\.mic\.on\s+&&\s+!controlsRef\.current\.deafen\.on/
+    );
+    assert.match(
+      effect[0] ?? "",
+      /replaceMicrophoneTrack\(\s*peersRef\.current\.values\(\s*\),\s+nextTrack,\s+previousTrack\s*\)/
+    );
     // An unchanged capture must not reopen the device on unrelated churn.
-    assert.match(effect[0] ?? "", /if \(change === "none"\) return/);
+    assert.match(effect[0] ?? "", /if\s+\(\s*change\s+===\s+"none"\s*\)\s+return/);
   });
 
   it("keeps both captures alive across a device switch so one can be kept", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
-    const effect = source.match(/useEffect\(\(\) => \{\n    const previousStream = localStreamsRef\.current\.mic;[\s\S]*?\n  }, \[[^\]]*\]\);/)?.[0] ?? "";
+    const effect =
+      source.match(
+        /useEffect\(\s*\(\s*\)\s+=>\s+\{\s*\n\s+const\s+previousStream\s+=\s+localStreamsRef\.current\.mic;[\s\S]*?\n\s+},\s+\[[^\]]*\]\s*\);/
+      )?.[0] ?? "";
 
     // Nothing releases the running capture any more, so a failed reopen always
     // leaves the previous microphone to fall back to.
-    assert.doesNotMatch(effect, /const release =/);
-    assert.match(effect, /setError\("voiceError\.microphoneReopen"\)/);
+    assert.doesNotMatch(effect, /const\s+release\s+=/);
+    assert.match(effect, /setError\(\s*"voiceError\.microphoneReopen"\s*\)/);
     assert.doesNotMatch(effect, /handleMicrophoneLost/, "no reopen path can now strand the user without a microphone");
     assert.doesNotMatch(source, /applyMicrophoneProcessing/);
   });
@@ -310,17 +396,20 @@ describe("voice snapshot reconciliation", () => {
   it("still reports a microphone that genuinely disappeared", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
 
-    assert.match(source, /const handleMicrophoneLost = useCallback\(\(message: VoiceErrorKey\) => \{/);
-    assert.match(source, /handleMicrophoneLost\("voiceError\.microphoneDisconnected"\)/);
+    assert.match(
+      source,
+      /const\s+handleMicrophoneLost\s+=\s+useCallback\(\s*\(\s*message:\s+VoiceErrorKey\s*\)\s+=>\s+\{\s*/
+    );
+    assert.match(source, /handleMicrophoneLost\(\s*"voiceError\.microphoneDisconnected"\s*\)/);
   });
 
   it("applies refreshed ICE servers to active peer connections", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
 
-    assert.match(source, /const iceServersRef = useRef\(iceServers\)/);
-    assert.match(source, /new RTCPeerConnection\(\{ iceServers: iceServersRef\.current \}\)/);
-    assert.match(source, /peer\.setConfiguration\(\{ iceServers \}\)/);
-    assert.match(source, /peer\.restartIce\(\)/);
+    assert.match(source, /const\s+iceServersRef\s+=\s+useRef\(\s*iceServers\s*\)/);
+    assert.match(source, /new\s+RTCPeerConnection\(\s*\{\s+iceServers:\s+iceServersRef\.current\s+\}\s*\)/);
+    assert.match(source, /peer\.setConfiguration\(\s*\{\s+iceServers\s+\}\s*\)/);
+    assert.match(source, /peer\.restartIce\(\s*\)/);
   });
 
   it("recovers disconnected ICE peers before rebuilding them", () => {
@@ -328,43 +417,46 @@ describe("voice snapshot reconciliation", () => {
 
     assert.match(source, /oniceconnectionstatechange/);
     assert.match(source, /advancePeerRecovery/);
-    assert.match(source, /iceConnectionState [!=]== "disconnected"/);
+    assert.match(source, /iceConnectionState\s+[!=]==\s+"disconnected"/);
     assert.match(source, /voicePeerRecoveryGraceMs/);
-    assert.match(source, /peer\.restartIce\(\)/);
-    assert.match(source, /\"reconnecting\"/);
+    assert.match(source, /peer\.restartIce\(\s*\)/);
+    assert.match(source, /"reconnecting"/);
     assert.match(source, /peerGeneration/);
     assert.match(source, /isCurrentPeer/);
-    assert.match(source, /preserveRecoveryState: true/);
-    assert.match(source, /phase === "restarting"/);
-    assert.match(source, /iceConnectionState !== "disconnected"/);
+    assert.match(source, /preserveRecoveryState:\s+true/);
+    assert.match(source, /phase\s+===\s+"restarting"/);
+    assert.match(source, /iceConnectionState\s+!==\s+"disconnected"/);
     assert.match(source, /voicePeerConnectionTimeoutMs/);
-    assert.match(source, /restartTimeout = window\.setTimeout/);
+    assert.match(source, /restartTimeout\s+=\s+window\.setTimeout/);
     assert.match(source, /restart_failed/);
   });
 
   it("routes quality recovery through the guarded peer recovery owner", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
 
-    assert.match(source, /type: expectedPeer \? "quality_degraded" : "recovery_requested"/);
-    assert.match(source, /transition\.action !== "restart_ice"/);
+    assert.match(source, /type:\s+expectedPeer\s+\?\s+"quality_degraded"\s+:\s+"recovery_requested"/);
+    assert.match(source, /transition\.action\s+!==\s+"restart_ice"/);
     assert.match(source, /voicePeerConnectionTimeoutMs/);
-    assert.match(source, /schedulePeerRecovery\(payload\.fromUserId, peer, \{ type: "failed" \}\)/);
+    assert.match(source, /schedulePeerRecovery\(\s*payload\.fromUserId,\s+peer,\s+\{\s+type:\s+"failed"\s+\}\s*\)/);
   });
 
   it("invalidates an in-flight local offer before accepting a colliding offer", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
 
-    assert.match(source, /const offerGenerationsRef = useRef<Map<string, number>>/);
-    assert.match(source, /offerGenerationsRef\.current\.get\(peerUserId\) !== offerGeneration/);
-    assert.match(source, /shouldIgnoreIncomingOffer\([\s\S]{0,180}makingOfferPeersRef\.current\.has/);
+    assert.match(source, /const\s+offerGenerationsRef\s+=\s+useRef<Map<string,\s+number>\s*>\s*/);
+    assert.match(source, /offerGenerationsRef\.current\.get\(\s*peerUserId\s*\)\s+!==\s+offerGeneration/);
+    assert.match(source, /shouldIgnoreIncomingOffer\(\s*[\s\S]{0,180}makingOfferPeersRef\.current\.has/);
   });
 
   it("keeps answer cleanup generation-safe after candidate flushing", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
-    const answer = source.match(/if \(signal\.type === "answer"\) \{([\s\S]*?)\n    \}/)?.[1] ?? "";
+    const answer = source.match(/if\s+\(\s*signal\.type\s+===\s+"answer"\s*\)\s+\{\s*([\s\S]*?)\n\s+\}\s*/)?.[1] ?? "";
 
-    assert.match(answer, /await flushPendingCandidates/);
-    assert.match(answer, /if \(!isCurrentPeer\(payload\.fromUserId, peer, peerGeneration\)\) return;/);
+    assert.match(answer, /await\s+flushPendingCandidates/);
+    assert.match(
+      answer,
+      /if\s+\(\s*!isCurrentPeer\(\s*payload\.fromUserId,\s+peer,\s+peerGeneration\s*\)\s*\)\s+return;/
+    );
   });
 });
 
@@ -383,7 +475,8 @@ function fakePeer(kinds: Array<{ kind: string; direction: RTCRtpTransceiverDirec
       transceivers.push(transceiver);
       return transceiver;
     },
-    offeredSections: () => transceivers.map((transceiver) => `${transceiver.receiver.track.kind}:${transceiver.direction}`)
+    offeredSections: () =>
+      transceivers.map((transceiver) => `${transceiver.receiver.track.kind}:${transceiver.direction}`)
   };
 }
 
@@ -428,7 +521,7 @@ describe("offers from a member who sends no audio", () => {
   it("runs on the one path every offer goes through", () => {
     const source = readSource("src/lib/useVoiceMedia.ts");
 
-    assert.equal(source.match(/createOffer\(\)/g)?.length, 1);
-    assert.match(source, /ensureOfferableAudioSection\(peer\);[\s\S]{0,160}await peer\.createOffer\(\)/);
+    assert.equal(source.match(/createOffer\(\s*\)/g)?.length, 1);
+    assert.match(source, /ensureOfferableAudioSection\(\s*peer\s*\);[\s\S]{0,160}await\s+peer\.createOffer\(\s*\)/);
   });
 });

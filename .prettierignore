@@ -1,0 +1,17 @@
+# Generated dependency metadata and native build artifacts
+package-lock.json
+**/Cargo.lock
+**/target/
+**/dist/
+**/dist-test/
+**/node_modules/
+coverage/
+test-results/
+playwright-report/
+# Rust is formatted separately with cargo fmt.
+**/*.rs
+# Native initialization snippets are concatenated with arguments by Rust.
+# Their outer expression parentheses are part of that text contract.
+apps/desktop/src-tauri/src/*.js
+# CI workflows are outside this local formatter setup.
+.github/workflows/

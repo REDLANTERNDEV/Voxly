@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
-  clampContextMenuPosition,
-  contextMenuReducer,
-  createContextMenuDescriptor
-} from "../src/lib/contextMenu.js";
+import { clampContextMenuPosition, contextMenuReducer, createContextMenuDescriptor } from "../src/lib/contextMenu.js";
 
 describe("context menu state", () => {
   it("replaces the previously open menu and closes to null", () => {
@@ -38,7 +34,14 @@ describe("context menu state", () => {
 
   it("keeps overlay coordinates inside the viewport margin", () => {
     assert.deepEqual(
-      clampContextMenuPosition({ x: 990, y: 790, menuWidth: 160, menuHeight: 96, viewportWidth: 1000, viewportHeight: 800 }),
+      clampContextMenuPosition({
+        x: 990,
+        y: 790,
+        menuWidth: 160,
+        menuHeight: 96,
+        viewportWidth: 1000,
+        viewportHeight: 800
+      }),
       { x: 832, y: 696 }
     );
   });

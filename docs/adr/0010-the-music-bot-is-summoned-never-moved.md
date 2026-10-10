@@ -37,7 +37,7 @@ not to be either of those.
 A move is a departure and an arrival. Taken separately:
 
 **The arrival puts the bot in a room nobody there asked for it.** Every Set the
-bot has ever played exists because a member *inside that voice room* asked for
+bot has ever played exists because a member _inside that voice room_ asked for
 one: `music:control` is authorized against live voice membership, and
 `apps/server/src/music.ts` says why — "Being in the room is the whole permission:
 it is what makes this the asker's room to change." A move is not checked that
@@ -49,7 +49,7 @@ For the AFK room specifically it is worse, because the product already refuses
 this exact outcome in as many words. A Summon into an AFK room is turned away
 with `afk_room` and the reason is written beside it: "a bot summoned there could
 only ever be a silent participant. Refusing at the door is clearer than joining
-and going quiet." A move into the AFK room *is* joining and going quiet.
+and going quiet." A move into the AFK room _is_ joining and going quiet.
 
 **The departure destroys the Queue, from a control that never said so.** Leaving
 a voice room ends the Set — that is what a Set is — and ending a Set discards the
@@ -69,7 +69,7 @@ is the failure ticket 11 exists to prevent.
 
 ### 2. Carrying the Queue across rooms is not available either
 
-The remaining option — move the bot *and* take the Queue with it — contradicts
+The remaining option — move the bot _and_ take the Queue with it — contradicts
 the glossary twice. `CONTEXT.md` defines a Queue as belonging "to the voice room
 it was summoned into", and a Set as "the stretch from a Summon until the Music
 bot leaves the voice room". A Set that survives leaving a room is not a Set, and
@@ -102,9 +102,9 @@ un-enforced.
 
 ### 4. Everything an owner wants from this already exists, and says what it does
 
-- *"Stop the music in here."* The Music panel's own send-away, or Disconnect, or
+- _"Stop the music in here."_ The Music panel's own send-away, or Disconnect, or
   — since ADR-0009 — Mute, which now really does silence it.
-- *"Play in that channel instead."* Paste a link there. That is a Summon, it goes
+- _"Play in that channel instead."_ Paste a link there. That is a Summon, it goes
   through the door, and the Queue it builds belongs to the room that built it.
 
 A move adds only the ability to reach a state nothing else in the product
@@ -119,7 +119,7 @@ rather than opening it.
 
 The silence rule stays, and it is not dead code: it reads the bot's own
 `media.mic`, which is the server's conclusion rather than its reasons, so the bot
-honours *any* room-level rule the server invents without knowing the rule exists.
+honours _any_ room-level rule the server invents without knowing the rule exists.
 The AFK room is the one such rule today. Being unable to reach it by moving the
 bot is a property of this decision, not a gap left by it.
 

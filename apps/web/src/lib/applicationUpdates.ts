@@ -10,4 +10,6 @@ export const ApplicationUpdateContext = createContext<{
   clientBusy: boolean;
   reloadClient: () => void;
 }>({ desktop: null, reviewDesktop: async () => {}, pendingClient: null, clientBusy: false, reloadClient: () => {} });
-export function useApplicationUpdates() { return useContext(ApplicationUpdateContext); }
+export function useApplicationUpdates() {
+  return useContext(ApplicationUpdateContext);
+}

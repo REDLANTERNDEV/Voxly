@@ -12,7 +12,7 @@ import { io as createClient } from "socket.io-client";
 import type { BotEnvironment } from "./config.js";
 import type { BotCredentials, BotSession } from "./credentials.js";
 import { requestBotCredentials } from "./credentials.js";
-import { setSocketFor, type BotSocket } from "./socket.js";
+import type { BotSocket } from "./socket.js";
 
 export type { BotSocket };
 
@@ -80,9 +80,12 @@ export function createMusicBotPresence(options: MusicBotPresenceOptions): MusicB
   // unreferenced one lets Node decide the process has nothing left to do and
   // exit silently, mid-backoff, exactly when the server is down. Tests inject
   // their own `wait` and never reach this.
-  const wait = options.wait ?? ((milliseconds: number) => new Promise<void>((resolve) => {
-    setTimeout(resolve, milliseconds);
-  }));
+  const wait =
+    options.wait ??
+    ((milliseconds: number) =>
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, milliseconds);
+      }));
   const log = options.log ?? ((message: string) => console.log(message));
 
   const sockets = new Map<string, BotSocket>();

@@ -47,17 +47,26 @@ function entry(id: string, requestedByUserId = "ada"): QueueEntry {
 let lines = 0;
 const nextLineId = () => `line-${(lines += 1)}`;
 
-const added = (id: string, requestedByUserId?: string): PlaybackEvent =>
-  ({ kind: "added", entry: entry(id, requestedByUserId), lineId: nextLineId() });
+const added = (id: string, requestedByUserId?: string): PlaybackEvent => ({
+  kind: "added",
+  entry: entry(id, requestedByUserId),
+  lineId: nextLineId()
+});
 /**
  * Written as thunks so a run of events can pause twice and get two lines, and
  * so a test that cares who pressed the button can say. `run` calls anything it
  * is handed as a function, so `paused` still reads as an event in a list.
  */
-const pausedBy = (requestedByUserId = "ada"): PlaybackEvent =>
-  ({ kind: "paused", requestedByUserId, lineId: nextLineId() });
-const resumedBy = (requestedByUserId = "ada"): PlaybackEvent =>
-  ({ kind: "resumed", requestedByUserId, lineId: nextLineId() });
+const pausedBy = (requestedByUserId = "ada"): PlaybackEvent => ({
+  kind: "paused",
+  requestedByUserId,
+  lineId: nextLineId()
+});
+const resumedBy = (requestedByUserId = "ada"): PlaybackEvent => ({
+  kind: "resumed",
+  requestedByUserId,
+  lineId: nextLineId()
+});
 const paused = () => pausedBy();
 const resumed = () => resumedBy();
 const cleared: PlaybackEvent = { kind: "cleared" };
@@ -74,26 +83,43 @@ const listenerReturned: PlaybackEvent = { kind: "listenerReturned" };
  * state for that reason rather than as constants — which is also what makes a
  * *stale* target easy to write: capture the id first, then let the Queue move.
  */
-const endsHead = (state: PlaybackState): PlaybackEvent =>
-  ({ kind: "ended", entryId: state.entries[0]?.entryId ?? "nothing-is-playing" });
-const skips = (entryId: string, requestedByUserId = "ada"): PlaybackEvent =>
-  ({ kind: "skipped", entryId, requestedByUserId, lineId: nextLineId() });
-const skipsHead = (state: PlaybackState): PlaybackEvent =>
-  skips(state.entries[0]?.entryId ?? "nothing-is-playing");
-const skipsHeadBy = (requestedByUserId: string) => (state: PlaybackState): PlaybackEvent =>
-  skips(state.entries[0]?.entryId ?? "nothing-is-playing", requestedByUserId);
-const removes = (entryId: string, requestedByUserId = "ada"): PlaybackEvent =>
-  ({ kind: "removed", entryId, requestedByUserId, lineId: nextLineId() });
+const endsHead = (state: PlaybackState): PlaybackEvent => ({
+  kind: "ended",
+  entryId: state.entries[0]?.entryId ?? "nothing-is-playing"
+});
+const skips = (entryId: string, requestedByUserId = "ada"): PlaybackEvent => ({
+  kind: "skipped",
+  entryId,
+  requestedByUserId,
+  lineId: nextLineId()
+});
+const skipsHead = (state: PlaybackState): PlaybackEvent => skips(state.entries[0]?.entryId ?? "nothing-is-playing");
+const skipsHeadBy =
+  (requestedByUserId: string) =>
+  (state: PlaybackState): PlaybackEvent =>
+    skips(state.entries[0]?.entryId ?? "nothing-is-playing", requestedByUserId);
+const removes = (entryId: string, requestedByUserId = "ada"): PlaybackEvent => ({
+  kind: "removed",
+  entryId,
+  requestedByUserId,
+  lineId: nextLineId()
+});
 
 /**
  * The Track whose turn came would not play. Targeted like the other three, and
  * the only one of them that names no member — nobody did this, which is the
  * whole of what ADR-0011 had to decide.
  */
-const fails = (entryId: string, reason: MusicTrackFailure = "failedUnavailable"): PlaybackEvent =>
-  ({ kind: "failed", entryId, reason, lineId: nextLineId() });
-const failsHead = (reason?: MusicTrackFailure) => (state: PlaybackState): PlaybackEvent =>
-  fails(state.entries[0]?.entryId ?? "nothing-is-playing", reason);
+const fails = (entryId: string, reason: MusicTrackFailure = "failedUnavailable"): PlaybackEvent => ({
+  kind: "failed",
+  entryId,
+  reason,
+  lineId: nextLineId()
+});
+const failsHead =
+  (reason?: MusicTrackFailure) =>
+  (state: PlaybackState): PlaybackEvent =>
+    fails(state.entries[0]?.entryId ?? "nothing-is-playing", reason);
 
 /** The entry at a place in the Queue, so a test can name what it means to skip. */
 const idAt = (state: PlaybackState, index: number) => state.entries[index]!.entryId;
@@ -147,7 +173,10 @@ describe("adding a Track", () => {
   it("keeps the two members who queued the same Track apart", () => {
     const { state } = run([added("aB3dE5gH7jK", "ada"), added("aB3dE5gH7jK", "bob")]);
 
-    assert.deepEqual(state.entries.map((item) => item.requestedByUserId), ["ada", "bob"]);
+    assert.deepEqual(
+      state.entries.map((item) => item.requestedByUserId),
+      ["ada", "bob"]
+    );
     assert.equal(
       new Set(state.entries.map((item) => item.entryId)).size,
       2,
@@ -444,11 +473,7 @@ describe("a Track that will not play", () => {
     const { state, effects } = run([added("blocked"), added("fine"), failsHead()]);
 
     assert.deepEqual(ids(state), ["fine"]);
-    assert.deepEqual(effects, [
-      { kind: "load", entry: state.entries[0] },
-      { kind: "play" },
-      { kind: "publish" }
-    ]);
+    assert.deepEqual(effects, [{ kind: "load", entry: state.entries[0] }, { kind: "play" }, { kind: "publish" }]);
   });
 
   it("writes a line that names the Track and no member", () => {
@@ -482,7 +507,10 @@ describe("a Track that will not play", () => {
     assert.deepEqual(ids(state), []);
     assert.equal(state.playing, false);
     assert.deepEqual(effects, [{ kind: "stop" }, { kind: "unload" }, { kind: "publish" }]);
-    assert.deepEqual(state.log.map((line) => line.action), ["failedUnavailable", "added"]);
+    assert.deepEqual(
+      state.log.map((line) => line.action),
+      ["failedUnavailable", "added"]
+    );
   });
 
   it("leaves a paused Queue paused, and still explains itself", () => {
@@ -519,8 +547,14 @@ describe("a Track that will not play", () => {
     const played = run([added("one"), added("two"), endsHead]).state;
     const failed = run([added("one"), added("two"), failsHead()]).state;
 
-    assert.deepEqual(played.log.map((line) => line.action), ["added", "added"]);
-    assert.deepEqual(failed.log.map((line) => line.action), ["failedUnavailable", "added", "added"]);
+    assert.deepEqual(
+      played.log.map((line) => line.action),
+      ["added", "added"]
+    );
+    assert.deepEqual(
+      failed.log.map((line) => line.action),
+      ["failedUnavailable", "added", "added"]
+    );
   });
 });
 
@@ -673,7 +707,10 @@ describe("the Set log", () => {
 
     const { state } = run([pausedBy("bob-id")], queued);
 
-    assert.deepEqual(state.log.map((line) => line.requestedByUserId), ["bob-id", "ada-id", "ada-id", "ada"]);
+    assert.deepEqual(
+      state.log.map((line) => line.requestedByUserId),
+      ["bob-id", "ada-id", "ada-id", "ada"]
+    );
   });
 
   it("goes with the Set, and says so to the room before the Set is torn down", () => {
@@ -718,11 +755,7 @@ describe("the Set log", () => {
 
     assert.equal(state.log.length, 7, "every verb is represented");
     for (const line of state.log) {
-      assert.deepEqual(
-        Object.keys(line).sort(),
-        ["action", "lineId", "requestedByUserId", "trackTitle"],
-        line.action
-      );
+      assert.deepEqual(Object.keys(line).sort(), ["action", "lineId", "requestedByUserId", "trackTitle"], line.action);
     }
   });
 });
@@ -761,10 +794,13 @@ describe("what the room is shown", () => {
 
     const published = publishedQueue(state);
 
-    assert.deepEqual(published.log.map((line) => [line.requestedByUserId, line.action, line.trackTitle]), [
-      ["bob-id", "paused", null],
-      ["ada-id", "added", "Track aB3dE5gH7jK"]
-    ]);
+    assert.deepEqual(
+      published.log.map((line) => [line.requestedByUserId, line.action, line.trackTitle]),
+      [
+        ["bob-id", "paused", null],
+        ["ada-id", "added", "Track aB3dE5gH7jK"]
+      ]
+    );
     assert.equal(published.entries.length, 1, "and the Queue the lines are about, in the same breath");
   });
 });
@@ -796,13 +832,19 @@ describe("the room emptying", () => {
 
     assert.equal(state.playing, true);
     assert.equal(ids(state).length, 1, "and the Queue is still there to come back to");
-    assert.deepEqual(effects.filter((effect) => effect.kind === "stop"), []);
+    assert.deepEqual(
+      effects.filter((effect) => effect.kind === "stop"),
+      []
+    );
   });
 
   it("tells nobody, because there is nobody left to tell", () => {
     const { effects } = run([added("aB3dE5gH7jK"), roomEmptied]);
 
-    assert.deepEqual(effects.filter((effect) => effect.kind === "publish"), []);
+    assert.deepEqual(
+      effects.filter((effect) => effect.kind === "publish"),
+      []
+    );
   });
 
   it("treats a second emptying as the Grace period it already started", () => {
@@ -850,7 +892,10 @@ describe("a Listener coming back", () => {
     const { state, effects } = run([added("aB3dE5gH7jK"), paused, roomEmptied, listenerReturned]);
 
     assert.equal(state.playing, false);
-    assert.deepEqual(effects.filter((effect) => effect.kind === "play"), []);
+    assert.deepEqual(
+      effects.filter((effect) => effect.kind === "play"),
+      []
+    );
   });
 
   it("writes no line for either, because nobody did anything", () => {
@@ -858,7 +903,10 @@ describe("a Listener coming back", () => {
     // on the Queue, and there is no publish here for a line to ride on.
     const { state } = run([added("aB3dE5gH7jK"), roomEmptied, listenerReturned]);
 
-    assert.deepEqual(state.log.map((line) => line.action), ["added"]);
+    assert.deepEqual(
+      state.log.map((line) => line.action),
+      ["added"]
+    );
   });
 });
 

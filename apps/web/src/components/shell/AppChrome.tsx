@@ -1,21 +1,21 @@
 import type { PresenceUser } from "@voxly/shared";
 import type { ReactNode } from "react";
-import { useCallback,useEffect,useMemo,useReducer,useRef,useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { serverPath } from "../../app/navigation.js";
 import { activeServerRole } from "../../app/presentation.js";
-import type { MemberAction,ShellActions,ShellModel } from "../../app/types.js";
-import { ConfirmDialog,NicknameDialog } from "../../components/ui/Dialogs.js";
-import { DownloadIcon,MenuIcon,UsersIcon } from "../../components/ui/Icons.js";
+import type { MemberAction, ShellActions, ShellModel } from "../../app/types.js";
+import { ConfirmDialog, NicknameDialog } from "../../components/ui/Dialogs.js";
+import { DownloadIcon, MenuIcon, UsersIcon } from "../../components/ui/Icons.js";
 import { BrandLockup } from "../../components/ui/Navigation.js";
-import { NotificationViewport,useNotificationCenter } from "../../components/ui/Notifications.js";
+import { NotificationViewport, useNotificationCenter } from "../../components/ui/Notifications.js";
 import type { AppNotification } from "../../lib/notifications.js";
-import { contextMenuReducer,createContextMenuDescriptor } from "../../lib/contextMenu.js";
+import { contextMenuReducer, createContextMenuDescriptor } from "../../lib/contextMenu.js";
 import { type TranslationKey } from "../../lib/i18n.js";
 import { countPeople } from "../../lib/memberDirectory.js";
-import { settingsRequestEvent,type RequestedSettingsSection } from "../../lib/settingsNavigation.js";
+import { settingsRequestEvent, type RequestedSettingsSection } from "../../lib/settingsNavigation.js";
 import { ChannelRail } from "./ChannelRail.js";
 import { MemberPanel } from "./MemberPanel.js";
-import { SettingsDialog,type SettingsSection } from "./SettingsDialog.js";
+import { SettingsDialog, type SettingsSection } from "./SettingsDialog.js";
 import type { SidebarActionMenuController } from "./SidebarMenus.js";
 import { VoiceDock } from "./VoiceDock.js";
 import { StageActionsContext } from "./StageMemberActions.js";
@@ -26,8 +26,15 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("account");
   const [settingsContextError, setSettingsContextError] = useState<TranslationKey | "">("");
-  const [nicknameTarget, setNicknameTarget] = useState<{ user: PresenceUser; returnFocus: HTMLButtonElement | null } | null>(null);
-  const [pendingMemberAction, setPendingMemberAction] = useState<{ user: PresenceUser; roomId?: string; action: MemberAction } | null>(null);
+  const [nicknameTarget, setNicknameTarget] = useState<{
+    user: PresenceUser;
+    returnFocus: HTMLButtonElement | null;
+  } | null>(null);
+  const [pendingMemberAction, setPendingMemberAction] = useState<{
+    user: PresenceUser;
+    roomId?: string;
+    action: MemberAction;
+  } | null>(null);
   const [activeActionMenu, dispatchActionMenu] = useReducer(contextMenuReducer, null);
   const notifications = useNotificationCenter();
   const deletionRequestRevisionRef = useRef(props.deletionRequestRevision);
@@ -53,24 +60,29 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
       })
     });
   }, []);
-  const actionMenu = useMemo<SidebarActionMenuController>(() => ({
-    active: activeActionMenu,
-    close: closeActionMenu,
-    open: openActionMenu
-  }), [activeActionMenu, closeActionMenu, openActionMenu]);
+  const actionMenu = useMemo<SidebarActionMenuController>(
+    () => ({
+      active: activeActionMenu,
+      close: closeActionMenu,
+      open: openActionMenu
+    }),
+    [activeActionMenu, closeActionMenu, openActionMenu]
+  );
   const onlineCount = countPeople(props.onlineUsers) || 1;
-  const voiceConnectedCount = props.activeVoiceRoomId && props.voiceSnapshots[props.activeVoiceRoomId]
-    ? props.voiceSnapshots[props.activeVoiceRoomId].members.length
-    : props.activeVoiceRoomId
-      ? 1
-      : 0;
+  const voiceConnectedCount =
+    props.activeVoiceRoomId && props.voiceSnapshots[props.activeVoiceRoomId]
+      ? props.voiceSnapshots[props.activeVoiceRoomId].members.length
+      : props.activeVoiceRoomId
+        ? 1
+        : 0;
 
   useEffect(() => {
     closeActionMenu();
   }, [closeActionMenu, props.activeServerId, props.currentRoom?.id, props.drawer, props.route.name]);
 
   useEffect(() => {
-    const handleSettingsRequest = (event: Event) => openSettings((event as CustomEvent<RequestedSettingsSection>).detail);
+    const handleSettingsRequest = (event: Event) =>
+      openSettings((event as CustomEvent<RequestedSettingsSection>).detail);
     window.addEventListener(settingsRequestEvent, handleSettingsRequest);
     return () => window.removeEventListener(settingsRequestEvent, handleSettingsRequest);
   }, [openSettings]);
@@ -80,7 +92,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
     previousVoiceErrorRef.current = props.voiceError;
     if (previous.startsWith("voiceError.microphone") && previous !== props.voiceError) {
       notifications.dismiss(`voice-error:${previous}`);
-      setSettingsContextError((current) => current === previous ? "" : current);
+      setSettingsContextError((current) => (current === previous ? "" : current));
     }
     if (!props.voiceError) return;
     notifications.push({
@@ -116,26 +128,49 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
     });
   }, [notifications.push, props.deletionRequestRevision]);
 
-  const handleNotificationAction = useCallback((item: AppNotification) => {
-    if (item.action === "open-audio-settings") openSettings("audio", item.messageKey);
-  }, [openSettings]);
+  const handleNotificationAction = useCallback(
+    (item: AppNotification) => {
+      if (item.action === "open-audio-settings") openSettings("audio", item.messageKey);
+    },
+    [openSettings]
+  );
 
   return (
     <>
-      <a className="skip-link" href="#main-content">{props.t("shell.skip")}</a>
+      <a className="skip-link" href="#main-content">
+        {props.t("shell.skip")}
+      </a>
       <div className={`drawer-scrim ${props.drawer ? "is-visible" : ""}`} onClick={() => props.onDrawerChange(null)} />
       <div className="mobile-topbar">
-        <button ref={mobileRoomsRef} className="icon-btn" type="button" onClick={() => props.onDrawerChange(props.drawer === "channels" ? null : "channels")} aria-label={props.t("common.rooms")}>
+        <button
+          ref={mobileRoomsRef}
+          className="icon-btn"
+          type="button"
+          onClick={() => props.onDrawerChange(props.drawer === "channels" ? null : "channels")}
+          aria-label={props.t("common.rooms")}
+        >
           <MenuIcon />
           <span>{props.t("common.rooms")}</span>
         </button>
-        <BrandLockup title={props.mobileTitle} subtitle="" href={serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general")} onNavigate={props.onNavigate} />
-        <button className="icon-btn" type="button" onClick={() => props.onDrawerChange(props.drawer === "members" ? null : "members")} aria-label={props.t("common.users")}>
+        <BrandLockup
+          title={props.mobileTitle}
+          subtitle=""
+          href={serverPath(props.activeServerId, "text", props.rooms.text[0]?.id ?? "general")}
+          onNavigate={props.onNavigate}
+        />
+        <button
+          className="icon-btn"
+          type="button"
+          onClick={() => props.onDrawerChange(props.drawer === "members" ? null : "members")}
+          aria-label={props.t("common.users")}
+        >
           <UsersIcon />
           <span>{props.t("common.users")}</span>
         </button>
       </div>
-      <div className={`app-shell ${props.route.name === "voice" ? "is-voice-stage" : ""} drawer-${props.drawer ?? "none"}`}>
+      <div
+        className={`app-shell ${props.route.name === "voice" ? "is-voice-stage" : ""} drawer-${props.drawer ?? "none"}`}
+      >
         <WorkspaceRail
           actionMenu={actionMenu}
           serverNotificationState={props.serverNotificationState}
@@ -148,16 +183,41 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           servers={props.servers}
           t={props.t}
           onNavigate={props.onNavigate}
-          onSelectServer={async (serverId) => { await props.onSelectServer(serverId); props.onDrawerChange(null); mobileRoomsRef.current?.focus(); }}
-          onCloseDrawer={() => { props.onDrawerChange(null); mobileRoomsRef.current?.focus(); }}
+          onSelectServer={async (serverId) => {
+            await props.onSelectServer(serverId);
+            props.onDrawerChange(null);
+            mobileRoomsRef.current?.focus();
+          }}
+          onCloseDrawer={() => {
+            props.onDrawerChange(null);
+            mobileRoomsRef.current?.focus();
+          }}
           onOpenSettings={() => openSettings()}
         />
         <ChannelRail
-          mobileStatus={<div className="mobile-drawer-status">
-            <VoiceDock {...props} surface="drawer" connectedCount={voiceConnectedCount} onlineCount={onlineCount}
-              onOpenSettings={() => openSettings()} onOpenAudioSettings={() => openSettings("audio")} />
-            {typeof window === "undefined" || window.__VOXLY_DESKTOP_V1__?.version !== 1 ? <a className="btn btn-ghost drawer-download" href="https://github.com/REDLANTERNDEV/Voxly/releases" target="_blank" rel="noopener noreferrer"><DownloadIcon /><span>{props.t("desktop.download")}</span></a> : null}
-          </div>}
+          mobileStatus={
+            <div className="mobile-drawer-status">
+              <VoiceDock
+                {...props}
+                surface="drawer"
+                connectedCount={voiceConnectedCount}
+                onlineCount={onlineCount}
+                onOpenSettings={() => openSettings()}
+                onOpenAudioSettings={() => openSettings("audio")}
+              />
+              {typeof window === "undefined" || window.__VOXLY_DESKTOP_V1__?.version !== 1 ? (
+                <a
+                  className="btn btn-ghost drawer-download"
+                  href="https://github.com/REDLANTERNDEV/Voxly/releases"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <DownloadIcon />
+                  <span>{props.t("desktop.download")}</span>
+                </a>
+              ) : null}
+            </div>
+          }
           onOpenSettings={() => openSettings()}
           onToggleControl={props.onToggleControl}
           micLockedByRoom={props.micLockedByRoom}
@@ -217,33 +277,55 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
             setPendingMemberAction({ user: member, action, roomId });
           }}
         />
-        <StageActionsContext.Provider value={{
-          activeServerId: props.activeServerId, servers: props.servers, user: props.user, rooms: props.rooms,
-          memberVolumes: props.memberVolumes, activeVoiceRoomId: props.activeVoiceRoomId, controls: props.controls,
-          micLockedByRoom: props.micLockedByRoom, voiceModeration: props.voiceModeration, socketState: props.socketState,
-          microphoneTestActive: props.microphoneTestActive, t: props.t,
-          onMemberVolumeChange: props.onMemberVolumeChange, onVoiceModeration: props.onVoiceModeration,
-          onUpdateMemberPermissions: props.onUpdateMemberPermissions, onMoveMember: props.onMoveMember,
-          onToggleControl: props.onToggleControl, actionMenu,
-          onRequestNickname: (member, returnFocus) => setNicknameTarget({ user: member, returnFocus }),
-          onRequestMemberAction: (member, action, roomId) => {
-            closeActionMenu(); setPendingMemberAction({ user: member, action, roomId });
-          }
-        }}>{props.children}</StageActionsContext.Provider>
+        <StageActionsContext.Provider
+          value={{
+            activeServerId: props.activeServerId,
+            servers: props.servers,
+            user: props.user,
+            rooms: props.rooms,
+            memberVolumes: props.memberVolumes,
+            activeVoiceRoomId: props.activeVoiceRoomId,
+            controls: props.controls,
+            micLockedByRoom: props.micLockedByRoom,
+            voiceModeration: props.voiceModeration,
+            socketState: props.socketState,
+            microphoneTestActive: props.microphoneTestActive,
+            t: props.t,
+            onMemberVolumeChange: props.onMemberVolumeChange,
+            onVoiceModeration: props.onVoiceModeration,
+            onUpdateMemberPermissions: props.onUpdateMemberPermissions,
+            onMoveMember: props.onMoveMember,
+            onToggleControl: props.onToggleControl,
+            actionMenu,
+            onRequestNickname: (member, returnFocus) => setNicknameTarget({ user: member, returnFocus }),
+            onRequestMemberAction: (member, action, roomId) => {
+              closeActionMenu();
+              setPendingMemberAction({ user: member, action, roomId });
+            }
+          }}
+        >
+          {props.children}
+        </StageActionsContext.Provider>
         <MemberPanel
-          selfVoice={props.activeVoiceRoomId ? {
-            mic: props.controls.mic.on,
-            deafen: props.controls.deafen.on,
-            micEnabled: !props.micLockedByRoom
-              && !props.voiceModeration.muted
-              && props.controls.mic.enabled
-              && props.socketState === "live",
-            deafenEnabled: !props.voiceModeration.deafened
-              && props.controls.deafen.enabled
-              && !props.microphoneTestActive
-              && props.socketState === "live",
-            onToggle: props.onToggleControl
-          } : undefined}
+          selfVoice={
+            props.activeVoiceRoomId
+              ? {
+                  mic: props.controls.mic.on,
+                  deafen: props.controls.deafen.on,
+                  micEnabled:
+                    !props.micLockedByRoom &&
+                    !props.voiceModeration.muted &&
+                    props.controls.mic.enabled &&
+                    props.socketState === "live",
+                  deafenEnabled:
+                    !props.voiceModeration.deafened &&
+                    props.controls.deafen.enabled &&
+                    !props.microphoneTestActive &&
+                    props.socketState === "live",
+                  onToggle: props.onToggleControl
+                }
+              : undefined
+          }
           members={props.serverMembers}
           onlineUsers={props.onlineUsers}
           voiceRooms={props.rooms.voice}
@@ -300,32 +382,46 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         onExpire={notifications.expire}
         onAction={handleNotificationAction}
       />
-      {settingsOpen ? <SettingsDialog {...props} initialSection={settingsSection} contextError={settingsContextError} onClose={closeSettings} /> : null}
-      {nicknameTarget ? <NicknameDialog
-        user={nicknameTarget.user}
-        returnFocus={nicknameTarget.returnFocus}
-        t={props.t}
-        onCancel={() => setNicknameTarget(null)}
-        onSave={async (nickname) => {
-          await props.onUpdateMemberNickname(nicknameTarget.user.userId, nickname);
-          setNicknameTarget(null);
-        }}
-      /> : null}
-      {pendingMemberAction ? <ConfirmDialog cancelLabel={props.t("common.cancel")}
-        title={props.t(`member.${pendingMemberAction.action}Title` as TranslationKey, { nickname: pendingMemberAction.user.nickname })}
-        copy={props.t(`member.${pendingMemberAction.action}Copy` as TranslationKey)}
-        confirmLabel={props.t(`member.${pendingMemberAction.action}` as TranslationKey)}
-        onCancel={() => setPendingMemberAction(null)}
-        onConfirm={() => {
-          const pending = pendingMemberAction;
-          setPendingMemberAction(null);
-          if (pending.action === "disconnect" && pending.roomId) {
-            void props.onDisconnectMember(pending.roomId, pending.user.userId);
-          } else if (pending.action === "kick" || pending.action === "ban") {
-            void props.onModerateMember(pending.user.userId, pending.action);
-          }
-        }}
-      /> : null}
+      {settingsOpen ? (
+        <SettingsDialog
+          {...props}
+          initialSection={settingsSection}
+          contextError={settingsContextError}
+          onClose={closeSettings}
+        />
+      ) : null}
+      {nicknameTarget ? (
+        <NicknameDialog
+          user={nicknameTarget.user}
+          returnFocus={nicknameTarget.returnFocus}
+          t={props.t}
+          onCancel={() => setNicknameTarget(null)}
+          onSave={async (nickname) => {
+            await props.onUpdateMemberNickname(nicknameTarget.user.userId, nickname);
+            setNicknameTarget(null);
+          }}
+        />
+      ) : null}
+      {pendingMemberAction ? (
+        <ConfirmDialog
+          cancelLabel={props.t("common.cancel")}
+          title={props.t(`member.${pendingMemberAction.action}Title` as TranslationKey, {
+            nickname: pendingMemberAction.user.nickname
+          })}
+          copy={props.t(`member.${pendingMemberAction.action}Copy` as TranslationKey)}
+          confirmLabel={props.t(`member.${pendingMemberAction.action}` as TranslationKey)}
+          onCancel={() => setPendingMemberAction(null)}
+          onConfirm={() => {
+            const pending = pendingMemberAction;
+            setPendingMemberAction(null);
+            if (pending.action === "disconnect" && pending.roomId) {
+              void props.onDisconnectMember(pending.roomId, pending.user.userId);
+            } else if (pending.action === "kick" || pending.action === "ban") {
+              void props.onModerateMember(pending.user.userId, pending.action);
+            }
+          }}
+        />
+      ) : null}
     </>
   );
 }

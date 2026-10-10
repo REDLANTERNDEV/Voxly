@@ -41,7 +41,10 @@ export function advancePeerRecovery(
   now: number
 ): { state: PeerRecoveryState; action: PeerRecoveryAction } {
   if (event.type === "member_left") {
-    return { state: { phase: "idle", attempt: state.attempt, nextRetryAt: null, reason: null }, action: "cancel" as const };
+    return {
+      state: { phase: "idle", attempt: state.attempt, nextRetryAt: null, reason: null },
+      action: "cancel" as const
+    };
   }
 
   if (event.type === "quality_restored") {
@@ -58,7 +61,12 @@ export function advancePeerRecovery(
 
   if (event.type === "disconnected") {
     return {
-      state: { phase: "grace", attempt: state.attempt, nextRetryAt: now + voicePeerRecoveryGraceMs, reason: "transport" },
+      state: {
+        phase: "grace",
+        attempt: state.attempt,
+        nextRetryAt: now + voicePeerRecoveryGraceMs,
+        reason: "transport"
+      },
       action: "wait" as const
     };
   }

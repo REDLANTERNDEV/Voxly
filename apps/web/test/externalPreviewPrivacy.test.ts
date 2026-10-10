@@ -6,15 +6,15 @@ describe("external preview privacy UI", () => {
   it("does not create a provider iframe while its preference is off", () => {
     const source = readFileSync("src/features/chat/MessageItem.tsx", "utf8");
 
-    assert.match(source, /previewEnabled \? <iframe/);
-    assert.match(source, /externalPreviews\[embed\.provider\] \|\| revealedEmbedKeys\.has\(embed\.key\)/);
+    assert.match(source, /previewEnabled\s+\?\s+\(?\s*<iframe/);
+    assert.match(source, /externalPreviews\[embed\.provider\]\s+\|\|\s+revealedEmbedKeys\.has\(\s*embed\.key\s*\)/);
   });
 
   it("offers a room-lifecycle one-time reveal and privacy settings", () => {
     const room = readFileSync("src/features/chat/TextRoomScreen.tsx", "utf8");
     const message = readFileSync("src/features/chat/MessageItem.tsx", "utf8");
 
-    assert.match(room, /setRevealedEmbeds\(new Set\(\)\)/);
+    assert.match(room, /setRevealedEmbeds\(\s*new\s+Set\(\s*\)\s*\)/);
     assert.match(message, /room\.previewShowOnce/);
     assert.match(message, /room\.previewSettings/);
   });
@@ -30,8 +30,11 @@ describe("external preview privacy UI", () => {
   it("discloses what the installation owner sees with a deletion request", () => {
     const translations = readFileSync("src/lib/i18n.ts", "utf8");
 
-    assert.match(translations, /server names, effective nicknames, roles and membership states/);
-    assert.match(translations, /sunucu adlarını, etkin takma adlarını, rollerini ve üyelik durumlarını/);
+    assert.match(translations, /server\s+names,\s+effective\s+nicknames,\s+roles\s+and\s+membership\s+states/);
+    assert.match(
+      translations,
+      /sunucu\s+adlarını,\s+etkin\s+takma\s+adlarını,\s+rollerini\s+ve\s+üyelik\s+durumlarını/
+    );
   });
 
   it("keeps Meta properties as ordinary links", () => {

@@ -34,9 +34,10 @@ describe("the owner panel", () => {
   }
 
   function bannedAt(userId: string) {
-    return one<{ banned_at: string | null }>(app.sqlite, "select banned_at from users where id = ?", [
-      userId
-    ])?.banned_at ?? null;
+    return (
+      one<{ banned_at: string | null }>(app.sqlite, "select banned_at from users where id = ?", [userId])?.banned_at ??
+      null
+    );
   }
 
   describe("the routes it registers", () => {
@@ -103,10 +104,10 @@ describe("the owner panel", () => {
       const sessions = await app.server.inject({ method: "GET", url: "/api/owner/sessions", cookies: owner.cookies });
 
       // The bot is a member of the default server, so it is a user here.
-      assert.deepEqual(
-        (users.json().users as Array<{ nickname: string }>).map((user) => user.nickname).sort(),
-        ["Music", "Owner"]
-      );
+      assert.deepEqual((users.json().users as Array<{ nickname: string }>).map((user) => user.nickname).sort(), [
+        "Music",
+        "Owner"
+      ]);
       // Someone who joined a different server has no membership row in the
       // default server and so appears in neither the list nor anything an owner
       // could ban them with — but their session is right there.
@@ -136,8 +137,9 @@ describe("the owner panel", () => {
       assert.equal(banned.statusCode, 204);
 
       const users = await app.server.inject({ method: "GET", url: "/api/owner/users", cookies: owner.cookies });
-      const listed = (users.json().users as Array<{ id: string; bannedAt: string | null }>)
-        .find((user) => user.id === member.user.id);
+      const listed = (users.json().users as Array<{ id: string; bannedAt: string | null }>).find(
+        (user) => user.id === member.user.id
+      );
       assert.ok(listed);
       assert.notEqual(listed.bannedAt, null);
     });
@@ -236,8 +238,9 @@ describe("the owner panel", () => {
       const owner = await bootstrapOwner(app);
       const member = await acceptInvite(app, owner.cookies, "Selin");
       const sessions = await app.server.inject({ method: "GET", url: "/api/owner/sessions", cookies: owner.cookies });
-      const memberSession = (sessions.json().sessions as Array<{ id: string; userId: string }>)
-        .find((session) => session.userId === member.user.id);
+      const memberSession = (sessions.json().sessions as Array<{ id: string; userId: string }>).find(
+        (session) => session.userId === member.user.id
+      );
       assert.ok(memberSession);
 
       const response = await app.server.inject({
@@ -303,13 +306,15 @@ describe("the owner panel", () => {
       assert.equal(detail.serverCount, 1);
       assert.equal("is_bot" in detail, false);
       assert.equal("deleted_at" in detail, false);
-      assert.deepEqual(detail.memberships, [{
-        serverId: defaultServerId,
-        serverName: "The Basement",
-        nickname: "Ada",
-        role: "member",
-        state: "active"
-      }]);
+      assert.deepEqual(detail.memberships, [
+        {
+          serverId: defaultServerId,
+          serverName: "The Basement",
+          nickname: "Ada",
+          role: "member",
+          state: "active"
+        }
+      ]);
     });
 
     it("lets a member request deletion and the installation owner approve it atomically", async () => {
@@ -352,15 +357,25 @@ describe("the owner panel", () => {
         "select nickname, deleted_at, deletion_source from users where id = ?",
         [member.user.id]
       );
-      assert.deepEqual({ nickname: deleted?.nickname, source: deleted?.deletion_source }, {
-        nickname: "",
-        source: "request_approved"
-      });
+      assert.deepEqual(
+        { nickname: deleted?.nickname, source: deleted?.deletion_source },
+        {
+          nickname: "",
+          source: "request_approved"
+        }
+      );
       assert.ok(deleted?.deleted_at);
-      assert.ok(one<{ removed_at: string | null }>(app.sqlite, "select removed_at from server_members where user_id = ?", [member.user.id])?.removed_at);
+      assert.ok(
+        one<{ removed_at: string | null }>(app.sqlite, "select removed_at from server_members where user_id = ?", [
+          member.user.id
+        ])?.removed_at
+      );
       const me = await app.server.inject({ method: "GET", url: "/api/me", cookies: member.cookies });
       assert.equal(me.statusCode, 401);
-      assert.deepEqual(auditRows("account.deleted").map((row) => row.target_user_id), [member.user.id]);
+      assert.deepEqual(
+        auditRows("account.deleted").map((row) => row.target_user_id),
+        [member.user.id]
+      );
     });
 
     it("lets the installation owner directly delete an ordinary account with two confirmations", async () => {
@@ -375,23 +390,65 @@ describe("the owner panel", () => {
       });
 
       assert.equal(response.statusCode, 204);
-      assert.equal(one<{ deletion_source: string }>(app.sqlite, "select deletion_source from users where id = ?", [member.user.id])?.deletion_source, "owner_initiated");
+      assert.equal(
+        one<{ deletion_source: string }>(app.sqlite, "select deletion_source from users where id = ?", [member.user.id])
+          ?.deletion_source,
+        "owner_initiated"
+      );
     });
 
     it("revokes every account access path while preserving membership history", async () => {
       const owner = await bootstrapOwner(app);
       const member = await acceptInvite(app, owner.cookies, "Selin");
-      const sessionId = one<{ id: string }>(app.sqlite, "select id from sessions where user_id = ?", [member.user.id])?.id;
+      const sessionId = one<{ id: string }>(app.sqlite, "select id from sessions where user_id = ?", [
+        member.user.id
+      ])?.id;
       assert.ok(sessionId);
       const now = new Date().toISOString();
       const expiresAt = new Date(Date.now() + 60_000).toISOString();
-      app.sqlite.prepare("insert into session_tokens (token_hash, session_id, superseded_at) values (?, ?, ?)").run("retired-selin", sessionId, now);
-      app.sqlite.prepare("insert into device_links (id, token_hash, user_id, created_at, expires_at) values (?, ?, ?, ?, ?)").run("device-selin", "device-token-selin", member.user.id, now, expiresAt);
-      app.sqlite.prepare("insert into recovery_codes (id, token_hash, user_id, created_at) values (?, ?, ?, ?)").run("recovery-selin", "recovery-token-selin", member.user.id, now);
-      app.sqlite.prepare("insert into invites (id, token_hash, created_by_user_id, created_at, server_id) values (?, ?, ?, ?, ?)").run("invite-selin", "invite-token-selin", member.user.id, now, defaultServerId);
-      app.sqlite.prepare("insert into access_claims (id, token_hash, user_id, server_id, created_by_user_id, created_at, expires_at) values (?, ?, ?, ?, ?, ?, ?)").run("access-for-selin", "access-token-for-selin", member.user.id, defaultServerId, owner.user.id, now, expiresAt);
-      app.sqlite.prepare("insert into access_claims (id, token_hash, user_id, server_id, created_by_user_id, created_at, expires_at) values (?, ?, ?, ?, ?, ?, ?)").run("access-by-selin", "access-token-by-selin", owner.user.id, defaultServerId, member.user.id, now, expiresAt);
-      app.sqlite.prepare("insert into owner_claims (id, token_hash, user_id, created_at, expires_at) values (?, ?, ?, ?, ?)").run("owner-claim-selin", "owner-claim-token-selin", member.user.id, now, expiresAt);
+      app.sqlite
+        .prepare("insert into session_tokens (token_hash, session_id, superseded_at) values (?, ?, ?)")
+        .run("retired-selin", sessionId, now);
+      app.sqlite
+        .prepare("insert into device_links (id, token_hash, user_id, created_at, expires_at) values (?, ?, ?, ?, ?)")
+        .run("device-selin", "device-token-selin", member.user.id, now, expiresAt);
+      app.sqlite
+        .prepare("insert into recovery_codes (id, token_hash, user_id, created_at) values (?, ?, ?, ?)")
+        .run("recovery-selin", "recovery-token-selin", member.user.id, now);
+      app.sqlite
+        .prepare(
+          "insert into invites (id, token_hash, created_by_user_id, created_at, server_id) values (?, ?, ?, ?, ?)"
+        )
+        .run("invite-selin", "invite-token-selin", member.user.id, now, defaultServerId);
+      app.sqlite
+        .prepare(
+          "insert into access_claims (id, token_hash, user_id, server_id, created_by_user_id, created_at, expires_at) values (?, ?, ?, ?, ?, ?, ?)"
+        )
+        .run(
+          "access-for-selin",
+          "access-token-for-selin",
+          member.user.id,
+          defaultServerId,
+          owner.user.id,
+          now,
+          expiresAt
+        );
+      app.sqlite
+        .prepare(
+          "insert into access_claims (id, token_hash, user_id, server_id, created_by_user_id, created_at, expires_at) values (?, ?, ?, ?, ?, ?, ?)"
+        )
+        .run(
+          "access-by-selin",
+          "access-token-by-selin",
+          owner.user.id,
+          defaultServerId,
+          member.user.id,
+          now,
+          expiresAt
+        );
+      app.sqlite
+        .prepare("insert into owner_claims (id, token_hash, user_id, created_at, expires_at) values (?, ?, ?, ?, ?)")
+        .run("owner-claim-selin", "owner-claim-token-selin", member.user.id, now, expiresAt);
 
       const response = await app.server.inject({
         method: "DELETE",
@@ -401,22 +458,67 @@ describe("the owner panel", () => {
       });
 
       assert.equal(response.statusCode, 204);
-      assert.ok(one<{ revoked_at: string | null }>(app.sqlite, "select revoked_at from sessions where id = ?", [sessionId])?.revoked_at);
-      assert.equal(one<{ count: number }>(app.sqlite, "select count(*) as count from session_tokens where session_id = ?", [sessionId])?.count, 0);
-      assert.equal(one<{ count: number }>(app.sqlite, "select count(*) as count from device_links where user_id = ?", [member.user.id])?.count, 0);
-      assert.ok(one<{ replaced_at: string | null }>(app.sqlite, "select replaced_at from recovery_codes where user_id = ?", [member.user.id])?.replaced_at);
-      assert.ok(one<{ revoked_at: string | null }>(app.sqlite, "select revoked_at from invites where id = 'invite-selin'")?.revoked_at);
-      assert.equal(one<{ count: number }>(app.sqlite, "select count(*) as count from access_claims where (user_id = ? or created_by_user_id = ?) and revoked_at is not null", [member.user.id, member.user.id])?.count, 2);
-      assert.ok(one<{ consumed_at: string | null }>(app.sqlite, "select consumed_at from owner_claims where id = 'owner-claim-selin'")?.consumed_at);
-      const preservedMembership = one<{ nickname: string | null; removed_at: string | null }>(app.sqlite, "select nickname, removed_at from server_members where user_id = ?", [member.user.id]);
+      assert.ok(
+        one<{ revoked_at: string | null }>(app.sqlite, "select revoked_at from sessions where id = ?", [sessionId])
+          ?.revoked_at
+      );
+      assert.equal(
+        one<{ count: number }>(app.sqlite, "select count(*) as count from session_tokens where session_id = ?", [
+          sessionId
+        ])?.count,
+        0
+      );
+      assert.equal(
+        one<{ count: number }>(app.sqlite, "select count(*) as count from device_links where user_id = ?", [
+          member.user.id
+        ])?.count,
+        0
+      );
+      assert.ok(
+        one<{ replaced_at: string | null }>(app.sqlite, "select replaced_at from recovery_codes where user_id = ?", [
+          member.user.id
+        ])?.replaced_at
+      );
+      assert.ok(
+        one<{ revoked_at: string | null }>(app.sqlite, "select revoked_at from invites where id = 'invite-selin'")
+          ?.revoked_at
+      );
+      assert.equal(
+        one<{ count: number }>(
+          app.sqlite,
+          "select count(*) as count from access_claims where (user_id = ? or created_by_user_id = ?) and revoked_at is not null",
+          [member.user.id, member.user.id]
+        )?.count,
+        2
+      );
+      assert.ok(
+        one<{ consumed_at: string | null }>(
+          app.sqlite,
+          "select consumed_at from owner_claims where id = 'owner-claim-selin'"
+        )?.consumed_at
+      );
+      const preservedMembership = one<{ nickname: string | null; removed_at: string | null }>(
+        app.sqlite,
+        "select nickname, removed_at from server_members where user_id = ?",
+        [member.user.id]
+      );
       assert.equal(preservedMembership?.nickname, null);
-      assert.equal(preservedMembership?.removed_at, one<{ deleted_at: string }>(app.sqlite, "select deleted_at from users where id = ?", [member.user.id])?.deleted_at);
+      assert.equal(
+        preservedMembership?.removed_at,
+        one<{ deleted_at: string }>(app.sqlite, "select deleted_at from users where id = ?", [member.user.id])
+          ?.deleted_at
+      );
     });
 
     it("treats a direct deletion as approval when the account already has a pending request", async () => {
       const owner = await bootstrapOwner(app);
       const member = await acceptInvite(app, owner.cookies, "Selin");
-      const requested = await app.server.inject({ method: "POST", url: "/api/account/deletion-request", cookies: member.cookies, payload: { nickname: "Selin" } });
+      const requested = await app.server.inject({
+        method: "POST",
+        url: "/api/account/deletion-request",
+        cookies: member.cookies,
+        payload: { nickname: "Selin" }
+      });
       const requestId = requested.json().request.id as string;
 
       const response = await app.server.inject({
@@ -427,17 +529,39 @@ describe("the owner panel", () => {
       });
 
       assert.equal(response.statusCode, 204);
-      assert.equal(one<{ deletion_source: string }>(app.sqlite, "select deletion_source from users where id = ?", [member.user.id])?.deletion_source, "request_approved");
-      assert.equal(one<{ status: string }>(app.sqlite, "select status from account_deletion_requests where id = ?", [requestId])?.status, "approved");
+      assert.equal(
+        one<{ deletion_source: string }>(app.sqlite, "select deletion_source from users where id = ?", [member.user.id])
+          ?.deletion_source,
+        "request_approved"
+      );
+      assert.equal(
+        one<{ status: string }>(app.sqlite, "select status from account_deletion_requests where id = ?", [requestId])
+          ?.status,
+        "approved"
+      );
     });
 
     it("enforces the 24-hour retry cooldown after a member cancels", async () => {
       const owner = await bootstrapOwner(app);
       const member = await acceptInvite(app, owner.cookies, "Ada");
-      await app.server.inject({ method: "POST", url: "/api/account/deletion-request", cookies: member.cookies, payload: { nickname: "Ada" } });
+      await app.server.inject({
+        method: "POST",
+        url: "/api/account/deletion-request",
+        cookies: member.cookies,
+        payload: { nickname: "Ada" }
+      });
 
-      const cancelled = await app.server.inject({ method: "DELETE", url: "/api/account/deletion-request", cookies: member.cookies });
-      const retried = await app.server.inject({ method: "POST", url: "/api/account/deletion-request", cookies: member.cookies, payload: { nickname: "Ada" } });
+      const cancelled = await app.server.inject({
+        method: "DELETE",
+        url: "/api/account/deletion-request",
+        cookies: member.cookies
+      });
+      const retried = await app.server.inject({
+        method: "POST",
+        url: "/api/account/deletion-request",
+        cookies: member.cookies,
+        payload: { nickname: "Ada" }
+      });
 
       assert.equal(cancelled.statusCode, 204);
       assert.equal(retried.statusCode, 429);
@@ -447,7 +571,12 @@ describe("the owner panel", () => {
     it("keeps message history but exposes only a deleted-author tombstone", async () => {
       const owner = await bootstrapOwner(app);
       const member = await acceptInvite(app, owner.cookies, "Ada");
-      const sent = await app.server.inject({ method: "POST", url: "/api/rooms/general/messages", cookies: member.cookies, payload: { body: "still part of history" } });
+      const sent = await app.server.inject({
+        method: "POST",
+        url: "/api/rooms/general/messages",
+        cookies: member.cookies,
+        payload: { body: "still part of history" }
+      });
       assert.equal(sent.statusCode, 201);
 
       await app.server.inject({
@@ -456,7 +585,11 @@ describe("the owner panel", () => {
         cookies: owner.cookies,
         payload: { nickname: "Ada", permanent: true }
       });
-      const history = await app.server.inject({ method: "GET", url: "/api/rooms/general/messages", cookies: owner.cookies });
+      const history = await app.server.inject({
+        method: "GET",
+        url: "/api/rooms/general/messages",
+        cookies: owner.cookies
+      });
       const message = history.json().messages[0] as { nickname: string; authorDeleted: boolean; body: string };
 
       assert.deepEqual(message, { ...message, nickname: "", authorDeleted: true });
@@ -488,7 +621,12 @@ describe("the owner panel", () => {
     it("rechecks server ownership when approving an older request", async () => {
       const owner = await bootstrapOwner(app);
       const member = await acceptInvite(app, owner.cookies, "Deniz");
-      const requested = await app.server.inject({ method: "POST", url: "/api/account/deletion-request", cookies: member.cookies, payload: { nickname: "Deniz" } });
+      const requested = await app.server.inject({
+        method: "POST",
+        url: "/api/account/deletion-request",
+        cookies: member.cookies,
+        payload: { nickname: "Deniz" }
+      });
       const requestId = requested.json().request.id as string;
       app.sqlite.prepare("update server_members set role = 'owner' where user_id = ?").run(member.user.id);
 
@@ -500,8 +638,16 @@ describe("the owner panel", () => {
 
       assert.equal(response.statusCode, 409);
       assert.equal(response.json().error, "account_owns_server");
-      assert.equal(one<{ deleted_at: string | null }>(app.sqlite, "select deleted_at from users where id = ?", [member.user.id])?.deleted_at, null);
-      assert.equal(one<{ status: string }>(app.sqlite, "select status from account_deletion_requests where id = ?", [requestId])?.status, "pending");
+      assert.equal(
+        one<{ deleted_at: string | null }>(app.sqlite, "select deleted_at from users where id = ?", [member.user.id])
+          ?.deleted_at,
+        null
+      );
+      assert.equal(
+        one<{ status: string }>(app.sqlite, "select status from account_deletion_requests where id = ?", [requestId])
+          ?.status,
+        "pending"
+      );
     });
   });
 

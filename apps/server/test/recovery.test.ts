@@ -77,14 +77,23 @@ describe("recovering an account", () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Member");
     const code = await withRecoveryCode(app, member.cookies);
-    assert.equal((await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: member.cookies
-    })).statusCode, 200);
+    assert.equal(
+      (
+        await app.server.inject({
+          method: "GET",
+          url: "/api/devices",
+          cookies: member.cookies
+        })
+      ).statusCode,
+      200
+    );
 
     await redeem(app, code);
 
     const afterwards = await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: member.cookies
+      method: "GET",
+      url: "/api/devices",
+      cookies: member.cookies
     });
     assert.equal(afterwards.statusCode, 401);
   });
@@ -114,7 +123,9 @@ describe("recovering an account", () => {
     const recovered = await redeem(app, code);
 
     const status = await app.server.inject({
-      method: "GET", url: "/api/recovery", cookies: cookieJar(recovered)
+      method: "GET",
+      url: "/api/recovery",
+      cookies: cookieJar(recovered)
     });
 
     assert.equal(status.json().present, false);
@@ -129,23 +140,46 @@ describe("recovering an account", () => {
     const member = await acceptInvite(app, owner.cookies, "Member");
     await withRecoveryCode(app, member.cookies);
     const second = linkAnotherDevice(app, member.user.id);
-    assert.equal((await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: second.cookies
-    })).statusCode, 200);
+    assert.equal(
+      (
+        await app.server.inject({
+          method: "GET",
+          url: "/api/devices",
+          cookies: second.cookies
+        })
+      ).statusCode,
+      200
+    );
 
     const replaced = await app.server.inject({
-      method: "POST", url: "/api/recovery", cookies: member.cookies
+      method: "POST",
+      url: "/api/recovery",
+      cookies: member.cookies
     });
 
     assert.equal(replaced.json().signedOutOthers, true);
     // The Device that asked still works.
-    assert.equal((await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: member.cookies
-    })).statusCode, 200);
+    assert.equal(
+      (
+        await app.server.inject({
+          method: "GET",
+          url: "/api/devices",
+          cookies: member.cookies
+        })
+      ).statusCode,
+      200
+    );
     // The other one does not.
-    assert.equal((await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: second.cookies
-    })).statusCode, 401);
+    assert.equal(
+      (
+        await app.server.inject({
+          method: "GET",
+          url: "/api/devices",
+          cookies: second.cookies
+        })
+      ).statusCode,
+      401
+    );
   });
 
   it("does not sign anybody out for creating a first code", async () => {
@@ -156,13 +190,22 @@ describe("recovering an account", () => {
     const second = linkAnotherDevice(app, owner.user.id);
 
     const created = await app.server.inject({
-      method: "POST", url: "/api/recovery", cookies: owner.cookies
+      method: "POST",
+      url: "/api/recovery",
+      cookies: owner.cookies
     });
 
     assert.equal(created.json().signedOutOthers, false);
-    assert.equal((await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: second.cookies
-    })).statusCode, 200);
+    assert.equal(
+      (
+        await app.server.inject({
+          method: "GET",
+          url: "/api/devices",
+          cookies: second.cookies
+        })
+      ).statusCode,
+      200
+    );
   });
 
   it("retires the old code when a member generates another", async () => {
@@ -171,7 +214,9 @@ describe("recovering an account", () => {
     const code = await withRecoveryCode(app, member.cookies);
 
     const regenerated = await app.server.inject({
-      method: "POST", url: "/api/recovery", cookies: member.cookies
+      method: "POST",
+      url: "/api/recovery",
+      cookies: member.cookies
     });
 
     assert.equal(regenerated.statusCode, 201);
@@ -187,11 +232,7 @@ describe("recovering an account", () => {
     const superseded = await withRecoveryCode(app, member.cookies);
     await app.server.inject({ method: "POST", url: "/api/recovery", cookies: member.cookies });
 
-    const answers = await Promise.all([
-      redeem(app, superseded),
-      redeem(app, "not-a-real-code"),
-      redeem(app, "")
-    ]);
+    const answers = await Promise.all([redeem(app, superseded), redeem(app, "not-a-real-code"), redeem(app, "")]);
 
     for (const answer of answers) {
       assert.equal(answer.statusCode, 404);
@@ -217,7 +258,9 @@ describe("recovering an account", () => {
     await withRecoveryCode(app, member.cookies);
 
     const status = await app.server.inject({
-      method: "GET", url: "/api/recovery", cookies: member.cookies
+      method: "GET",
+      url: "/api/recovery",
+      cookies: member.cookies
     });
 
     assert.deepEqual(status.json(), { present: true });
@@ -227,8 +270,7 @@ describe("recovering an account", () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Member");
     const code = await withRecoveryCode(app, member.cookies);
-    app.sqlite.prepare("update users set banned_at = ? where nickname = ?")
-      .run(new Date().toISOString(), "Member");
+    app.sqlite.prepare("update users set banned_at = ? where nickname = ?").run(new Date().toISOString(), "Member");
 
     assert.equal((await redeem(app, code)).statusCode, 404);
   });
@@ -294,7 +336,9 @@ function linkAnotherDevice(app: VoxlyApp, userId: string) {
   const token = createOpaqueToken();
   const now = new Date();
   app.sqlite
-    .prepare("insert into sessions (id, token_hash, user_id, created_at, expires_at, label, last_seen_at, token_issued_at, origin) values (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .prepare(
+      "insert into sessions (id, token_hash, user_id, created_at, expires_at, label, last_seen_at, token_issued_at, origin) values (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    )
     .run(
       crypto.randomUUID(),
       hashToken(token),

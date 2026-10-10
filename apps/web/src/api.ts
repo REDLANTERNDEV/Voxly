@@ -1,3 +1,4 @@
+import type { MessageMentionInput, MessageReactionsEvent } from "@voxly/shared";
 import type {
   AppConfigResponse,
   CategorySummary,
@@ -87,7 +88,9 @@ export async function fetchOwnerAccounts(query = "") {
 }
 
 export async function fetchOwnerAccount(userId: string) {
-  return apiGet<{ account: OwnerAccount & { memberships: OwnerAccountMembership[] } }>(`/api/owner/accounts/${encodeURIComponent(userId)}`);
+  return apiGet<{ account: OwnerAccount & { memberships: OwnerAccountMembership[] } }>(
+    `/api/owner/accounts/${encodeURIComponent(userId)}`
+  );
 }
 
 export async function deleteOwnerAccount(userId: string, nickname: string) {
@@ -166,7 +169,9 @@ export function fetchDesktopLaunch(id: string) {
 
 export function cancelDesktopLaunch(id: string) {
   return request<{ ok: boolean }>(`/api/devices/desktop-launches/${encodeURIComponent(id)}/cancel`, {
-    method: "POST", body: "{}", keepalive: true
+    method: "POST",
+    body: "{}",
+    keepalive: true
   });
 }
 
@@ -177,12 +182,15 @@ export async function fetchDesktopAuthorization(id: string) {
 }
 
 export async function answerDesktopAuthorization(id: string, approve: boolean) {
-  return apiPost<{ ok: boolean }>(`/api/devices/desktop-authorizations/${encodeURIComponent(id)}/decision`, { approve });
+  return apiPost<{ ok: boolean }>(`/api/devices/desktop-authorizations/${encodeURIComponent(id)}/decision`, {
+    approve
+  });
 }
 
 export async function collectDesktopAuthorization(id: string, secret: string) {
   return apiPost<{ status: DeviceLinkOutcome; user?: PublicUser }>(
-    `/api/devices/desktop-authorizations/${encodeURIComponent(id)}/collect`, { secret }
+    `/api/devices/desktop-authorizations/${encodeURIComponent(id)}/collect`,
+    { secret }
   );
 }
 
@@ -257,8 +265,17 @@ export async function fetchServerDirectory(serverId: string) {
   return apiGet<{ members: PresenceUser[] }>(`/api/servers/${encodeURIComponent(serverId)}/directory`);
 }
 
-export async function createServerRoom(serverId: string, name: string, kind: "text" | "voice", categoryId: string | null = null) {
-  return apiPost<{ room: RoomSummary }>(`/api/servers/${encodeURIComponent(serverId)}/rooms`, { name, kind, categoryId });
+export async function createServerRoom(
+  serverId: string,
+  name: string,
+  kind: "text" | "voice",
+  categoryId: string | null = null
+) {
+  return apiPost<{ room: RoomSummary }>(`/api/servers/${encodeURIComponent(serverId)}/rooms`, {
+    name,
+    kind,
+    categoryId
+  });
 }
 
 export async function createServerCategory(serverId: string, name: string) {
@@ -266,10 +283,13 @@ export async function createServerCategory(serverId: string, name: string) {
 }
 
 export async function renameServerCategory(serverId: string, categoryId: string, name: string) {
-  return request<{ category: CategorySummary }>(`/api/servers/${encodeURIComponent(serverId)}/categories/${encodeURIComponent(categoryId)}`, {
-    method: "PATCH",
-    body: JSON.stringify({ name })
-  });
+  return request<{ category: CategorySummary }>(
+    `/api/servers/${encodeURIComponent(serverId)}/categories/${encodeURIComponent(categoryId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ name })
+    }
+  );
 }
 
 export async function deleteServerCategory(serverId: string, categoryId: string) {
@@ -286,10 +306,13 @@ export async function updateServerRoomLayout(serverId: string, layout: ServerRoo
 }
 
 export async function renameServerRoom(serverId: string, roomId: string, name: string) {
-  return request<{ room: RoomSummary }>(`/api/servers/${encodeURIComponent(serverId)}/rooms/${encodeURIComponent(roomId)}`, {
-    method: "PATCH",
-    body: JSON.stringify({ name })
-  });
+  return request<{ room: RoomSummary }>(
+    `/api/servers/${encodeURIComponent(serverId)}/rooms/${encodeURIComponent(roomId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ name })
+    }
+  );
 }
 
 export async function deleteServerRoom(serverId: string, roomId: string) {
@@ -310,16 +333,27 @@ export async function fetchMessages(roomId: string, limit = 100) {
   return apiGet<MessagesResponse>(`/api/rooms/${roomId}/messages?limit=${encodeURIComponent(String(limit))}`);
 }
 
-export async function sendMessage(roomId: string, body: string, replyToMessageId?: string | null) {
-  return apiPost<MessageResponse>(`/api/rooms/${roomId}/messages`, replyToMessageId
-    ? { body, replyToMessageId }
-    : { body });
+export async function sendMessage(
+  roomId: string,
+  body: string,
+  replyToMessageId?: string | null,
+  mentions: MessageMentionInput[] = []
+) {
+  return apiPost<MessageResponse>(
+    `/api/rooms/${roomId}/messages`,
+    replyToMessageId ? { body, replyToMessageId, mentions } : { body, mentions }
+  );
 }
 
-export async function updateMessage(roomId: string, messageId: string, body: string) {
+export async function updateMessage(
+  roomId: string,
+  messageId: string,
+  body: string,
+  mentions: MessageMentionInput[] = []
+) {
   return request<MessageResponse>(`/api/rooms/${roomId}/messages/${messageId}`, {
     method: "PATCH",
-    body: JSON.stringify({ body })
+    body: JSON.stringify({ body, mentions })
   });
 }
 
@@ -337,11 +371,18 @@ export async function suppressMessageEmbed(roomId: string, messageId: string, em
 }
 
 export async function acceptInvite(inviteToken: string, nickname: string, turnstileToken?: string) {
-  return apiPost<InviteAcceptResponse>("/api/invites/accept", { inviteToken, nickname: nickname || undefined, turnstileToken });
+  return apiPost<InviteAcceptResponse>("/api/invites/accept", {
+    inviteToken,
+    nickname: nickname || undefined,
+    turnstileToken
+  });
 }
 
 export async function previewInvite(inviteToken: string) {
-  return apiPost<{ serverName: string; expiresAt: string | null; remainingUses: number | null }>("/api/invites/preview", { inviteToken });
+  return apiPost<{ serverName: string; expiresAt: string | null; remainingUses: number | null }>(
+    "/api/invites/preview",
+    { inviteToken }
+  );
 }
 
 export function claimAccessLink(token: string) {
@@ -364,10 +405,12 @@ export async function claimOwnerSession(claimToken: string) {
     return existingRequest;
   }
 
-  const requestPromise = apiPost<CurrentUserResponse>("/api/setup/owner/claim", { claimToken }).catch((error: unknown) => {
-    ownerClaimRequests.delete(claimToken);
-    throw error;
-  });
+  const requestPromise = apiPost<CurrentUserResponse>("/api/setup/owner/claim", { claimToken }).catch(
+    (error: unknown) => {
+      ownerClaimRequests.delete(claimToken);
+      throw error;
+    }
+  );
   ownerClaimRequests.set(claimToken, requestPromise);
   return requestPromise;
 }
@@ -380,8 +423,17 @@ export async function createInvite(label: string, expiresInMinutes: InviteExpiry
   return apiPost<InviteResponse>("/api/owner/invites", { label, expiresInMinutes, maxUses });
 }
 
-export async function createServerInvite(serverId: string, label: string, expiresInMinutes: InviteExpiryMinutes, maxUses: InviteMaxUses) {
-  return apiPost<InviteResponse>(`/api/servers/${encodeURIComponent(serverId)}/invites`, { label, expiresInMinutes, maxUses });
+export async function createServerInvite(
+  serverId: string,
+  label: string,
+  expiresInMinutes: InviteExpiryMinutes,
+  maxUses: InviteMaxUses
+) {
+  return apiPost<InviteResponse>(`/api/servers/${encodeURIComponent(serverId)}/invites`, {
+    label,
+    expiresInMinutes,
+    maxUses
+  });
 }
 
 export async function revokeServerInvite(serverId: string, inviteId: string) {
@@ -461,10 +513,9 @@ export async function disconnectVoiceMember(serverId: string, roomId: string, us
 }
 
 export async function moveVoiceMember(serverId: string, userId: string, roomId: string) {
-  await apiPost<void>(
-    `/api/servers/${encodeURIComponent(serverId)}/voice/members/${encodeURIComponent(userId)}/move`,
-    { roomId }
-  );
+  await apiPost<void>(`/api/servers/${encodeURIComponent(serverId)}/voice/members/${encodeURIComponent(userId)}/move`, {
+    roomId
+  });
 }
 
 export async function revokeSession(sessionId: string) {
@@ -495,7 +546,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     let code: string | undefined;
     let data: Record<string, unknown> | undefined;
     try {
-      const body = await response.json() as Record<string, unknown>;
+      const body = (await response.json()) as Record<string, unknown>;
       data = body;
       if (typeof body.error === "string") {
         code = body.error;
@@ -524,7 +575,9 @@ async function confirmSessionRotation() {
     const pending = fetch("/api/session/confirm", {
       method: "POST",
       credentials: "include"
-    }).then(() => undefined).catch(() => undefined);
+    })
+      .then(() => undefined)
+      .catch(() => undefined);
     const confirmation = pending.finally(() => {
       if (sessionConfirmation === confirmation) sessionConfirmation = null;
     });
@@ -538,11 +591,46 @@ export function fetchNotificationState() {
 }
 export function advanceRoomReadState(roomId: string, throughSequence: number) {
   return request<{ throughSequence: number }>(`/api/rooms/${encodeURIComponent(roomId)}/read-state`, {
-    method: "PUT", body: JSON.stringify({ throughSequence })
+    method: "PUT",
+    body: JSON.stringify({ throughSequence })
   });
 }
-export function updateServerNotificationSettings(serverId: string, setting: import("@voxly/shared").NotificationMuteRequest) {
-  return request<import("@voxly/shared").NotificationStateResponse>(`/api/servers/${encodeURIComponent(serverId)}/notification-settings`, {
-    method: "PATCH", body: JSON.stringify(setting)
-  });
+export function updateServerNotificationSettings(
+  serverId: string,
+  setting: import("@voxly/shared").NotificationMuteRequest
+) {
+  return request<import("@voxly/shared").NotificationStateResponse>(
+    `/api/servers/${encodeURIComponent(serverId)}/notification-settings`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(setting)
+    }
+  );
+}
+
+export function fetchPinnedMessages(roomId: string) {
+  return apiGet<{ messages: import("@voxly/shared").ChatMessage[] }>(`/api/rooms/${encodeURIComponent(roomId)}/pins`);
+}
+export function fetchMessageContext(roomId: string, messageId: string) {
+  return apiGet<{ messages: import("@voxly/shared").ChatMessage[] }>(
+    `/api/rooms/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}/context`
+  );
+}
+export function setMessagePinned(roomId: string, messageId: string, pinned: boolean) {
+  return request<MessageResponse>(
+    `/api/rooms/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}/pin`,
+    { method: pinned ? "PUT" : "DELETE" }
+  );
+}
+export function setMessageReaction(roomId: string, messageId: string, emoji: string, add: boolean) {
+  return request<MessageReactionsEvent>(
+    `/api/rooms/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(emoji)}`,
+    { method: add ? "PUT" : "DELETE" }
+  );
+}
+export function clearMessageReactions(roomId: string, messageId: string, emoji?: string) {
+  return request<MessageReactionsEvent>(
+    `/api/rooms/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}/reactions${emoji ? `/${encodeURIComponent(emoji)}/all` : ""}`,
+    { method: "DELETE" }
+  );
 }

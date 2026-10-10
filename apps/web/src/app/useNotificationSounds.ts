@@ -1,9 +1,6 @@
 import type { ChatMessage, PublicUser, VoiceSnapshot } from "@voxly/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  createNotificationSoundPlayer,
-  type NotificationSoundPlayer
-} from "../lib/notificationSoundPlayer.js";
+import { createNotificationSoundPlayer, type NotificationSoundPlayer } from "../lib/notificationSoundPlayer.js";
 import {
   activeVoiceScreenMembers,
   activeVoiceRosterUserIds,
@@ -23,7 +20,12 @@ import {
   type VoiceScreenRosterState
 } from "../lib/notificationSounds.js";
 import type { VoiceControls } from "../lib/voiceControls.js";
-import { createDesktopNotificationDelivery, isDesktopNotificationKind, readDesktopNotifications, type DesktopNotificationTarget } from "../lib/desktopNotifications.js";
+import {
+  createDesktopNotificationDelivery,
+  isDesktopNotificationKind,
+  readDesktopNotifications,
+  type DesktopNotificationTarget
+} from "../lib/desktopNotifications.js";
 
 interface VoiceControlSample {
   roomId: string | null;
@@ -37,7 +39,16 @@ function windowFocused() {
   return typeof document.hasFocus === "function" ? document.hasFocus() : true;
 }
 
-export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, controls, deafened, connectionInterrupted, activeTextRoomIdRef, onNotificationActivate }: {
+export function useNotificationSounds({
+  user,
+  activeVoiceRoomId,
+  voiceSnapshot,
+  controls,
+  deafened,
+  connectionInterrupted,
+  activeTextRoomIdRef,
+  onNotificationActivate
+}: {
   user: PublicUser | null;
   activeVoiceRoomId: string | null;
   voiceSnapshot: VoiceSnapshot | undefined;
@@ -80,34 +91,46 @@ export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, 
     playerRef.current.prime();
   }, [user?.id]);
 
-  useEffect(() => () => {
-    playerRef.current?.dispose();
-    playerRef.current = null;
-  }, []);
+  useEffect(
+    () => () => {
+      playerRef.current?.dispose();
+      playerRef.current = null;
+    },
+    []
+  );
 
-  const play = useCallback((key: NotificationSoundKey, target?: DesktopNotificationTarget) => {
-    if (!notificationSoundAllowed(key, preferencesRef.current, { deafened: deafenedRef.current })) return false;
-    if (user && isDesktopNotificationKind(key)) {
-      desktopDeliveryRef.current ??= createDesktopNotificationDelivery(window);
-      desktopDeliveryRef.current(key, {
-        userId: user.id, enabled: readDesktopNotifications(user.id), focused: windowFocused(),
-        deafened: deafenedRef.current, preferences: preferencesRef.current,
-        target: target ?? (activeVoiceRoomId ? { roomId: activeVoiceRoomId, kind: "voice" } : undefined),
-        isCurrent: () => activationRef.current.userId === user.id,
-        activate: (destination) => activationRef.current.activate(destination)
+  const play = useCallback(
+    (key: NotificationSoundKey, target?: DesktopNotificationTarget) => {
+      if (!notificationSoundAllowed(key, preferencesRef.current, { deafened: deafenedRef.current })) return false;
+      if (user && isDesktopNotificationKind(key)) {
+        desktopDeliveryRef.current ??= createDesktopNotificationDelivery(window);
+        desktopDeliveryRef.current(key, {
+          userId: user.id,
+          enabled: readDesktopNotifications(user.id),
+          focused: windowFocused(),
+          deafened: deafenedRef.current,
+          preferences: preferencesRef.current,
+          target: target ?? (activeVoiceRoomId ? { roomId: activeVoiceRoomId, kind: "voice" } : undefined),
+          isCurrent: () => activationRef.current.userId === user.id,
+          activate: (destination) => activationRef.current.activate(destination)
+        });
+      }
+      playerRef.current ??= createNotificationSoundPlayer();
+      return playerRef.current.play(key, preferencesRef.current.volume);
+    },
+    [user?.id, activeVoiceRoomId]
+  );
+
+  const changeNotificationSounds = useCallback(
+    (patch: Partial<NotificationSoundPreferences>) => {
+      setPreferences((current) => {
+        const next = { ...current, ...patch, volume: clampNotificationVolume(patch.volume ?? current.volume) };
+        if (user) writeNotificationSounds(user.id, next);
+        return next;
       });
-    }
-    playerRef.current ??= createNotificationSoundPlayer();
-    return playerRef.current.play(key, preferencesRef.current.volume);
-  }, [user?.id, activeVoiceRoomId]);
-
-  const changeNotificationSounds = useCallback((patch: Partial<NotificationSoundPreferences>) => {
-    setPreferences((current) => {
-      const next = { ...current, ...patch, volume: clampNotificationVolume(patch.volume ?? current.volume) };
-      if (user) writeNotificationSounds(user.id, next);
-      return next;
-    });
-  }, [user?.id]);
+    },
+    [user?.id]
+  );
 
   // Joining, moving, and leaving are all observable as a change of the active
   // room. Reconnect keeps the room, so recovery stays silent.
@@ -161,15 +184,18 @@ export function useNotificationSounds({ user, activeVoiceRoomId, voiceSnapshot, 
     play(connectionInterrupted ? "connectionLost" : "connectionRestored");
   }, [connectionInterrupted, play]);
 
-  const notifyMessage = useCallback((message: ChatMessage) => {
-    if (!user) return false;
-    const allowed = shouldPlayMessageSound(message, {
-      currentUserId: user.id,
-      activeTextRoomId: activeTextRoomIdRef.current,
-      windowFocused: windowFocused()
-    });
-    return allowed ? play("message", { roomId: message.roomId, kind: "text" }) : false;
-  }, [activeTextRoomIdRef, play, user?.id]);
+  const notifyMessage = useCallback(
+    (message: ChatMessage) => {
+      if (!user) return false;
+      const allowed = shouldPlayMessageSound(message, {
+        currentUserId: user.id,
+        activeTextRoomId: activeTextRoomIdRef.current,
+        windowFocused: windowFocused()
+      });
+      return allowed ? play("message", { roomId: message.roomId, kind: "text" }) : false;
+    },
+    [activeTextRoomIdRef, play, user?.id]
+  );
 
   return { notificationSounds: preferences, changeNotificationSounds, notifyMessage };
 }

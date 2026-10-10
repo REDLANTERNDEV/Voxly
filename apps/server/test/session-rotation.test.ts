@@ -131,15 +131,11 @@ describe("session token rotation", () => {
     await request(app, owner.cookies);
     ageRetiredTokens(app, 5);
 
-    const responses = await Promise.all(
-      Array.from({ length: 8 }, () => request(app, owner.cookies))
-    );
+    const responses = await Promise.all(Array.from({ length: 8 }, () => request(app, owner.cookies)));
 
     assert.ok(responses.every((response) => response.statusCode === 200));
     const issued = responses.flatMap((response) =>
-      response.cookies
-        .filter((cookie) => cookie.name === "voxly_session")
-        .map((cookie) => cookie.value)
+      response.cookies.filter((cookie) => cookie.name === "voxly_session").map((cookie) => cookie.value)
     );
     assert.equal(issued.length, 1, `issued ${issued.length} recovery tokens`);
   });
@@ -192,12 +188,12 @@ describe("session token rotation", () => {
 
     assert.equal(response.statusCode, 401);
     assert.equal(response.json().error, "session_reused");
-    const users = app.sqlite
-      .prepare("select count(*) as count from users where nickname = ?")
-      .get("Impostor") as { count: number };
-    const uses = app.sqlite
-      .prepare("select count(*) as count from invite_uses where invite_id = ?")
-      .get(invite.id) as { count: number };
+    const users = app.sqlite.prepare("select count(*) as count from users where nickname = ?").get("Impostor") as {
+      count: number;
+    };
+    const uses = app.sqlite.prepare("select count(*) as count from invite_uses where invite_id = ?").get(invite.id) as {
+      count: number;
+    };
     assert.equal(users.count, 0);
     assert.equal(uses.count, 0);
   });
@@ -208,9 +204,7 @@ describe("session token rotation", () => {
     const owner = await bootstrapOwner(app);
     ageToken(app, 16);
 
-    const responses = await Promise.all(
-      Array.from({ length: 8 }, () => request(app, owner.cookies))
-    );
+    const responses = await Promise.all(Array.from({ length: 8 }, () => request(app, owner.cookies)));
 
     assert.ok(responses.every((response) => response.statusCode === 200));
     const issued = responses.flatMap((response) => response.cookies.map((cookie) => cookie.value));
@@ -225,9 +219,7 @@ describe("session token rotation", () => {
     const owner = await bootstrapOwner(app);
     const before = expiryOf(app, owner.cookies.voxly_session);
     // Old enough that the touch throttle lets the renewal through.
-    app.sqlite
-      .prepare("update sessions set last_seen_at = ?")
-      .run(new Date(Date.now() - 20 * 60 * 1000).toISOString());
+    app.sqlite.prepare("update sessions set last_seen_at = ?").run(new Date(Date.now() - 20 * 60 * 1000).toISOString());
     app.sqlite
       .prepare("update sessions set expires_at = ?")
       .run(new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString());
@@ -306,16 +298,16 @@ function ageRetiredTokens(app: VoxlyApp, minutes: number) {
 }
 
 function expiryOf(app: VoxlyApp, token: string) {
-  const row = app.sqlite
-    .prepare("select expires_at from sessions where token_hash = ?")
-    .get(hashToken(token)) as { expires_at: string } | undefined;
+  const row = app.sqlite.prepare("select expires_at from sessions where token_hash = ?").get(hashToken(token)) as
+    { expires_at: string } | undefined;
   return row ? new Date(row.expires_at).getTime() : 0;
 }
 
 function sessionIdOf(app: VoxlyApp, token: string) {
-  return (app.sqlite
-    .prepare("select id from sessions where token_hash = ?")
-    .get(hashToken(token)) as { id: string } | undefined)?.id;
+  return (
+    app.sqlite.prepare("select id from sessions where token_hash = ?").get(hashToken(token)) as
+      { id: string } | undefined
+  )?.id;
 }
 
 async function bootstrapOwner(app: VoxlyApp) {

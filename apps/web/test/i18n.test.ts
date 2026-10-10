@@ -116,11 +116,20 @@ describe("frontend localization", () => {
   });
 
   it("translates the failures the voice toast reports", () => {
-    assert.equal(translate("en", "voiceError.microphonePermissionRequired"), "Microphone permission is required to join voice.");
-    assert.equal(translate("tr", "voiceError.microphonePermissionRequired"), "Ses odasına katılmak için mikrofon izni gerekiyor.");
+    assert.equal(
+      translate("en", "voiceError.microphonePermissionRequired"),
+      "Microphone permission is required to join voice."
+    );
+    assert.equal(
+      translate("tr", "voiceError.microphonePermissionRequired"),
+      "Ses odasına katılmak için mikrofon izni gerekiyor."
+    );
     assert.equal(translate("tr", "voiceError.join"), "Ses odasına katılınamadı.");
     assert.equal(translate("tr", "voiceError.screenSharePermissionDenied"), "Ekran paylaşımı izni reddedildi.");
-    assert.equal(translate("tr", "voiceError.rtcConfigUnavailable"), "RTC bağlantı ayarları yüklenemedi. Yeniden deneniyor.");
+    assert.equal(
+      translate("tr", "voiceError.rtcConfigUnavailable"),
+      "RTC bağlantı ayarları yüklenemedi. Yeniden deneniyor."
+    );
   });
 
   it("translates the failures the audio settings report", () => {

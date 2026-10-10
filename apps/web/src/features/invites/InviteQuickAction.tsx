@@ -1,7 +1,7 @@
-import { useEffect,useRef,useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Translate } from "../../app/types.js";
-import { CloseIcon,UserPlusIcon } from "../../components/ui/Icons.js";
+import { CloseIcon, UserPlusIcon } from "../../components/ui/Icons.js";
 import { InviteComposer } from "./InviteComposer.js";
 
 const popoverWidth = 300;
@@ -11,7 +11,12 @@ const popoverWidth = 300;
  * and members holding the invite grant. Mirrors the channel-create popover so
  * the rail keeps one interaction model for its inline forms.
  */
-export function InviteQuickAction({ serverId, serverName, publicUrl, t }: {
+export function InviteQuickAction({
+  serverId,
+  serverName,
+  publicUrl,
+  t
+}: {
   serverId: string;
   serverName: string;
   publicUrl: string | null;
@@ -34,7 +39,8 @@ export function InviteQuickAction({ serverId, serverName, publicUrl, t }: {
       if (event.key === "Escape") close();
     };
     const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!popoverRef.current?.contains(event.target as Node) && !triggerRef.current?.contains(event.target as Node)) close();
+      if (!popoverRef.current?.contains(event.target as Node) && !triggerRef.current?.contains(event.target as Node))
+        close();
     };
     window.addEventListener("keydown", closeOnEscape);
     window.addEventListener("pointerdown", closeOnOutsidePointer);
@@ -71,17 +77,21 @@ export function InviteQuickAction({ serverId, serverName, publicUrl, t }: {
         <UserPlusIcon />
         <span>{t("common.invite")}</span>
       </button>
-      {isOpen ? createPortal(
-        <div className="invite-popover" ref={popoverRef} role="dialog" aria-label={label} style={position}>
-          <header className="invite-popover-head">
-            <span className="label">{t("common.invite")}</span>
-            <strong>{serverName}</strong>
-            <button className="icon-btn" type="button" aria-label={t("common.cancel")} onClick={close}><CloseIcon /></button>
-          </header>
-          <InviteComposer serverId={serverId} publicUrl={publicUrl} idPrefix="railInvite" t={t} />
-        </div>,
-        document.body
-      ) : null}
+      {isOpen
+        ? createPortal(
+            <div className="invite-popover" ref={popoverRef} role="dialog" aria-label={label} style={position}>
+              <header className="invite-popover-head">
+                <span className="label">{t("common.invite")}</span>
+                <strong>{serverName}</strong>
+                <button className="icon-btn" type="button" aria-label={t("common.cancel")} onClick={close}>
+                  <CloseIcon />
+                </button>
+              </header>
+              <InviteComposer serverId={serverId} publicUrl={publicUrl} idPrefix="railInvite" t={t} />
+            </div>,
+            document.body
+          )
+        : null}
     </>
   );
 }

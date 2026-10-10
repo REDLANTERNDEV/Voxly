@@ -364,7 +364,11 @@ describe("telling a link from a name", () => {
     // A paste carries its scheme; a person typing one leaves it off. The one
     // prefix goes through the same exact-host check as everything else, so
     // nothing new is recognised — only the same links, written shorter.
-    for (const input of ["youtube.com/watch?v=aB3dE5gH7jK", "youtu.be/aB3dE5gH7jK", "www.youtube.com/watch?v=aB3dE5gH7jK"]) {
+    for (const input of [
+      "youtube.com/watch?v=aB3dE5gH7jK",
+      "youtu.be/aB3dE5gH7jK",
+      "www.youtube.com/watch?v=aB3dE5gH7jK"
+    ]) {
       assert.deepEqual(resolverFor(input), { kind: "link", url: "https://www.youtube.com/watch?v=aB3dE5gH7jK" }, input);
     }
   });
@@ -441,22 +445,34 @@ describe("reading what a search found", () => {
     const found = parseSearchResults(fixture("search.json"));
 
     assert.ok(found.ok);
-    assert.equal(found.results.some((result) => result.track.id === "R4d10L1v3St"), false, "a live stream");
-    assert.equal(found.results.some((result) => result.track.id === "N0Dur4t10nX"), false, "a premiere");
+    assert.equal(
+      found.results.some((result) => result.track.id === "R4d10L1v3St"),
+      false,
+      "a live stream"
+    );
+    assert.equal(
+      found.results.some((result) => result.track.id === "N0Dur4t10nX"),
+      false,
+      "a premiere"
+    );
   });
 
   it("rebuilds each link from the id rather than echoing the one it was handed", () => {
     // The same rule a pasted link goes through. The browser hands this string
     // straight back to play it, so it must be one the bot built.
-    const found = parseSearchResults(JSON.stringify({
-      entries: [{
-        id: "aB3dE5gH7jK",
-        title: "Nocturne",
-        duration: 273,
-        channel: "A Channel",
-        url: "https://www.youtube.com/watch?v=aB3dE5gH7jK&list=PL0000000000&t=90"
-      }]
-    }));
+    const found = parseSearchResults(
+      JSON.stringify({
+        entries: [
+          {
+            id: "aB3dE5gH7jK",
+            title: "Nocturne",
+            duration: 273,
+            channel: "A Channel",
+            url: "https://www.youtube.com/watch?v=aB3dE5gH7jK&list=PL0000000000&t=90"
+          }
+        ]
+      })
+    );
 
     assert.equal(found.ok && found.results[0]?.url, "https://www.youtube.com/watch?v=aB3dE5gH7jK");
   });
@@ -476,9 +492,11 @@ describe("reading what a search found", () => {
 
   it("bounds every string in the list, the way one Track's title is bounded", () => {
     const long = "x".repeat(musicTitleMaxLength + 500);
-    const found = parseSearchResults(JSON.stringify({
-      entries: [{ id: "aB3dE5gH7jK", title: long, duration: 100, channel: long }]
-    }));
+    const found = parseSearchResults(
+      JSON.stringify({
+        entries: [{ id: "aB3dE5gH7jK", title: long, duration: 100, channel: long }]
+      })
+    );
 
     assert.equal(found.ok && found.results[0]?.track.title.length, musicTitleMaxLength);
     assert.equal(found.ok && found.results[0]?.channel.length, musicTitleMaxLength);
@@ -488,17 +506,21 @@ describe("reading what a search found", () => {
     // The channel helps a member choose; a Track without one is still playable,
     // and a missing name is the panel's problem to lay out rather than a reason
     // to withhold the Track.
-    const found = parseSearchResults(JSON.stringify({
-      entries: [{ id: "aB3dE5gH7jK", title: "Nocturne", duration: 273 }]
-    }));
+    const found = parseSearchResults(
+      JSON.stringify({
+        entries: [{ id: "aB3dE5gH7jK", title: "Nocturne", duration: 273 }]
+      })
+    );
 
     assert.equal(found.ok && found.results[0]?.channel, "");
   });
 
   it("falls back to the uploader when that is the name the source gave", () => {
-    const found = parseSearchResults(JSON.stringify({
-      entries: [{ id: "aB3dE5gH7jK", title: "Nocturne", duration: 273, uploader: "A Channel" }]
-    }));
+    const found = parseSearchResults(
+      JSON.stringify({
+        entries: [{ id: "aB3dE5gH7jK", title: "Nocturne", duration: 273, uploader: "A Channel" }]
+      })
+    );
 
     assert.equal(found.ok && found.results[0]?.channel, "A Channel");
   });
@@ -506,13 +528,15 @@ describe("reading what a search found", () => {
   it("offers one video once, however many times the listing names it", () => {
     // A repeated row is a choice that is not a choice, and it costs a place a
     // different Track could have had.
-    const found = parseSearchResults(JSON.stringify({
-      entries: [
-        { id: "aB3dE5gH7jK", title: "Nocturne", duration: 273, channel: "A Channel" },
-        { id: "aB3dE5gH7jK", title: "Nocturne", duration: 273, channel: "A Channel" },
-        { id: "qW8eR2tY6uI", title: "Nocturne op. 9 no. 2", duration: 261, channel: "A Third Channel" }
-      ]
-    }));
+    const found = parseSearchResults(
+      JSON.stringify({
+        entries: [
+          { id: "aB3dE5gH7jK", title: "Nocturne", duration: 273, channel: "A Channel" },
+          { id: "aB3dE5gH7jK", title: "Nocturne", duration: 273, channel: "A Channel" },
+          { id: "qW8eR2tY6uI", title: "Nocturne op. 9 no. 2", duration: 261, channel: "A Third Channel" }
+        ]
+      })
+    );
 
     assert.deepEqual(found.ok && found.results.map((result) => result.track.id), ["aB3dE5gH7jK", "qW8eR2tY6uI"]);
   });
@@ -530,14 +554,16 @@ describe("reading what a search found", () => {
   });
 
   it("skips an entry it cannot read without losing the rest of the list", () => {
-    const found = parseSearchResults(JSON.stringify({
-      entries: [
-        null,
-        { id: "not-an-id", title: "Nocturne", duration: 100 },
-        { id: "aB3dE5gH7jK", title: "   ", duration: 100 },
-        { id: "qW8eR2tY6uI", title: "Nocturne op. 9 no. 2", duration: 261, channel: "A Third Channel" }
-      ]
-    }));
+    const found = parseSearchResults(
+      JSON.stringify({
+        entries: [
+          null,
+          { id: "not-an-id", title: "Nocturne", duration: 100 },
+          { id: "aB3dE5gH7jK", title: "   ", duration: 100 },
+          { id: "qW8eR2tY6uI", title: "Nocturne op. 9 no. 2", duration: 261, channel: "A Third Channel" }
+        ]
+      })
+    );
 
     assert.equal(found.ok && found.results.length, 1);
     assert.equal(found.ok && found.results[0]?.track.id, "qW8eR2tY6uI");

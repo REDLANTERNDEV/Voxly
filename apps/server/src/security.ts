@@ -8,7 +8,7 @@
  * every deployment path gets an identical posture.
  */
 
-import { analyticsCspOrigins,type AnalyticsConfig } from "./analytics.js";
+import { analyticsCspOrigins, type AnalyticsConfig } from "./analytics.js";
 
 /**
  * Origins embedded in `<iframe>` by the chat client.
@@ -27,7 +27,10 @@ const embedFrameOrigins = [
 /** Cloudflare Turnstile loads its script and renders its widget in an iframe. */
 const turnstileOrigin = "https://challenges.cloudflare.com";
 
-export function contentSecurityPolicyDirectives(options: { upgradeInsecureRequests: boolean; analytics?: AnalyticsConfig }) {
+export function contentSecurityPolicyDirectives(options: {
+  upgradeInsecureRequests: boolean;
+  analytics?: AnalyticsConfig;
+}) {
   // Analytics are opt-in per deployment. With none configured these lists are
   // empty and the policy is identical to a build without the option.
   const analytics = analyticsCspOrigins(options.analytics);
@@ -64,14 +67,15 @@ export function helmetOptions(options: { https: boolean; analytics?: AnalyticsCo
     enableCSPNonces: true,
     contentSecurityPolicy: {
       useDefaults: false,
-      directives: contentSecurityPolicyDirectives({ upgradeInsecureRequests: options.https, analytics: options.analytics })
+      directives: contentSecurityPolicyDirectives({
+        upgradeInsecureRequests: options.https,
+        analytics: options.analytics
+      })
     },
     // Only send HSTS when the deployment is actually HTTPS. Sending it over
     // plain HTTP is ignored by browsers, but sending it from a local HTTP
     // evaluation host that later shares a hostname would pin the browser.
-    strictTransportSecurity: options.https
-      ? { maxAge: 31536000, includeSubDomains: true }
-      : false,
+    strictTransportSecurity: options.https ? { maxAge: 31536000, includeSubDomains: true } : false,
     referrerPolicy: { policy: "strict-origin-when-cross-origin" as const },
     // Voxly serves its own SPA and API from one origin; isolating it from
     // cross-origin embedding is safe and blocks a class of side-channel reads.

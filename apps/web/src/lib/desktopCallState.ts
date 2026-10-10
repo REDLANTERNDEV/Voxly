@@ -17,7 +17,9 @@ interface StateBridge {
 }
 
 declare global {
-  interface Window { __VOXLY_DESKTOP_STATE_V1__?: StateBridge }
+  interface Window {
+    __VOXLY_DESKTOP_STATE_V1__?: StateBridge;
+  }
 }
 
 /** Sample existing track/lifecycle state; never publish names or room identifiers. */
@@ -28,8 +30,10 @@ export function desktopCallState(input: {
   pendingCapture: boolean;
 }): DesktopCallState {
   const live = (kind: "mic" | "camera" | "screen", type?: string, enabled = false) =>
-    input.streams[kind]?.getTracks().some((track) => track.readyState === "live"
-      && (!type || track.kind === type) && (!enabled || track.enabled)) ?? false;
+    input.streams[kind]
+      ?.getTracks()
+      .some((track) => track.readyState === "live" && (!type || track.kind === type) && (!enabled || track.enabled)) ??
+    false;
   return {
     version: 1,
     inVoice: input.inVoice,
@@ -51,13 +55,19 @@ export function createPendingCaptures() {
     isPending: () => count > 0,
     async run<T>(capture: () => Promise<T>): Promise<T> {
       count += 1;
-      try { return await capture(); }
-      finally { count -= 1; }
+      try {
+        return await capture();
+      } finally {
+        count -= 1;
+      }
     }
   };
 }
 
-export function subscribeDesktopCallState(target: Pick<Window, "__VOXLY_DESKTOP_STATE_V1__">, provider: () => DesktopCallState): () => void {
+export function subscribeDesktopCallState(
+  target: Pick<Window, "__VOXLY_DESKTOP_STATE_V1__">,
+  provider: () => DesktopCallState
+): () => void {
   const bridge = target.__VOXLY_DESKTOP_STATE_V1__;
   if (bridge?.version !== 1 || typeof bridge.subscribe !== "function") return () => {};
   return bridge.subscribe(provider);

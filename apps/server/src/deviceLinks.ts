@@ -22,12 +22,7 @@
 import { z } from "zod";
 import { audit } from "./audit.js";
 import { deviceLabel } from "./auth/deviceLabel.js";
-import {
-  createConfirmationNumber,
-  createLinkCode,
-  formatLinkCode,
-  normaliseLinkCode
-} from "./auth/linkCode.js";
+import { createConfirmationNumber, createLinkCode, formatLinkCode, normaliseLinkCode } from "./auth/linkCode.js";
 import { createSession, requireUser, setSessionCookie } from "./auth/sessions.js";
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import { one, run, type VoxlyDatabase } from "./db/database.js";
@@ -240,8 +235,9 @@ export function registerDeviceLinkRoutes({ fastify, database, secureCookies, tur
     // a guessable-in-principle secret from a caller with no session, which is
     // the same shape as invite acceptance and deserves the same door.
     if (turnstile?.enabled) {
-      const passed = parsed.success
-        && await verifyTurnstile(turnstile.secretKey, parsed.data.turnstileToken, turnstile.expectedHostname);
+      const passed =
+        parsed.success &&
+        (await verifyTurnstile(turnstile.secretKey, parsed.data.turnstileToken, turnstile.expectedHostname));
       if (!passed) return reply.code(403).send({ error: "turnstile_failed" });
     }
     // Unknown, expired, already claimed and malformed all answer the same way.
@@ -250,11 +246,9 @@ export function registerDeviceLinkRoutes({ fastify, database, secureCookies, tur
     const code = normaliseLinkCode(parsed.data.code);
     if (!code) return reply.code(404).send({ error: "link_invalid" });
 
-    const link = one<LinkRow>(
-      database.sqlite,
-      `select ${linkColumns} from device_links where token_hash = ?`,
-      [hashToken(code)]
-    );
+    const link = one<LinkRow>(database.sqlite, `select ${linkColumns} from device_links where token_hash = ?`, [
+      hashToken(code)
+    ]);
     // A refused claim releases the code: `refused_at` set means the last device
     // to ask was turned away, and this one may ask for itself.
     const claimable = link && !link.consumed_at && (!link.claimed_at || link.refused_at) && !isExpired(link);
@@ -300,28 +294,24 @@ export function registerDeviceLinkRoutes({ fastify, database, secureCookies, tur
     const parsed = z.object({ claimToken: z.string().min(1).max(128) }).safeParse(request.body);
     if (!parsed.success) return reply.code(404).send({ error: "link_invalid" });
 
-    const link = one<LinkRow>(
-      database.sqlite,
-      `select ${linkColumns} from device_links where claim_token_hash = ?`,
-      [hashToken(parsed.data.claimToken)]
-    );
+    const link = one<LinkRow>(database.sqlite, `select ${linkColumns} from device_links where claim_token_hash = ?`, [
+      hashToken(parsed.data.claimToken)
+    ]);
     if (!link) return reply.code(404).send({ error: "link_invalid" });
     if (link.refused_at) return reply.send({ status: "refused" });
     if (link.consumed_at) return reply.send({ status: "expired" });
     if (isExpired(link)) return reply.send({ status: "expired" });
     if (!link.approved_at) return reply.send({ status: "pending" });
 
-    const user = one<UserRow>(
-      database.sqlite,
-      "select id, nickname, role, banned_at, is_bot from users where id = ?",
-      [link.user_id]
-    );
+    const user = one<UserRow>(database.sqlite, "select id, nickname, role, banned_at, is_bot from users where id = ?", [
+      link.user_id
+    ]);
     if (!user || user.banned_at) return reply.code(404).send({ error: "link_invalid" });
 
     // Consume inside the same transaction that mints, so an approved link can
     // never hand out two sessions.
     database.sqlite.exec("begin immediate");
-    let token = "";
+    let token: string;
     try {
       const claimed = one<{ id: string }>(
         database.sqlite,
@@ -332,10 +322,7 @@ export function registerDeviceLinkRoutes({ fastify, database, secureCookies, tur
         database.sqlite.exec("rollback");
         return reply.send({ status: "expired" });
       }
-      run(database.sqlite, "update device_links set consumed_at = ? where id = ?", [
-        new Date().toISOString(),
-        link.id
-      ]);
+      run(database.sqlite, "update device_links set consumed_at = ? where id = ?", [new Date().toISOString(), link.id]);
       token = createSession(database, user.id, request.headers["user-agent"], "link");
       database.sqlite.exec("commit");
     } catch (cause) {

@@ -19,7 +19,12 @@ export function clientUpdateRequired(current: string | null, latest: string | nu
   return Boolean(current && latest && current !== latest);
 }
 
-export function clientUpdateDisposition(current: string | null, latest: string | null, mediaBusy: boolean, alreadyPending: boolean) {
+export function clientUpdateDisposition(
+  current: string | null,
+  latest: string | null,
+  mediaBusy: boolean,
+  alreadyPending: boolean
+) {
   if (!clientUpdateRequired(current, latest)) return "none";
   return mediaBusy || alreadyPending ? "defer" : "reload";
 }
@@ -30,7 +35,11 @@ export function clientUpdateUrl(currentUrl: string, latest: string) {
   return url.href;
 }
 
-export function claimClientUpdateAttempt(storage: Pick<Storage, "getItem" | "setItem">, current: string, latest: string) {
+export function claimClientUpdateAttempt(
+  storage: Pick<Storage, "getItem" | "setItem">,
+  current: string,
+  latest: string
+) {
   const transition = `${current}->${latest}`;
   if (storage.getItem(clientUpdateAttemptKey) === transition) return false;
   storage.setItem(clientUpdateAttemptKey, transition);
@@ -43,7 +52,11 @@ export function claimClientUpdateAttempt(storage: Pick<Storage, "getItem" | "set
  * never interrupt live media. Once deferred, keep the update explicit even
  * after the call ends instead of surprising the member on the next poll.
  */
-export function useClientUpdate(latestAtStartup: string | null, mediaBusy = false, operationPending: () => boolean = () => false) {
+export function useClientUpdate(
+  latestAtStartup: string | null,
+  mediaBusy = false,
+  operationPending: () => boolean = () => false
+) {
   const [pendingVersion, setPendingVersion] = useState<string | null>(null);
   const pendingRef = useRef<string | null>(null);
   const busyRef = useRef(mediaBusy);
@@ -57,7 +70,12 @@ export function useClientUpdate(latestAtStartup: string | null, mediaBusy = fals
   useEffect(() => {
     const current = loadedClientVersion(document, window.location.href);
     const apply = (latest: string | null) => {
-      const disposition = clientUpdateDisposition(current, latest, busyRef.current || operationRef.current(), pendingRef.current !== null);
+      const disposition = clientUpdateDisposition(
+        current,
+        latest,
+        busyRef.current || operationRef.current(),
+        pendingRef.current !== null
+      );
       if (disposition === "none" && current && latest === current) {
         // A deployment rollback can make an earlier pending version obsolete.
         pendingRef.current = null;
@@ -100,13 +118,16 @@ export function useClientUpdate(latestAtStartup: string | null, mediaBusy = fals
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") void check();
     };
+    const onOnline = () => {
+      void check();
+    };
     const timer = window.setInterval(() => void check(), clientUpdatePollMs);
-    window.addEventListener("online", check);
+    window.addEventListener("online", onOnline);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       disposed = true;
       window.clearInterval(timer);
-      window.removeEventListener("online", check);
+      window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [latestAtStartup]);

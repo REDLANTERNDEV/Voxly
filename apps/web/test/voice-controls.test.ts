@@ -118,18 +118,9 @@ describe("voice control view state", () => {
   it("suppresses self indicators that duplicate owner moderation", () => {
     const selfDeafened = { mic: false, camera: false, screen: false, deafened: true, speaking: false };
 
-    assert.deepEqual(
-      sidebarVoiceStatusKeys(selfDeafened, { muted: true, deafened: false }),
-      ["deafened"]
-    );
-    assert.deepEqual(
-      sidebarVoiceStatusKeys(selfDeafened, { muted: false, deafened: true }),
-      []
-    );
-    assert.deepEqual(
-      sidebarVoiceStatusKeys(selfDeafened, { muted: true, deafened: true }),
-      []
-    );
+    assert.deepEqual(sidebarVoiceStatusKeys(selfDeafened, { muted: true, deafened: false }), ["deafened"]);
+    assert.deepEqual(sidebarVoiceStatusKeys(selfDeafened, { muted: false, deafened: true }), []);
+    assert.deepEqual(sidebarVoiceStatusKeys(selfDeafened, { muted: true, deafened: true }), []);
   });
 
   it("presents muted and deafened controls as attention states with recovery actions", () => {
@@ -183,7 +174,8 @@ describe("voice control view state", () => {
       track: screenTrack,
       getParameters: () => ({}),
       setParameters: async (parameters: RTCRtpSendParameters) => {
-        appliedPreference = (parameters as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference;
+        appliedPreference = (parameters as RTCRtpSendParameters & { degradationPreference?: string })
+          .degradationPreference;
       }
     } as unknown as RTCRtpSender;
 
@@ -212,8 +204,12 @@ describe("voice control view state", () => {
     const screenTrack = { kind: "video", contentHint: "" } as MediaStreamTrack;
     const sender = {
       track: screenTrack,
-      getParameters: () => { throw new Error("unsupported"); },
-      setParameters: async () => { throw new Error("must not be called"); }
+      getParameters: () => {
+        throw new Error("unsupported");
+      },
+      setParameters: async () => {
+        throw new Error("must not be called");
+      }
     } as unknown as RTCRtpSender;
 
     assert.equal(await preferScreenSenderResolution(sender, screenTrack), false);
@@ -224,12 +220,24 @@ describe("voice control view state", () => {
     const nextMic = { id: "new-mic" } as MediaStreamTrack;
     const screenAudio = { id: "screen-audio" } as MediaStreamTrack;
     const replacements: string[] = [];
-    const peers = [{
-      getSenders: () => [
-        { track: previousMic, replaceTrack: async (track: MediaStreamTrack) => { replacements.push(track.id); } },
-        { track: screenAudio, replaceTrack: async () => { throw new Error("screen audio must not change"); } }
-      ]
-    }];
+    const peers = [
+      {
+        getSenders: () => [
+          {
+            track: previousMic,
+            replaceTrack: async (track: MediaStreamTrack) => {
+              replacements.push(track.id);
+            }
+          },
+          {
+            track: screenAudio,
+            replaceTrack: async () => {
+              throw new Error("screen audio must not change");
+            }
+          }
+        ]
+      }
+    ];
 
     assert.equal(await replaceMicrophoneTrack(peers, previousMic, nextMic), 1);
     assert.deepEqual(replacements, ["new-mic"]);

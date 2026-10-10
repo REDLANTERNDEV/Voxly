@@ -5,9 +5,11 @@ import * as appModule from "../src/app/rtcConfig.js";
 
 describe("RTC configuration recovery", () => {
   it("uses public STUN only before a successful authenticated configuration", () => {
-    const recover = (appModule as unknown as {
-      rtcConfigAfterFetchFailure?: (current: RtcConfigResponse, hasSuccessfulConfig: boolean) => RtcConfigResponse;
-    }).rtcConfigAfterFetchFailure;
+    const recover = (
+      appModule as unknown as {
+        rtcConfigAfterFetchFailure?: (current: RtcConfigResponse, hasSuccessfulConfig: boolean) => RtcConfigResponse;
+      }
+    ).rtcConfigAfterFetchFailure;
     const empty: RtcConfigResponse = { iceServers: [], expiresAt: null };
     const workingTurn: RtcConfigResponse = {
       iceServers: [{ urls: "turn:turn.voxly.example:3478", username: "user", credential: "credential" }],

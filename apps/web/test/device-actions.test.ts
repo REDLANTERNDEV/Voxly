@@ -17,32 +17,32 @@ describe("a member acting on their own account", () => {
   it("lets a member rename themselves without asking the owner", () => {
     // What a member is called is theirs. Needing to ask is the kind of small
     // indignity that makes a private group feel like somebody else's property.
-    assert.match(rail(), /const canRename = !isRemote/);
+    assert.match(rail(), /const\s+canRename\s+=\s+!isRemote/);
   });
 
   it("puts the two self-silences where a member right-clicks themselves", () => {
     // The dock already has them as buttons; this is the same two switches in
     // the second place anybody looks for "mute me".
-    assert.match(menus(), /selfControls\.onToggle\("mic"\)/);
-    assert.match(menus(), /selfControls\.onToggle\("deafen"\)/);
+    assert.match(menus(), /selfControls\.onToggle\(\s*"mic"\s*\)/);
+    assert.match(menus(), /selfControls\.onToggle\(\s*"deafen"\s*\)/);
     // Checkboxes, not buttons: they report a state rather than fire an action.
     assert.match(menus(), /role="menuitemcheckbox"/);
   });
 
   it("offers them only on your own row, and only in a call", () => {
-    assert.match(rail(), /selfControls=\{!isRemote && props\.activeVoiceRoomId/);
+    assert.match(rail(), /selfControls=\{\s*!isRemote\s+&&\s+props\.activeVoiceRoomId/);
   });
 
   it("dresses signing a device out as the destructive thing it is", () => {
-    assert.match(devices(), /className="btn btn-danger device-sign-out"/);
-    assert.match(devices(), /<LeaveIcon \/>/);
+    assert.match(devices(), /className="btn\s+btn-danger\s+device-sign-out"/);
+    assert.match(devices(), /<LeaveIcon\s+\/>\s*/);
   });
 
   it("gives the two self-silences the same icons as the dock", () => {
     const menus = readFileSync("src/components/shell/SidebarMenus.tsx", "utf8");
 
-    assert.match(menus, /<MicIcon off=\{!selfControls\.mic\} \/>/);
-    assert.match(menus, /<HeadsetIcon off=\{selfControls\.deafen\} \/>/);
+    assert.match(menus, /<MicIcon\s+off=\{\s*!selfControls\.mic\s*\}\s+\/>\s*/);
+    assert.match(menus, /<HeadsetIcon\s+off=\{\s*selfControls\.deafen\s*\}\s+\/>\s*/);
   });
 
   it("will not let a menu undo a silence the dock could not", () => {
@@ -52,23 +52,23 @@ describe("a member acting on their own account", () => {
     const menus = readFileSync("src/components/shell/SidebarMenus.tsx", "utf8");
     const rail = readFileSync("src/components/shell/ChannelRail.tsx", "utf8");
 
-    assert.match(menus, /disabled=\{!selfControls\.micEnabled\}/);
-    assert.match(menus, /disabled=\{!selfControls\.deafenEnabled\}/);
-    assert.match(rail, /micEnabled: !props\.micLockedByRoom/);
-    assert.match(rail, /&& !props\.voiceModeration\.muted/);
+    assert.match(menus, /disabled=\{\s*!selfControls\.micEnabled\s*\}/);
+    assert.match(menus, /disabled=\{\s*!selfControls\.deafenEnabled\s*\}/);
+    assert.match(rail, /micEnabled:\s+!props\.micLockedByRoom/);
+    assert.match(rail, /&&\s+!props\.voiceModeration\.muted/);
   });
 
   it("offers them in the member list as well as the channel rail", () => {
     const panel = readFileSync("src/components/shell/MemberPanel.tsx", "utf8");
 
-    assert.match(panel, /selfControls=\{selfControls\}/);
-    assert.match(panel, /const canRename = isSelf \|\|/);
+    assert.match(panel, /selfControls=\{\s*selfControls\s*\}/);
+    assert.match(panel, /const\s+canRename\s+=\s+isSelf\s+\|\|/);
   });
 
   it("asks before signing a device out", () => {
     // It cannot be undone from here — that Device has to link again — so a
     // mis-click deserves a question rather than a consequence.
-    assert.match(devices(), /setConfirming\(device\)/);
+    assert.match(devices(), /setConfirming\(\s*device\s*\)/);
     assert.match(devices(), /devices\.signOutTitle/);
     for (const language of ["en", "tr"] as const) {
       assert.ok(translate(language, "devices.signOutCopy", { device: "X" }).includes("X"));
@@ -99,10 +99,10 @@ describe("typing a recovery code", () => {
     const styles = readFileSync("src/styles.css", "utf8");
 
     assert.match(screen, /<textarea/);
-    assert.match(styles, /\.recovery-input \{[\s\S]{0,600}white-space: normal/);
+    assert.match(styles, /\.recovery-input\s+\{\s*[\s\S]{0,600}white-space:\s+normal/);
     // And it cannot be dragged over the page: a textarea is user-resizable by
     // default, and this one exists to wrap twenty-nine characters.
-    assert.match(styles, /\.recovery-input \{[\s\S]{0,400}resize: none/);
+    assert.match(styles, /\.recovery-input\s+\{\s*[\s\S]{0,400}resize:\s+none/);
   });
 });
 
@@ -111,12 +111,12 @@ describe("the link dialog when a code runs out", () => {
 
   it("takes the copy button away with the code", () => {
     // Offering it invites a member to carry a code that will be refused.
-    assert.match(dialog(), /\{code && !expired \?/);
+    assert.match(dialog(), /\{\s*code\s+&&\s+!expired\s+\?/);
   });
 
   it("puts the way out on top of what stopped working", () => {
-    assert.match(dialog(), /className="btn btn-primary link-renew"/);
-    assert.match(readFileSync("src/styles.css", "utf8"), /\.link-code-block\.is-expired[\s\S]{0,200}filter: blur/);
+    assert.match(dialog(), /className="btn\s+btn-primary\s+link-renew"/);
+    assert.match(readFileSync("src/styles.css", "utf8"), /\.link-code-block\.is-expired[\s\S]{0,200}filter:\s+blur/);
   });
 });
 
@@ -125,10 +125,16 @@ describe("the signed-out screens", () => {
     // A member arriving here may belong to several servers, and "The Basement"
     // is one of them rather than the product.
     for (const path of ["src/features/auth/LinkDeviceScreen.tsx", "src/features/auth/RecoverScreen.tsx"]) {
-      assert.match(readFileSync(path, "utf8"), /<AuthEntryFrame language=\{language\}/);
+      assert.match(readFileSync(path, "utf8"), /<AuthEntryFrame\s+language=\{\s*language\s*\}/);
     }
-    assert.match(readFileSync("src/features/auth/AuthEntryFrame.tsx", "utf8"), /<AuthPageHeader language=\{language\}/);
-    assert.match(readFileSync("src/components/ui/Primitives.tsx", "utf8"), /AuthPageHeader\(\{ subtitle = ""/);
+    assert.match(
+      readFileSync("src/features/auth/AuthEntryFrame.tsx", "utf8"),
+      /<AuthPageHeader\s+language=\{\s*language\s*\}/
+    );
+    assert.match(
+      readFileSync("src/components/ui/Primitives.tsx", "utf8"),
+      /AuthPageHeader\(\s*\{\s*\s+subtitle\s+=\s+""/
+    );
   });
 });
 
@@ -140,7 +146,7 @@ describe("copying a code", () => {
     const copy = readFileSync("src/lib/copyText.ts", "utf8");
 
     assert.match(copy, /navigator\.clipboard\?\.writeText/);
-    assert.match(copy, /document\.execCommand\("copy"\)/);
+    assert.match(copy, /document\.execCommand\(\s*"copy"\s*\)/);
   });
 
   it("says so when it could not copy", () => {

@@ -34,10 +34,9 @@ export function resolveBotEnvironment(env: Record<string, string | undefined>): 
   const serverUrl = env.VOXLY_SERVER_URL?.trim();
   const token = env.VOXLY_BOT_TOKEN?.trim();
 
-  const missing = [
-    serverUrl ? null : "VOXLY_SERVER_URL",
-    token ? null : "VOXLY_BOT_TOKEN"
-  ].filter((name): name is string => name !== null);
+  const missing = [serverUrl ? null : "VOXLY_SERVER_URL", token ? null : "VOXLY_BOT_TOKEN"].filter(
+    (name): name is string => name !== null
+  );
   if (missing.length > 0) {
     throw new Error(`The Music bot needs ${missing.join(" and ")}.`);
   }

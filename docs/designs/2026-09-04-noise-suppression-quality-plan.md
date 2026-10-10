@@ -48,7 +48,7 @@
 
 Update the preference tests so they express the new behavior:
 
-~~~ts
+```ts
 it("defaults the Voxly extra filter off", () => {
   assert.equal(DEFAULT_NOISE_SUPPRESSION, false);
 });
@@ -70,7 +70,7 @@ it("persists an explicit v2 opt-in independently per user", () => {
   assert.equal(readNoiseSuppression("user-a", storage), true);
   assert.equal(readNoiseSuppression("user-b", storage), false);
 });
-~~~
+```
 
 Keep the malformed-value and unavailable-storage tests, changing their expected fallback to DEFAULT_NOISE_SUPPRESSION where necessary.
 
@@ -78,9 +78,9 @@ Keep the malformed-value and unavailable-storage tests, changing their expected 
 
 Run:
 
-~~~bash
+```bash
 npm test -w @voxly/web -- --test-name-pattern="noise suppression preference"
-~~~
+```
 
 Expected: FAIL because the implementation still returns true by default and still reads/writes the v1 key.
 
@@ -88,13 +88,13 @@ Expected: FAIL because the implementation still returns true by default and stil
 
 In apps/web/src/lib/noiseSuppression.ts, make the default and key version explicit:
 
-~~~ts
+```ts
 export const DEFAULT_NOISE_SUPPRESSION = false;
 
 export function noiseSuppressionStorageKey(userId: string) {
   return "voxly:noise-suppression:v2:" + userId;
 }
-~~~
+```
 
 Update the adjacent comments to say that the browser's native suppression remains on while Voxly's additional filter is opt-in. Do not add a migration that copies v1; ignoring the legacy key is the required migration behavior.
 
@@ -118,7 +118,7 @@ Run the same focused command. Expected: all tests in the noise suppression prefe
 
 Add a test in describe("capture-graph noise suppression", ...) that omits the option and proves the fallback graph stays open:
 
-~~~ts
+```ts
 it("keeps the extra filter off when no preference is supplied", () => {
   const graph = audioGraph();
   createMicrophoneInput(graph.raw as unknown as MediaStream, 100, graph.options);
@@ -128,15 +128,15 @@ it("keeps the extra filter off when no preference is supplied", () => {
   assert.equal(graph.highPass.frequency.value, noiseGateBypassHz);
   assert.equal(graph.gate.gain.value, noiseGateOpenGain);
 });
-~~~
+```
 
 - [ ] **Step 2: Run the focused test and verify it fails**
 
 Run:
 
-~~~bash
+```bash
 npm test -w @voxly/web -- --test-name-pattern="capture-graph noise suppression"
-~~~
+```
 
 Expected: FAIL because createMicrophoneInput currently falls back to true when options.noiseSuppression is omitted.
 
@@ -144,9 +144,9 @@ Expected: FAIL because createMicrophoneInput currently falls back to true when o
 
 In apps/web/src/lib/microphoneInput.ts, change only the fallback value:
 
-~~~ts
+```ts
 let noiseSuppression = options.noiseSuppression ?? false;
-~~~
+```
 
 Leave the graph shape, timers, AudioWorklet loading, toggle behavior, and disposal logic unchanged.
 
@@ -171,18 +171,18 @@ Run the same focused command. Expected: the new omitted-option test and all exis
 
 Extend the existing noise suppression localization test with the hint text:
 
-~~~ts
+```ts
 assert.match(translate("en", "audio.noiseSuppressionHint"), /additional|extra/i);
 assert.match(translate("tr", "audio.noiseSuppressionHint"), /ek|ilave/i);
-~~~
+```
 
 - [ ] **Step 2: Run the focused localization test and verify it fails**
 
 Run:
 
-~~~bash
+```bash
 npm test -w @voxly/web -- --test-name-pattern="translates the noise suppression control"
-~~~
+```
 
 Expected: FAIL if the current hint does not explicitly describe the filter as optional Voxly processing in both languages.
 
@@ -215,9 +215,9 @@ Run the same focused command. Expected: both localized hint assertions pass.
 
 Run:
 
-~~~bash
+```bash
 npm test -w @voxly/web
-~~~
+```
 
 Expected: exit code 0 with zero failed tests.
 
@@ -225,10 +225,10 @@ Expected: exit code 0 with zero failed tests.
 
 Run:
 
-~~~bash
+```bash
 npm run typecheck -w @voxly/web
 npm run build -w @voxly/web
-~~~
+```
 
 Expected: both commands exit 0.
 
@@ -236,9 +236,9 @@ Expected: both commands exit 0.
 
 Run:
 
-~~~bash
+```bash
 git diff --check
 git status --short
-~~~
+```
 
 Expected: no whitespace errors, and only the planned preference, graph-default, copy/guidance, tests, and already-existing user changes are present.

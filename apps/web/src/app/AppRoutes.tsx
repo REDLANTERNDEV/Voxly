@@ -1,11 +1,12 @@
+import type { useChatController } from "../features/chat/useChatController.js";
 import { AuthEntryFrame } from "../features/auth/AuthEntryFrame.js";
-import type { ChatMessage,ChatMessageReply,PublicUser } from "@voxly/shared";
+import type { ChatMessage, PublicUser } from "@voxly/shared";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AppShellSkeleton } from "../components/AppShellSkeleton.js";
 import { AppChrome } from "../components/shell/AppChrome.js";
 import { FatalState } from "../components/ui/Primitives.js";
-import { InviteRequiredScreen,LandingPage } from "../features/auth/AuthScreens.js";
-import { AccessClaimScreen,OwnerClaimScreen } from "../features/auth/ClaimScreens.js";
+import { InviteRequiredScreen, LandingPage } from "../features/auth/AuthScreens.js";
+import { AccessClaimScreen, OwnerClaimScreen } from "../features/auth/ClaimScreens.js";
 import { InviteScreen } from "../features/auth/InviteScreen.js";
 import { LinkDeviceScreen } from "../features/auth/LinkDeviceScreen.js";
 import { DesktopBrowserApproval } from "../features/auth/DesktopBrowserSignIn.js";
@@ -21,9 +22,33 @@ import { resolveInitialRoute } from "../lib/navigation.js";
 import { applyDesktopSettings, desktopSettingsAvailable } from "../lib/desktopSettings.js";
 import { desktopLaunchFromSearch, desktopLaunchId } from "../lib/desktopLinks.js";
 import { desktopSurfaceReady, startupSurface } from "../lib/startupSurface.js";
-import type { LoadState,Route,ShellActions,ShellModel,Translate } from "./types.js";
+import type { LoadState, Route, ShellActions, ShellModel, Translate } from "./types.js";
 
-export function AppRoutes({ workspaceReady, workspaceError, route, user, authState, rtcConfigReady, shellProps, messages, language, timeFormat, t, renderSurface, turnstileSiteKey, analytics, signedOutReason, completeAuthentication, loadAcceptedServer, onOwnerClaimed, onAccessClaimed, navigate, changeLanguage, textRoomOutbox, textRoomActions }: {
+export function AppRoutes({
+  workspaceReady,
+  workspaceError,
+  route,
+  user,
+  authState,
+  rtcConfigReady,
+  shellProps,
+  messages,
+  language,
+  timeFormat,
+  t,
+  renderSurface,
+  turnstileSiteKey,
+  analytics,
+  signedOutReason,
+  completeAuthentication,
+  loadAcceptedServer,
+  onOwnerClaimed,
+  onAccessClaimed,
+  navigate,
+  changeLanguage,
+  textRoomOutbox,
+  textRoomActions
+}: {
   route: Route;
   user: PublicUser | null;
   authState: LoadState;
@@ -47,7 +72,7 @@ export function AppRoutes({ workspaceReady, workspaceError, route, user, authSta
   navigate(path: string): void;
   changeLanguage(language: LanguageCode): void;
   textRoomOutbox: OutboxEntry[];
-  textRoomActions: { send(body: string, replyTo: ChatMessageReply | null): void; retrySend(localId: string): void; discardSend(localId: string): void; update(messageId: string, body: string): Promise<void>; delete(messageId: string): Promise<void>; suppressEmbed(messageId: string, embedKey: string): Promise<void> } | null;
+  textRoomActions: ReturnType<ReturnType<typeof useChatController>["actionsForRoom"]> | null;
 }) {
   const reportedReady = useRef(false);
   const [pendingLaunch, setPendingLaunch] = useState<string | null>(null);
@@ -66,30 +91,72 @@ export function AppRoutes({ workspaceReady, workspaceError, route, user, authSta
     // An authenticated desktop Account and any ongoing call remain untouched.
     if (!user) window.location.assign(`/link-device?desktopLaunch=${pendingLaunch}`);
   }, [pendingLaunch, authState, user]);
-  const arrivingDesktopLaunch = Boolean(route.name === "link-device"
-    && window.__VOXLY_DESKTOP_V1__?.version === 1 && desktopLaunchFromSearch(window.location.search));
+  const arrivingDesktopLaunch = Boolean(
+    route.name === "link-device" &&
+    window.__VOXLY_DESKTOP_V1__?.version === 1 &&
+    desktopLaunchFromSearch(window.location.search)
+  );
   const existingDesktopSession = arrivingDesktopLaunch && Boolean(user);
   useEffect(() => {
     if (existingDesktopSession) navigate("/");
   }, [existingDesktopSession, navigate]);
   useEffect(() => {
-    const usable = desktopSurfaceReady({ routeName: route.name, authState, desktopLaunch: arrivingDesktopLaunch, existingDesktopSession, authenticated: Boolean(user), rtcConfigReady, workspaceReady, workspaceError });
+    const usable = desktopSurfaceReady({
+      routeName: route.name,
+      authState,
+      desktopLaunch: arrivingDesktopLaunch,
+      existingDesktopSession,
+      authenticated: Boolean(user),
+      rtcConfigReady,
+      workspaceReady,
+      workspaceError
+    });
     if (!reportedReady.current && usable && desktopSettingsAvailable(window)) {
       reportedReady.current = true;
-      void applyDesktopSettings({ kind: "ready" }).catch(() => { reportedReady.current = false; });
+      void applyDesktopSettings({ kind: "ready" }).catch(() => {
+        reportedReady.current = false;
+      });
     }
-  }, [authState, existingDesktopSession, arrivingDesktopLaunch, rtcConfigReady, workspaceReady, workspaceError, route.name, user]);
-  if (startupSurface(route.name, authState, arrivingDesktopLaunch) === "entry-loading") return <AuthEntryFrame language={language} t={t} onLanguageChange={changeLanguage}><p className="account-entry-loading" role="status">{t("system.loadingVoxly")}</p></AuthEntryFrame>;
+  }, [
+    authState,
+    existingDesktopSession,
+    arrivingDesktopLaunch,
+    rtcConfigReady,
+    workspaceReady,
+    workspaceError,
+    route.name,
+    user
+  ]);
+  if (startupSurface(route.name, authState, arrivingDesktopLaunch) === "entry-loading")
+    return (
+      <AuthEntryFrame language={language} t={t} onLanguageChange={changeLanguage}>
+        <p className="account-entry-loading" role="status">
+          {t("system.loadingVoxly")}
+        </p>
+      </AuthEntryFrame>
+    );
   if (existingDesktopSession) return renderSurface(<AppShellSkeleton t={t} />);
-  if (startupSurface(route.name, authState, arrivingDesktopLaunch) === "shell-skeleton") return renderSurface(<AppShellSkeleton t={t} />);
+  if (startupSurface(route.name, authState, arrivingDesktopLaunch) === "shell-skeleton")
+    return renderSurface(<AppShellSkeleton t={t} />);
   if (arrivingDesktopLaunch && authState === "error") return renderSurface(<FatalState t={t} />);
-  if (authState === "error" && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<FatalState t={t} />);
-  const workspaceRoute = route.name === "text" || route.name === "voice" || route.name === "owner" || route.name === "landing";
+  if (authState === "error" && (route.name === "text" || route.name === "voice" || route.name === "owner"))
+    return renderSurface(<FatalState t={t} />);
+  const workspaceRoute =
+    route.name === "text" || route.name === "voice" || route.name === "owner" || route.name === "landing";
   if (user && workspaceRoute && workspaceError) return renderSurface(<FatalState t={t} />);
-  if (user && !rtcConfigReady && (route.name === "text" || route.name === "voice" || route.name === "owner")) return renderSurface(<AppShellSkeleton t={t} />);
+  if (user && !rtcConfigReady && (route.name === "text" || route.name === "voice" || route.name === "owner"))
+    return renderSurface(<AppShellSkeleton t={t} />);
   if (user && workspaceRoute && !workspaceReady) return renderSurface(<AppShellSkeleton t={t} />);
   if (route.name === "owner-claim") {
-    return renderSurface(<OwnerClaimScreen token={route.token} language={language} t={t} onLanguageChange={changeLanguage} onClaimed={onOwnerClaimed} />);
+    return renderSurface(
+      <OwnerClaimScreen
+        token={route.token}
+        language={language}
+        t={t}
+        onLanguageChange={changeLanguage}
+        onClaimed={onOwnerClaimed}
+      />
+    );
   }
   // Before the signed-out fallback below, which otherwise sends every
   // sessionless route to the invite screen. A member arriving here already has
@@ -101,125 +168,189 @@ export function AppRoutes({ workspaceReady, workspaceError, route, user, authSta
     // in-place lands on the signed-out landing page and the member has to
     // refresh by hand before Voxly notices them. Reloading straight into the
     // app is what "I linked my phone and it just worked" requires.
-    return renderSurface(<LinkDeviceScreen
-      language={language}
-      t={t}
-      onLanguageChange={changeLanguage}
-      turnstileSiteKey={turnstileSiteKey}
-      onLinked={() => window.location.assign(resolveInitialRoute({ isAuthenticated: true, inviteToken: null }))}
-    />);
+    return renderSurface(
+      <LinkDeviceScreen
+        language={language}
+        t={t}
+        onLanguageChange={changeLanguage}
+        turnstileSiteKey={turnstileSiteKey}
+        onLinked={() => window.location.assign(resolveInitialRoute({ isAuthenticated: true, inviteToken: null }))}
+      />
+    );
   }
   if (route.name === "desktop-verify") {
-    return renderSurface(<DesktopBrowserApproval id={route.id} user={user} authState={authState} language={language} t={t} onLanguageChange={changeLanguage} />);
+    return renderSurface(
+      <DesktopBrowserApproval
+        id={route.id}
+        user={user}
+        authState={authState}
+        language={language}
+        t={t}
+        onLanguageChange={changeLanguage}
+      />
+    );
   }
   if (route.name === "recover") {
     // A full reload rather than a client navigation: recovery revoked every
     // other session, and the shell must be rebuilt around the new one rather
     // than carrying state that belonged to a session which no longer exists.
-    return renderSurface(<RecoverScreen language={language} t={t} onLanguageChange={changeLanguage} turnstileSiteKey={turnstileSiteKey} onRecovered={() => window.location.assign(resolveInitialRoute({ isAuthenticated: true, inviteToken: null }))} />);
+    return renderSurface(
+      <RecoverScreen
+        language={language}
+        t={t}
+        onLanguageChange={changeLanguage}
+        turnstileSiteKey={turnstileSiteKey}
+        onRecovered={() => window.location.assign(resolveInitialRoute({ isAuthenticated: true, inviteToken: null }))}
+      />
+    );
   }
   if (route.name === "access-claim") {
-    return renderSurface(<AccessClaimScreen token={route.token} language={language} t={t} onLanguageChange={changeLanguage} onNavigate={navigate} onClaimed={onAccessClaimed} />);
+    return renderSurface(
+      <AccessClaimScreen
+        token={route.token}
+        language={language}
+        t={t}
+        onLanguageChange={changeLanguage}
+        onNavigate={navigate}
+        onClaimed={onAccessClaimed}
+      />
+    );
   }
-  if (!user && route.name === "landing") return <LandingPage language={language} analytics={analytics} signedOutReason={signedOutReason} t={t} onNavigate={navigate} onLanguageChange={changeLanguage} />;
-  if (!user && route.name === "invite" && !route.token) return <InviteRequiredScreen language={language} t={t} onNavigate={navigate} onLanguageChange={changeLanguage} />;
+  if (!user && route.name === "landing")
+    return (
+      <LandingPage
+        language={language}
+        analytics={analytics}
+        signedOutReason={signedOutReason}
+        t={t}
+        onNavigate={navigate}
+        onLanguageChange={changeLanguage}
+      />
+    );
+  if (!user && route.name === "invite" && !route.token)
+    return <InviteRequiredScreen language={language} t={t} onNavigate={navigate} onLanguageChange={changeLanguage} />;
   if (!user || route.name === "invite") {
-    return renderSurface(<InviteScreen
-      initialToken={route.name === "invite" ? route.token : ""}
-      existingUser={Boolean(user)}
-      currentUser={user}
-      turnstileSiteKey={turnstileSiteKey}
-      language={language}
-      timeFormat={timeFormat}
-      t={t}
-      onLanguageChange={changeLanguage}
-      onAccepted={(accepted, serverId) => {
-        completeAuthentication(accepted);
-        void loadAcceptedServer(serverId).catch(() => navigate("/"));
-      }}
-    />);
+    return renderSurface(
+      <InviteScreen
+        initialToken={route.name === "invite" ? route.token : ""}
+        existingUser={Boolean(user)}
+        currentUser={user}
+        turnstileSiteKey={turnstileSiteKey}
+        language={language}
+        timeFormat={timeFormat}
+        t={t}
+        onLanguageChange={changeLanguage}
+        onAccepted={(accepted, serverId) => {
+          completeAuthentication(accepted);
+          void loadAcceptedServer(serverId).catch(() => navigate("/"));
+        }}
+      />
+    );
   }
   if (!shellProps) return renderSurface(<AppShellSkeleton t={t} />);
-  if (route.name === "owner" && shellProps.servers.find((server) => server.id === route.serverId)?.role !== "owner") return renderSurface(<AppShellSkeleton t={t} />);
-  if (route.name === "owner") return renderSurface(<OwnerPanel
-    user={shellProps.user}
-    currentNickname={shellProps.currentNickname}
-    servers={shellProps.servers}
-    activeServerId={shellProps.activeServerId}
-    rooms={shellProps.rooms}
-    appConfig={shellProps.appConfig}
-    roomHistory={shellProps.roomHistory}
-    language={shellProps.language}
-    timeFormat={shellProps.timeFormat}
-    deletionRequestRevision={shellProps.deletionRequestRevision}
-    t={shellProps.t}
-    onNavigate={shellProps.onNavigate}
-    onCreateServer={shellProps.onCreateServer}
-    onUpdateServerName={shellProps.onUpdateServerName}
-    onSetAfkTimeout={shellProps.onSetAfkTimeout}
-    onDeleteServer={shellProps.onDeleteServer}
-    onModerateMember={shellProps.onModerateMember}
-    onVoiceModeration={shellProps.onVoiceModeration}
-    onUpdateMemberNickname={shellProps.onUpdateMemberNickname}
-    onUpdateMemberPermissions={shellProps.onUpdateMemberPermissions}
-  />);
-  if (route.name === "voice") return renderSurface(<AppChrome {...shellProps} mobileTitle={shellProps.currentRoom?.name ?? t("room.lobbyVoice")}><VoiceRoomScreen
-    screenConnectionWarnings={shellProps.screenConnectionWarnings}
-    user={shellProps.user}
-    currentNickname={shellProps.currentNickname}
-    route={shellProps.route}
-    activeServerId={shellProps.activeServerId}
-    rooms={shellProps.rooms}
-    socketState={shellProps.socketState}
-    activeVoiceRoomId={shellProps.activeVoiceRoomId}
-    controls={shellProps.controls}
-    visualTargets={shellProps.visualTargets}
-    voiceSnapshots={shellProps.voiceSnapshots}
-    musicQueues={shellProps.musicQueues}
-    remoteStreams={shellProps.remoteStreams}
-    peerConnectionStates={shellProps.peerConnectionStates}
-    screenPlaybackStates={shellProps.screenPlaybackStates}
-    onScreenPlaybackReady={shellProps.onScreenPlaybackReady}
-    onRetryScreenPlayback={shellProps.onRetryScreenPlayback}
-    localPreviews={shellProps.localPreviews}
-    memberVolumes={shellProps.memberVolumes}
-    screenVolumes={shellProps.screenVolumes}
-    roomHistory={shellProps.roomHistory}
-    pendingLiveWatch={shellProps.pendingLiveWatch}
-    audioLevels={shellProps.audioLevels}
-    t={shellProps.t}
-    currentRoom={shellProps.currentRoom}
-    onNavigate={shellProps.onNavigate}
-    onJoinVoice={shellProps.onJoinVoice}
-    onWatchLive={shellProps.onWatchLive}
-    onLiveWatchHandled={shellProps.onLiveWatchHandled}
-    onRequestVoiceSnapshot={shellProps.onRequestVoiceSnapshot}
-    onSetVisualSubscriptions={shellProps.onSetVisualSubscriptions}
-    onMusicControl={shellProps.onMusicControl}
-    onMemberVolumeChange={shellProps.onMemberVolumeChange}
-    onScreenVolumeChange={shellProps.onScreenVolumeChange}
-  /></AppChrome>);
+  if (route.name === "owner" && shellProps.servers.find((server) => server.id === route.serverId)?.role !== "owner")
+    return renderSurface(<AppShellSkeleton t={t} />);
+  if (route.name === "owner")
+    return renderSurface(
+      <OwnerPanel
+        user={shellProps.user}
+        currentNickname={shellProps.currentNickname}
+        servers={shellProps.servers}
+        activeServerId={shellProps.activeServerId}
+        rooms={shellProps.rooms}
+        appConfig={shellProps.appConfig}
+        roomHistory={shellProps.roomHistory}
+        language={shellProps.language}
+        timeFormat={shellProps.timeFormat}
+        deletionRequestRevision={shellProps.deletionRequestRevision}
+        t={shellProps.t}
+        onNavigate={shellProps.onNavigate}
+        onCreateServer={shellProps.onCreateServer}
+        onUpdateServerName={shellProps.onUpdateServerName}
+        onSetAfkTimeout={shellProps.onSetAfkTimeout}
+        onDeleteServer={shellProps.onDeleteServer}
+        onModerateMember={shellProps.onModerateMember}
+        onVoiceModeration={shellProps.onVoiceModeration}
+        onUpdateMemberNickname={shellProps.onUpdateMemberNickname}
+        onUpdateMemberPermissions={shellProps.onUpdateMemberPermissions}
+      />
+    );
+  if (route.name === "voice")
+    return renderSurface(
+      <AppChrome {...shellProps} mobileTitle={shellProps.currentRoom?.name ?? t("room.lobbyVoice")}>
+        <VoiceRoomScreen
+          screenConnectionWarnings={shellProps.screenConnectionWarnings}
+          user={shellProps.user}
+          currentNickname={shellProps.currentNickname}
+          route={shellProps.route}
+          activeServerId={shellProps.activeServerId}
+          rooms={shellProps.rooms}
+          socketState={shellProps.socketState}
+          activeVoiceRoomId={shellProps.activeVoiceRoomId}
+          controls={shellProps.controls}
+          visualTargets={shellProps.visualTargets}
+          voiceSnapshots={shellProps.voiceSnapshots}
+          musicQueues={shellProps.musicQueues}
+          remoteStreams={shellProps.remoteStreams}
+          peerConnectionStates={shellProps.peerConnectionStates}
+          screenPlaybackStates={shellProps.screenPlaybackStates}
+          onScreenPlaybackReady={shellProps.onScreenPlaybackReady}
+          onRetryScreenPlayback={shellProps.onRetryScreenPlayback}
+          localPreviews={shellProps.localPreviews}
+          memberVolumes={shellProps.memberVolumes}
+          screenVolumes={shellProps.screenVolumes}
+          roomHistory={shellProps.roomHistory}
+          pendingLiveWatch={shellProps.pendingLiveWatch}
+          audioLevels={shellProps.audioLevels}
+          t={shellProps.t}
+          currentRoom={shellProps.currentRoom}
+          onNavigate={shellProps.onNavigate}
+          onJoinVoice={shellProps.onJoinVoice}
+          onWatchLive={shellProps.onWatchLive}
+          onLiveWatchHandled={shellProps.onLiveWatchHandled}
+          onRequestVoiceSnapshot={shellProps.onRequestVoiceSnapshot}
+          onSetVisualSubscriptions={shellProps.onSetVisualSubscriptions}
+          onMusicControl={shellProps.onMusicControl}
+          onMemberVolumeChange={shellProps.onMemberVolumeChange}
+          onScreenVolumeChange={shellProps.onScreenVolumeChange}
+        />
+      </AppChrome>
+    );
   if (route.name !== "text" || !textRoomActions) return renderSurface(<AppShellSkeleton t={t} />);
-  return renderSurface(<AppChrome {...shellProps} mobileTitle={shellProps.currentRoom?.name ?? shellProps.t("room.textRoom")}>
-    <TextRoomScreen
-      user={shellProps.user}
-      language={shellProps.language}
-      timeFormat={shellProps.timeFormat}
-      externalPreviews={shellProps.externalPreviews}
-      t={shellProps.t}
-      currentRoom={shellProps.currentRoom}
-      rooms={shellProps.rooms}
-      roomHistory={shellProps.roomHistory}
-      activeServerId={shellProps.activeServerId}
-      onNavigate={shellProps.onNavigate}
-      messages={messages}
-      outbox={textRoomOutbox}
-      onSendMessage={textRoomActions.send}
-      onRetrySend={textRoomActions.retrySend}
-      onDiscardSend={textRoomActions.discardSend}
-      onUpdateMessage={textRoomActions.update}
-      onDeleteMessage={textRoomActions.delete}
-      onSuppressEmbed={textRoomActions.suppressEmbed}
-    />
-  </AppChrome>);
+  return renderSurface(
+    <AppChrome {...shellProps} mobileTitle={shellProps.currentRoom?.name ?? shellProps.t("room.textRoom")}>
+      <TextRoomScreen
+        key={shellProps.currentRoom?.id}
+        canPin={shellProps.servers.find((server) => server.id === shellProps.activeServerId)?.role === "owner"}
+        serverMembers={shellProps.serverMembers}
+        onlineUsers={shellProps.onlineUsers}
+        contextMessages={textRoomActions.contextMessages}
+        pinRevision={textRoomActions.pinRevision}
+        identityChanges={textRoomActions.identityChanges}
+        onOpenContext={textRoomActions.openContext}
+        onBackToLatest={textRoomActions.backToLatest}
+        onPin={textRoomActions.pin}
+        onReact={textRoomActions.react}
+        onClearReactions={textRoomActions.clearReactions}
+        user={shellProps.user}
+        language={shellProps.language}
+        timeFormat={shellProps.timeFormat}
+        externalPreviews={shellProps.externalPreviews}
+        t={shellProps.t}
+        currentRoom={shellProps.currentRoom}
+        rooms={shellProps.rooms}
+        roomHistory={shellProps.roomHistory}
+        activeServerId={shellProps.activeServerId}
+        onNavigate={shellProps.onNavigate}
+        messages={messages}
+        outbox={textRoomOutbox}
+        onSendMessage={textRoomActions.send}
+        onRetrySend={textRoomActions.retrySend}
+        onDiscardSend={textRoomActions.discardSend}
+        onUpdateMessage={textRoomActions.update}
+        onDeleteMessage={textRoomActions.delete}
+        onSuppressEmbed={textRoomActions.suppressEmbed}
+      />
+    </AppChrome>
+  );
 }

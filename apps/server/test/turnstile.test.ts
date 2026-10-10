@@ -4,10 +4,11 @@ import { resolveTurnstileConfig } from "../src/turnstile.js";
 
 describe("Turnstile runtime configuration", () => {
   it("enables Turnstile only when both public and private keys are configured", () => {
-    assert.deepEqual(
-      resolveTurnstileConfig({ siteKey: "0x4AAAA-site-key", secretKey: "private-secret" }),
-      { enabled: true, siteKey: "0x4AAAA-site-key", secretKey: "private-secret" }
-    );
+    assert.deepEqual(resolveTurnstileConfig({ siteKey: "0x4AAAA-site-key", secretKey: "private-secret" }), {
+      enabled: true,
+      siteKey: "0x4AAAA-site-key",
+      secretKey: "private-secret"
+    });
   });
 
   it("rejects incomplete Turnstile configuration instead of breaking invite acceptance", () => {

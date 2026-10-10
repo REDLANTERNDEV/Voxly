@@ -48,14 +48,20 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
     const poll = async () => {
       if (Date.now() >= deadline) {
         void approvalWindow.current?.restore();
-        current.current = null; setOutcome("expired"); return;
+        current.current = null;
+        setOutcome("expired");
+        return;
       }
       try {
         const response = await collectDesktopAuthorization(request.id, request.secret);
         if (!live || revision.current !== requestRevision || current.current !== request) return;
         if (response.status === "approved") {
           current.current = null;
-          await rememberCompletedDesktopAuthentication(window, response.status, () => live && revision.current === requestRevision);
+          await rememberCompletedDesktopAuthentication(
+            window,
+            response.status,
+            () => live && revision.current === requestRevision
+          );
           if (!live || revision.current !== requestRevision) return;
           await approvalWindow.current?.restore();
           if (!live || revision.current !== requestRevision) return;
@@ -77,7 +83,10 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
       }
     };
     timeout = window.setTimeout(() => void poll(), delay);
-    return () => { live = false; window.clearTimeout(timeout); };
+    return () => {
+      live = false;
+      window.clearTimeout(timeout);
+    };
   }, [request, outcome, onLinked]);
 
   const start = useCallback(async (automaticLaunchId?: string) => {
@@ -94,7 +103,10 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
       current.current = created;
       setRequest(created);
       setOutcome("pending");
-      const nativeWindow = createDesktopApprovalWindow(window, () => mounted.current && revision.current === startingRevision);
+      const nativeWindow = createDesktopApprovalWindow(
+        window,
+        () => mounted.current && revision.current === startingRevision
+      );
       approvalWindow.current = nativeWindow;
       if (automaticLaunchId) void nativeWindow.minimize();
     } catch {
@@ -127,19 +139,46 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
         <>
           <p className="desktop-launch-origin">{window.location.origin}</p>
           <p className="muted small">{t(usingLaunch ? "desktopSignIn.returnBrowser" : "desktopSignIn.compare")}</p>
-          <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>{request.confirmation}</span>
-          {!usingLaunch ? <>
-            <a className="btn btn-primary" href={address} target="_blank" rel="noopener noreferrer" onClick={() => void approvalWindow.current?.minimize()}>{t("desktopSignIn.openBrowser")}</a>
-          </> : null}
-          <p className="muted small" role="status">{t("desktopSignIn.waiting")}</p>
-          <button className="btn btn-ghost" type="button" onClick={cancel}>{t("common.cancel")}</button>
+          <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>
+            {request.confirmation}
+          </span>
+          {!usingLaunch ? (
+            <>
+              <a
+                className="btn btn-primary"
+                href={address}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => void approvalWindow.current?.minimize()}
+              >
+                {t("desktopSignIn.openBrowser")}
+              </a>
+            </>
+          ) : null}
+          <p className="muted small" role="status">
+            {t("desktopSignIn.waiting")}
+          </p>
+          <button className="btn btn-ghost" type="button" onClick={cancel}>
+            {t("common.cancel")}
+          </button>
         </>
       ) : (
         <>
-          <p className="muted small">{outcome === "refused" ? t("desktopSignIn.refused")
-            : outcome === "expired" ? t("desktopSignIn.expired") : t("desktopSignIn.copy")}</p>
-          {error ? <p className="device-error small" role="alert">{t("desktopSignIn.failed")}</p> : null}
-          <button className="btn btn-primary" type="button" disabled={busy} onClick={() => void start()}>{t("desktopSignIn.start")}</button>
+          <p className="muted small">
+            {outcome === "refused"
+              ? t("desktopSignIn.refused")
+              : outcome === "expired"
+                ? t("desktopSignIn.expired")
+                : t("desktopSignIn.copy")}
+          </p>
+          {error ? (
+            <p className="device-error small" role="alert">
+              {t("desktopSignIn.failed")}
+            </p>
+          ) : null}
+          <button className="btn btn-primary" type="button" disabled={busy} onClick={() => void start()}>
+            {t("desktopSignIn.start")}
+          </button>
         </>
       )}
     </section>
@@ -147,7 +186,14 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
 }
 
 /** Public request id in the address; approval still needs this browser's live session. */
-export function DesktopBrowserApproval({ id, user, authState, language, t, onLanguageChange }: {
+export function DesktopBrowserApproval({
+  id,
+  user,
+  authState,
+  language,
+  t,
+  onLanguageChange
+}: {
   id: string;
   user: PublicUser | null;
   authState: "loading" | "ready" | "error";
@@ -163,14 +209,25 @@ export function DesktopBrowserApproval({ id, user, authState, language, t, onLan
 
   useEffect(() => {
     if (authState === "loading") return;
-    if (!user || !id) { setLoading(false); return; }
+    if (!user || !id) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     let live = true;
     void fetchDesktopAuthorization(id)
-      .then((value) => { if (live) setRequest(value); })
-      .catch(() => { if (live) setError(true); })
-      .finally(() => { if (live) setLoading(false); });
-    return () => { live = false; };
+      .then((value) => {
+        if (live) setRequest(value);
+      })
+      .catch(() => {
+        if (live) setError(true);
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
   }, [authState, id, user?.id]);
 
   const answer = async (approve: boolean) => {
@@ -188,25 +245,39 @@ export function DesktopBrowserApproval({ id, user, authState, language, t, onLan
 
   return (
     <AuthEntryFrame language={language} t={t} onLanguageChange={onLanguageChange}>
-
       <section className="link-panel">
         <strong>{t("desktopSignIn.approvalTitle")}</strong>
-        {loading ? <p className="muted small">{t("common.checking")}</p>
-          : !user ? <p className="muted small">{t("desktopSignIn.signInFirst")}</p>
-            : answered ? <p role="status">{t(answered === "approved" ? "desktopSignIn.approved" : "desktopSignIn.refused")}</p>
-              : request ? (
-                <>
-                  <p>{t("desktopSignIn.approvalCopy", { account: user.nickname, device: request.label })}</p>
-                  <p className="muted small desktop-browser-address">{request.origin}</p>
-                  <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>{request.confirmation}</span>
-                  <p className="muted small">{t("link.confirmationHint")}</p>
-                  <div className="confirm-actions">
-                    <button className="btn btn-ghost" type="button" disabled={answering} onClick={() => void answer(false)}>{t("link.refuse")}</button>
-                    <button className="btn btn-primary" type="button" disabled={answering} onClick={() => void answer(true)}>{t("link.approve")}</button>
-                  </div>
-                </>
-              ) : <p className="muted small">{t("desktopSignIn.expired")}</p>}
-        {error ? <p className="device-error small" role="alert">{t("desktopSignIn.failed")}</p> : null}
+        {loading ? (
+          <p className="muted small">{t("common.checking")}</p>
+        ) : !user ? (
+          <p className="muted small">{t("desktopSignIn.signInFirst")}</p>
+        ) : answered ? (
+          <p role="status">{t(answered === "approved" ? "desktopSignIn.approved" : "desktopSignIn.refused")}</p>
+        ) : request ? (
+          <>
+            <p>{t("desktopSignIn.approvalCopy", { account: user.nickname, device: request.label })}</p>
+            <p className="muted small desktop-browser-address">{request.origin}</p>
+            <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>
+              {request.confirmation}
+            </span>
+            <p className="muted small">{t("link.confirmationHint")}</p>
+            <div className="confirm-actions">
+              <button className="btn btn-ghost" type="button" disabled={answering} onClick={() => void answer(false)}>
+                {t("link.refuse")}
+              </button>
+              <button className="btn btn-primary" type="button" disabled={answering} onClick={() => void answer(true)}>
+                {t("link.approve")}
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="muted small">{t("desktopSignIn.expired")}</p>
+        )}
+        {error ? (
+          <p className="device-error small" role="alert">
+            {t("desktopSignIn.failed")}
+          </p>
+        ) : null}
       </section>
     </AuthEntryFrame>
   );

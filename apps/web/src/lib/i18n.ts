@@ -8,6 +8,47 @@ const supportedLanguages = new Set<LanguageCode>(["en", "tr"]);
 
 const translations = {
   en: {
+    "chat.emojiPicker": "Choose an emoji",
+    "chat.emojiSearch": "Search emojis",
+    "chat.emojiCategories": "Emoji categories",
+    "chat.emoji.all": "All",
+    "chat.emoji.faces": "Faces",
+    "chat.emoji.gestures": "Gestures",
+    "chat.emoji.symbols": "Hearts & symbols",
+    "chat.emoji.activities": "Activities",
+    "chat.emoji.nature": "Nature",
+    "chat.emoji.food": "Food",
+    "chat.emoji.objects": "Objects",
+    "chat.addEmoji": "Add emoji",
+    "chat.noResults": "No matches",
+    "chat.mentionPeople": "Mention a person",
+    "chat.owner": "Server owner",
+    "chat.member": "Member",
+    "chat.online": "Online",
+    "chat.offline": "Offline",
+    "chat.everyoneHelp": "All active members",
+    "chat.hereHelp": "Members online when sent",
+    "chat.personCard": "Member details",
+    "chat.formerMember": "Former member",
+    "chat.reactionLimit":
+      "A message can have up to 8 different reaction emojis. You can still join an existing reaction.",
+    "chat.actionFailed": "The action could not be completed. Try again.",
+    "chat.reactions": "Message reactions",
+    "chat.removeOwnReaction": "Remove your {emoji} reaction ({count} reactions)",
+    "chat.addReaction": "Add {emoji} reaction ({count} reactions)",
+    "chat.reactionDetails": "People who reacted with {emoji}",
+    "chat.addReactionPicker": "Add a reaction",
+    "chat.noReactions": "No reactions remain.",
+    "chat.clearEmojiReactions": "Remove all {emoji} reactions",
+    "chat.clearAllReactions": "Remove all reactions",
+    "chat.pin": "Pin message",
+    "chat.unpin": "Unpin message",
+    "chat.pins": "Pinned messages",
+    "chat.noPins": "No pinned messages yet.",
+    "chat.backToLatest": "Back to latest messages",
+    "chat.contextError": "This message could not be opened. It may have been deleted.",
+    "chat.pinned": "Pinned",
+    "chat.mentioned": "This message mentions you",
     "server.unread": "{server}, {count} unread messages",
     "server.notificationMenu": "Message notifications for {server}",
     "server.muteNotifications": "Mute message notifications",
@@ -20,7 +61,8 @@ const translations = {
     "server.muteIndefinite": "Until I turn them back on",
     "server.notificationSaveFailed": "Notification settings could not be saved. Try again.",
     "server.notificationLoadFailed": "Unread state could not be refreshed. Retrying.",
-    "voice.screenConnectionWarning": "Connection loss or delay is limiting this stream. Quality will recover automatically when the connection improves.",
+    "voice.screenConnectionWarning":
+      "Connection loss or delay is limiting this stream. Quality will recover automatically when the connection improves.",
 
     "server.current": "Current server: {server}",
     "server.currentCopy": "These settings apply to the selected server.",
@@ -37,7 +79,8 @@ const translations = {
     "settings.desktop": "Desktop",
     "settings.shortcuts": "Shortcuts",
     "desktopSettings.quitOnClose": "Quit Voxly when closing the window",
-    "desktopSettings.quitOnCloseHint": "Off: closing keeps Voxly running in the tray. On: closing quits Voxly and disconnects active calls, with confirmation when needed.",
+    "desktopSettings.quitOnCloseHint":
+      "Off: closing keeps Voxly running in the tray. On: closing quits Voxly and disconnects active calls, with confirmation when needed.",
     "desktopSettings.updateRequired": "Update the desktop app to change this setting.",
     "desktopSettings.reset": "Reset shortcut",
     "desktopSettings.editKeybind": "Edit keybind",
@@ -50,8 +93,10 @@ const translations = {
     "desktopSettings.home": "Home",
     "desktopSettings.failed": "Could not save desktop settings. Try again.",
     "desktopSettings.duplicate": "Each action needs a different shortcut. Your previous binding is retained.",
-    "desktopSettings.required": "This microphone mode needs a shortcut. Switch to Open mic in Audio before clearing or resetting it.",
-    "desktopSettings.conflict": "Shortcut unavailable. Another application may be using it; choose a different binding.",
+    "desktopSettings.required":
+      "This microphone mode needs a shortcut. Switch to Open mic in Audio before clearing or resetting it.",
+    "desktopSettings.conflict":
+      "Shortcut unavailable. Another application may be using it; choose a different binding.",
     "desktopSettings.microphone": "Desktop microphone",
     "desktopSettings.modeHint": "Choose how your microphone works. Assign held shortcuts in Shortcuts.",
     "desktopSettings.mode": "Microphone mode",
@@ -68,10 +113,12 @@ const translations = {
     "desktopSettings.record": "Record shortcut",
     "desktopSettings.save": "Save shortcut",
     "desktopSettings.clear": "Clear shortcut",
-    "desktopSettings.invalid": "Use Ctrl, Alt, or Shift alone, Ctrl/Alt/Win with a letter or number, F1–F24, or Mouse 3/4/5.",
+    "desktopSettings.invalid":
+      "Use Ctrl, Alt, or Shift alone, Ctrl/Alt/Win with a letter or number, F1–F24, or Mouse 3/4/5.",
     "desktopSettings.draft": "Combination recorded. Save to activate it.",
     "desktopSettings.active": "Shortcut active",
-    "desktopSettings.shortcutHint": "Use these during calls, even with another app open. Ctrl, Alt, and Shift can be used alone; they also activate during combinations using that modifier.",
+    "desktopSettings.shortcutHint":
+      "Use these during calls, even with another app open. Ctrl, Alt, and Shift can be used alone; they also activate during combinations using that modifier.",
 
     "desktop.open": "Open in desktop",
     "desktop.download": "Download desktop",
@@ -121,22 +168,26 @@ const translations = {
     "settings.timeFormat12": "12-hour",
     "settings.timeFormat24": "24-hour",
     "privacy.externalPreviews": "External previews",
-    "privacy.externalPreviewsHint": "Enabled providers may receive your IP address and browser information when a preview loads. Turn a provider off to keep its content as a plain link.",
+    "privacy.externalPreviewsHint":
+      "Enabled providers may receive your IP address and browser information when a preview loads. Turn a provider off to keep its content as a plain link.",
     "privacy.enableAll": "Enable all",
     "privacy.disableAll": "Disable all",
     "accountDeletion.title": "Delete account",
     "accountDeletion.requestTitle": "Request permanent deletion",
-    "accountDeletion.requestCopy": "Your account stays active until the installation owner approves. The owner will see your server names, effective nicknames, roles and membership states. Approval permanently signs out every device, ends every membership and removes your nicknames while preserving conversation history.",
+    "accountDeletion.requestCopy":
+      "Your account stays active until the installation owner approves. The owner will see your server names, effective nicknames, roles and membership states. Approval permanently signs out every device, ends every membership and removes your nicknames while preserving conversation history.",
     "accountDeletion.confirmNickname": "Type {nickname} to confirm",
     "accountDeletion.permanentConfirm": "I understand this cannot be undone after approval.",
     "accountDeletion.sendRequest": "Send deletion request",
     "accountDeletion.requested": "Your request was sent to the installation owner.",
     "accountDeletion.pendingTitle": "Deletion request pending",
-    "accountDeletion.pendingCopy": "You can keep using Voxly or cancel this request until the installation owner approves it.",
+    "accountDeletion.pendingCopy":
+      "You can keep using Voxly or cancel this request until the installation owner approves it.",
     "accountDeletion.cancelRequest": "Cancel request",
     "accountDeletion.cancelled": "The request was cancelled. You can make another request after 24 hours.",
     "accountDeletion.cancelledState": "Your last request was cancelled.",
-    "accountDeletion.rejected": "The installation owner rejected your request. You can make another request after 24 hours.",
+    "accountDeletion.rejected":
+      "The installation owner rejected your request. You can make another request after 24 hours.",
     "accountDeletion.cooldown": "Please wait 24 hours after a cancellation or rejection before requesting again.",
     "accountDeletion.cooldownRemaining": "You can request again in about {hours} hours.",
     "accountDeletion.loadFailed": "Your deletion request status could not be loaded.",
@@ -148,7 +199,8 @@ const translations = {
     "ownerAccounts.approveDeletion": "Approve deletion",
     "ownerAccounts.rejectDeletion": "Reject",
     "ownerAccounts.approveTitle": "Permanently delete {nickname}?",
-    "ownerAccounts.approveCopy": "This approves the member's request and immediately removes access and personal nicknames. It cannot be undone.",
+    "ownerAccounts.approveCopy":
+      "This approves the member's request and immediately removes access and personal nicknames. It cannot be undone.",
     "ownerAccounts.rejectTitle": "Reject {nickname}'s request?",
     "ownerAccounts.rejectCopy": "The account stays active. The member may request again after 24 hours.",
     "ownerAccounts.back": "Back to accounts",
@@ -167,8 +219,10 @@ const translations = {
     "ownerAccounts.deletedState": "Deleted",
     "ownerAccounts.deleteNow": "Delete account now",
     "ownerAccounts.deleteTitle": "Permanently delete {nickname}?",
-    "ownerAccounts.deleteCopy": "This owner-initiated deletion does not require the member's consent. Every device is signed out and the account cannot be recovered.",
-    "ownerAccounts.protected": "Installation owners, Bots, deleted accounts and accounts that own a server cannot be deleted.",
+    "ownerAccounts.deleteCopy":
+      "This owner-initiated deletion does not require the member's consent. Every device is signed out and the account cannot be recovered.",
+    "ownerAccounts.protected":
+      "Installation owners, Bots, deleted accounts and accounts that own a server cannot be deleted.",
     "ownerAccounts.deleted": "The account was permanently deleted.",
     "ownerAccounts.loadFailed": "Account data could not be loaded.",
     "ownerAccounts.actionFailed": "The account action could not be completed.",
@@ -237,7 +291,8 @@ const translations = {
     "browser.steamOverlayLabel": "Unsupported browser",
     "browser.steamOverlayTitle": "Open Voxly in a regular browser",
     "browser.steamOverlayStatus": "Steam Shift+Tab cannot run voice chat",
-    "browser.steamOverlayCopy": "Steam's Shift+Tab browser does not provide the microphone access Voxly needs. Copy this page's address and open it in Chrome, Edge, Firefox, or Safari.",
+    "browser.steamOverlayCopy":
+      "Steam's Shift+Tab browser does not provide the microphone access Voxly needs. Copy this page's address and open it in Chrome, Edge, Firefox, or Safari.",
     "connection.connecting": "Connecting",
     "connection.connectingCopy": "Opening the realtime room state.",
     "connection.live": "Connected",
@@ -296,25 +351,30 @@ const translations = {
     "desktopSignIn.failed": "Browser sign-in could not be completed. Try again or use a Link code.",
     "desktopSignIn.approvalTitle": "Approve desktop sign-in",
     "desktopSignIn.approvalCopy": "{device} is asking to sign in as {account}.",
-    "desktopSignIn.signInFirst": "Sign in to this installation in your browser first, then reopen the approval address.",
+    "desktopSignIn.signInFirst":
+      "Sign in to this installation in your browser first, then reopen the approval address.",
     "desktopSignIn.approved": "Approved. Voxly will finish signing in automatically.",
     "recovery.title": "Recover your account",
     "recovery.enterCopy": "Enter the recovery code you saved.",
-    "recovery.cost": "This signs you out on every other device, and uses up the code — a recovery code works once. If you still have a device signed in, link that instead.",
+    "recovery.cost":
+      "This signs you out on every other device, and uses up the code — a recovery code works once. If you still have a device signed in, link that instead.",
     "recovery.codeLabel": "Recovery code",
     "recovery.continue": "Recover account",
     "recovery.invalid": "That recovery code is not valid.",
     "recovery.revealTitle": "Save your recovery code",
     "recovery.whereToUse": "When you need it, go to ",
     "recovery.guideTitle": "What is a recovery code?",
-    "recovery.guideCopy": "It is the way back into your account when no device is signed in any more. You were shown one when you joined, and again each time you used one.",
+    "recovery.guideCopy":
+      "It is the way back into your account when no device is signed in any more. You were shown one when you joined, and again each time you used one.",
     "recovery.guideStep1": "Find the code you saved.",
     "recovery.guideStep2": "Enter it below.",
     "recovery.guideStep3": "You are signed in here, and every other device is signed out.",
     "recovery.guideContinue": "I have my code",
-    "recovery.noCode": "If you did not save one, ask the server owner for a new invite link. Your old account cannot be reached without the code.",
+    "recovery.noCode":
+      "If you did not save one, ask the server owner for a new invite link. Your old account cannot be reached without the code.",
     "recovery.howItWorks": "What is this?",
-    "recovery.revealCopy": "This is the only way back if you lose every signed-in device. It is shown once and cannot be shown again.",
+    "recovery.revealCopy":
+      "This is the only way back if you lose every signed-in device. It is shown once and cannot be shown again.",
     "recovery.copy": "Copy code",
     "recovery.copied": "Copied",
     "recovery.savedConfirm": "I have saved this code somewhere safe.",
@@ -325,7 +385,8 @@ const translations = {
     "recovery.create": "Create a recovery code",
     "recovery.regenerate": "Replace recovery code",
     "recovery.regenerateHint": "Replacing it makes your old code stop working, and signs out your other devices.",
-    "recovery.regenerateWarning": "This makes your old code stop working and signs you out on every other device. This one stays signed in.",
+    "recovery.regenerateWarning":
+      "This makes your old code stop working and signs you out on every other device. This one stays signed in.",
     "recovery.regenerateConfirm": "Replace it",
     "recovery.othersSignedOut": "Your other devices have been signed out.",
     "recovery.createFailed": "A recovery code could not be created.",
@@ -337,10 +398,13 @@ const translations = {
     "voiceNotice.roomGone": "That voice channel is gone.",
     "landing.linkDevice": "Add this device to your account",
     "landing.recover": "Lost every device?",
-    "session.revoked": "This device was signed out. That happens when you sign it out from another device, or when you recover your account — everything else is signed out then.",
-    "session.accountDeletionApproved": "Your account deletion request was approved. The account and its memberships have been permanently deleted.",
+    "session.revoked":
+      "This device was signed out. That happens when you sign it out from another device, or when you recover your account — everything else is signed out then.",
+    "session.accountDeletionApproved":
+      "Your account deletion request was approved. The account and its memberships have been permanently deleted.",
     "session.accountDeletedByOwner": "The installation owner permanently deleted your account.",
-    "session.reused": "You were signed out because your session was used from somewhere else. If that was not you, sign in and check your devices.",
+    "session.reused":
+      "You were signed out because your session was used from somewhere else. If that was not you, sign in and check your devices.",
     "devices.arrivedByLink": "Added with a link code",
     "devices.arrivedByRecovery": "Added with a recovery code",
     "devices.title": "Your devices",
@@ -427,21 +491,25 @@ const translations = {
     "invite.unavailable": "Invite unavailable",
     "invite.unavailableError": "Invite unavailable. Ask the owner for a new link.",
     "landing.brandSubtitle": "Private chat, hosted by you.",
-    "landing.copy": "Bring your group together with private chat, voice, video, and screen sharing. Host Voxly yourself and invite only who belongs.",
+    "landing.copy":
+      "Bring your group together with private chat, voice, video, and screen sharing. Host Voxly yourself and invite only who belongs.",
     "landing.features": "How Voxly works",
     "landing.haveInvite": "I have an invite",
     "landing.inviteCta": "Join with an invite",
     "landing.label": "For your group. On your terms.",
-    "landing.lowFootprint.copy": "Built for one modest VPS, SQLite, one Node process, and no background services that do not serve the room.",
+    "landing.lowFootprint.copy":
+      "Built for one modest VPS, SQLite, one Node process, and no background services that do not serve the room.",
     "landing.lowFootprint.title": "Runs lean",
     "landing.nav": "Landing navigation",
     "landing.ownerNote": "Owner access stays on the same device; recovery is created from the server shell.",
     "shell.workspaceNavigation": "Workspace navigation",
     "member.search": "Search members",
     "member.noResults": "No members match your search.",
-    "landing.privateAccess.copy": "No public registration. Friends join through owner-issued links with configurable expiry and use limits.",
+    "landing.privateAccess.copy":
+      "No public registration. Friends join through owner-issued links with configurable expiry and use limits.",
     "landing.privateAccess.title": "Invite only",
-    "landing.selfHosted.copy": "Text lives on your VPS. Voice is designed P2P first, with your own TURN fallback when needed.",
+    "landing.selfHosted.copy":
+      "Text lives on your VPS. Voice is designed P2P first, with your own TURN fallback when needed.",
     "landing.selfHosted.title": "Your server",
     "landing.selfHostCta": "Self-host Voxly",
     "landing.title": "Your group, your space.",
@@ -655,7 +723,8 @@ const translations = {
     "voice.watchStream": "Watch stream",
     "voice.unwatchStream": "Unwatch stream",
     "voice.streamOptions": "Stream options — {nickname}",
-    "voice.unwatchFailed": "Playback stopped, but the subscription could not be removed. Try Unwatch again or leave voice.",
+    "voice.unwatchFailed":
+      "Playback stopped, but the subscription could not be removed. Try Unwatch again or leave voice.",
     "voiceQuality.saveFailed": "The voice report could not be saved. Please try again.",
     "voice.watchUserStream": "Watch {nickname}'s stream",
     "voice.addToStage": "Add {nickname} to stage",
@@ -715,7 +784,8 @@ const translations = {
     "music.errorAfk": "The Music bot cannot play in the AFK channel.",
     "music.errorNotInRoom": "Join this voice channel before asking for music.",
     "music.errorRoom": "That channel is no longer available.",
-    "music.errorLink": "That link is not a YouTube video. Playlists and other sites are not supported yet — type a name instead to search for one.",
+    "music.errorLink":
+      "That link is not a YouTube video. Playlists and other sites are not supported yet — type a name instead to search for one.",
     "music.errorUnavailable": "That video will not play. It may be private, deleted, age-restricted, or blocked here.",
     "music.errorLive": "That is a live stream, and it has no end. Pick a video instead.",
     "music.errorSource": "YouTube is refusing the Music bot right now. Try again in a few minutes.",
@@ -735,7 +805,8 @@ const translations = {
     "audio.inputVolume": "Input level",
     "audio.outputVolume": "General output level",
     "audio.noiseSuppression": "Noise suppression",
-    "audio.noiseSuppressionHint": "Optional extra filtering by Voxly, on top of your browser's built-in suppression. Turning it off keeps the browser filter on.",
+    "audio.noiseSuppressionHint":
+      "Optional extra filtering by Voxly, on top of your browser's built-in suppression. Turning it off keeps the browser filter on.",
     "audio.noiseSuppressionUnsupported": "This browser cannot process microphone audio.",
     "audio.notificationSounds": "Notification sounds",
     "audio.notificationSoundsHint": "Short cues for voice rooms, new messages, and connection changes.",
@@ -753,20 +824,26 @@ const translations = {
     "desktopNotifications.compatibilityDelivery": "Compatibility (WebView2)",
     "desktopNotifications.title": "Desktop notifications",
     "desktopNotifications.enable": "Enable desktop notifications",
-    "desktopNotifications.hint": "Show alerts when Voxly is in the background. Message text, names, and room details stay private. Your notification categories and deafen setting still apply; Voxly plays the sound once.",
+    "desktopNotifications.hint":
+      "Show alerts when Voxly is in the background. Message text, names, and room details stay private. Your notification categories and deafen setting still apply; Voxly plays the sound once.",
     "desktopNotifications.on": "Enabled for this account on this installation.",
     "desktopNotifications.off": "Off. Enable to request notification permission.",
-    "desktopNotifications.denied": "Notification permission is blocked. Use Reset notification permission below. If the button is missing, install the latest Voxly desktop build.",
+    "desktopNotifications.denied":
+      "Notification permission is blocked. Use Reset notification permission below. If the button is missing, install the latest Voxly desktop build.",
     "desktopNotifications.unavailable": "This desktop runtime does not support silent notifications.",
     "desktopSettings.microphoneReset": "Ask for microphone permission again",
     "desktopSettings.cameraReset": "Ask for camera permission again",
-    "desktopSettings.permissionResetHint": "Accidentally blocked access? Clear the saved decision for this Installation only. The next microphone test, voice join or camera action can ask again. Windows privacy settings still apply.",
-    "desktopSettings.microphoneResetDone": "Microphone permission reset. Start a microphone test or join voice to ask again.",
+    "desktopSettings.permissionResetHint":
+      "Accidentally blocked access? Clear the saved decision for this Installation only. The next microphone test, voice join or camera action can ask again. Windows privacy settings still apply.",
+    "desktopSettings.microphoneResetDone":
+      "Microphone permission reset. Start a microphone test or join voice to ask again.",
     "desktopSettings.cameraResetDone": "Camera permission reset. Turn on your camera to ask again.",
     "desktopSettings.permissionResetFailed": "Permission could not be reset. Update Voxly and try again.",
     "desktopNotifications.reset": "Reset notification permission",
-    "desktopNotifications.resetFailed": "Permission could not be reset. Finish your call, quit and reopen Voxly, then try again.",
-    "desktopNotifications.resetDone": "Permission reset. Enable notifications again. If still blocked, finish your call, quit and reopen Voxly, then try again.",
+    "desktopNotifications.resetFailed":
+      "Permission could not be reset. Finish your call, quit and reopen Voxly, then try again.",
+    "desktopNotifications.resetDone":
+      "Permission reset. Enable notifications again. If still blocked, finish your call, quit and reopen Voxly, then try again.",
     "desktopNotifications.saveFailed": "The notification preference could not be saved. Try again.",
     "desktopNotifications.message": "You have a new message.",
     "desktopNotifications.peerJoined": "Someone joined your voice room.",
@@ -834,7 +911,8 @@ const translations = {
     "voiceError.cameraPermissionDenied": "Camera permission was denied.",
     "voiceError.deafenState": "Could not update deafen state.",
     "voiceError.join": "Could not join voice.",
-    "voiceError.microphoneDisconnected": "Microphone disconnected. Reconnect it, then select Unmute mic in the voice dock.",
+    "voiceError.microphoneDisconnected":
+      "Microphone disconnected. Reconnect it, then select Unmute mic in the voice dock.",
     "voiceError.microphonePermissionDenied": "Microphone permission was denied.",
     "voiceError.microphonePermissionRequired": "Microphone permission is required to join voice.",
     "voiceError.microphoneReopen": "The microphone could not be reopened. Using the previous microphone.",
@@ -858,6 +936,47 @@ const translations = {
     "system.loadingVoxly": "Loading Voxly"
   },
   tr: {
+    "chat.emojiPicker": "Emoji seç",
+    "chat.emojiSearch": "Emoji ara",
+    "chat.emojiCategories": "Emoji kategorileri",
+    "chat.emoji.all": "Tümü",
+    "chat.emoji.faces": "Yüzler",
+    "chat.emoji.gestures": "İşaretler",
+    "chat.emoji.symbols": "Kalpler ve simgeler",
+    "chat.emoji.activities": "Etkinlikler",
+    "chat.emoji.nature": "Doğa",
+    "chat.emoji.food": "Yiyecekler",
+    "chat.emoji.objects": "Nesneler",
+    "chat.addEmoji": "Emoji ekle",
+    "chat.noResults": "Eşleşme yok",
+    "chat.mentionPeople": "Bir kişiyi etiketle",
+    "chat.owner": "Sunucu sahibi",
+    "chat.member": "Üye",
+    "chat.online": "Çevrimiçi",
+    "chat.offline": "Çevrimdışı",
+    "chat.everyoneHelp": "Tüm aktif üyeler",
+    "chat.hereHelp": "Gönderildiğinde çevrimiçi olan üyeler",
+    "chat.personCard": "Üye bilgileri",
+    "chat.formerMember": "Eski üye",
+    "chat.reactionLimit":
+      "Bir mesajda en fazla 8 farklı tepki emojisi bulunabilir. Mevcut bir tepkiye hâlâ katılabilirsin.",
+    "chat.actionFailed": "İşlem tamamlanamadı. Tekrar dene.",
+    "chat.reactions": "Mesaj tepkileri",
+    "chat.removeOwnReaction": "Kendi {emoji} tepkini kaldır ({count} tepki)",
+    "chat.addReaction": "{emoji} tepkisi ekle ({count} tepki)",
+    "chat.reactionDetails": "{emoji} tepkisi veren kişiler",
+    "chat.addReactionPicker": "Tepki ekle",
+    "chat.noReactions": "Tepki kalmadı.",
+    "chat.clearEmojiReactions": "Tüm {emoji} tepkilerini kaldır",
+    "chat.clearAllReactions": "Tüm tepkileri kaldır",
+    "chat.pin": "Mesajı sabitle",
+    "chat.unpin": "Sabitlemeyi kaldır",
+    "chat.pins": "Sabitlenmiş mesajlar",
+    "chat.noPins": "Henüz sabitlenmiş mesaj yok.",
+    "chat.backToLatest": "En yeni mesajlara dön",
+    "chat.contextError": "Bu mesaj açılamadı. Silinmiş olabilir.",
+    "chat.pinned": "Sabitlenmiş",
+    "chat.mentioned": "Bu mesaj seni etiketliyor",
     "server.unread": "{server}, {count} okunmamış mesaj",
     "server.notificationMenu": "{server} mesaj bildirimleri",
     "server.muteNotifications": "Mesaj bildirimlerini sessize al",
@@ -870,7 +989,8 @@ const translations = {
     "server.muteIndefinite": "Ben tekrar açana kadar",
     "server.notificationSaveFailed": "Bildirim ayarları kaydedilemedi. Tekrar deneyin.",
     "server.notificationLoadFailed": "Okunmamış mesaj durumu yenilenemedi. Tekrar deneniyor.",
-    "voice.screenConnectionWarning": "Bağlantı kaybı veya gecikme bu yayını sınırlıyor. Bağlantı iyileştiğinde kalite otomatik olarak düzelecek.",
+    "voice.screenConnectionWarning":
+      "Bağlantı kaybı veya gecikme bu yayını sınırlıyor. Bağlantı iyileştiğinde kalite otomatik olarak düzelecek.",
 
     "server.current": "Mevcut sunucu: {server}",
     "server.currentCopy": "Bu ayarlar seçili sunucuya uygulanır.",
@@ -887,7 +1007,8 @@ const translations = {
     "settings.desktop": "Masaüstü",
     "settings.shortcuts": "Kısayollar",
     "desktopSettings.quitOnClose": "Pencereyi kapatınca Voxly’den çık",
-    "desktopSettings.quitOnCloseHint": "Kapalı: pencereyi kapatınca Voxly sistem tepsisinde çalışır. Açık: gerektiğinde onay isteyerek Voxly’den çıkar ve etkin aramaları sonlandırır.",
+    "desktopSettings.quitOnCloseHint":
+      "Kapalı: pencereyi kapatınca Voxly sistem tepsisinde çalışır. Açık: gerektiğinde onay isteyerek Voxly’den çıkar ve etkin aramaları sonlandırır.",
     "desktopSettings.updateRequired": "Bu ayarı değiştirmek için masaüstü uygulamasını güncelleyin.",
     "desktopSettings.reset": "Kısayolu sıfırla",
     "desktopSettings.editKeybind": "Kısayolu düzenle",
@@ -900,10 +1021,13 @@ const translations = {
     "desktopSettings.home": "Ana sayfa",
     "desktopSettings.failed": "Masaüstü ayarları kaydedilemedi. Yeniden deneyin.",
     "desktopSettings.duplicate": "Her işlev farklı bir kısayol gerektirir. Önceki birleşiminiz korundu.",
-    "desktopSettings.required": "Bu mikrofon modu için kısayol gerekli. Silmeden veya sıfırlamadan önce Ses bölümünde Açık mikrofonu seçin.",
-    "desktopSettings.conflict": "Kısayol kullanılamıyor. Başka bir uygulama kullanıyor olabilir; farklı bir birleşim seçin.",
+    "desktopSettings.required":
+      "Bu mikrofon modu için kısayol gerekli. Silmeden veya sıfırlamadan önce Ses bölümünde Açık mikrofonu seçin.",
+    "desktopSettings.conflict":
+      "Kısayol kullanılamıyor. Başka bir uygulama kullanıyor olabilir; farklı bir birleşim seçin.",
     "desktopSettings.microphone": "Masaüstü mikrofonu",
-    "desktopSettings.modeHint": "Mikrofonunuzun nasıl çalışacağını seçin. Basılı tutulan kısayolları Kısayollar bölümünden atayın.",
+    "desktopSettings.modeHint":
+      "Mikrofonunuzun nasıl çalışacağını seçin. Basılı tutulan kısayolları Kısayollar bölümünden atayın.",
     "desktopSettings.mode": "Mikrofon modu",
     "desktopSettings.openMic": "Açık mikrofon",
     "desktopSettings.pushToTalk": "Bas konuş",
@@ -918,10 +1042,12 @@ const translations = {
     "desktopSettings.record": "Kısayol kaydet",
     "desktopSettings.save": "Kısayolu kaydet",
     "desktopSettings.clear": "Kısayolu temizle",
-    "desktopSettings.invalid": "Tek başına Ctrl, Alt veya Shift, bir harf veya sayıyla Ctrl/Alt/Win, F1–F24 ya da Fare 3/4/5 kullanın.",
+    "desktopSettings.invalid":
+      "Tek başına Ctrl, Alt veya Shift, bir harf veya sayıyla Ctrl/Alt/Win, F1–F24 ya da Fare 3/4/5 kullanın.",
     "desktopSettings.draft": "Birleşim kaydedildi. Etkinleştirmek için kaydedin.",
     "desktopSettings.active": "Kısayol etkin",
-    "desktopSettings.shortcutHint": "Aramalarda, başka bir uygulama açıkken de kullanın. Ctrl, Alt ve Shift tek başına kullanılabilir; o tuşu içeren birleşimlerde de etkinleşir.",
+    "desktopSettings.shortcutHint":
+      "Aramalarda, başka bir uygulama açıkken de kullanın. Ctrl, Alt ve Shift tek başına kullanılabilir; o tuşu içeren birleşimlerde de etkinleşir.",
 
     "desktop.open": "Masaüstünde aç",
     "desktop.download": "Masaüstü uygulamasını indir",
@@ -941,7 +1067,8 @@ const translations = {
     "settings.interface": "Arayüz",
     "desktop.openHint": "Kurulu Voxly masaüstü uygulaması gerekir. İlk giriş için tarayıcı onayı gerekir.",
     "clientUpdate.ready": "Bir Voxly güncellemesi hazır.",
-    "clientUpdate.afterCall": "Bir Voxly güncellemesi hazır. Yeniden yüklemeden önce aramanızı ve medya kontrollerini sonlandırın.",
+    "clientUpdate.afterCall":
+      "Bir Voxly güncellemesi hazır. Yeniden yüklemeden önce aramanızı ve medya kontrollerini sonlandırın.",
     "clientUpdate.reload": "Güncellemek için yeniden yükle",
     "common.actions": "İşlemler",
     "common.active": "Aktif",
@@ -971,18 +1098,21 @@ const translations = {
     "settings.timeFormat12": "12 saat",
     "settings.timeFormat24": "24 saat",
     "privacy.externalPreviews": "Dış önizlemeler",
-    "privacy.externalPreviewsHint": "Etkin sağlayıcılar bir önizleme yüklenirken IP adresinizi ve tarayıcı bilgilerinizi alabilir. İçeriği yalnızca bağlantı olarak tutmak için sağlayıcıyı kapatın.",
+    "privacy.externalPreviewsHint":
+      "Etkin sağlayıcılar bir önizleme yüklenirken IP adresinizi ve tarayıcı bilgilerinizi alabilir. İçeriği yalnızca bağlantı olarak tutmak için sağlayıcıyı kapatın.",
     "privacy.enableAll": "Tümünü etkinleştir",
     "privacy.disableAll": "Tümünü devre dışı bırak",
     "accountDeletion.title": "Hesabı sil",
     "accountDeletion.requestTitle": "Kalıcı silme talebi gönder",
-    "accountDeletion.requestCopy": "Kurulum sahibi onaylayana kadar hesabınız etkin kalır. Sahip; sunucu adlarını, etkin takma adlarını, rollerini ve üyelik durumlarını görür. Onay tüm cihazların oturumunu kalıcı olarak kapatır, tüm üyelikleri sonlandırır ve konuşma geçmişini korurken takma adlarınızı kaldırır.",
+    "accountDeletion.requestCopy":
+      "Kurulum sahibi onaylayana kadar hesabınız etkin kalır. Sahip; sunucu adlarını, etkin takma adlarını, rollerini ve üyelik durumlarını görür. Onay tüm cihazların oturumunu kalıcı olarak kapatır, tüm üyelikleri sonlandırır ve konuşma geçmişini korurken takma adlarınızı kaldırır.",
     "accountDeletion.confirmNickname": "Onaylamak için {nickname} yazın",
     "accountDeletion.permanentConfirm": "Onaydan sonra bunun geri alınamayacağını anlıyorum.",
     "accountDeletion.sendRequest": "Silme talebini gönder",
     "accountDeletion.requested": "Talebiniz kurulum sahibine gönderildi.",
     "accountDeletion.pendingTitle": "Silme talebi bekliyor",
-    "accountDeletion.pendingCopy": "Kurulum sahibi onaylayana kadar Voxly'yi kullanmaya devam edebilir veya bu talebi iptal edebilirsiniz.",
+    "accountDeletion.pendingCopy":
+      "Kurulum sahibi onaylayana kadar Voxly'yi kullanmaya devam edebilir veya bu talebi iptal edebilirsiniz.",
     "accountDeletion.cancelRequest": "Talebi iptal et",
     "accountDeletion.cancelled": "Talep iptal edildi. 24 saat sonra yeniden talep gönderebilirsiniz.",
     "accountDeletion.cancelledState": "Son talebiniz iptal edildi.",
@@ -998,7 +1128,8 @@ const translations = {
     "ownerAccounts.approveDeletion": "Silmeyi onayla",
     "ownerAccounts.rejectDeletion": "Reddet",
     "ownerAccounts.approveTitle": "{nickname} kalıcı olarak silinsin mi?",
-    "ownerAccounts.approveCopy": "Bu işlem üyenin talebini onaylar; erişimi ve kişisel takma adları hemen kaldırır. Geri alınamaz.",
+    "ownerAccounts.approveCopy":
+      "Bu işlem üyenin talebini onaylar; erişimi ve kişisel takma adları hemen kaldırır. Geri alınamaz.",
     "ownerAccounts.rejectTitle": "{nickname} kullanıcısının talebi reddedilsin mi?",
     "ownerAccounts.rejectCopy": "Hesap etkin kalır. Üye 24 saat sonra yeniden talep gönderebilir.",
     "ownerAccounts.back": "Hesaplara dön",
@@ -1017,8 +1148,10 @@ const translations = {
     "ownerAccounts.deletedState": "Silindi",
     "ownerAccounts.deleteNow": "Hesabı şimdi sil",
     "ownerAccounts.deleteTitle": "{nickname} kalıcı olarak silinsin mi?",
-    "ownerAccounts.deleteCopy": "Kurulum sahibi tarafından başlatılan bu silme işlemi üyenin onayını gerektirmez. Tüm cihazların oturumu kapatılır ve hesap kurtarılamaz.",
-    "ownerAccounts.protected": "Kurulum sahipleri, Botlar, silinmiş hesaplar ve bir sunucunun sahibi olan hesaplar silinemez.",
+    "ownerAccounts.deleteCopy":
+      "Kurulum sahibi tarafından başlatılan bu silme işlemi üyenin onayını gerektirmez. Tüm cihazların oturumu kapatılır ve hesap kurtarılamaz.",
+    "ownerAccounts.protected":
+      "Kurulum sahipleri, Botlar, silinmiş hesaplar ve bir sunucunun sahibi olan hesaplar silinemez.",
     "ownerAccounts.deleted": "Hesap kalıcı olarak silindi.",
     "ownerAccounts.loadFailed": "Hesap verileri yüklenemedi.",
     "ownerAccounts.actionFailed": "Hesap işlemi tamamlanamadı.",
@@ -1087,7 +1220,8 @@ const translations = {
     "browser.steamOverlayLabel": "Desteklenmeyen tarayıcı",
     "browser.steamOverlayTitle": "Voxly’yi normal bir tarayıcıda aç",
     "browser.steamOverlayStatus": "Steam Shift+Tab sesli sohbeti çalıştıramaz",
-    "browser.steamOverlayCopy": "Steam Shift+Tab tarayıcısı Voxly’nin ihtiyaç duyduğu mikrofon iznini vermiyor. Bu sayfanın adresini kopyalayıp Chrome, Edge, Firefox veya Safari’de aç.",
+    "browser.steamOverlayCopy":
+      "Steam Shift+Tab tarayıcısı Voxly’nin ihtiyaç duyduğu mikrofon iznini vermiyor. Bu sayfanın adresini kopyalayıp Chrome, Edge, Firefox veya Safari’de aç.",
     "connection.connecting": "Bağlanıyor",
     "connection.connectingCopy": "Canlı oda durumu açılıyor.",
     "connection.live": "Bağlı",
@@ -1150,21 +1284,25 @@ const translations = {
     "desktopSignIn.approved": "Onaylandı. Voxly girişi otomatik tamamlayacak.",
     "recovery.title": "Hesabını kurtar",
     "recovery.enterCopy": "Kaydettiğin kurtarma kodunu yaz.",
-    "recovery.cost": "Bu, diğer bütün cihazlarındaki oturumunu kapatır ve kodu harcar — kurtarma kodu bir kez çalışır. Hâlâ girişli bir cihazın varsa onun yerine cihaz bağla.",
+    "recovery.cost":
+      "Bu, diğer bütün cihazlarındaki oturumunu kapatır ve kodu harcar — kurtarma kodu bir kez çalışır. Hâlâ girişli bir cihazın varsa onun yerine cihaz bağla.",
     "recovery.codeLabel": "Kurtarma kodu",
     "recovery.continue": "Hesabı kurtar",
     "recovery.invalid": "Bu kurtarma kodu geçerli değil.",
     "recovery.revealTitle": "Kurtarma kodunu kaydet",
     "recovery.whereToUse": "İhtiyacın olduğunda şuraya git: ",
     "recovery.guideTitle": "Kurtarma kodu nedir?",
-    "recovery.guideCopy": "Hiçbir cihazında oturum kalmadığında hesabına dönüş yolun. Katılırken bir tane gösterildi, her kullandığında da yenisi gösterildi.",
+    "recovery.guideCopy":
+      "Hiçbir cihazında oturum kalmadığında hesabına dönüş yolun. Katılırken bir tane gösterildi, her kullandığında da yenisi gösterildi.",
     "recovery.guideStep1": "Kaydettiğin kodu bul.",
     "recovery.guideStep2": "Aşağıya yaz.",
     "recovery.guideStep3": "Burada giriş yaparsın, diğer bütün cihazların çıkış yapar.",
     "recovery.guideContinue": "Kodum var",
-    "recovery.noCode": "Kaydetmediysen sunucu sahibinden yeni bir davet linki iste. Kod olmadan eski hesabına ulaşılamaz.",
+    "recovery.noCode":
+      "Kaydetmediysen sunucu sahibinden yeni bir davet linki iste. Kod olmadan eski hesabına ulaşılamaz.",
     "recovery.howItWorks": "Bu nedir?",
-    "recovery.revealCopy": "Girişli bütün cihazlarını kaybedersen geri dönmenin tek yolu bu. Bir kez gösterilir, tekrar gösterilemez.",
+    "recovery.revealCopy":
+      "Girişli bütün cihazlarını kaybedersen geri dönmenin tek yolu bu. Bir kez gösterilir, tekrar gösterilemez.",
     "recovery.copy": "Kodu kopyala",
     "recovery.copied": "Kopyalandı",
     "recovery.savedConfirm": "Bu kodu güvenli bir yere kaydettim.",
@@ -1175,7 +1313,8 @@ const translations = {
     "recovery.create": "Kurtarma kodu oluştur",
     "recovery.regenerate": "Kurtarma kodunu değiştir",
     "recovery.regenerateHint": "Değiştirirsen eski kodun çalışmaz olur ve diğer cihazların çıkış yapar.",
-    "recovery.regenerateWarning": "Bu, eski kodunu geçersiz kılar ve diğer bütün cihazlarındaki oturumunu kapatır. Bu cihaz açık kalır.",
+    "recovery.regenerateWarning":
+      "Bu, eski kodunu geçersiz kılar ve diğer bütün cihazlarındaki oturumunu kapatır. Bu cihaz açık kalır.",
     "recovery.regenerateConfirm": "Değiştir",
     "recovery.othersSignedOut": "Diğer cihazlarının oturumu kapatıldı.",
     "recovery.createFailed": "Kurtarma kodu oluşturulamadı.",
@@ -1187,10 +1326,12 @@ const translations = {
     "voiceNotice.roomGone": "O ses kanalı artık yok.",
     "landing.linkDevice": "Bu cihazı hesabına ekle",
     "landing.recover": "Bütün cihazlarını mı kaybettin?",
-    "session.revoked": "Bu cihazın oturumu kapatıldı. Bu, başka bir cihazdan çıkış yaptırdığında ya da hesabını kurtardığında olur — o zaman diğer her şey çıkış yapar.",
+    "session.revoked":
+      "Bu cihazın oturumu kapatıldı. Bu, başka bir cihazdan çıkış yaptırdığında ya da hesabını kurtardığında olur — o zaman diğer her şey çıkış yapar.",
     "session.accountDeletionApproved": "Hesap silme talebiniz onaylandı. Hesap ve üyelikleri kalıcı olarak silindi.",
     "session.accountDeletedByOwner": "Kurulum sahibi hesabınızı kalıcı olarak sildi.",
-    "session.reused": "Oturumun başka bir yerden kullanıldığı için çıkış yapıldı. Bu sen değilsen, giriş yapıp cihazlarını kontrol et.",
+    "session.reused":
+      "Oturumun başka bir yerden kullanıldığı için çıkış yapıldı. Bu sen değilsen, giriş yapıp cihazlarını kontrol et.",
     "devices.arrivedByLink": "Bağlama koduyla eklendi",
     "devices.arrivedByRecovery": "Kurtarma koduyla eklendi",
     "devices.title": "Cihazların",
@@ -1282,16 +1423,19 @@ const translations = {
     "landing.haveInvite": "Davetim var",
     "landing.inviteCta": "Davetle katıl",
     "landing.label": "Arkadaş grubun için özel sohbet.",
-    "landing.lowFootprint.copy": "Tek mütevazı VPS, SQLite, tek Node process ve oda için gerekli olmayan arka plan servisleri olmadan tasarlandı.",
+    "landing.lowFootprint.copy":
+      "Tek mütevazı VPS, SQLite, tek Node process ve oda için gerekli olmayan arka plan servisleri olmadan tasarlandı.",
     "landing.lowFootprint.title": "Hafif çalışır",
     "landing.nav": "Landing navigasyonu",
     "landing.ownerNote": "Owner erişimi aynı cihazda kalır; kurtarma linki sunucu shell üzerinden üretilir.",
     "shell.workspaceNavigation": "Çalışma alanı gezinmesi",
     "member.search": "Üyelerde ara",
     "member.noResults": "Aramana uygun üye yok.",
-    "landing.privateAccess.copy": "Açık kayıt yok. Arkadaşlar owner’ın süre ve kullanım limiti belirlediği davet linkleriyle katılır.",
+    "landing.privateAccess.copy":
+      "Açık kayıt yok. Arkadaşlar owner’ın süre ve kullanım limiti belirlediği davet linkleriyle katılır.",
     "landing.privateAccess.title": "Davetle katılım",
-    "landing.selfHosted.copy": "Yazılı sohbet VPS’inde kalır. Ses P2P öncelikli, gerekirse kendi TURN fallback’in kullanılır.",
+    "landing.selfHosted.copy":
+      "Yazılı sohbet VPS’inde kalır. Ses P2P öncelikli, gerekirse kendi TURN fallback’in kullanılır.",
     "landing.selfHosted.title": "Sunucu senin",
     "landing.selfHostCta": "Voxly'yi kendin barındır",
     "landing.title": "Arkadaş grubun burada.",
@@ -1322,7 +1466,8 @@ const translations = {
     "owner.dataError": "Owner verileri yüklenemedi.",
     "owner.endSessionConfirm": "{nickname} oturumu bitirilsin mi?",
     "owner.expiresAfter": "Şu sürede biter",
-    "owner.heroCopy": "Davetli erişimi, aktif oturumları ve küçük bir özel oda için gereken moderasyon işlemlerini yönet.",
+    "owner.heroCopy":
+      "Davetli erişimi, aktif oturumları ve küçük bir özel oda için gereken moderasyon işlemlerini yönet.",
     "owner.hideLink": "Tam linki gizle",
     "owner.invites": "Davetler",
     "owner.inviteLabel": "Kısa isim",
@@ -1505,7 +1650,8 @@ const translations = {
     "voice.watchStream": "Yayını izle",
     "voice.unwatchStream": "Yayını izlemeyi bırak",
     "voice.streamOptions": "Yayın seçenekleri — {nickname}",
-    "voice.unwatchFailed": "Oynatma durdu ancak abonelik kaldırılamadı. İzlemeyi bırakmayı tekrar deneyin veya ses kanalından ayrılın.",
+    "voice.unwatchFailed":
+      "Oynatma durdu ancak abonelik kaldırılamadı. İzlemeyi bırakmayı tekrar deneyin veya ses kanalından ayrılın.",
     "voiceQuality.saveFailed": "Ses raporu kaydedilemedi. Lütfen tekrar deneyin.",
     "voice.watchUserStream": "{nickname} kullanıcısının yayınını izle",
     "voice.addToStage": "{nickname} sahneye ekle",
@@ -1565,7 +1711,8 @@ const translations = {
     "music.errorAfk": "Müzik botu AFK kanalında çalamaz.",
     "music.errorNotInRoom": "Müzik istemeden önce bu ses kanalına katıl.",
     "music.errorRoom": "Bu kanal artık kullanılamıyor.",
-    "music.errorLink": "Bu bağlantı bir YouTube videosu değil. Çalma listeleri ve diğer siteler henüz desteklenmiyor — bunun yerine aramak için bir ad yaz.",
+    "music.errorLink":
+      "Bu bağlantı bir YouTube videosu değil. Çalma listeleri ve diğer siteler henüz desteklenmiyor — bunun yerine aramak için bir ad yaz.",
     "music.errorUnavailable": "Bu video çalınamıyor. Gizli, silinmiş, yaş sınırlı ya da burada engellenmiş olabilir.",
     "music.errorLive": "Bu bir canlı yayın ve sonu yok. Bunun yerine bir video seç.",
     "music.errorSource": "YouTube şu anda Müzik botunu geri çeviriyor. Birkaç dakika sonra tekrar dene.",
@@ -1585,7 +1732,8 @@ const translations = {
     "audio.inputVolume": "Giriş seviyesi",
     "audio.outputVolume": "Genel çıkış seviyesi",
     "audio.noiseSuppression": "Gürültü engelleme",
-    "audio.noiseSuppressionHint": "Tarayıcının yerleşik engellemesine ek, isteğe bağlı Voxly süzmesi. Kapatmak tarayıcı filtresini açık bırakır.",
+    "audio.noiseSuppressionHint":
+      "Tarayıcının yerleşik engellemesine ek, isteğe bağlı Voxly süzmesi. Kapatmak tarayıcı filtresini açık bırakır.",
     "audio.noiseSuppressionUnsupported": "Bu tarayıcı mikrofon sesini işleyemiyor.",
     "audio.notificationSounds": "Bildirim sesleri",
     "audio.notificationSoundsHint": "Ses odaları, yeni mesajlar ve bağlantı değişiklikleri için kısa uyarılar.",
@@ -1603,20 +1751,26 @@ const translations = {
     "desktopNotifications.compatibilityDelivery": "Uyumluluk (WebView2)",
     "desktopNotifications.title": "Masaüstü bildirimleri",
     "desktopNotifications.enable": "Masaüstü bildirimlerini etkinleştir",
-    "desktopNotifications.hint": "Voxly arka plandayken bildirim gösterir. Mesaj metni, adlar ve oda bilgileri gizli kalır. Bildirim kategorileriniz ve sağırlaştırma ayarınız geçerlidir; bildirim sesini Voxly bir kez çalar.",
+    "desktopNotifications.hint":
+      "Voxly arka plandayken bildirim gösterir. Mesaj metni, adlar ve oda bilgileri gizli kalır. Bildirim kategorileriniz ve sağırlaştırma ayarınız geçerlidir; bildirim sesini Voxly bir kez çalar.",
     "desktopNotifications.on": "Bu kurulumdaki bu hesap için etkin.",
     "desktopNotifications.off": "Kapalı. Bildirim izni istemek için etkinleştirin.",
-    "desktopNotifications.denied": "Bildirim izni engellenmiş. Aşağıdaki Bildirim iznini sıfırla düğmesini kullanın. Düğme yoksa en güncel Voxly masaüstü sürümünü yükleyin.",
+    "desktopNotifications.denied":
+      "Bildirim izni engellenmiş. Aşağıdaki Bildirim iznini sıfırla düğmesini kullanın. Düğme yoksa en güncel Voxly masaüstü sürümünü yükleyin.",
     "desktopNotifications.unavailable": "Bu masaüstü çalışma ortamı sessiz bildirimleri desteklemiyor.",
     "desktopSettings.microphoneReset": "Mikrofon iznini yeniden iste",
     "desktopSettings.cameraReset": "Kamera iznini yeniden iste",
-    "desktopSettings.permissionResetHint": "Erişimi yanlışlıkla mı engellediniz? Yalnızca bu Installation için kayıtlı kararı temizleyin. Sonraki mikrofon testi, ses kanalına katılma veya kamera eyleminde izin yeniden istenebilir. Windows gizlilik ayarları geçerli olmaya devam eder.",
-    "desktopSettings.microphoneResetDone": "Mikrofon izni sıfırlandı. Yeniden izin istemek için mikrofon testini başlatın veya ses kanalına katılın.",
+    "desktopSettings.permissionResetHint":
+      "Erişimi yanlışlıkla mı engellediniz? Yalnızca bu Installation için kayıtlı kararı temizleyin. Sonraki mikrofon testi, ses kanalına katılma veya kamera eyleminde izin yeniden istenebilir. Windows gizlilik ayarları geçerli olmaya devam eder.",
+    "desktopSettings.microphoneResetDone":
+      "Mikrofon izni sıfırlandı. Yeniden izin istemek için mikrofon testini başlatın veya ses kanalına katılın.",
     "desktopSettings.cameraResetDone": "Kamera izni sıfırlandı. Yeniden izin istemek için kameranızı açın.",
     "desktopSettings.permissionResetFailed": "İzin sıfırlanamadı. Voxly’yi güncelleyip tekrar deneyin.",
     "desktopNotifications.reset": "Bildirim iznini sıfırla",
-    "desktopNotifications.resetFailed": "İzin sıfırlanamadı. Görüşmenizi bitirin, Voxly’den çıkıp yeniden açın ve tekrar deneyin.",
-    "desktopNotifications.resetDone": "İzin sıfırlandı. Bildirimleri tekrar etkinleştirin. Hâlâ engelleniyorsa görüşmenizi bitirin, Voxly’den çıkıp yeniden açın ve tekrar deneyin.",
+    "desktopNotifications.resetFailed":
+      "İzin sıfırlanamadı. Görüşmenizi bitirin, Voxly’den çıkıp yeniden açın ve tekrar deneyin.",
+    "desktopNotifications.resetDone":
+      "İzin sıfırlandı. Bildirimleri tekrar etkinleştirin. Hâlâ engelleniyorsa görüşmenizi bitirin, Voxly’den çıkıp yeniden açın ve tekrar deneyin.",
     "desktopNotifications.saveFailed": "Bildirim tercihi kaydedilemedi. Tekrar deneyin.",
     "desktopNotifications.message": "Yeni bir mesajınız var.",
     "desktopNotifications.peerJoined": "Ses odanıza biri katıldı.",
@@ -1684,7 +1838,8 @@ const translations = {
     "voiceError.cameraPermissionDenied": "Kamera izni reddedildi.",
     "voiceError.deafenState": "Sağırlaştırma durumu güncellenemedi.",
     "voiceError.join": "Ses odasına katılınamadı.",
-    "voiceError.microphoneDisconnected": "Mikrofon bağlantısı kesildi. Yeniden bağlayıp ses panelindeki Mikrofonu aç düğmesine bas.",
+    "voiceError.microphoneDisconnected":
+      "Mikrofon bağlantısı kesildi. Yeniden bağlayıp ses panelindeki Mikrofonu aç düğmesine bas.",
     "voiceError.microphonePermissionDenied": "Mikrofon izni reddedildi.",
     "voiceError.microphonePermissionRequired": "Ses odasına katılmak için mikrofon izni gerekiyor.",
     "voiceError.microphoneReopen": "Mikrofon yeniden açılamadı. Önceki mikrofon kullanılıyor.",
@@ -1733,7 +1888,10 @@ export function detectLanguage(languages: readonly string[] = getNavigatorLangua
   return "en";
 }
 
-export function resolveLanguageChoice(savedLanguage: string | null, browserLanguages: readonly string[] = getNavigatorLanguages()): LanguageCode {
+export function resolveLanguageChoice(
+  savedLanguage: string | null,
+  browserLanguages: readonly string[] = getNavigatorLanguages()
+): LanguageCode {
   return isLanguageCode(savedLanguage) ? savedLanguage : detectLanguage(browserLanguages);
 }
 

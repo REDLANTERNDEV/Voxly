@@ -11,10 +11,22 @@ describe("Open in desktop links", () => {
     assert.equal(desktopOpenLink("https://chat.example"), "voxly://open?origin=https%3A%2F%2Fchat.example");
     assert.equal(desktopOpenLink("http://localhost:3000"), "voxly://open?origin=http%3A%2F%2Flocalhost%3A3000");
     assert.equal(desktopOpenLink("http://[::1]:3000"), "voxly://open?origin=http%3A%2F%2F%5B%3A%3A1%5D%3A3000");
-    for (const value of ["https://user:secret@chat.example", "https://chat.example/invite/secret", "https://chat.example?token=secret",
-      "https://chat.example#token=secret", "https://chat.example/", "http://chat.example", "tauri://localhost",
-      "https://tauri.localhost", "https://ipc.localhost", "javascript:alert(1)", "https://chat.example\n",
-      "https:\\chat.example", "https://CHAT.example", "a".repeat(2049)]) {
+    for (const value of [
+      "https://user:secret@chat.example",
+      "https://chat.example/invite/secret",
+      "https://chat.example?token=secret",
+      "https://chat.example#token=secret",
+      "https://chat.example/",
+      "http://chat.example",
+      "tauri://localhost",
+      "https://tauri.localhost",
+      "https://ipc.localhost",
+      "javascript:alert(1)",
+      "https://chat.example\n",
+      "https:\\chat.example",
+      "https://CHAT.example",
+      "a".repeat(2049)
+    ]) {
       assert.equal(desktopOpenLink(value), null, value);
     }
     assert.equal(desktopOpenLink("https://chat.example", true), null);
@@ -22,7 +34,10 @@ describe("Open in desktop links", () => {
 
   it("carries only a validated public launch id and validates arriving correlation", () => {
     const id = "12345678-1234-1234-1234-123456789abc";
-    assert.equal(desktopOpenLink("https://chat.example", false, id), `voxly://open?origin=https%3A%2F%2Fchat.example&launch=${id}`);
+    assert.equal(
+      desktopOpenLink("https://chat.example", false, id),
+      `voxly://open?origin=https%3A%2F%2Fchat.example&launch=${id}`
+    );
     assert.equal(desktopOpenLink("https://chat.example", false, "secret&token=private"), null);
     assert.equal(desktopLaunchFromSearch(`?desktopLaunch=${id}`), id);
     assert.equal(desktopLaunchFromSearch(`?desktopLaunch=${id}&desktopLaunch=${id}`), undefined);
@@ -31,8 +46,10 @@ describe("Open in desktop links", () => {
 
   it("renders keyboard-accessible localized links and hides them inside desktop", () => {
     const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
-    const target = { location: { origin: "https://chat.example", pathname: "/invite/private", hash: "#token=private" },
-      __VOXLY_DESKTOP_V1__: undefined as { version: number } | undefined };
+    const target = {
+      location: { origin: "https://chat.example", pathname: "/invite/private", hash: "#token=private" },
+      __VOXLY_DESKTOP_V1__: undefined as { version: number } | undefined
+    };
     Object.defineProperty(globalThis, "window", { configurable: true, value: target });
     try {
       for (const language of ["en", "tr"] as const) {
@@ -43,7 +60,9 @@ describe("Open in desktop links", () => {
         assert.ok(html.includes(translate(language, "desktop.openHint")));
         assert.ok(!html.includes("private"));
       }
-      const authenticated = renderToStaticMarkup(createElement(OpenInDesktop, { t: (key) => translate("en", key), authenticated: true }));
+      const authenticated = renderToStaticMarkup(
+        createElement(OpenInDesktop, { t: (key) => translate("en", key), authenticated: true })
+      );
       assert.ok(authenticated.startsWith("<button "));
       assert.ok(!authenticated.includes("private"));
       target.__VOXLY_DESKTOP_V1__ = { version: 1 };

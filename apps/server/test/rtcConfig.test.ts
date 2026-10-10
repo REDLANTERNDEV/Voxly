@@ -35,9 +35,7 @@ describe("RTC configuration", () => {
           "turns:turn.voxly.example:5349?transport=tcp"
         ],
         username,
-        credential: createHmac("sha1", "0123456789abcdef0123456789abcdef")
-          .update(username)
-          .digest("base64")
+        credential: createHmac("sha1", "0123456789abcdef0123456789abcdef").update(username).digest("base64")
       }
     ]);
   });
@@ -52,10 +50,7 @@ describe("RTC configuration", () => {
   });
 
   it("rejects partial TURN configuration", () => {
-    assert.throws(
-      () => resolveRtcConfig({ TURN_REALM: "turn.voxly.example" }),
-      /TURN_STATIC_AUTH_SECRET must be set/
-    );
+    assert.throws(() => resolveRtcConfig({ TURN_REALM: "turn.voxly.example" }), /TURN_STATIC_AUTH_SECRET must be set/);
     assert.throws(
       () => resolveRtcConfig({ TURN_STATIC_AUTH_SECRET: "0123456789abcdef0123456789abcdef" }),
       /TURN_REALM must be set/
@@ -64,25 +59,28 @@ describe("RTC configuration", () => {
 
   it("rejects unsafe realms, short secrets, and invalid TTL values", () => {
     assert.throws(
-      () => resolveRtcConfig({
-        TURN_REALM: "https://turn.voxly.example",
-        TURN_STATIC_AUTH_SECRET: "0123456789abcdef0123456789abcdef"
-      }),
+      () =>
+        resolveRtcConfig({
+          TURN_REALM: "https://turn.voxly.example",
+          TURN_STATIC_AUTH_SECRET: "0123456789abcdef0123456789abcdef"
+        }),
       /TURN_REALM must be a hostname/
     );
     assert.throws(
-      () => resolveRtcConfig({
-        TURN_REALM: "turn.voxly.example",
-        TURN_STATIC_AUTH_SECRET: "too-short"
-      }),
+      () =>
+        resolveRtcConfig({
+          TURN_REALM: "turn.voxly.example",
+          TURN_STATIC_AUTH_SECRET: "too-short"
+        }),
       /at least 32 bytes/
     );
     assert.throws(
-      () => resolveRtcConfig({
-        TURN_REALM: "turn.voxly.example",
-        TURN_STATIC_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
-        TURN_CREDENTIAL_TTL_SECONDS: "soon"
-      }),
+      () =>
+        resolveRtcConfig({
+          TURN_REALM: "turn.voxly.example",
+          TURN_STATIC_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
+          TURN_CREDENTIAL_TTL_SECONDS: "soon"
+        }),
       /positive integer/
     );
   });

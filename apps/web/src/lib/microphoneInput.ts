@@ -23,7 +23,15 @@ export interface MicrophoneInput {
    * precisely so the preference never has to reopen the capture device.
    */
   setNoiseSuppression(enabled: boolean): void;
-  diagnostics?(): { contextState: string; sampleRate: number; inputRms: number; suppression: boolean; worklet: boolean; trackLive: boolean; trackEnabled: boolean };
+  diagnostics?(): {
+    contextState: string;
+    sampleRate: number;
+    inputRms: number;
+    suppression: boolean;
+    worklet: boolean;
+    trackLive: boolean;
+    trackEnabled: boolean;
+  };
   dispose(): void;
 }
 
@@ -39,8 +47,8 @@ export interface MicrophoneInputOptions {
 }
 
 function createBrowserAudioContext() {
-  const AudioContextClass = window.AudioContext
-    ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  const AudioContextClass =
+    window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextClass) throw new Error("audio_context_unavailable");
   try {
     return new AudioContextClass({ sampleRate: 48000 });
@@ -56,7 +64,8 @@ export function createMicrophoneInput(
 ): MicrophoneInput {
   const createContext = options.createContext ?? createBrowserAudioContext;
   const schedule = options.setInterval ?? ((handler: () => void, ms: number) => setInterval(handler, ms));
-  const unschedule = options.clearInterval ?? ((handle: unknown) => clearInterval(handle as ReturnType<typeof setInterval>));
+  const unschedule =
+    options.clearInterval ?? ((handle: unknown) => clearInterval(handle as ReturnType<typeof setInterval>));
   let context: AudioContext | null = null;
   let source: MediaStreamAudioSourceNode | null = null;
   let highPass: BiquadFilterNode | null = null;
@@ -136,7 +145,8 @@ export function createMicrophoneInput(
   // Until it resolves the expander is the active stage; once it does, the
   // expander is pinned open and the spectral stage takes over.
   if (options.spectralSuppression !== false && typeof context.audioWorklet?.addModule === "function") {
-    void context.audioWorklet.addModule(noiseSuppressorModuleUrl)
+    void context.audioWorklet
+      .addModule(noiseSuppressorModuleUrl)
       .then(() => {
         if (disposed) return;
         const node = new AudioWorkletNode(context, noiseSuppressorProcessorName, {
@@ -156,7 +166,11 @@ export function createMicrophoneInput(
         } catch {
           // A partially connected optional stage must not silence capture or
           // leave a parallel path behind. The fallback is still connected.
-          try { highPass.disconnect(node); } catch { /* No input edge was made. */ }
+          try {
+            highPass.disconnect(node);
+          } catch {
+            /* No input edge was made. */
+          }
           node.disconnect();
           node.port.close();
         }
@@ -199,9 +213,13 @@ export function createMicrophoneInput(
       for (const sample of samples) energy += sample * sample;
       const track = voiceDestination.stream.getAudioTracks()[0];
       return {
-        contextState: context.state, sampleRate: context.sampleRate,
-        inputRms: Math.sqrt(energy / samples.length), suppression: noiseSuppression,
-        worklet: suppressor !== null, trackLive: track?.readyState === "live", trackEnabled: track?.enabled === true
+        contextState: context.state,
+        sampleRate: context.sampleRate,
+        inputRms: Math.sqrt(energy / samples.length),
+        suppression: noiseSuppression,
+        worklet: suppressor !== null,
+        trackLive: track?.readyState === "live",
+        trackEnabled: track?.enabled === true
       };
     },
     dispose() {

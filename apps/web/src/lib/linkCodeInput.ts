@@ -29,11 +29,7 @@ export function formatLinkCodeInput(raw: string) {
     .replace(/[^0-9A-HJ-NP-TV-Z]/g, "")
     .slice(0, groups[groups.length - 1]);
 
-  return [
-    cleaned.slice(0, groups[0]),
-    cleaned.slice(groups[0], groups[1]),
-    cleaned.slice(groups[1], groups[2])
-  ]
+  return [cleaned.slice(0, groups[0]), cleaned.slice(groups[0], groups[1]), cleaned.slice(groups[1], groups[2])]
     .filter(Boolean)
     .join("-");
 }

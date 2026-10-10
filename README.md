@@ -31,7 +31,7 @@ chat or TURN provider.
 
 For local development:
 
-- Node.js 22 or later
+- Node.js 22.13 or later
 - npm
 
 For self-hosting:
@@ -115,22 +115,22 @@ outside this project — Dokploy, Coolify, CapRover, or a hand-run Traefik. See
 Docker Compose reads `.env` from the repository root. Start from
 [`.env.example`](.env.example) and never commit the resulting `.env` file.
 
-| Variable                                      | Purpose                                                    |
-| --------------------------------------------- | ---------------------------------------------------------- |
-| `VOXLY_PUBLIC_URL`                            | Public HTTPS URL used for links and secure-cookie defaults |
-| `VOXLY_HTTP_PORT`                             | Host loopback port used by the reverse proxy               |
-| `PROXY_NETWORK`                               | Existing proxy network (`compose.external-proxy.yaml` only) |
-| `TRUST_PROXY`                                 | Read client IPs from `X-Forwarded-For` (default `true`)    |
-| `DATABASE_PATH`                               | SQLite path when running without Docker                    |
-| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Optional Cloudflare Turnstile protection                   |
-| `ANALYTICS_PROVIDER` / `ANALYTICS_SCRIPT_URL` / `ANALYTICS_WEBSITE_ID` | Optional landing-page analytics; disabled by default |
-| `VOXLY_BOT_TOKEN`                             | Credential shared by the application and the Music bot; blank runs without it |
-| `COMPOSE_PROFILES`                            | Set to `music` to run the Music bot service                |
-| `VOXLY_YTDLP_VERSION` / `VOXLY_YTDLP_CLIENT`  | The yt-dlp release built into the bot image, and the upstream client it presents |
-| `VOXLY_BOT_MEMORY_LIMIT` / `VOXLY_BOT_MEMORY_RESERVATION` | Music bot container memory ceiling and reservation |
-| `TURN_REALM` / `TURN_STATIC_AUTH_SECRET`      | Enable authenticated self-hosted TURN                      |
-| `VOXLY_TURN_MEMORY_LIMIT`                     | Hard Coturn container memory ceiling                       |
-| `VOXLY_TURN_MEMORY_RESERVATION`               | Soft Coturn memory reservation                             |
+| Variable                                                               | Purpose                                                                          |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `VOXLY_PUBLIC_URL`                                                     | Public HTTPS URL used for links and secure-cookie defaults                       |
+| `VOXLY_HTTP_PORT`                                                      | Host loopback port used by the reverse proxy                                     |
+| `PROXY_NETWORK`                                                        | Existing proxy network (`compose.external-proxy.yaml` only)                      |
+| `TRUST_PROXY`                                                          | Read client IPs from `X-Forwarded-For` (default `true`)                          |
+| `DATABASE_PATH`                                                        | SQLite path when running without Docker                                          |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY`                          | Optional Cloudflare Turnstile protection                                         |
+| `ANALYTICS_PROVIDER` / `ANALYTICS_SCRIPT_URL` / `ANALYTICS_WEBSITE_ID` | Optional landing-page analytics; disabled by default                             |
+| `VOXLY_BOT_TOKEN`                                                      | Credential shared by the application and the Music bot; blank runs without it    |
+| `COMPOSE_PROFILES`                                                     | Set to `music` to run the Music bot service                                      |
+| `VOXLY_YTDLP_VERSION` / `VOXLY_YTDLP_CLIENT`                           | The yt-dlp release built into the bot image, and the upstream client it presents |
+| `VOXLY_BOT_MEMORY_LIMIT` / `VOXLY_BOT_MEMORY_RESERVATION`              | Music bot container memory ceiling and reservation                               |
+| `TURN_REALM` / `TURN_STATIC_AUTH_SECRET`                               | Enable authenticated self-hosted TURN                                            |
+| `VOXLY_TURN_MEMORY_LIMIT`                                              | Hard Coturn container memory ceiling                                             |
+| `VOXLY_TURN_MEMORY_RESERVATION`                                        | Soft Coturn memory reservation                                                   |
 
 The complete TURN variable reference is in [docs/turn.md](docs/turn.md).
 Owner and member session recovery procedures are documented in

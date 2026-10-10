@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
-  advancePeerRecovery,
-  initialPeerRecoveryState,
-  type PeerRecoveryState
-} from "../src/lib/voicePeerRecovery.js";
+import { advancePeerRecovery, initialPeerRecoveryState, type PeerRecoveryState } from "../src/lib/voicePeerRecovery.js";
 
 describe("peer recovery state", () => {
   it("waits through a transient disconnected state", () => {
@@ -14,7 +10,11 @@ describe("peer recovery state", () => {
   });
 
   it("requests one ICE restart after the grace deadline", () => {
-    let current: PeerRecoveryState = advancePeerRecovery(initialPeerRecoveryState(), { type: "disconnected" }, 1_000).state;
+    const current: PeerRecoveryState = advancePeerRecovery(
+      initialPeerRecoveryState(),
+      { type: "disconnected" },
+      1_000
+    ).state;
     const next = advancePeerRecovery(current, { type: "grace_elapsed" }, 4_100);
     assert.equal(next.state.phase, "restarting");
     assert.equal(next.action, "restart_ice");

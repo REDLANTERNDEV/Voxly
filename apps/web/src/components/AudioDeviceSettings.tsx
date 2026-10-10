@@ -72,7 +72,13 @@ interface AudioDeviceSettingsProps {
   onToggleMicrophoneTest(): Promise<void>;
 }
 
-export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?: boolean; microphoneControls?: ReactNode; showNotificationSounds?: boolean }) {
+export function AudioDeviceSettings(
+  props: AudioDeviceSettingsProps & {
+    inline?: boolean;
+    microphoneControls?: ReactNode;
+    showNotificationSounds?: boolean;
+  }
+) {
   const [isOpen, setIsOpen] = useState(false);
   const [testPending, setTestPending] = useState(false);
   const [dismissedStatus, setDismissedStatus] = useState("");
@@ -144,23 +150,31 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
 
   const contextStatus = props.contextError;
   const deviceStatus = props.error || (props.unavailableSelections.length > 0 ? props.labels.unavailable : "");
-  const testStatus = props.microphoneTestError === "permission"
-    ? props.labels.testPermission
-    : props.microphoneTestError === "unavailable"
-      ? props.labels.testUnavailable
-      : "";
-  const source: "context" | "device" | "microphone-test" = lastAction === "microphone-test" && testStatus
-    ? "microphone-test"
-    : lastAction === "device" && deviceStatus
-      ? "device"
-      : contextStatus
-        ? "context"
-        : testStatus
-          ? "microphone-test"
-          : "device";
+  const testStatus =
+    props.microphoneTestError === "permission"
+      ? props.labels.testPermission
+      : props.microphoneTestError === "unavailable"
+        ? props.labels.testUnavailable
+        : "";
+  const source: "context" | "device" | "microphone-test" =
+    lastAction === "microphone-test" && testStatus
+      ? "microphone-test"
+      : lastAction === "device" && deviceStatus
+        ? "device"
+        : contextStatus
+          ? "context"
+          : testStatus
+            ? "microphone-test"
+            : "device";
   const status = source === "microphone-test" ? testStatus : source === "context" ? contextStatus : deviceStatus;
-  const statusRevision = source === "microphone-test" ? props.microphoneTestErrorRevision : source === "device" ? props.errorRevision : 0;
-  const statusOccurrences = source === "microphone-test" ? props.microphoneTestErrorOccurrences : source === "device" ? props.errorOccurrences : 1;
+  const statusRevision =
+    source === "microphone-test" ? props.microphoneTestErrorRevision : source === "device" ? props.errorRevision : 0;
+  const statusOccurrences =
+    source === "microphone-test"
+      ? props.microphoneTestErrorOccurrences
+      : source === "device"
+        ? props.errorOccurrences
+        : 1;
   const statusIdentity = status ? `${source}:${status}:${statusRevision}` : "";
   const previousStatusRef = useRef(statusIdentity);
   useEffect(() => {
@@ -171,69 +185,127 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
   const visibleStatus = statusIdentity === dismissedStatus ? "" : status;
 
   const fields = (
-          <div className="audio-device-fields">
-            <h3 className="audio-microphone-heading">{props.labels.microphone}</h3>
-            {props.microphoneControls}
-            <label className="form-field">
-              <span>{props.labels.microphone}</span>
-              <select className="input" name="audioInput" value={props.selectedInputId} onChange={(event) => props.onSelectInput(event.currentTarget.value)}>
-                <option value="">{props.labels.systemDefault}</option>
-                {props.selectedInputId && props.unavailableSelections.includes("input")
-                  ? <option value={props.selectedInputId} disabled>{props.labels.inputUnavailable}</option>
-                  : null}
-                {props.inputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{audioDeviceDisplayName(device, props.labels.microphone, index)}</option>)}
-              </select>
-            </label>
-            <AudioLevelControl label={props.labels.inputVolume} value={props.inputVolume} onChange={props.onInputVolumeChange} />
-            <div className="audio-toggle-control">
-              <span id={noiseSuppressionLabelId}>{props.labels.noiseSuppression}</span>
-              <button
-                className={`audio-switch ${props.noiseSuppression ? "is-on" : ""}`}
-                type="button"
-                role="switch"
-                aria-checked={props.noiseSuppression}
-                aria-labelledby={noiseSuppressionLabelId}
-                disabled={!props.noiseSuppressionSupported}
-                onClick={() => props.onNoiseSuppressionChange(!props.noiseSuppression)}
-              ><span aria-hidden="true" /></button>
-              <span className="muted small">{props.noiseSuppressionSupported ? props.labels.noiseSuppressionHint : props.labels.noiseSuppressionUnsupported}</span>
-            </div>
-            <div className="microphone-test-control">
-              <button className={`btn ${props.microphoneTestActive ? "btn-danger" : "btn-ghost"}`} type="button" disabled={testPending} aria-pressed={props.microphoneTestActive} onClick={() => {
-                setLastAction("microphone-test");
-                setTestPending(true);
-                void props.onToggleMicrophoneTest().finally(() => setTestPending(false));
-              }}>{props.microphoneTestActive ? props.labels.stopTest : props.labels.startTest}</button>
-              <span className="muted small">{props.labels.testHint}</span>
-            </div>
-            {visibleStatus ? (
-              <InlineAlert
-                title={source === "microphone-test" ? props.labels.microphoneTestErrorTitle : props.labels.errorTitle}
-                message={visibleStatus}
-                dismissLabel={props.labels.dismissError}
-                occurrences={statusOccurrences}
-                occurrenceLabel={props.labels.occurrences(statusOccurrences)}
-                revision={statusRevision}
-                onDismiss={() => setDismissedStatus(statusIdentity)}
-              />
-            ) : null}
-            <label className="form-field">
-              <span>{props.labels.output}</span>
-              <select className="input" name="audioOutput" value={props.selectedOutputId} disabled={!props.outputSelectionSupported} onChange={(event) => {
-                setLastAction("device");
-                void props.onSelectOutput(event.currentTarget.value).catch(() => undefined);
-              }}>
-                <option value="">{props.outputSelectionSupported ? props.labels.systemDefault : props.labels.browserControlled}</option>
-                {props.outputs.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{audioDeviceDisplayName(device, props.labels.output, index)}</option>)}
-              </select>
-            </label>
-            <AudioLevelControl label={props.labels.outputVolume} value={props.outputVolume} onChange={props.onOutputVolumeChange} />
-            {props.showNotificationSounds !== false ? <NotificationSoundControls preferences={props.notificationSounds} labels={props.labels} onChange={props.onNotificationSoundsChange} /> : null}
-            <button className="btn btn-ghost" type="button" disabled={props.loading} onClick={() => {
-              setLastAction("device");
-              void props.onRefresh();
-            }}>{props.loading ? `${props.labels.refresh}…` : props.labels.refresh}</button>
-          </div>
+    <div className="audio-device-fields">
+      <h3 className="audio-microphone-heading">{props.labels.microphone}</h3>
+      {props.microphoneControls}
+      <label className="form-field">
+        <span>{props.labels.microphone}</span>
+        <select
+          className="input"
+          name="audioInput"
+          value={props.selectedInputId}
+          onChange={(event) => props.onSelectInput(event.currentTarget.value)}
+        >
+          <option value="">{props.labels.systemDefault}</option>
+          {props.selectedInputId && props.unavailableSelections.includes("input") ? (
+            <option value={props.selectedInputId} disabled>
+              {props.labels.inputUnavailable}
+            </option>
+          ) : null}
+          {props.inputs.map((device, index) => (
+            <option key={device.deviceId} value={device.deviceId}>
+              {audioDeviceDisplayName(device, props.labels.microphone, index)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <AudioLevelControl
+        label={props.labels.inputVolume}
+        value={props.inputVolume}
+        onChange={props.onInputVolumeChange}
+      />
+      <div className="audio-toggle-control">
+        <span id={noiseSuppressionLabelId}>{props.labels.noiseSuppression}</span>
+        <button
+          className={`audio-switch ${props.noiseSuppression ? "is-on" : ""}`}
+          type="button"
+          role="switch"
+          aria-checked={props.noiseSuppression}
+          aria-labelledby={noiseSuppressionLabelId}
+          disabled={!props.noiseSuppressionSupported}
+          onClick={() => props.onNoiseSuppressionChange(!props.noiseSuppression)}
+        >
+          <span aria-hidden="true" />
+        </button>
+        <span className="muted small">
+          {props.noiseSuppressionSupported
+            ? props.labels.noiseSuppressionHint
+            : props.labels.noiseSuppressionUnsupported}
+        </span>
+      </div>
+      <div className="microphone-test-control">
+        <button
+          className={`btn ${props.microphoneTestActive ? "btn-danger" : "btn-ghost"}`}
+          type="button"
+          disabled={testPending}
+          aria-pressed={props.microphoneTestActive}
+          onClick={() => {
+            setLastAction("microphone-test");
+            setTestPending(true);
+            void props.onToggleMicrophoneTest().finally(() => setTestPending(false));
+          }}
+        >
+          {props.microphoneTestActive ? props.labels.stopTest : props.labels.startTest}
+        </button>
+        <span className="muted small">{props.labels.testHint}</span>
+      </div>
+      {visibleStatus ? (
+        <InlineAlert
+          title={source === "microphone-test" ? props.labels.microphoneTestErrorTitle : props.labels.errorTitle}
+          message={visibleStatus}
+          dismissLabel={props.labels.dismissError}
+          occurrences={statusOccurrences}
+          occurrenceLabel={props.labels.occurrences(statusOccurrences)}
+          revision={statusRevision}
+          onDismiss={() => setDismissedStatus(statusIdentity)}
+        />
+      ) : null}
+      <label className="form-field">
+        <span>{props.labels.output}</span>
+        <select
+          className="input"
+          name="audioOutput"
+          value={props.selectedOutputId}
+          disabled={!props.outputSelectionSupported}
+          onChange={(event) => {
+            setLastAction("device");
+            void props.onSelectOutput(event.currentTarget.value).catch(() => undefined);
+          }}
+        >
+          <option value="">
+            {props.outputSelectionSupported ? props.labels.systemDefault : props.labels.browserControlled}
+          </option>
+          {props.outputs.map((device, index) => (
+            <option key={device.deviceId} value={device.deviceId}>
+              {audioDeviceDisplayName(device, props.labels.output, index)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <AudioLevelControl
+        label={props.labels.outputVolume}
+        value={props.outputVolume}
+        onChange={props.onOutputVolumeChange}
+      />
+      {props.showNotificationSounds !== false ? (
+        <NotificationSoundControls
+          preferences={props.notificationSounds}
+          labels={props.labels}
+          onChange={props.onNotificationSoundsChange}
+        />
+      ) : null}
+      <button
+        className="btn btn-ghost"
+        type="button"
+        disabled={props.loading}
+        onClick={() => {
+          setLastAction("device");
+          void props.onRefresh();
+        }}
+      >
+        {props.loading ? `${props.labels.refresh}…` : props.labels.refresh}
+      </button>
+    </div>
   );
 
   // Inside the settings window there is nothing to pop over: the page *is* the
@@ -242,7 +314,9 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
   if (props.inline) {
     return (
       <section className="theme-card audio-device-card is-inline">
-        <div className="theme-card-head"><span className="label">{props.labels.title}</span></div>
+        <div className="theme-card-head">
+          <span className="label">{props.labels.title}</span>
+        </div>
         {fields}
       </section>
     );
@@ -250,19 +324,43 @@ export function AudioDeviceSettings(props: AudioDeviceSettingsProps & { inline?:
 
   return (
     <section className="audio-device-card">
-      <button ref={triggerRef} className="audio-device-trigger" type="button" aria-haspopup="dialog" aria-expanded={isOpen} onClick={() => isOpen ? close() : open()}>
-        <span>{props.labels.title}</span><span aria-hidden="true">{isOpen ? "−" : "+"}</span>
+      <button
+        ref={triggerRef}
+        className="audio-device-trigger"
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        onClick={() => (isOpen ? close() : open())}
+      >
+        <span>{props.labels.title}</span>
+        <span aria-hidden="true">{isOpen ? "−" : "+"}</span>
       </button>
-      {isOpen ? createPortal(
-        <div ref={popoverRef} className="audio-device-popover" role="dialog" aria-label={props.labels.title} style={position}>
-          <div className="audio-device-popover-head">
-            <strong>{props.labels.title}</strong>
-            <button ref={closeButtonRef} className="audio-device-close" type="button" aria-label={props.labels.closeSettings} onClick={close}>×</button>
-          </div>
-          {fields}
-        </div>,
-        document.body
-      ) : null}
+      {isOpen
+        ? createPortal(
+            <div
+              ref={popoverRef}
+              className="audio-device-popover"
+              role="dialog"
+              aria-label={props.labels.title}
+              style={position}
+            >
+              <div className="audio-device-popover-head">
+                <strong>{props.labels.title}</strong>
+                <button
+                  ref={closeButtonRef}
+                  className="audio-device-close"
+                  type="button"
+                  aria-label={props.labels.closeSettings}
+                  onClick={close}
+                >
+                  ×
+                </button>
+              </div>
+              {fields}
+            </div>,
+            document.body
+          )
+        : null}
     </section>
   );
 }

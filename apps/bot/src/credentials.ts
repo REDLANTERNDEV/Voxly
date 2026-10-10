@@ -28,7 +28,10 @@ export interface BotCredentials {
   sessions: BotSession[];
 }
 
-export type FetchLike = (url: string, init: { method: string; headers: Record<string, string> }) => Promise<{
+export type FetchLike = (
+  url: string,
+  init: { method: string; headers: Record<string, string> }
+) => Promise<{
   status: number;
   json: () => Promise<unknown>;
 }>;

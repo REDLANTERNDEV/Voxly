@@ -11,13 +11,7 @@
  */
 
 import { shouldInitiatePeerConnection, type RtcSignal } from "@voxly/shared";
-import {
-  MediaStream,
-  MediaStreamTrack,
-  RTCPeerConnection,
-  RTCRtpCodecParameters,
-  type RtpPacket
-} from "werift";
+import { MediaStream, MediaStreamTrack, RTCPeerConnection, RTCRtpCodecParameters, type RtpPacket } from "werift";
 import type { MeshSignalling } from "../src/mesh.js";
 
 const opusCodec = new RTCRtpCodecParameters({
@@ -124,8 +118,9 @@ export class FakeListener {
   }
 
   private readonly onSignal = (payload: { fromUserId: string; signal: RtcSignal }) => {
-    void this.handle(payload.signal as { type: string; sdp?: string; candidate?: Record<string, unknown> })
-      .catch(() => undefined);
+    void this.handle(payload.signal as { type: string; sdp?: string; candidate?: Record<string, unknown> }).catch(
+      () => undefined
+    );
   };
 
   private async handle(signal: { type: string; sdp?: string; candidate?: Record<string, unknown> }) {

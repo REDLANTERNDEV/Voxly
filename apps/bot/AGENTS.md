@@ -28,7 +28,7 @@ no HTTP surface, and no authority over anything.
   so does the Set log, which is part of the state a Set holds.
 - `src/set.ts` is one Set — voice membership, mesh and player started and
   stopped together — and publishes the bot's own `speaking` state. A Set
-  outlives any one Track. It also reports when the room's *roster* changes,
+  outlives any one Track. It also reports when the room's _roster_ changes,
   which is not the same as a snapshot arriving, and it is where the bot reads
   its own moderation state and stops sending.
 - `src/mesh.ts` is the negotiation, applying `@voxly/shared`'s rules unchanged.
@@ -52,7 +52,7 @@ no HTTP surface, and no authority over anything.
   reason: **when there is enough evidence to say a fetch failed.** Both
   programs' exits and the extractor's stderr arrive after the encoder's stream
   ends, so the file asks the question at `finish` and again as each program
-  *closes*. What the answer then *is* lives in `track.ts` and is covered there;
+  _closes_. What the answer then _is_ lives in `track.ts` and is covered there;
   what the ordering buys is guarded at the responder seam in `music.test.ts`
   ("keeps the line when the player then reports the end of the Track that
   failed"). Neither test runs a binary, and nothing here has.
@@ -113,7 +113,7 @@ for a library feature.
   it had no microphone; that defect is fixed and the workaround is gone. Do not
   reintroduce a private negotiation rule — both halves of a pair must reach the
   same answer from the same two user ids.
-- Decide whether to offer from *having offered*, not from the peer being new. A
+- Decide whether to offer from _having offered_, not from the peer being new. A
   signal from a Listener often beats the room snapshot through the server, so
   the peer already exists by the time the snapshot lands; keying on newness
   skips the offer and leaves the room silent.
@@ -227,7 +227,7 @@ it that way.
   here should acquire a `Date.now()` in order to write one.
 - **Every verb carries the member who asked.** `music.ts` used to keep
   `requestedByUserId` for an addition and drop it for the rest; each of the five
-  now names the member who asked for *that* action rather than the one who
+  now names the member who asked for _that_ action rather than the one who
   queued the Track it happened to.
 - **The Set log is bounded** (`musicSetLogMaxLines`) and drops its **oldest**
   line, which is the opposite of what a full Queue does. A Queue is a promise
@@ -255,7 +255,7 @@ it that way.
 - **The Queue is bounded** (`musicQueueMaxEntries`) because it is broadcast
   whole on every change. Ask `additionRefusal` before spending a link on the
   extractor; do not write a second bound beside it. Ask it only about the Queue
-  the Track would actually join — a paste into a *different* room summons the
+  the Track would actually join — a paste into a _different_ room summons the
   bot away and takes the old Queue with it, so pre-checking the one that is
   about to stop existing refuses a member for somebody else's full evening.
 - The Queue lives in memory and dies with the Set. Not persisted, by design.
@@ -267,11 +267,11 @@ before changing when the bot leaves.
 - **Two events in, two effects out.** `roomEmptied` and `listenerReturned`
   against `startGracePeriod` and `cancelGracePeriod`; `awaitingReturn` on
   `PlaybackState` is the whole of the wait as a module with no clock can hold
-  it — *that* one is on, never how long is left of it. Name a new effect after
+  it — _that_ one is on, never how long is left of it. Name a new effect after
   the product's word, as `startGracePeriod` is named after `CONTEXT.md`'s term
   and not after the timer that carries it out.
 - **The wait does not pause anything and publishes nothing.** A member who comes
-  back inside it must find the music *continuing* rather than resumed, and there
+  back inside it must find the music _continuing_ rather than resumed, and there
   is nobody in the room to publish to. No line is written either: nobody did
   anything, and there is no publish for a line to ride on (ADR-0008). The
   republish a returning member needs is the roster change they cause.
@@ -286,7 +286,7 @@ before changing when the bot leaves.
   answer for a stale skip, said about a wait instead of an entry — and it is why
   the state carries the flag rather than the timer handle being the only truth.
   Do not reduce the expiry's guards to that one: the room can empty, fill and
-  empty *again* while an expiry is queued, and `awaitingReturn` is then true and
+  empty _again_ while an expiry is queued, and `awaitingReturn` is then true and
   about the **next** wait. Which wait is the clock's knowledge, so `music.ts`
   numbers them; dropping that check ends a Set up to five minutes early.
 - **The Queue moving does not end the wait.** A Track playing out in an empty
@@ -409,7 +409,7 @@ audio. What it settles, in short:
   by ADR-0006's rule, and leaves the room with the silence and no explanation.
   The order is the whole guarantee; there is no lock.
 - **A silent fetch is a failure even with nothing to show for it.** `finish()`
-  runs on the *encoder's* exit and the extractor's exit code and stderr may both
+  runs on the _encoder's_ exit and the extractor's exit code and stderr may both
   still be in flight, so "no audio ever arrived" is the one signal that cannot
   race. It answers `failedBot` — "check the logs" — rather than blaming a source
   nothing has accused.
@@ -461,7 +461,7 @@ before changing the Dockerfile's `bot` stage or the `bot` service.
   installed at `VOXLY_YTDLP_VERSION`, passed through from Compose so an operator
   can raise it without editing the repository; ffmpeg comes from the
   distribution, fixed by the base image tag. The build then runs `yt-dlp
-  --version` and greps `ffmpeg -encoders` for `libopus`, because an encoder
+--version` and greps `ffmpeg -encoders` for `libopus`, because an encoder
   without it fails at the first Track rather than at start-up.
 - **Nothing updates itself.** The read-only root is not relaxed so that yt-dlp
   can fetch its own new version, and a Compose change that makes the bot's
@@ -543,10 +543,10 @@ press the button:
   moment cost one Track between them;
 - **the Set log says the same thing in both browsers.** Each of the five verbs
   produces a line naming the member who pressed it, the second of two
-  simultaneous skips produces *no* line, and sending the bot away empties the
+  simultaneous skips produces _no_ line, and sending the bot away empties the
   log on every panel at once rather than only on the one that pressed;
 - **a Track that will not play is skipped by itself, with the reason in the
-  log.** Queue two Tracks, make the first one fail its *fetch* rather than its
+  log.** Queue two Tracks, make the first one fail its _fetch_ rather than its
   resolve — the honest way is a link that resolves and whose media is refused,
   which nothing in this repository has yet reproduced on purpose — and the room
   should hear the second Track start and read one line naming the first and no
@@ -560,7 +560,7 @@ press the button:
   come back inside five minutes to find the same Queue, still playing, from
   where it got to. Leave the channel and stay away, and the bot leaves by itself
   with every panel's Queue and Set log emptied;
-- it is *clear* — no stutter, no metallic edge, and no gap where the fetch had
+- it is _clear_ — no stutter, no metallic edge, and no gap where the fetch had
   to catch up. A skip is the easiest way to hear a Track boundary on demand, and
   how long that gap runs to is the measurement `The Queue` above is waiting for.
 

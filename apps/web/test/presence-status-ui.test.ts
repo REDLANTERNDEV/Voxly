@@ -25,24 +25,30 @@ describe("member presence state", () => {
 
 describe("presence dots", () => {
   it("renders one dot per member row, labelled for screen readers", () => {
-    assert.match(memberPanel, /className=\{`presence-dot is-\$\{memberPresenceState\(user, online\)\}`\}/);
-    assert.match(memberPanel, /aria-label=\{t\(`presence\.\$\{memberPresenceState\(user, online\)\}` as const\)\}/);
+    assert.match(memberPanel, /className=\{`presence-dot\s+is-\$\{memberPresenceState\(user,\s+online\)\}`\}/);
+    assert.match(
+      memberPanel,
+      /aria-label=\{t\(`presence\.\$\{memberPresenceState\(user,\s+online\)\}`\s+as\s+const\)\}/
+    );
   });
 
   it("gives each state its own colour rather than relying on position alone", () => {
-    assert.match(styles, /\.presence-dot\.is-online \{ background: var\(--speaking\); \}/);
-    assert.match(styles, /\.presence-dot\.is-idle \{ background: #e0a326; \}/);
-    assert.match(styles, /\.presence-dot\.is-offline \{[^}]*var\(--muted\)/);
+    assert.match(styles, /\.presence-dot\.is-online\s+\{\s+background:\s+var\(--speaking\);\s+\}/);
+    assert.match(styles, /\.presence-dot\.is-idle\s+\{\s+background:\s+#e0a326;\s+\}/);
+    assert.match(styles, /\.presence-dot\.is-offline\s+\{[^}]*var\(--muted\)/);
   });
 
   it("rings the dot in the panel background so it cannot merge into the avatar", () => {
-    assert.match(styles, /\.presence-dot \{[^}]*border: 2px solid var\(--surface\)/);
+    assert.match(styles, /\.presence-dot\s+\{[^}]*border:\s+2px\s+solid\s+var\(--surface\)/);
   });
 });
 
 describe("presence status updates", () => {
   it("never promotes an offline member into the online list", () => {
-    assert.match(workspace, /if \(!present\?\.some\(\(item\) => item\.userId === userId\)\) return current;/);
+    assert.match(
+      workspace,
+      /if\s+\(!present\?\.some\(\(item\)\s+=>\s+item\.userId\s+===\s+userId\)\)\s+return\s+current;/
+    );
   });
 });
 

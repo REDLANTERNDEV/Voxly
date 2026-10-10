@@ -10,7 +10,7 @@ describe("audio device settings permission flow", () => {
     assert.match(source, /createPortal\(/);
     assert.match(source, /role="dialog"/);
     assert.match(source, /closeButtonRef\.current\?\.focus\(\)/);
-    assert.match(source, /props\.onOpen\(\)\.catch\(\(\) => undefined\)/);
+    assert.match(source, /props\.onOpen\(\)\.catch\(\(\)\s+=>\s+undefined\)/);
     assert.doesNotMatch(source, /<details/);
     assert.match(styles, /\.audio-device-popover\s*\{[^}]*position:\s*fixed[^}]*max-height:/s);
   });
@@ -20,7 +20,7 @@ describe("audio device settings permission flow", () => {
 
     assert.match(source, /value=\{props\.inputVolume\}/);
     assert.match(source, /value=\{props\.outputVolume\}/);
-    assert.match(source, /props\.microphoneTestActive \? props\.labels\.stopTest : props\.labels\.startTest/);
+    assert.match(source, /props\.microphoneTestActive\s+\?\s+props\.labels\.stopTest\s+:\s+props\.labels\.startTest/);
     assert.match(source, /props\.onClose\(\)/);
   });
 
@@ -31,11 +31,14 @@ describe("audio device settings permission flow", () => {
     assert.match(source, /role="switch"/);
     assert.match(source, /aria-checked=\{props\.noiseSuppression\}/);
     // A hardcoded id would collide if the popover ever mounts more than once.
-    assert.match(source, /const noiseSuppressionLabelId = useId\(\)/);
+    assert.match(source, /const\s+noiseSuppressionLabelId\s+=\s+useId\(\)/);
     assert.match(source, /aria-labelledby=\{noiseSuppressionLabelId\}/);
     assert.match(source, /disabled=\{!props\.noiseSuppressionSupported\}/);
     assert.match(source, /props\.onNoiseSuppressionChange\(!props\.noiseSuppression\)/);
-    assert.match(source, /props\.noiseSuppressionSupported \? props\.labels\.noiseSuppressionHint : props\.labels\.noiseSuppressionUnsupported/);
+    assert.match(
+      source,
+      /props\.noiseSuppressionSupported\s+\?\s+props\.labels\.noiseSuppressionHint\s+:\s+props\.labels\.noiseSuppressionUnsupported/
+    );
     assert.match(styles, /\.audio-switch\s*\{/);
   });
 
@@ -47,12 +50,12 @@ describe("audio device settings permission flow", () => {
     // without colliding.
     const controls = readFileSync("src/components/AudioControls.tsx", "utf8");
     const sound = readFileSync("src/components/NotificationSoundSettings.tsx", "utf8");
-    assert.match(controls, /function AudioSwitchControl\(/);
-    assert.match(controls, /const labelId = useId\(\)/);
-    assert.match(sound, /onChange\(\{ enabled \}\)/);
-    assert.match(sound, /preferences\.enabled \? /);
+    assert.match(controls, /function\s+AudioSwitchControl\(/);
+    assert.match(controls, /const\s+labelId\s+=\s+useId\(\)/);
+    assert.match(sound, /onChange\(\{\s+enabled\s+\}\)/);
+    assert.match(sound, /preferences\.enabled\s+\?\s+/);
     assert.match(sound, /max=\{MAX_NOTIFICATION_VOLUME_PERCENT\}/);
-    assert.match(source, /props\.showNotificationSounds !== false/);
+    assert.match(source, /props\.showNotificationSounds\s+!==\s+false/);
     assert.match(styles, /\.notification-sound-section\s*\{/);
   });
 
@@ -62,7 +65,10 @@ describe("audio device settings permission flow", () => {
     const inlineError = source.indexOf("{visibleStatus ? (");
     const outputSettings = source.indexOf('name="audioOutput"');
 
-    assert.ok(microphoneTest < inlineError && inlineError < outputSettings, "the microphone error must be visible before the member scrolls to output settings");
+    assert.ok(
+      microphoneTest < inlineError && inlineError < outputSettings,
+      "the microphone error must be visible before the member scrolls to output settings"
+    );
   });
 
   it("names and counts repeated microphone monitoring failures", () => {
@@ -70,7 +76,7 @@ describe("audio device settings permission flow", () => {
     const microphoneTest = readFileSync("src/lib/useMicrophoneTest.ts", "utf8");
 
     assert.match(microphoneTest, /recordErrorOccurrence/);
-    assert.match(settings, /source === "microphone-test" \? props\.labels\.microphoneTestErrorTitle/);
-    assert.match(settings, /source === "microphone-test" \? props\.microphoneTestErrorOccurrences/);
+    assert.match(settings, /source\s+===\s+"microphone-test"\s+\?\s+props\.labels\.microphoneTestErrorTitle/);
+    assert.match(settings, /source\s+===\s+"microphone-test"\s+\?\s+props\.microphoneTestErrorOccurrences/);
   });
 });

@@ -39,10 +39,13 @@ export function readAudioLevels(userId: string, storage = browserStorage()): Aud
 export function writeAudioLevels(userId: string, levels: AudioLevels, storage = browserStorage()) {
   if (!storage) return;
   try {
-    storage.setItem(audioLevelStorageKey(userId), JSON.stringify({
-      input: clampVolumePercent(levels.input),
-      output: clampVolumePercent(levels.output)
-    }));
+    storage.setItem(
+      audioLevelStorageKey(userId),
+      JSON.stringify({
+        input: clampVolumePercent(levels.input),
+        output: clampVolumePercent(levels.output)
+      })
+    );
   } catch {
     return;
   }

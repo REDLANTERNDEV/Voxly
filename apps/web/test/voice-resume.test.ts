@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
-  readVoiceResume,
-  replaceVisualTarget,
-  toggleVisualTarget,
-  writeVoiceResume
-} from "../src/lib/voiceResume.js";
+import { readVoiceResume, replaceVisualTarget, toggleVisualTarget, writeVoiceResume } from "../src/lib/voiceResume.js";
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();
@@ -45,11 +40,14 @@ describe("voice resume state", () => {
 
     assert.equal(readVoiceResume(storage, 1_500)?.microphoneEnabled, false);
 
-    storage.setItem("voxly:voice-resume", JSON.stringify({
-      expiresAt: 2_000,
-      roomId: "legacy-room",
-      targets: []
-    }));
+    storage.setItem(
+      "voxly:voice-resume",
+      JSON.stringify({
+        expiresAt: 2_000,
+        roomId: "legacy-room",
+        targets: []
+      })
+    );
     assert.equal(readVoiceResume(storage, 1_500)?.microphoneEnabled, true);
   });
 

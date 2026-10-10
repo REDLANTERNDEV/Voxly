@@ -32,7 +32,9 @@ export function useMusicQueue(socket: VoxlySocket | null): Record<string, MusicQ
     socket.on("music:queue", onQueue);
     // Braced: `off` hands the socket back, and an effect whose cleanup returns
     // something is not a cleanup as far as React is concerned.
-    return () => { socket.off("music:queue", onQueue); };
+    return () => {
+      socket.off("music:queue", onQueue);
+    };
   }, [socket]);
 
   return queues;

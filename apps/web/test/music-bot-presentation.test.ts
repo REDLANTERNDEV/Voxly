@@ -39,9 +39,15 @@ describe("bot member counts", () => {
   });
 
   it("counts the member badges and the mobile subtitle by people", () => {
-    assert.match(memberPanel, /<span className="badge">\{countPeople\(visibleOnline\)\}<\/span>/);
-    assert.match(memberPanel, /<span className="badge">\{countPeople\(visibleOffline\)\}<\/span>/);
-    assert.match(appChrome, /const onlineCount = countPeople\(props\.onlineUsers\) \|\| 1;/);
+    assert.match(
+      memberPanel,
+      /<span\s+className="badge">\s*\{\s*countPeople\(\s*visibleOnline\s*\)\s*\}\s*<\/span>\s*/
+    );
+    assert.match(
+      memberPanel,
+      /<span\s+className="badge">\s*\{\s*countPeople\(\s*visibleOffline\s*\)\s*\}\s*<\/span>\s*/
+    );
+    assert.match(appChrome, /const\s+onlineCount\s+=\s+countPeople\(\s*props\.onlineUsers\s*\)\s+\|\|\s+1;/);
   });
 });
 
@@ -57,10 +63,10 @@ describe("bot moderation offers", () => {
   });
 
   it("wires kick and ban in both sidebars to the person answer, not the voice one", () => {
-    assert.match(memberPanel, /const canModeratePerson = canOwnerModeratePerson\(/);
-    assert.match(memberPanel, /canModerate=\{canModeratePerson\}/);
-    assert.match(channelRail, /const canModeratePerson = canOwnerModeratePerson\(/);
-    assert.match(channelRail, /canModerate=\{canModeratePerson\}/);
+    assert.match(memberPanel, /const\s+canModeratePerson\s+=\s+canOwnerModeratePerson\(\s*/);
+    assert.match(memberPanel, /canModerate=\{\s*canModeratePerson\s*\}\s*/);
+    assert.match(channelRail, /const\s+canModeratePerson\s+=\s+canOwnerModeratePerson\(\s*/);
+    assert.match(channelRail, /canModerate=\{\s*canModeratePerson\s*\}\s*/);
   });
 
   it("does not offer to move a bot, which goes where it is summoned and nowhere else", () => {
@@ -70,30 +76,33 @@ describe("bot moderation offers", () => {
     // would destroy that room's Queue from a control that never said so.
     // ADR-0010. The server refuses it too — this is presentation, not the
     // enforcement.
-    assert.match(memberPanel, /moveTargets=\{canModeratePerson && voiceRoom \?/);
-    assert.match(memberPanel, /onMove=\{canModeratePerson && voiceRoom \?/);
-    assert.match(channelRail, /moveTargets=\{canModeratePerson \?/);
-    assert.match(channelRail, /onMove=\{canModeratePerson \?/);
+    assert.match(memberPanel, /moveTargets=\{\s*canModeratePerson\s+&&\s+voiceRoom\s+\?/);
+    assert.match(memberPanel, /onMove=\{\s*canModeratePerson\s+&&\s+voiceRoom\s+\?/);
+    assert.match(channelRail, /moveTargets=\{\s*canModeratePerson\s+\?/);
+    assert.match(channelRail, /onMove=\{\s*canModeratePerson\s+\?/);
   });
 
   it("does not offer a bot the invite grant it could never use", () => {
-    assert.match(memberPanel, /const canAssignRoles = .*&& !user\.isBot;/);
-    assert.match(channelRail, /const canAssignRoles = .*&& !member\.user\.isBot;/);
+    assert.match(memberPanel, /const\s+canAssignRoles\s+=\s+.*&&\s+!user\.isBot;/);
+    assert.match(channelRail, /const\s+canAssignRoles\s+=\s+.*&&\s+!member\.user\.isBot;/);
   });
 
   it("counts the owner dashboard tiles by people too", () => {
-    assert.match(ownerPanel, /const people = users\.filter\(\(member\) => !member\.isBot\);/);
-    assert.match(ownerPanel, /const activeMembers = people\.filter\(\(member\) => !member\.bannedAt\);/);
-    assert.doesNotMatch(ownerPanel, /value: users\.length - activeMembers\.length/);
+    assert.match(ownerPanel, /const\s+people\s+=\s+users\.filter\(\s*\(\s*member\s*\)\s+=>\s+!member\.isBot\s*\);/);
+    assert.match(
+      ownerPanel,
+      /const\s+activeMembers\s+=\s+people\.filter\(\s*\(\s*member\s*\)\s+=>\s+!member\.bannedAt\s*\);/
+    );
+    assert.doesNotMatch(ownerPanel, /value:\s+users\.length\s+-\s+activeMembers\.length/);
   });
 
   it("splits the owner panel menu so a bot keeps voice moderation and loses the rest", () => {
-    assert.match(ownerPanel, /const canVoiceModerate = member\.role !== "owner";/);
-    assert.match(ownerPanel, /const canManageMembership = canVoiceModerate && !member\.isBot;/);
+    assert.match(ownerPanel, /const\s+canVoiceModerate\s+=\s+member\.role\s+!==\s+"owner";/);
+    assert.match(ownerPanel, /const\s+canManageMembership\s+=\s+canVoiceModerate\s+&&\s+!member\.isBot;/);
     // The access link, ban and kick entries must sit under the membership guard.
-    const membershipGroup = ownerPanel.slice(ownerPanel.indexOf("{canManageMembership ? <>"));
+    const membershipGroup = ownerPanel.slice(ownerPanel.search(/\{canManageMembership\s*\?\s*\(?\s*<>/));
     assert.match(membershipGroup, /owner\.accessLink/);
-    assert.match(membershipGroup, /requestBan\(member\)/);
+    assert.match(membershipGroup, /requestBan\(\s*member\s*\)/);
     assert.match(membershipGroup, /member\.kickTitle/);
   });
 });
@@ -102,23 +111,23 @@ describe("bot marker", () => {
   it("marks the bot row with readable text and an explanatory title", () => {
     assert.match(
       memberPanel,
-      /\{user\.isBot \? <span className="member-role-tag is-bot" title=\{t\("member\.botRole"\)\}>\{t\("common\.bot"\)\}<\/span> : null\}/
+      /\{\s*user\.isBot\s+\?\s+\(?\s*<span\s+className="member-role-tag\s+is-bot"\s+title=\{\s*t\(\s*"member\.botRole"\s*\)\s*\}\s*>\s*\{\s*t\(\s*"common\.bot"\s*\)\s*\}\s*<\/span>\s*\)?\s*:\s+null\s*\}\s*/
     );
   });
 
   it("does not stack the inviter icon on top of the bot marker", () => {
-    assert.match(memberPanel, /\{!user\.isBot && user\.role === "member" && user\.canInvite \?/);
+    assert.match(memberPanel, /\{\s*!user\.isBot\s+&&\s+user\.role\s+===\s+"member"\s+&&\s+user\.canInvite\s+\?/);
   });
 
   it("gives the marker its own shape rather than relying on colour alone", () => {
-    assert.match(styles, /\.member-role-tag\.is-bot \{[^}]*border-radius: 999px;/);
-    assert.match(styles, /\.member-role-tag\.is-bot \{[^}]*text-transform: uppercase;/);
+    assert.match(styles, /\.member-role-tag\.is-bot\s+\{\s*[^}]*border-radius:\s+999px;/);
+    assert.match(styles, /\.member-role-tag\.is-bot\s+\{\s*[^}]*text-transform:\s+uppercase;/);
   });
 
   it("names a bot in the role line instead of calling it a user", () => {
     const presentation = readFileSync("src/app/presentation.tsx", "utf8");
 
-    assert.match(presentation, /if \(user\.isBot\) return t\("common\.bot"\);/);
+    assert.match(presentation, /if\s+\(\s*user\.isBot\s*\)\s+return\s+t\(\s*"common\.bot"\s*\);/);
   });
 
   it("localizes the marker in both languages", () => {

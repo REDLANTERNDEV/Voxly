@@ -44,18 +44,16 @@ export function createUser(database: VoxlyDatabase, nickname: string, role: "own
     role,
     bannedAt: null
   };
-  run(database.sqlite, "insert into users (id, nickname, role) values (?, ?, ?)", [
-    user.id,
-    user.nickname,
-    user.role
-  ]);
+  run(database.sqlite, "insert into users (id, nickname, role) values (?, ?, ?)", [user.id, user.nickname, user.role]);
   audit(database, user.id, "user.created", user.id);
   database.save();
   return user;
 }
 
 /** Everything a caller may learn about an account, and deliberately nothing else. */
-export function publicUser(user: AuthUser | { id: string; nickname: string; role: "owner" | "member"; bannedAt: string | null }) {
+export function publicUser(
+  user: AuthUser | { id: string; nickname: string; role: "owner" | "member"; bannedAt: string | null }
+) {
   return {
     id: user.id,
     nickname: user.nickname,

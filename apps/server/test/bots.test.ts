@@ -140,10 +140,13 @@ describe("music bot accounts", () => {
 
     const accounts = musicBotAccounts(opened.sqlite);
 
-    assert.deepEqual(accounts.map((account) => ({ serverId: account.serverId, nickname: account.nickname })), [
-      { serverId: "second", nickname: "Müzik" },
-      { serverId: defaultServerId, nickname: "Music" }
-    ]);
+    assert.deepEqual(
+      accounts.map((account) => ({ serverId: account.serverId, nickname: account.nickname })),
+      [
+        { serverId: "second", nickname: "Müzik" },
+        { serverId: defaultServerId, nickname: "Music" }
+      ]
+    );
   });
 });
 
@@ -172,7 +175,9 @@ describe("bot sessions", () => {
     const lifetimeMinutes = (Date.parse(session.expiresAt) - Date.now()) / 60000;
     assert.ok(lifetimeMinutes > botSessionMinutes - 2 && lifetimeMinutes <= botSessionMinutes);
     assert.equal(
-      one<{ count: number }>(opened.sqlite, "select count(*) as count from sessions where token_hash = ?", [session.token])?.count,
+      one<{ count: number }>(opened.sqlite, "select count(*) as count from sessions where token_hash = ?", [
+        session.token
+      ])?.count,
       0,
       "the raw token must never be persisted"
     );

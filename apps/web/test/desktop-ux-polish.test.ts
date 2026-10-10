@@ -10,15 +10,33 @@ import { translate } from "../src/lib/i18n.js";
 
 describe("desktop UX polish", () => {
   it("renders recovery rather than a permanent skeleton when protected startup fails", () => {
-    const html = renderToStaticMarkup(createElement(AppRoutes, {
-      route: { name: "text", serverId: "fixture", roomId: "fixture" },
-      user: { id: "fixture", nickname: "Mira", role: "member", bannedAt: null },
-      authState: "error", rtcConfigReady: false, workspaceReady: false, workspaceError: false, shellProps: null, messages: [],
-      language: "en", timeFormat: "auto", t: (key, values) => translate("en", key, values),
-      renderSurface: (surface) => surface, turnstileSiteKey: null, analytics: null, signedOutReason: "",
-      completeAuthentication() {}, async loadAcceptedServer() {}, onOwnerClaimed() {}, onAccessClaimed() {},
-      navigate() {}, changeLanguage() {}, textRoomOutbox: [], textRoomActions: null
-    }));
+    const html = renderToStaticMarkup(
+      createElement(AppRoutes, {
+        route: { name: "text", serverId: "fixture", roomId: "fixture" },
+        user: { id: "fixture", nickname: "Mira", role: "member", bannedAt: null },
+        authState: "error",
+        rtcConfigReady: false,
+        workspaceReady: false,
+        workspaceError: false,
+        shellProps: null,
+        messages: [],
+        language: "en",
+        timeFormat: "auto",
+        t: (key, values) => translate("en", key, values),
+        renderSurface: (surface) => surface,
+        turnstileSiteKey: null,
+        analytics: null,
+        signedOutReason: "",
+        completeAuthentication() {},
+        async loadAcceptedServer() {},
+        onOwnerClaimed() {},
+        onAccessClaimed() {},
+        navigate() {},
+        changeLanguage() {},
+        textRoomOutbox: [],
+        textRoomActions: null
+      })
+    );
     assert.doesNotMatch(html, /shell-skeleton/);
     assert.ok(html.includes(translate("en", "system.couldNotStart")));
   });
@@ -27,7 +45,9 @@ describe("desktop UX polish", () => {
       const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
       const preferences = { enabled: true, volume: 70, voice: true, message: true, connection: true };
       const enabled = renderToStaticMarkup(createElement(NotificationSoundSettings, { t, preferences, onChange() {} }));
-      const disabled = renderToStaticMarkup(createElement(NotificationSoundSettings, { t, preferences: { ...preferences, enabled: false }, onChange() {} }));
+      const disabled = renderToStaticMarkup(
+        createElement(NotificationSoundSettings, { t, preferences: { ...preferences, enabled: false }, onChange() {} })
+      );
       assert.equal((enabled.match(/role="switch"/g) ?? []).length, 4);
       assert.equal((disabled.match(/role="switch"/g) ?? []).length, 1);
       assert.match(enabled, /type="range"/);
@@ -39,12 +59,27 @@ describe("desktop UX polish", () => {
     const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
     const target = { __VOXLY_DESKTOP_V1__: undefined as { version: number } | undefined };
     Object.defineProperty(globalThis, "window", { configurable: true, value: target });
-    const props = { serverNotificationState: null, serverNotificationTime: 0, serverNotificationError: false, actionMenu: { active: null, open() {}, close() {} }, async onServerNotificationSettingsChange() {}, activeServerId: "", servers: [], rooms: { text: [], voice: [] }, roomHistory: {}, t: (key: Parameters<typeof translate>[1]) => translate("en", key), onNavigate() {}, async onSelectServer() {}, onOpenSettings() {}, onCloseDrawer() {} };
+    const props = {
+      serverNotificationState: null,
+      serverNotificationTime: 0,
+      serverNotificationError: false,
+      actionMenu: { active: null, open() {}, close() {} },
+      async onServerNotificationSettingsChange() {},
+      activeServerId: "",
+      servers: [],
+      rooms: { text: [], voice: [] },
+      roomHistory: {},
+      t: (key: Parameters<typeof translate>[1]) => translate("en", key),
+      onNavigate() {},
+      async onSelectServer() {},
+      onOpenSettings() {},
+      onCloseDrawer() {}
+    };
     try {
       const html = renderToStaticMarkup(createElement(WorkspaceRail, props));
       assert.match(html, /href="https:\/\/github.com\/REDLANTERNDEV\/Voxly\/releases"/);
-      assert.match(html, /rel="noopener noreferrer"/);
-      assert.match(html, /aria-label="Download desktop"/);
+      assert.match(html, /rel="noopener\s+noreferrer"/);
+      assert.match(html, /aria-label="Download\s+desktop"/);
       target.__VOXLY_DESKTOP_V1__ = { version: 1 };
       assert.doesNotMatch(renderToStaticMarkup(createElement(WorkspaceRail, props)), /workspace-download/);
     } finally {
@@ -56,13 +91,16 @@ describe("desktop UX polish", () => {
     const modal = readFileSync("src/components/DesktopLaunchDialog.tsx", "utf8");
     assert.match(modal, /showModal\(\)/);
     assert.match(modal, /returnFocus\?\.focus\(\)/);
-    assert.match(modal, /onCancel=\{\(event\) => \{ event\.preventDefault\(\)/);
+    assert.match(modal, /onCancel=\{\(event\)\s+=>\s+\{\s+event\.preventDefault\(\)/);
     const auth = readFileSync("src/features/auth/DesktopBrowserSignIn.tsx", "utf8");
-    assert.match(auth, /revision\.current !== requestRevision \|\| current\.current !== request/);
-    assert.match(auth, /request\.expiresInSeconds \* 1000/);
+    assert.match(auth, /revision\.current\s+!==\s+requestRevision\s+\|\|\s+current\.current\s+!==\s+request/);
+    assert.match(auth, /request\.expiresInSeconds\s+\*\s+1000/);
     const composer = readFileSync("src/features/chat/TextRoomScreen.tsx", "utf8");
-    assert.match(composer, /<footer className="composer" onClick/);
-    assert.match(composer, /!event\.target\.closest\("button, a, input, textarea, select, \[role=button\], \.composer-reply"\)/);
+    assert.match(composer, /<footer\s+className="composer"\s+onClick/);
+    assert.match(
+      composer,
+      /!event\.target\.closest\("button,\s+a,\s+input,\s+textarea,\s+select,\s+\[role=button\],\s+\.composer-reply"\)/
+    );
     assert.doesNotMatch(composer, /window\.getSelection/);
     assert.match(composer, /composerRef\.current\?\.focus\(\)/);
   });

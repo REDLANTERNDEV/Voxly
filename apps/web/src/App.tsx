@@ -1,10 +1,10 @@
-import type { ChatMessage,MusicCommand,PublicUser,VoiceForceLeaveReason } from "@voxly/shared";
-import { useCallback,useEffect,useRef,useState,type ReactNode } from "react";
+import type { ChatMessage, MusicCommand, PublicUser, VoiceForceLeaveReason } from "@voxly/shared";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { logout } from "./api.js";
 import { AppRoutes } from "./app/AppRoutes.js";
 import { AuthenticatedAppSurface } from "./app/AuthenticatedAppSurface.js";
-import { parseRoute,serverPath } from "./app/navigation.js";
-import type { Drawer,LiveWatchRequest,Route,ShellActions,ShellModel,VoiceJoinRequest } from "./app/types.js";
+import { parseRoute, serverPath } from "./app/navigation.js";
+import type { Drawer, LiveWatchRequest, Route, ShellActions, ShellModel, VoiceJoinRequest } from "./app/types.js";
 import { useServerNotifications } from "./app/useServerNotifications.js";
 import { useListenerAudio } from "./app/useListenerAudio.js";
 import { forceLeaveNoticeKey } from "./app/presentation.js";
@@ -14,11 +14,11 @@ import { useWorkspaceController } from "./app/useWorkspaceController.js";
 import { usePresentationPreferences } from "./app/usePresentationPreferences.js";
 import { useChatController } from "./features/chat/useChatController.js";
 import { useIdlePresence } from "./app/useIdlePresence.js";
-import { AudioPlaybackRecovery,GlobalVoiceAudio,RemoteAudio } from "./features/voice/VoicePresentation.js";
+import { AudioPlaybackRecovery, GlobalVoiceAudio, RemoteAudio } from "./features/voice/VoicePresentation.js";
 import { joinVoiceWithAudioUnlock } from "./features/voice/voiceActions.js";
 import { combineOutputVolume } from "./lib/audioLevels.js";
-import { releaseUnusedSharedAudioOutput,unlockSharedAudioOutput } from "./lib/audioOutput.js";
-import { readRoomHistory,type RoomHistory } from "./lib/channelState.js";
+import { releaseUnusedSharedAudioOutput, unlockSharedAudioOutput } from "./lib/audioOutput.js";
+import { readRoomHistory, type RoomHistory } from "./lib/channelState.js";
 import { requestJoinedMusicCommand } from "./lib/musicBot.js";
 import { useMusicQueue } from "./lib/useMusicQueue.js";
 import { defaultServerId } from "./lib/navigation.js";
@@ -33,10 +33,13 @@ export function App() {
   const activeVoiceRoomRef = useRef<string | null>(null);
   const leaveVoiceRef = useRef<() => void>(() => undefined);
   const moveVoiceRef = useRef<(roomId: string) => void>(() => undefined);
-  const [forceLeaveNotice, setForceLeaveNotice] = useState<{ reason: VoiceForceLeaveReason; revision: number } | null>(null);
+  const [forceLeaveNotice, setForceLeaveNotice] = useState<{ reason: VoiceForceLeaveReason; revision: number } | null>(
+    null
+  );
   const [deletionRequestRevision, setDeletionRequestRevision] = useState(0);
   const forceLeaveNoticeRef = useRef<(reason: VoiceForceLeaveReason) => void>(() => undefined);
-  forceLeaveNoticeRef.current = (reason) => setForceLeaveNotice((current) => ({ reason, revision: (current?.revision ?? 0) + 1 }));
+  forceLeaveNoticeRef.current = (reason) =>
+    setForceLeaveNotice((current) => ({ reason, revision: (current?.revision ?? 0) + 1 }));
   const checkStillSignedInRef = useRef<() => Promise<void>>(async () => undefined);
   const notifyMessageRef = useRef<(message: ChatMessage) => void>(() => undefined);
   const navigate = useCallback((path: string) => {
@@ -58,7 +61,7 @@ export function App() {
   }, []);
   const session = useSessionController(route, navigate);
   const preferences = usePresentationPreferences(session.user?.id ?? null);
-  const { theme,language,timeFormat,t,changeLanguage,changeTheme,changeTimeFormat } = preferences;
+  const { theme, language, timeFormat, t, changeLanguage, changeTheme, changeTimeFormat } = preferences;
   checkStillSignedInRef.current = session.checkStillSignedIn;
   const workspace = useWorkspaceController({
     user: session.user,
@@ -68,17 +71,27 @@ export function App() {
     roomServerIdsRef,
     routeRef
   });
-  const handleOwnerClaimed = useCallback((claimed: PublicUser) => {
-    session.completeAuthentication(claimed);
-    navigate(`/app/server/${defaultServerId}/owner`);
-  }, [navigate, session.completeAuthentication]);
-  const handleAccessClaimed = useCallback((claimed: PublicUser, serverId: string) => {
-    session.completeAuthentication(claimed);
-    void workspace.loadAcceptedServer(serverId).catch(() => navigate("/"));
-  }, [navigate, session.completeAuthentication, workspace.loadAcceptedServer]);
-  const serverNotifications = useServerNotifications(session.user, workspace.servers.map(server => server.id).join("|"));
+  const handleOwnerClaimed = useCallback(
+    (claimed: PublicUser) => {
+      session.completeAuthentication(claimed);
+      navigate(`/app/server/${defaultServerId}/owner`);
+    },
+    [navigate, session.completeAuthentication]
+  );
+  const handleAccessClaimed = useCallback(
+    (claimed: PublicUser, serverId: string) => {
+      session.completeAuthentication(claimed);
+      void workspace.loadAcceptedServer(serverId).catch(() => navigate("/"));
+    },
+    [navigate, session.completeAuthentication, workspace.loadAcceptedServer]
+  );
+  const serverNotifications = useServerNotifications(
+    session.user,
+    workspace.servers.map((server) => server.id).join("|")
+  );
   const chat = useChatController({
-    markRead: serverNotifications.markRead, user: session.user,
+    markRead: serverNotifications.markRead,
+    user: session.user,
     route,
     currentRoom: workspace.currentRoom,
     roomServerIds: roomServerIdsRef,
@@ -88,17 +101,21 @@ export function App() {
   const realtime = useRealtimeSync({
     user: session.user,
     route,
-    activeVoiceRoomRef, leaveVoiceRef,
+    activeVoiceRoomRef,
+    leaveVoiceRef,
     moveVoiceRef,
     forceLeaveNoticeRef,
     checkStillSignedInRef,
     handlers: {
-      connected: serverNotifications.refresh, notificationsChanged: serverNotifications.refresh,
+      connected: serverNotifications.refresh,
+      notificationsChanged: serverNotifications.refresh,
       presenceSnapshot: workspace.applyPresenceSnapshot,
       presenceOnline: workspace.applyPresenceOnline,
       presenceOffline: workspace.applyPresenceOffline,
       presenceStatus: workspace.applyPresenceStatus,
-      directoryChanged: (serverId) => { void workspace.refreshServerDirectory(serverId).catch(() => undefined); },
+      directoryChanged: (serverId) => {
+        void workspace.refreshServerDirectory(serverId).catch(() => undefined);
+      },
       memberUpdated: (serverId, user) => {
         workspace.applyMemberUpdate(serverId, user);
         chat.applyMemberRename(serverId, user);
@@ -106,12 +123,28 @@ export function App() {
       memberDeleted: (serverId, userId) => chat.applyMemberDeletion(serverId, userId),
       serverUpdated: workspace.applyServerName,
       afkUpdated: workspace.applyAfkTimeout,
-      roomsChanged: (serverId, roomId) => { serverNotifications.refresh(); void workspace.refreshRooms(serverId, roomId).catch(() => undefined); },
-      serverDeleted: (serverId) => { serverNotifications.refresh(); void workspace.refreshServersAfterDeletion(serverId).catch(() => undefined); },
-      messageNew: (message) => { chat.applyNewMessage(message); roomServerIdsRef.current[message.roomId] = message.serverId; serverNotifications.refresh(); if (serverNotifications.messageAllowed(message)) notifyMessageRef.current(message); },
+      roomsChanged: (serverId, roomId) => {
+        serverNotifications.refresh();
+        void workspace.refreshRooms(serverId, roomId).catch(() => undefined);
+      },
+      serverDeleted: (serverId) => {
+        serverNotifications.refresh();
+        void workspace.refreshServersAfterDeletion(serverId).catch(() => undefined);
+      },
+      messageNew: (message) => {
+        chat.applyNewMessage(message);
+        roomServerIdsRef.current[message.roomId] = message.serverId;
+        serverNotifications.refresh();
+        if (serverNotifications.messageAllowed(message)) notifyMessageRef.current(message);
+      },
       messageUpdated: chat.applyUpdatedMessage,
+      messageReactions: chat.applyReactions,
+      pinsChanged: chat.applyPinsChanged,
       messageDeleted: chat.applyDeletedMessage,
-      accessRevoked: (serverId) => { workspace.revokeAccess(serverId); serverNotifications.refresh(); },
+      accessRevoked: (serverId) => {
+        workspace.revokeAccess(serverId);
+        serverNotifications.refresh();
+      },
       accountDeleted: session.finishDeletedAccount,
       deletionRequestCreated: () => setDeletionRequestRevision((current) => current + 1)
     }
@@ -129,9 +162,10 @@ export function App() {
   });
   const musicQueues = useMusicQueue(realtime.socket);
   const localVoiceSpeaking = Boolean(
-    audio.voice.activeRoomId
-      && audio.voice.voiceSnapshots[audio.voice.activeRoomId]?.members
-        .find((member) => member.user.userId === session.user?.id)?.media.speaking
+    audio.voice.activeRoomId &&
+    audio.voice.voiceSnapshots[audio.voice.activeRoomId]?.members.find(
+      (member) => member.user.userId === session.user?.id
+    )?.media.speaking
   );
   useIdlePresence({
     roomServerIdsRef,
@@ -143,157 +177,218 @@ export function App() {
   // The move arrives as an instruction, not a state change, so it runs through
   // the same join the member would have performed themselves.
   useEffect(() => {
-    moveVoiceRef.current = (roomId: string) => { void audio.voice.join(roomId, [], {}); };
+    moveVoiceRef.current = (roomId: string) => {
+      void audio.voice.join(roomId, [], {});
+    };
   }, [audio.voice.join]);
 
   useEffect(() => {
     if (route.name === "voice") audio.voice.requestSnapshot(route.roomId);
   }, [route, audio.voice.requestSnapshot]);
-  useEffect(() => { notifyMessageRef.current = audio.notifyMessage; }, [audio.notifyMessage]);
-  const renderSurface = (surface: ReactNode) => session.user ? (
-    <AuthenticatedAppSurface connectionHealth={audio.connectionHealth} t={t} audio={<>
-      <GlobalVoiceAudio
-        streams={audio.voice.remoteStreams}
-        muted={audio.voice.controls.deafen.on || audio.voice.voiceModeration.deafened}
-        mutedUserIds={new Set((audio.voice.activeRoomId ? audio.voice.voiceSnapshots[audio.voice.activeRoomId]?.members : [])?.filter((member) => member.moderation.muted).map((member) => member.user.userId) ?? [])}
-        memberVolumes={audio.memberVolumes}
-        outputVolume={audio.audioLevels.output}
-      />
-      {audio.microphoneTest.monitorStream ? <RemoteAudio stream={audio.microphoneTest.monitorStream} muted={false} volume={combineOutputVolume(DEFAULT_VOLUME_PERCENT, audio.audioLevels.output)} /> : null}
-      {audio.audioPlaybackBlocked ? <AudioPlaybackRecovery t={t} /> : null}
-    </>}>
-      {surface}
-    </AuthenticatedAppSurface>
-  ) : surface;
+  useEffect(() => {
+    notifyMessageRef.current = audio.notifyMessage;
+  }, [audio.notifyMessage]);
+  const renderSurface = (surface: ReactNode) =>
+    session.user ? (
+      <AuthenticatedAppSurface
+        connectionHealth={audio.connectionHealth}
+        t={t}
+        audio={
+          <>
+            <GlobalVoiceAudio
+              streams={audio.voice.remoteStreams}
+              muted={audio.voice.controls.deafen.on || audio.voice.voiceModeration.deafened}
+              mutedUserIds={
+                new Set(
+                  (audio.voice.activeRoomId ? audio.voice.voiceSnapshots[audio.voice.activeRoomId]?.members : [])
+                    ?.filter((member) => member.moderation.muted)
+                    .map((member) => member.user.userId) ?? []
+                )
+              }
+              memberVolumes={audio.memberVolumes}
+              outputVolume={audio.audioLevels.output}
+            />
+            {audio.microphoneTest.monitorStream ? (
+              <RemoteAudio
+                stream={audio.microphoneTest.monitorStream}
+                muted={false}
+                volume={combineOutputVolume(DEFAULT_VOLUME_PERCENT, audio.audioLevels.output)}
+              />
+            ) : null}
+            {audio.audioPlaybackBlocked ? <AudioPlaybackRecovery t={t} /> : null}
+          </>
+        }
+      >
+        {surface}
+      </AuthenticatedAppSurface>
+    ) : (
+      surface
+    );
   const user = session.user;
   const currentNickname = user
-    ? workspace.serverMembers.find((member) => member.userId === user.id)?.nickname
-      ?? workspace.onlineUsers.find((member) => member.userId === user.id)?.nickname
-      ?? user.nickname
+    ? (workspace.serverMembers.find((member) => member.userId === user.id)?.nickname ??
+      workspace.onlineUsers.find((member) => member.userId === user.id)?.nickname ??
+      user.nickname)
     : "";
-  const onJoinVoice = useCallback(async (roomId: string, options: VoiceJoinRequest = {}) => {
-    if (!audio.voice.activeRoomId && audio.microphoneTest.active) await audio.stopMicrophoneTest();
-    return joinVoiceWithAudioUnlock(roomId, unlockSharedAudioOutput, releaseUnusedSharedAudioOutput, (nextRoomId) => audio.voice.join(nextRoomId, options.visualTargets ?? [], options));
-  }, [audio.microphoneTest.active, audio.stopMicrophoneTest, audio.voice.activeRoomId, audio.voice.join]);
-  const shellProps = user ? {
-    user, currentNickname, route,
-    servers: workspace.servers,
-    activeServerId: workspace.activeServerId,
-    rooms: workspace.roomGroups, categories: workspace.categories, uncategorizedPosition: workspace.uncategorizedPosition,
-    onlineUsers: workspace.onlineUsers,
-    serverMembers: workspace.serverMembers,
-    socketState: realtime.socketState,
-    connectionHealth: audio.connectionHealth,
-    voiceQuality: audio.voiceQuality, screenConnectionWarnings: audio.screenConnectionWarnings,
-    activeVoiceRoomId: audio.voice.activeRoomId,
-    controls: audio.voice.controls,
-    voiceModeration: audio.voice.voiceModeration,
-    micLockedByRoom: Boolean(audio.voice.activeRoomId && workspace.afkRoomIds.includes(audio.voice.activeRoomId)),
-    appConfig: session.appConfig, microphoneHealthWarning: audio.voice.microphoneHealthWarning,
-    voiceError: audio.voice.error || session.rtcConfigError,
-    voiceErrorRevision: audio.voice.error ? audio.voice.errorRevision : session.rtcConfigErrorRevision,
-    voiceNotice: forceLeaveNotice ? forceLeaveNoticeKey(forceLeaveNotice.reason) : "",
-    voiceNoticeRevision: forceLeaveNotice?.revision ?? 0,
-    visualTargets: audio.voice.visualTargets, voiceSnapshots: audio.voice.voiceSnapshots,
-    musicQueues,
-    remoteStreams: audio.voice.remoteStreams,
-    peerConnectionStates: audio.voice.peerConnectionStates, screenPlaybackStates: audio.voice.screenPlaybackStates,
-    localPreviews: audio.voice.localPreviews,
-    memberVolumes: audio.memberVolumes,
-    screenVolumes: audio.screenVolumes,
-    ...serverNotifications.presentation,
-    roomHistory,
-    pendingLiveWatch: audio.pendingLiveWatch,
-    audioDevices: audio.audioDevices,
-    audioLevels: audio.audioLevels,
-    noiseSuppression: audio.noiseSuppression,
-    noiseSuppressionSupported: audio.noiseSuppressionSupported,
-    notificationSounds: audio.notificationSounds,
-    deletionRequestRevision,
-    externalPreviews: preferences.externalPreviews,
-    microphoneTestActive: audio.microphoneTest.active,
-    microphoneTestError: audio.microphoneTest.error,
-    microphoneTestErrorOccurrences: audio.microphoneTest.errorOccurrences,
-    microphoneTestErrorRevision: audio.microphoneTest.errorRevision,
-    drawer,
-    theme,
-    timeFormat,
-    language,
-    t,
-    currentRoom: workspace.currentRoom,
-    onNavigate: navigate,
-    onSelectServer: workspace.actions.selectServer,
-    onCreateServer: workspace.actions.createServer,
-    onUpdateServerName: workspace.actions.updateServerName, onSetAfkTimeout: workspace.actions.setAfkTimeout,
-    onCreateRoom: workspace.actions.createRoom,
-    onCreateCategory: workspace.actions.createCategory, onRenameCategory: workspace.actions.renameCategory,
-    onDeleteCategory: workspace.actions.deleteCategory, onSaveRoomLayout: workspace.actions.saveRoomLayout,
-    onRenameRoom: workspace.actions.renameRoom,
-    onDeleteRoom: workspace.actions.deleteRoom,
-    onDeleteServer: workspace.actions.deleteServer,
-    onModerateMember: workspace.actions.moderateMember,
-    onVoiceModeration: workspace.actions.voiceModeration,
-    onUpdateMemberNickname: async (userId: string, nickname: string) => {
-      const updated = await workspace.actions.updateMemberNickname(userId, nickname);
-      chat.applyMemberRename(workspace.activeServerId, updated);
-      return updated;
+  const onJoinVoice = useCallback(
+    async (roomId: string, options: VoiceJoinRequest = {}) => {
+      if (!audio.voice.activeRoomId && audio.microphoneTest.active) await audio.stopMicrophoneTest();
+      return joinVoiceWithAudioUnlock(roomId, unlockSharedAudioOutput, releaseUnusedSharedAudioOutput, (nextRoomId) =>
+        audio.voice.join(nextRoomId, options.visualTargets ?? [], options)
+      );
     },
-    onUpdateMemberPermissions: workspace.actions.updateMemberPermissions,
-    onDisconnectMember: workspace.actions.disconnectMember,
-    onMoveMember: workspace.actions.moveMember,
-    onDrawerChange: setDrawer,
-    onThemeChange: changeTheme,
-    onTimeFormatChange: changeTimeFormat,
-    onLanguageChange: changeLanguage,
-    onJoinVoice,
-    onWatchLive: (request: LiveWatchRequest) => { audio.setPendingLiveWatch(request); navigate(serverPath(request.serverId, "voice", request.roomId)); },
-    onLiveWatchHandled: () => audio.setPendingLiveWatch(null),
-    onRequestVoiceSnapshot: audio.voice.requestSnapshot,
-    onSetVisualSubscriptions: audio.voice.setVisualSubscriptions,
-    onScreenPlaybackReady: audio.voice.noteScreenPlayback, onRetryScreenPlayback: audio.voice.retryScreenPlayback,
-    onMusicControl: (roomId: string, command: MusicCommand) => requestJoinedMusicCommand(realtime.socket, roomId, command,
-      audio.voice.activeRoomId, audio.voice.voiceSnapshots[roomId], user.id),
-    onMemberVolumeChange: audio.changeMemberVolume,
-    onScreenVolumeChange: audio.changeScreenVolume,
-    onInputVolumeChange: (volume: number) => audio.changeAudioLevel("input", volume),
-    onOutputVolumeChange: (volume: number) => audio.changeAudioLevel("output", volume),
-    onNoiseSuppressionChange: audio.changeNoiseSuppression,
-    onNotificationSoundsChange: audio.changeNotificationSounds,
-    onExternalPreviewChange: preferences.changeExternalPreview,
-    onToggleMicrophoneTest: audio.toggleMicrophoneTest,
-    onCloseAudioSettings: () => { void audio.stopMicrophoneTest(); },
-    onToggleControl: audio.voice.toggleControl,
-    onLeaveVoice: audio.voice.leave,
-    onLogout: async () => {
-      audio.voice.leave();
-      await logout();
-      session.clearAuthentication();
-      navigate("/invite");
-    }
-  } satisfies ShellModel & ShellActions : null;
+    [audio.microphoneTest.active, audio.stopMicrophoneTest, audio.voice.activeRoomId, audio.voice.join]
+  );
+  const shellProps = user
+    ? ({
+        user,
+        currentNickname,
+        route,
+        servers: workspace.servers,
+        activeServerId: workspace.activeServerId,
+        rooms: workspace.roomGroups,
+        categories: workspace.categories,
+        uncategorizedPosition: workspace.uncategorizedPosition,
+        onlineUsers: workspace.onlineUsers,
+        serverMembers: workspace.serverMembers,
+        socketState: realtime.socketState,
+        connectionHealth: audio.connectionHealth,
+        voiceQuality: audio.voiceQuality,
+        screenConnectionWarnings: audio.screenConnectionWarnings,
+        activeVoiceRoomId: audio.voice.activeRoomId,
+        controls: audio.voice.controls,
+        voiceModeration: audio.voice.voiceModeration,
+        micLockedByRoom: Boolean(audio.voice.activeRoomId && workspace.afkRoomIds.includes(audio.voice.activeRoomId)),
+        appConfig: session.appConfig,
+        microphoneHealthWarning: audio.voice.microphoneHealthWarning,
+        voiceError: audio.voice.error || session.rtcConfigError,
+        voiceErrorRevision: audio.voice.error ? audio.voice.errorRevision : session.rtcConfigErrorRevision,
+        voiceNotice: forceLeaveNotice ? forceLeaveNoticeKey(forceLeaveNotice.reason) : "",
+        voiceNoticeRevision: forceLeaveNotice?.revision ?? 0,
+        visualTargets: audio.voice.visualTargets,
+        voiceSnapshots: audio.voice.voiceSnapshots,
+        musicQueues,
+        remoteStreams: audio.voice.remoteStreams,
+        peerConnectionStates: audio.voice.peerConnectionStates,
+        screenPlaybackStates: audio.voice.screenPlaybackStates,
+        localPreviews: audio.voice.localPreviews,
+        memberVolumes: audio.memberVolumes,
+        screenVolumes: audio.screenVolumes,
+        ...serverNotifications.presentation,
+        roomHistory,
+        pendingLiveWatch: audio.pendingLiveWatch,
+        audioDevices: audio.audioDevices,
+        audioLevels: audio.audioLevels,
+        noiseSuppression: audio.noiseSuppression,
+        noiseSuppressionSupported: audio.noiseSuppressionSupported,
+        notificationSounds: audio.notificationSounds,
+        deletionRequestRevision,
+        externalPreviews: preferences.externalPreviews,
+        microphoneTestActive: audio.microphoneTest.active,
+        microphoneTestError: audio.microphoneTest.error,
+        microphoneTestErrorOccurrences: audio.microphoneTest.errorOccurrences,
+        microphoneTestErrorRevision: audio.microphoneTest.errorRevision,
+        drawer,
+        theme,
+        timeFormat,
+        language,
+        t,
+        currentRoom: workspace.currentRoom,
+        onNavigate: navigate,
+        onSelectServer: workspace.actions.selectServer,
+        onCreateServer: workspace.actions.createServer,
+        onUpdateServerName: workspace.actions.updateServerName,
+        onSetAfkTimeout: workspace.actions.setAfkTimeout,
+        onCreateRoom: workspace.actions.createRoom,
+        onCreateCategory: workspace.actions.createCategory,
+        onRenameCategory: workspace.actions.renameCategory,
+        onDeleteCategory: workspace.actions.deleteCategory,
+        onSaveRoomLayout: workspace.actions.saveRoomLayout,
+        onRenameRoom: workspace.actions.renameRoom,
+        onDeleteRoom: workspace.actions.deleteRoom,
+        onDeleteServer: workspace.actions.deleteServer,
+        onModerateMember: workspace.actions.moderateMember,
+        onVoiceModeration: workspace.actions.voiceModeration,
+        onUpdateMemberNickname: async (userId: string, nickname: string) => {
+          const updated = await workspace.actions.updateMemberNickname(userId, nickname);
+          chat.applyMemberRename(workspace.activeServerId, updated);
+          return updated;
+        },
+        onUpdateMemberPermissions: workspace.actions.updateMemberPermissions,
+        onDisconnectMember: workspace.actions.disconnectMember,
+        onMoveMember: workspace.actions.moveMember,
+        onDrawerChange: setDrawer,
+        onThemeChange: changeTheme,
+        onTimeFormatChange: changeTimeFormat,
+        onLanguageChange: changeLanguage,
+        onJoinVoice,
+        onWatchLive: (request: LiveWatchRequest) => {
+          audio.setPendingLiveWatch(request);
+          navigate(serverPath(request.serverId, "voice", request.roomId));
+        },
+        onLiveWatchHandled: () => audio.setPendingLiveWatch(null),
+        onRequestVoiceSnapshot: audio.voice.requestSnapshot,
+        onSetVisualSubscriptions: audio.voice.setVisualSubscriptions,
+        onScreenPlaybackReady: audio.voice.noteScreenPlayback,
+        onRetryScreenPlayback: audio.voice.retryScreenPlayback,
+        onMusicControl: (roomId: string, command: MusicCommand) =>
+          requestJoinedMusicCommand(
+            realtime.socket,
+            roomId,
+            command,
+            audio.voice.activeRoomId,
+            audio.voice.voiceSnapshots[roomId],
+            user.id
+          ),
+        onMemberVolumeChange: audio.changeMemberVolume,
+        onScreenVolumeChange: audio.changeScreenVolume,
+        onInputVolumeChange: (volume: number) => audio.changeAudioLevel("input", volume),
+        onOutputVolumeChange: (volume: number) => audio.changeAudioLevel("output", volume),
+        onNoiseSuppressionChange: audio.changeNoiseSuppression,
+        onNotificationSoundsChange: audio.changeNotificationSounds,
+        onExternalPreviewChange: preferences.changeExternalPreview,
+        onToggleMicrophoneTest: audio.toggleMicrophoneTest,
+        onCloseAudioSettings: () => {
+          void audio.stopMicrophoneTest();
+        },
+        onToggleControl: audio.voice.toggleControl,
+        onLeaveVoice: audio.voice.leave,
+        onLogout: async () => {
+          audio.voice.leave();
+          await logout();
+          session.clearAuthentication();
+          navigate("/invite");
+        }
+      } satisfies ShellModel & ShellActions)
+    : null;
   const textActions = route.name === "text" ? chat.actionsForRoom(route.roomId) : null;
-  return <ClientUpdateBoundary latestVersion={session.appConfig.clientVersion} media={audio} t={t}><AppRoutes
-    route={route}
-    user={user}
-    authState={session.authState}
-    rtcConfigReady={session.rtcConfigReady}
-    workspaceReady={workspace.workspaceReady} workspaceError={workspace.workspaceError}
-    shellProps={shellProps}
-    messages={route.name === "text" ? chat.messagesByRoom[route.roomId] ?? [] : []}
-    language={language}
-    timeFormat={timeFormat}
-    t={t}
-    renderSurface={renderSurface}
-    turnstileSiteKey={session.appConfig.turnstile?.siteKey ?? null}
-    signedOutReason={session.signedOutReason}
-    analytics={session.appConfig.analytics}
-    completeAuthentication={session.completeAuthentication}
-    loadAcceptedServer={workspace.loadAcceptedServer}
-    onOwnerClaimed={handleOwnerClaimed}
-    onAccessClaimed={handleAccessClaimed}
-    navigate={navigate}
-    changeLanguage={changeLanguage}
-    textRoomOutbox={route.name === "text" ? chat.outboxByRoom[route.roomId] ?? [] : []}
-    textRoomActions={textActions}
-  /></ClientUpdateBoundary>;
+  return (
+    <ClientUpdateBoundary latestVersion={session.appConfig.clientVersion} media={audio} t={t}>
+      <AppRoutes
+        route={route}
+        user={user}
+        authState={session.authState}
+        rtcConfigReady={session.rtcConfigReady}
+        workspaceReady={workspace.workspaceReady}
+        workspaceError={workspace.workspaceError}
+        shellProps={shellProps}
+        messages={route.name === "text" ? (chat.messagesByRoom[route.roomId] ?? []) : []}
+        language={language}
+        timeFormat={timeFormat}
+        t={t}
+        renderSurface={renderSurface}
+        turnstileSiteKey={session.appConfig.turnstile?.siteKey ?? null}
+        signedOutReason={session.signedOutReason}
+        analytics={session.appConfig.analytics}
+        completeAuthentication={session.completeAuthentication}
+        loadAcceptedServer={workspace.loadAcceptedServer}
+        onOwnerClaimed={handleOwnerClaimed}
+        onAccessClaimed={handleAccessClaimed}
+        navigate={navigate}
+        changeLanguage={changeLanguage}
+        textRoomOutbox={route.name === "text" ? (chat.outboxByRoom[route.roomId] ?? []) : []}
+        textRoomActions={textActions}
+      />
+    </ClientUpdateBoundary>
+  );
 }

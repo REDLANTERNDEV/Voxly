@@ -9,7 +9,9 @@ describe("desktop link native boundary", () => {
     const cargo = readFileSync("src-tauri/Cargo.toml", "utf8");
     assert.match(cargo, /tauri-plugin-single-instance = .*features = \["deep-link"\]/);
     const source = readFileSync("src-tauri/src/shell/runtime.rs", "utf8");
-    assert.ok(source.indexOf(".plugin(tauri_plugin_single_instance") < source.indexOf(".plugin(tauri_plugin_deep_link"));
+    assert.ok(
+      source.indexOf(".plugin(tauri_plugin_single_instance") < source.indexOf(".plugin(tauri_plugin_deep_link")
+    );
     assert.equal((source.match(/deep_links::from_args/g) ?? []).length, 2);
   });
 
@@ -36,7 +38,7 @@ describe("desktop link native boundary", () => {
     assert.doesNotMatch(receive, /save_installation/);
     assert.match(receive, /address: target\.origin/);
     assert.match(intake, /if \(busy\) deferredDesktopLink = target/);
-    assert.match(ui, /const target = deferredDesktopLink; deferredDesktopLink = null/);
+    assert.match(ui, /const target = deferredDesktopLink;\s*deferredDesktopLink = null/);
     assert.doesNotMatch(intake, /save_installation|stopMedia|location\./);
     assert.match(receive, /await transition/);
   });

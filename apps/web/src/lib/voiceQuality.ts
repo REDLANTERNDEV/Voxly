@@ -121,10 +121,7 @@ function stringValue(value: unknown) {
 export function readVoiceCounters(report: Iterable<Record<string, unknown>>): VoiceCounters {
   const totals = { ...emptyCounters };
   for (const entry of report) {
-    if (
-      entry.type !== "inbound-rtp"
-      || (entry.kind !== "audio" && entry.mediaType !== "audio")
-    ) continue;
+    if (entry.type !== "inbound-rtp" || (entry.kind !== "audio" && entry.mediaType !== "audio")) continue;
     totals.packetsReceived += count(entry.packetsReceived);
     totals.packetsLost += count(entry.packetsLost);
     totals.concealedSamples += count(entry.concealedSamples);
@@ -149,30 +146,36 @@ export function readVoiceCounters(report: Iterable<Record<string, unknown>>): Vo
 export function readVoiceTransport(report: Iterable<Record<string, unknown>>): VoiceTransportReading {
   const entries = [...report];
   const byId = new Map(
-    entries
-      .filter((entry) => typeof entry.id === "string")
-      .map((entry) => [entry.id as string, entry])
+    entries.filter((entry) => typeof entry.id === "string").map((entry) => [entry.id as string, entry])
   );
   const selectedPairId = entries.find((entry) => entry.type === "transport")?.selectedCandidatePairId;
   const selectedPair = typeof selectedPairId === "string" ? byId.get(selectedPairId) : undefined;
   const pair = selectedPair?.type === "candidate-pair" ? selectedPair : undefined;
-  const selectedOrNominatedPair = pair ?? entries.find((entry) =>
-    entry.type === "candidate-pair"
-    && entry.state === "succeeded"
-    && (entry.nominated === true || entry.selected === true)
-  ) ?? entries.find((entry) => entry.type === "candidate-pair" && entry.state === "succeeded");
+  const selectedOrNominatedPair =
+    pair ??
+    entries.find(
+      (entry) =>
+        entry.type === "candidate-pair" &&
+        entry.state === "succeeded" &&
+        (entry.nominated === true || entry.selected === true)
+    ) ??
+    entries.find((entry) => entry.type === "candidate-pair" && entry.state === "succeeded");
 
   if (!selectedOrNominatedPair) {
     return { rttMs: null, candidateType: null, candidatePairState: null };
   }
 
-  const local = typeof selectedOrNominatedPair.localCandidateId === "string" ? byId.get(selectedOrNominatedPair.localCandidateId) : undefined;
-  const remote = typeof selectedOrNominatedPair.remoteCandidateId === "string" ? byId.get(selectedOrNominatedPair.remoteCandidateId) : undefined;
+  const local =
+    typeof selectedOrNominatedPair.localCandidateId === "string"
+      ? byId.get(selectedOrNominatedPair.localCandidateId)
+      : undefined;
+  const remote =
+    typeof selectedOrNominatedPair.remoteCandidateId === "string"
+      ? byId.get(selectedOrNominatedPair.remoteCandidateId)
+      : undefined;
   const localType = stringValue(local?.candidateType) ?? stringValue(selectedOrNominatedPair.localCandidateType);
   const remoteType = stringValue(remote?.candidateType) ?? stringValue(selectedOrNominatedPair.remoteCandidateType);
-  const candidateType = localType === "relay" || remoteType === "relay"
-    ? "relay"
-    : localType ?? remoteType ?? null;
+  const candidateType = localType === "relay" || remoteType === "relay" ? "relay" : (localType ?? remoteType ?? null);
   const rttSeconds = finiteNumber(selectedOrNominatedPair.currentRoundTripTime);
 
   return {
@@ -219,12 +222,8 @@ export function updateVoiceRecoveryEligibility(state: VoiceQualityRecoveryState,
     };
   }
 
-  const consecutiveDegradedSamples = Math.min(
-    recoverySampleThreshold,
-    state.consecutiveDegradedSamples + 1
-  );
-  const cooldownElapsed = state.lastRecoveryAt === null
-    || now - state.lastRecoveryAt >= recoveryCooldownMs;
+  const consecutiveDegradedSamples = Math.min(recoverySampleThreshold, state.consecutiveDegradedSamples + 1);
+  const cooldownElapsed = state.lastRecoveryAt === null || now - state.lastRecoveryAt >= recoveryCooldownMs;
 
   if (consecutiveDegradedSamples >= recoverySampleThreshold && cooldownElapsed) {
     return {
@@ -249,11 +248,12 @@ function delta(previous: number, next: number) {
 }
 
 function samplesToMs(samples: number, perSecond: number) {
-  return (samples / decoderSampleRate) * 1000 / perSecond;
+  return ((samples / decoderSampleRate) * 1000) / perSecond;
 }
 
 function gradeFor(lossPercent: number, concealedMs: number, resyncMs: number): VoiceQualityGrade {
-  if (lossPercent >= breakingPercent || concealedMs >= breakingMsPerSecond || resyncMs >= breakingMsPerSecond) return "breaking";
+  if (lossPercent >= breakingPercent || concealedMs >= breakingMsPerSecond || resyncMs >= breakingMsPerSecond)
+    return "breaking";
   if (lossPercent >= lossyPercent || concealedMs >= audibleMsPerSecond || resyncMs >= audibleMsPerSecond) {
     return "unstable";
   }
@@ -289,8 +289,8 @@ export function voiceQualityReading(previous: VoiceCounters, next: VoiceCounters
   // what discontinuous transmission is for and is inaudible by design.
   const audibleConcealed = Math.max(
     0,
-    delta(previous.concealedSamples, next.concealedSamples)
-      - delta(previous.silentConcealedSamples, next.silentConcealedSamples)
+    delta(previous.concealedSamples, next.concealedSamples) -
+      delta(previous.silentConcealedSamples, next.silentConcealedSamples)
   );
 
   const lossPercent = expected > 0 ? (lost / expected) * 100 : 0;
@@ -323,13 +323,13 @@ export function voiceQualityReading(previous: VoiceCounters, next: VoiceCounters
  * or resynchronization also qualifies while the remote member is speaking.
  */
 export function voiceQualityNeedsRecovery(reading: VoiceQualityReading, expectingAudio: boolean) {
-  return reading.grade === "breaking" && (
-    reading.concealedMs >= breakingMsPerSecond
-    || (expectingAudio && (
-      reading.lossPercent >= breakingPercent
-      || reading.spedUpMs >= breakingMsPerSecond
-      || reading.slowedDownMs >= breakingMsPerSecond
-    ))
+  return (
+    reading.grade === "breaking" &&
+    (reading.concealedMs >= breakingMsPerSecond ||
+      (expectingAudio &&
+        (reading.lossPercent >= breakingPercent ||
+          reading.spedUpMs >= breakingMsPerSecond ||
+          reading.slowedDownMs >= breakingMsPerSecond)))
   );
 }
 
@@ -343,9 +343,10 @@ export function voiceMediaStalled(previous: VoiceCounters, next: VoiceCounters, 
   const received = delta(previous.packetsReceived, next.packetsReceived);
   const emitted = delta(previous.jitterBufferEmittedCount, next.jitterBufferEmittedCount);
   const silent = delta(previous.silentConcealedSamples, next.silentConcealedSamples);
-  const decoderStopped = previous.jitterBufferEmittedCountAvailable === true
-    && next.jitterBufferEmittedCountAvailable === true
-    && emitted === 0;
+  const decoderStopped =
+    previous.jitterBufferEmittedCountAvailable === true &&
+    next.jitterBufferEmittedCountAvailable === true &&
+    emitted === 0;
   return decoderStopped || (received === 0 && (silent >= decoderSampleRate / 2 || emitted === 0));
 }
 

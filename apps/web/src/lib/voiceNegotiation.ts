@@ -6,10 +6,7 @@
  */
 export { shouldIgnoreIncomingOffer, shouldInitiatePeerConnection } from "@voxly/shared";
 
-export function staleVoicePeerUserIds(
-  peerUserIds: Iterable<string>,
-  activeMemberUserIds: Iterable<string>
-) {
+export function staleVoicePeerUserIds(peerUserIds: Iterable<string>, activeMemberUserIds: Iterable<string>) {
   const activeMemberIds = new Set(activeMemberUserIds);
   return [...peerUserIds].filter((peerUserId) => !activeMemberIds.has(peerUserId));
 }

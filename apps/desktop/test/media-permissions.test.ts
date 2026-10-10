@@ -7,12 +7,21 @@ const source = readFileSync("src-tauri/src/media-permissions.js", "utf8");
 function boot(origin = "https://chat.example", top = true, fail = false) {
   const calls: unknown[][] = [];
   const window = {
-    location: { origin }, top: null as unknown,
-    __TAURI_INTERNALS__: { invoke: (...args: unknown[]) => {
-      calls.push(args);
-      return fail ? Promise.reject(Error("denied")) : Promise.resolve();
-    } },
-    __VOXLY_DESKTOP_MEDIA_PERMISSIONS_V1__: undefined as { version: number; resetMicrophone(...args: unknown[]): Promise<boolean>; resetCamera(...args: unknown[]): Promise<boolean> } | undefined
+    location: { origin },
+    top: null as unknown,
+    __TAURI_INTERNALS__: {
+      invoke: (...args: unknown[]) => {
+        calls.push(args);
+        return fail ? Promise.reject(Error("denied")) : Promise.resolve();
+      }
+    },
+    __VOXLY_DESKTOP_MEDIA_PERMISSIONS_V1__: undefined as
+      | {
+          version: number;
+          resetMicrophone(...args: unknown[]): Promise<boolean>;
+          resetCamera(...args: unknown[]): Promise<boolean>;
+        }
+      | undefined
   };
   window.top = top ? window : {};
   runInNewContext(`${source}("https://chat.example");`, { window });
@@ -24,7 +33,10 @@ describe("desktop media recovery boundary", () => {
     const bridge = window.__VOXLY_DESKTOP_MEDIA_PERMISSIONS_V1__!;
     assert.equal(bridge.version, 1);
     assert.equal(Object.isFrozen(bridge), true);
-    assert.equal(await bridge.resetMicrophone({ origin: "https://evil.example", path: "/voice", command: "quit_app" }), true);
+    assert.equal(
+      await bridge.resetMicrophone({ origin: "https://evil.example", path: "/voice", command: "quit_app" }),
+      true
+    );
     assert.deepEqual(calls, [["reset_microphone_permission"]]);
     assert.equal(await bridge.resetCamera({ origin: "https://evil.example" }), true);
     assert.deepEqual(calls, [["reset_microphone_permission"], ["reset_camera_permission"]]);
@@ -38,7 +50,10 @@ describe("desktop media recovery boundary", () => {
     assert.equal(calls.length, 0);
   });
   it("contains native denial without pretending reset succeeded", async () => {
-    assert.equal(await boot("https://chat.example", true, true).window.__VOXLY_DESKTOP_MEDIA_PERMISSIONS_V1__!.resetMicrophone(), false);
+    assert.equal(
+      await boot("https://chat.example", true, true).window.__VOXLY_DESKTOP_MEDIA_PERMISSIONS_V1__!.resetMicrophone(),
+      false
+    );
   });
 });
 

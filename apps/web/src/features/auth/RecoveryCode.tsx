@@ -20,11 +20,7 @@ import { recoverAddress } from "../../lib/linkGuide.js";
  * One is worth ninety seconds and the other is worth the account until it is
  * replaced, and if the two look alike the second gets treated like the first.
  */
-export function RecoveryCodeReveal({ code, t, onContinue }: {
-  code: string;
-  t: Translate;
-  onContinue: () => void;
-}) {
+export function RecoveryCodeReveal({ code, t, onContinue }: { code: string; t: Translate; onContinue: () => void }) {
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState<"" | "done" | "failed">("");
 
@@ -37,7 +33,13 @@ export function RecoveryCodeReveal({ code, t, onContinue }: {
           over a plain-HTTP local address this button used to do nothing at all
           and say nothing about it. `copyText` falls back, and either way the
           member is told what happened. */}
-      <button className="btn btn-ghost" type="button" onClick={() => { void copyText(code).then((ok) => setCopied(ok ? "done" : "failed")); }}>
+      <button
+        className="btn btn-ghost"
+        type="button"
+        onClick={() => {
+          void copyText(code).then((ok) => setCopied(ok ? "done" : "failed"));
+        }}
+      >
         {copied === "done" ? t("recovery.copied") : t("recovery.copy")}
       </button>
       {copied === "failed" ? <p className="small muted">{t("common.copyFailed")}</p> : null}

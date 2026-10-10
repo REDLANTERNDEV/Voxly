@@ -36,9 +36,13 @@ describe("linking a second Device", () => {
     // Pointedly not a session: claiming is asking, not arriving.
     assert.equal(claim.cookies.length, 0);
 
-    const waiting = (await app.server.inject({
-      method: "GET", url: "/api/devices/links/waiting", cookies: laptop.cookies
-    })).json().waiting;
+    const waiting = (
+      await app.server.inject({
+        method: "GET",
+        url: "/api/devices/links/waiting",
+        cookies: laptop.cookies
+      })
+    ).json().waiting;
     assert.equal(waiting.confirmation, claim.json().confirmation);
     assert.equal(waiting.label, "Safari on iPhone");
 
@@ -52,9 +56,13 @@ describe("linking a second Device", () => {
     for (const cookies of [laptop.cookies, phoneCookies]) {
       assert.equal((await app.server.inject({ method: "GET", url: "/api/devices", cookies })).statusCode, 200);
     }
-    const devices = (await app.server.inject({
-      method: "GET", url: "/api/devices", cookies: phoneCookies
-    })).json().devices;
+    const devices = (
+      await app.server.inject({
+        method: "GET",
+        url: "/api/devices",
+        cookies: phoneCookies
+      })
+    ).json().devices;
     assert.equal(devices.length, 2);
     assert.ok(devices.some((device: { label: string }) => device.label === "Safari on iPhone"));
   });
@@ -315,9 +323,13 @@ describe("linking a second Device", () => {
     const laptop = await bootstrapOwner(app);
     await mintCode(app, laptop.cookies);
 
-    const waiting = (await app.server.inject({
-      method: "GET", url: "/api/devices/links/waiting", cookies: laptop.cookies
-    })).json().waiting;
+    const waiting = (
+      await app.server.inject({
+        method: "GET",
+        url: "/api/devices/links/waiting",
+        cookies: laptop.cookies
+      })
+    ).json().waiting;
 
     assert.equal(waiting, null);
   });
@@ -339,13 +351,17 @@ describe("linking a second Device", () => {
   });
 });
 
-const phone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1";
+const phone =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1";
 
 async function bootstrapOwner(app: VoxlyApp) {
   const response = await app.server.inject({
     method: "POST",
     url: "/api/bootstrap/owner",
-    headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36" },
+    headers: {
+      "user-agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+    },
     payload: { bootstrapToken: "bootstrap-secret", nickname: "Owner" }
   });
 
@@ -390,9 +406,7 @@ function collect(app: VoxlyApp, claimToken: string, userAgent: string) {
 
 /** Ages every live link past its deadline without waiting ninety seconds. */
 function expireLinks(app: VoxlyApp) {
-  app.sqlite
-    .prepare("update device_links set expires_at = ?")
-    .run(new Date(Date.now() - 1000).toISOString());
+  app.sqlite.prepare("update device_links set expires_at = ?").run(new Date(Date.now() - 1000).toISOString());
 }
 
 async function acceptInvite(app: VoxlyApp, ownerCookies: Record<string, string>, nickname: string) {
@@ -413,9 +427,8 @@ async function acceptInvite(app: VoxlyApp, ownerCookies: Record<string, string>,
 }
 
 function expiryOf(app: VoxlyApp, linkId: string) {
-  const row = app.sqlite
-    .prepare("select expires_at from device_links where id = ?")
-    .get(linkId) as { expires_at: string } | undefined;
+  const row = app.sqlite.prepare("select expires_at from device_links where id = ?").get(linkId) as
+    { expires_at: string } | undefined;
   return row?.expires_at ?? "";
 }
 

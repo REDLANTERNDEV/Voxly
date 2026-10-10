@@ -1,6 +1,21 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { acceptInvite, ApiError, claimAccessLink, claimOwnerSession, createServerInvite, deleteMessage, deleteServer, deleteServerRoom, fetchRtcConfig, previewInvite, revokeInvite, updateServer, updateServerMemberNickname, updateVoiceModeration } from "../src/api.js";
+import {
+  acceptInvite,
+  ApiError,
+  claimAccessLink,
+  claimOwnerSession,
+  createServerInvite,
+  deleteMessage,
+  deleteServer,
+  deleteServerRoom,
+  fetchRtcConfig,
+  previewInvite,
+  revokeInvite,
+  updateServer,
+  updateServerMemberNickname,
+  updateVoiceModeration
+} from "../src/api.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -20,10 +35,7 @@ describe("frontend api", () => {
       });
     };
 
-    const [first, second] = await Promise.all([
-      claimOwnerSession("claim-token"),
-      claimOwnerSession("claim-token")
-    ]);
+    const [first, second] = await Promise.all([claimOwnerSession("claim-token"), claimOwnerSession("claim-token")]);
 
     assert.equal(requests, 1);
     assert.deepEqual(first, second);
@@ -79,10 +91,11 @@ describe("frontend api", () => {
   });
 
   it("preserves Turnstile rejection codes for the invite form", async () => {
-    globalThis.fetch = async () => new Response(JSON.stringify({ error: "turnstile_failed" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" }
-    });
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ error: "turnstile_failed" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" }
+      });
 
     await assert.rejects(
       () => acceptInvite("invite-token", "Mert", "turnstile-token"),
@@ -188,9 +201,12 @@ describe("frontend api", () => {
     let request: { path: string; method?: string; body?: string } | null = null;
     globalThis.fetch = async (input, init) => {
       request = { path: String(input), method: init?.method, body: String(init?.body) };
-      return new Response(JSON.stringify({
-        user: { userId: "user/id", nickname: "Basement Ece", role: "member" }
-      }), { status: 200, headers: { "content-type": "application/json" } });
+      return new Response(
+        JSON.stringify({
+          user: { userId: "user/id", nickname: "Basement Ece", role: "member" }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
     };
 
     const response = await updateServerMemberNickname("server id", "user/id", "Basement Ece");

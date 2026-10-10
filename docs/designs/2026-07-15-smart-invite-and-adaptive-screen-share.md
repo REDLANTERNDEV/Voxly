@@ -99,11 +99,11 @@ microphone, and screen-audio senders are outside the controller.
 Apply the following standard `RTCRtpSendParameters` limits to the matching
 screen video encoding:
 
-| Profile | `scaleResolutionDownBy` | `maxFramerate` | `maxBitrate` |
-| --- | ---: | ---: | ---: |
-| `low` | `2` (about 640x360) | `15` | `700_000` bps |
-| `startup` | `1` (up to 1280x720) | `15` | `1_400_000` bps |
-| `high` | `1` (1280x720) | `30` | `3_000_000` bps |
+| Profile   | `scaleResolutionDownBy` | `maxFramerate` |    `maxBitrate` |
+| --------- | ----------------------: | -------------: | --------------: |
+| `low`     |     `2` (about 640x360) |           `15` |   `700_000` bps |
+| `startup` |    `1` (up to 1280x720) |           `15` | `1_400_000` bps |
+| `high`    |          `1` (1280x720) |           `30` | `3_000_000` bps |
 
 Set `degradationPreference` to `maintain-resolution` for all three profiles.
 These values are upper bounds, not promised bitrates. The browser remains

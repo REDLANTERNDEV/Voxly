@@ -2,14 +2,27 @@ import { useEffect } from "react";
 import type { Translate } from "../../app/types.js";
 import { ArrowIcon } from "../../components/ui/Icons.js";
 import { OpenInDesktop } from "../../components/OpenInDesktop.js";
-import { BrandLockup,NavLink } from "../../components/ui/Navigation.js";
-import { AuthPageHeader,LanguageSwitch } from "../../components/ui/Primitives.js";
-import { trackLandingView,type AnalyticsSettings } from "../../lib/analytics.js";
-import { type LanguageCode,type TranslationKey } from "../../lib/i18n.js";
+import { BrandLockup, NavLink } from "../../components/ui/Navigation.js";
+import { AuthPageHeader, LanguageSwitch } from "../../components/ui/Primitives.js";
+import { trackLandingView, type AnalyticsSettings } from "../../lib/analytics.js";
+import { type LanguageCode, type TranslationKey } from "../../lib/i18n.js";
 const landingPrincipleKeys = ["privateAccess", "selfHosted", "voiceReady", "lowFootprint"] as const;
-export function LandingPage({ language, analytics, signedOutReason = "", t, onLanguageChange, onNavigate }: {
+export function LandingPage({
+  language,
+  analytics,
+  signedOutReason = "",
+  t,
+  onLanguageChange,
+  onNavigate
+}: {
   /** Why the member is here rather than in the app, when it is worth saying. */
-  signedOutReason?: "" | "reused" | "revoked" | "request_approved" | "owner_initiated"; language: LanguageCode; analytics: AnalyticsSettings | null; t: Translate; onLanguageChange: (language: LanguageCode) => void; onNavigate: (path: string) => void }) {
+  signedOutReason?: "" | "reused" | "revoked" | "request_approved" | "owner_initiated";
+  language: LanguageCode;
+  analytics: AnalyticsSettings | null;
+  t: Translate;
+  onLanguageChange: (language: LanguageCode) => void;
+  onNavigate: (path: string) => void;
+}) {
   // Analytics arrive with /api/config, so this runs once the operator's
   // configuration is known and stays a no-op when none is configured.
   useEffect(() => trackLandingView(analytics), [analytics]);
@@ -20,13 +33,15 @@ export function LandingPage({ language, analytics, signedOutReason = "", t, onLa
           a moment ago is owed the difference (ADR-0015). */}
       {signedOutReason ? (
         <p className="landing-signed-out" role="alert">
-          {t(signedOutReason === "reused"
-            ? "session.reused"
-            : signedOutReason === "request_approved"
-              ? "session.accountDeletionApproved"
-              : signedOutReason === "owner_initiated"
-                ? "session.accountDeletedByOwner"
-                : "session.revoked")}
+          {t(
+            signedOutReason === "reused"
+              ? "session.reused"
+              : signedOutReason === "request_approved"
+                ? "session.accountDeletionApproved"
+                : signedOutReason === "owner_initiated"
+                  ? "session.accountDeletedByOwner"
+                  : "session.revoked"
+          )}
         </p>
       ) : null}
       <header className="landing-nav" style={{ viewTransitionName: "persistent-nav" }}>
@@ -50,7 +65,12 @@ export function LandingPage({ language, analytics, signedOutReason = "", t, onLa
               <ArrowIcon />
               <span>{t("landing.inviteCta")}</span>
             </NavLink>
-            <a className="btn btn-ghost" href="https://github.com/REDLANTERNDEV/Voxly/blob/main/docs/self-hosting.md" target="_blank" rel="noopener noreferrer">
+            <a
+              className="btn btn-ghost"
+              href="https://github.com/REDLANTERNDEV/Voxly/blob/main/docs/self-hosting.md"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <span>{t("landing.selfHostCta")}</span>
             </a>
           </div>
@@ -59,13 +79,21 @@ export function LandingPage({ language, analytics, signedOutReason = "", t, onLa
               nothing and recovery signs every other Device out, so the cheap
               path has to be the one a member finds first (ADR-0014). */}
           <p className="landing-returning small muted">
-            <NavLink className="landing-returning-link" href="/link-device" onNavigate={onNavigate}><span>{t("landing.linkDevice")}</span></NavLink>
+            <NavLink className="landing-returning-link" href="/link-device" onNavigate={onNavigate}>
+              <span>{t("landing.linkDevice")}</span>
+            </NavLink>
             <span aria-hidden="true"> · </span>
-            <NavLink className="landing-returning-link" href="/recover" onNavigate={onNavigate}><span>{t("landing.recover")}</span></NavLink>
+            <NavLink className="landing-returning-link" href="/recover" onNavigate={onNavigate}>
+              <span>{t("landing.recover")}</span>
+            </NavLink>
           </p>
         </div>
         <div className="landing-preview" aria-hidden="true">
-          <div className="landing-preview-top"><span /><span /><span /></div>
+          <div className="landing-preview-top">
+            <span />
+            <span />
+            <span />
+          </div>
           <div className="landing-preview-workspace">
             <div className="landing-preview-rail">
               <img src="/brand/svg/voxly-mark-monochrome-light.svg" alt="" width="26" height="26" />
@@ -78,18 +106,42 @@ export function LandingPage({ language, analytics, signedOutReason = "", t, onLa
               <span className="landing-preview-channel is-short" />
             </div>
             <div className="landing-preview-chat">
-              <div className="landing-preview-room"><span className="landing-preview-hash">#</span><span className="landing-preview-room-name" /></div>
+              <div className="landing-preview-room">
+                <span className="landing-preview-hash">#</span>
+                <span className="landing-preview-room-name" />
+              </div>
               <div className="landing-preview-messages">
-                <span className="landing-preview-message"><i /><span><b /><em /></span></span>
-                <span className="landing-preview-message"><i /><span><b /><em /><em className="is-short" /></span></span>
-                <span className="landing-preview-message"><i /><span><b /><em /></span></span>
+                <span className="landing-preview-message">
+                  <i />
+                  <span>
+                    <b />
+                    <em />
+                  </span>
+                </span>
+                <span className="landing-preview-message">
+                  <i />
+                  <span>
+                    <b />
+                    <em />
+                    <em className="is-short" />
+                  </span>
+                </span>
+                <span className="landing-preview-message">
+                  <i />
+                  <span>
+                    <b />
+                    <em />
+                  </span>
+                </span>
               </div>
               <div className="landing-preview-composer" />
             </div>
             <div className="landing-preview-members">
               <span className="landing-preview-member-heading" />
-              <span className="landing-preview-member" /><span className="landing-preview-member" />
-              <span className="landing-preview-member" /><span className="landing-preview-member" />
+              <span className="landing-preview-member" />
+              <span className="landing-preview-member" />
+              <span className="landing-preview-member" />
+              <span className="landing-preview-member" />
             </div>
           </div>
         </div>
@@ -97,19 +149,37 @@ export function LandingPage({ language, analytics, signedOutReason = "", t, onLa
 
       <ul className="landing-principles" aria-label={t("landing.features")}>
         {landingPrincipleKeys.map((key) => (
-          <li key={key}><span className="landing-principle-mark" aria-hidden="true" />{t(`landing.${key}.title` as TranslationKey)}</li>
+          <li key={key}>
+            <span className="landing-principle-mark" aria-hidden="true" />
+            {t(`landing.${key}.title` as TranslationKey)}
+          </li>
         ))}
       </ul>
     </main>
   );
 }
 
-export function InviteRequiredScreen({ language, t, onLanguageChange, onNavigate }: { language: LanguageCode; t: Translate; onLanguageChange: (language: LanguageCode) => void; onNavigate: (path: string) => void }) {
+export function InviteRequiredScreen({
+  language,
+  t,
+  onLanguageChange,
+  onNavigate
+}: {
+  language: LanguageCode;
+  t: Translate;
+  onLanguageChange: (language: LanguageCode) => void;
+  onNavigate: (path: string) => void;
+}) {
   return (
     <main className="invite-shell">
       <div className="invite-layout invite-layout-simple">
         <section className="invite-card">
-          <AuthPageHeader subtitle={t("landing.brandSubtitle")} language={language} t={t} onLanguageChange={onLanguageChange} />
+          <AuthPageHeader
+            subtitle={t("landing.brandSubtitle")}
+            language={language}
+            t={t}
+            onLanguageChange={onLanguageChange}
+          />
           <div>
             <p className="label">{t("invite.privateInvite")}</p>
             <h1>{t("invite.missingTitle")}</h1>

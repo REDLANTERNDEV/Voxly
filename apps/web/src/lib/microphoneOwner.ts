@@ -3,7 +3,9 @@ import type { MicrophoneInput } from "./microphoneInput.js";
 /** Owns the active graph; a prepared replacement remains caller-owned until adopted. */
 export class MicrophoneOwner {
   private input: MicrophoneInput | null = null;
-  get current() { return this.input; }
+  get current() {
+    return this.input;
+  }
 
   adopt(input: MicrophoneInput) {
     if (this.input === input) return;

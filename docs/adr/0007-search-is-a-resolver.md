@@ -8,12 +8,12 @@
 
 Everything the Music panel could do until now started with a link somebody had
 already found somewhere else. Typing a name instead is the design's first story
-— *"I want to search for a song by name, so that I can play music without
-leaving Voxly"* — and the shape of it is settled: several results, the closest
+— _"I want to search for a song by name, so that I can play music without
+leaving Voxly"_ — and the shape of it is settled: several results, the closest
 one already on offer, so Enter takes the obvious answer and a different one can
 be chosen when the top result turns out to be a cover or an hour-long mix.
 
-ADR-0004 already said what a search *is*: "a resolver turns input into the
+ADR-0004 already said what a search _is_: "a resolver turns input into the
 identity of a Track; the one audio provider turns that identity into a stream."
 So the media path is not in question here and must not move. What is in question
 is four things that are expensive to change afterwards, because the wire, the
@@ -43,8 +43,8 @@ the answer says which happened.
 
 The alternative was to have the member choose, through two controls or two
 verbs, with the browser routing on the string's shape. Rejected on the rule this
-contract already holds elsewhere: *which links are playable is the bot's
-knowledge*, and a second opinion in the browser is the copy that drifts. "Is
+contract already holds elsewhere: _which links are playable is the bot's
+knowledge_, and a second opinion in the browser is the copy that drifts. "Is
 this a link" is not a different question from "is this a link I can play" — both
 are answered by the same host list — so splitting them would put half of one
 rule in a process that cannot see the other half. Two controls were also worse
@@ -73,7 +73,7 @@ no characters.
 
 **`music.errorLink` was rewritten.** "That is not a link to a YouTube video"
 described a world where anything that was not a link was a mistake; it now says
-the *link* is not a YouTube video and points at typing a name instead.
+the _link_ is not a YouTube video and points at typing a name instead.
 
 ### 2. The success acknowledgement becomes a discriminated union
 
@@ -87,7 +87,7 @@ Both `MusicControlAck` and `MusicCommandAck` take it, so there is one shape for
 "it worked" rather than two that drift.
 
 Widening the existing success to `{ track: … | null; results: … | null }` was
-rejected for the reason this contract already gives for the *command* union:
+rejected for the reason this contract already gives for the _command_ union:
 two nullable fields where exactly one is ever filled leaves nothing to stop an
 answer arriving as both, or as neither, and makes every consumer handle a state
 that cannot happen. A separate `music:search` event beside `music:control` was
@@ -123,7 +123,7 @@ nothing else reads. The next person to work here will find the "read everything
 from the room" rule first, and this is the exception to it.
 
 **Choosing one is an ordinary `add`.** A Result carries the canonical link the
-*bot* built from the video id, the browser hands that string straight back on
+_bot_ built from the video id, the browser hands that string straight back on
 the same verb a paste uses, and the bot re-reads it exactly as it reads a pasted
 one. The browser never constructs a YouTube URL, and nothing is trusted for
 having been round the loop. It costs a second extractor call, which is correct
@@ -134,7 +134,7 @@ playable, and the Queue should hold what a real resolve returned.
 
 Every other request goes through the bot's one promise chain, because they
 change the Set and two overlapping Summons would race to own the same
-membership. A search changes nothing, so it does not belong in *that* chain.
+membership. A search changes nothing, so it does not belong in _that_ chain.
 Two things go wrong if it does:
 
 - A member who typed a name waits behind somebody else's join — and, worse, a
@@ -144,7 +144,7 @@ Two things go wrong if it does:
   Summon that broke halfway through and a catastrophic one to a search that
   did: the room would lose its music because somebody mistyped a name.
 
-But taking it out of that chain must not take its *bound* with it. A search
+But taking it out of that chain must not take its _bound_ with it. A search
 still spawns an extractor, and running two of those at once against a source
 that rate-limits by address is the one thing this feature has always refused —
 it is the stated reason nothing is prefetched. So searches are serialised among
@@ -162,7 +162,7 @@ because a search arriving while another runs waits out both. Unlike
 It is shorter than a resolve because a flat listing does no per-video
 extraction: a search still running when a resolve would have finished is not one
 that is nearly done. A third simultaneous search can still exceed the server's
-timeout and be reported as `bot_timeout` — that needs YouTube to be hanging *and*
+timeout and be reported as `bot_timeout` — that needs YouTube to be hanging _and_
 three members typing inside the same ten seconds, and "the bot did not answer in
 time" is, in that case, exactly true. Choosing a Result then spends its own
 separate budget, as any paste does.

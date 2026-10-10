@@ -11,24 +11,30 @@ describe("AFK microphone lock", () => {
   it("holds the local track closed, not just the server's record", () => {
     // Audio flows peer to peer, so a server that records `mic: false` stops the
     // indicator and nothing else. The member would still be heard.
-    assert.match(voiceMedia, /const micLockedByRoom = useCallback\(\(\) => Boolean\(roomRef\.current && afkRoomIdsRef\.current\.includes\(roomRef\.current\)\)/);
-    assert.match(voiceMedia, /moderationRef\.current\.muted \|\| micLockedByRoom\(\)\) return;/);
+    assert.match(
+      voiceMedia,
+      /const\s+micLockedByRoom\s+=\s+useCallback\(\s*\(\s*\)\s+=>\s+Boolean\(\s*roomRef\.current\s+&&\s+afkRoomIdsRef\.current\.includes\(\s*roomRef\.current\s*\)\s*\)/
+    );
+    assert.match(voiceMedia, /moderationRef\.current\.muted\s+\|\|\s+micLockedByRoom\(\s*\)\s*\)\s+return;/);
   });
 
   it("overrides the join default, since the idle mover passes no options", () => {
     assert.match(
       voiceMedia,
-      /const microphoneEnabled = afkRoomIdsRef\.current\.includes\(roomId\)\s*\n\s*\? false\s*\n\s*: options\.microphoneEnabled \?\? true;/
+      /const\s+microphoneEnabled\s+=\s+afkRoomIdsRef\.current\.includes\(\s*roomId\s*\)\s*\n\s*\?\s+false\s*\n\s*:\s+\(?options\.microphoneEnabled\s+\?\?\s+true\)?;/
     );
   });
 
   it("tracks AFK rooms reactively, because the media layer must re-render on them", () => {
-    assert.match(workspace, /const \[afkRoomIds, setAfkRoomIds\] = useState<string\[\]>\(\[\]\)/);
-    assert.match(voiceMedia, /afkRoomIdsRef\.current = afkRoomIds;/);
+    assert.match(workspace, /const\s+\[afkRoomIds,\s+setAfkRoomIds\]\s+=\s+useState<string\[\]>\s*\(\s*\[\]\s*\)/);
+    assert.match(voiceMedia, /afkRoomIdsRef\.current\s+=\s+afkRoomIds;/);
   });
 
   it("shows the control locked rather than leaving it looking broken", () => {
-    assert.match(dock, /props\.micLockedByRoom\s*\n\s*\? <ControlButton label=\{props\.t\("room\.afkMuted"\)\} active tone="danger" enabled=\{false\}/);
+    assert.match(
+      dock,
+      /props\.micLockedByRoom\s*\?\s+\(?\s*<ControlButton\s+label=\{\s*props\.t\(\s*"room\.afkMuted"\s*\)\s*\}\s+active\s+tone="danger"\s+enabled=\{\s*false\s*\}\s*/
+    );
   });
 
   it("takes precedence over the owner-mute badge, which it subsumes", () => {

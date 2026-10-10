@@ -170,7 +170,10 @@ export function createMusicSet(options: MusicSetOptions): MusicSet {
     // an absent member as a silenced one would stop a Set nobody moderated.
     const self = snapshot.members.find((member) => member.user.userId === options.selfUserId);
     if (self) applyModeration(self.media.mic === false);
-    const next = snapshot.members.map((member) => member.user.userId).sort().join(",");
+    const next = snapshot.members
+      .map((member) => member.user.userId)
+      .sort()
+      .join(",");
     if (next === roster) return;
     roster = next;
     // Read off the snapshot rather than from `mesh.listenerUserIds`, which
@@ -180,9 +183,7 @@ export function createMusicSet(options: MusicSetOptions): MusicSet {
     // would mean the last one out never starts one at all, because no further
     // snapshot is coming.
     options.onListenersChanged?.(
-      snapshot.members
-        .map((member) => member.user.userId)
-        .filter((userId) => userId !== options.selfUserId)
+      snapshot.members.map((member) => member.user.userId).filter((userId) => userId !== options.selfUserId)
     );
   };
 
@@ -205,9 +206,11 @@ export function createMusicSet(options: MusicSetOptions): MusicSet {
   function applyModeration(nowSilenced: boolean) {
     if (nowSilenced === silenced) return;
     silenced = nowSilenced;
-    log(silenced
-      ? "the server says the bot's microphone is off; stopping until it is back"
-      : `the bot's microphone is back${playbackRequested ? "; carrying on" : ""}`);
+    log(
+      silenced
+        ? "the server says the bot's microphone is off; stopping until it is back"
+        : `the bot's microphone is back${playbackRequested ? "; carrying on" : ""}`
+    );
     syncPlayer();
   }
 
