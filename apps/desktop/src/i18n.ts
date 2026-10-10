@@ -117,7 +117,7 @@ export const english = {
   deafenShortcut: "Deafen / undeafen",
   mouseButton: "Mouse",
   shortcutHint:
-    "Use Ctrl, Alt, or Shift alone, or Ctrl, Alt, or Windows with a letter or number, F1–F24, or Mouse 3/4/5 with optional modifiers. Choose a different combination for each action. A modifier-only binding also activates during combinations using that modifier. These work during a call with another app focused or Voxly in the tray. Deafen silences your microphone and participant voices; shared screen audio keeps its own volume. Your installation needs the updated Voxly web client.",
+    "Use left/right modifiers, letters, numbers, punctuation, navigation keys, numpad keys, F1–F24, or Mouse 3/4/5, alone or in combinations. Escape cancels recording; Tab moves focus. Global shortcuts also activate while typing in another app. Choose a different combination for each action. Your installation needs the updated Voxly web client.",
   recordShortcut: "Record shortcut",
   pressShortcut: "Press keys or a middle/side mouse button…",
   saveShortcut: "Save shortcut",
@@ -127,8 +127,7 @@ export const english = {
   shortcutRegistered: "Shortcut registered. Verify its action in your call.",
   shortcut_duplicate: "Each action needs a different combination. The previous shortcut is retained.",
   shortcutDisabled: "No shortcut is active.",
-  shortcut_invalid:
-    "Use Ctrl, Alt, or Shift alone, or Ctrl, Alt, or Windows with a letter or number, F1–F24, or Mouse 3/4/5 with optional modifiers. That combination cannot be recorded.",
+  shortcut_invalid: "Use a supported key or combination. Escape and Tab are reserved for recording controls.",
   shortcut_unavailable: "The shortcut could not be activated. Try another combination or restart Voxly.",
   shortcut_failed: "The shortcut could not be changed. Restart Voxly, then check the active combination here.",
   media: "Media checks",
@@ -299,7 +298,7 @@ export const turkish: Record<TranslationKey, string> = {
   deafenShortcut: "Sesi kapat / aç",
   mouseButton: "Fare",
   shortcutHint:
-    "Tek başına Ctrl, Alt veya Shift, bir harf veya sayıyla Ctrl, Alt ya da Windows tuşunu, F1–F24'ü veya isteğe bağlı değiştirici tuşlarla Fare 3/4/5'i kullanın. Her işlev için farklı bir birleşim seçin. Tek başına değiştirici tuş ataması, o tuşu içeren birleşimlerde de etkinleşir. Bunlar başka bir uygulama odaktayken veya Voxly tepsideyken aramada çalışır. Sağırlaştırma mikrofonunuzu ve katılımcı seslerini susturur; paylaşılan ekran sesi kendi düzeyini korur. Kurulumunuz güncel Voxly web istemcisini kullanmalıdır.",
+    "Sol/sağ değiştirici, harf, sayı, noktalama, gezinme, sayısal tuş takımı, F1–F24 veya Fare 3/4/5 tuşlarını tek başına ya da birleşim halinde kullanın. Escape kaydı iptal eder; Tab odağı taşır. Genel kısayollar başka bir uygulamada yazarken de etkinleşir. Her eylem için farklı bir birleşim seçin. Kurulumunuz güncel Voxly web istemcisini gerektirir.",
   recordShortcut: "Kısayol kaydet",
   pressShortcut: "Tuşlara veya farenin orta/yan düğmesine basın…",
   saveShortcut: "Kısayolu kaydet",
@@ -309,8 +308,7 @@ export const turkish: Record<TranslationKey, string> = {
   shortcutRegistered: "Kısayol etkin. Aramada işlevini doğrulayın.",
   shortcut_duplicate: "Her işlev farklı bir birleşim gerektirir. Önceki kısayol korundu.",
   shortcutDisabled: "Etkin kısayol yok.",
-  shortcut_invalid:
-    "Tek başına Ctrl, Alt veya Shift, bir harf veya sayıyla Ctrl, Alt veya Windows tuşunu, F1–F24'ü ya da isteğe bağlı değiştirici tuşlarla Fare 3/4/5'i kullanın. Bu birleşim kaydedilemiyor.",
+  shortcut_invalid: "Desteklenen bir tuş veya birleşim kullanın. Escape ve Tab kayıt denetimleri için ayrılmıştır.",
   shortcut_unavailable: "Kısayol etkinleştirilemedi. Başka bir birleşim deneyin veya Voxly’yi yeniden başlatın.",
   shortcut_failed: "Kısayol değiştirilemedi. Voxly’yi yeniden başlatıp etkin birleşimi buradan kontrol edin.",
   media: "Medya kontrolleri",

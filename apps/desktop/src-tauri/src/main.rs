@@ -3,6 +3,7 @@
 mod appearance;
 mod call_state;
 mod deep_links;
+mod input_bindings;
 mod installations;
 #[cfg(target_os = "windows")]
 mod mouse_hook;

@@ -19,9 +19,7 @@ try {
       await expect(page.locator("body > #root > .voice-dock")).toBeHidden();
       await page.locator(".mobile-topbar button").first().click();
       await expect(page.locator(".drawer-voice-status .account-menu")).toBeVisible();
-      await page.locator(".drawer-download").scrollIntoViewIfNeeded();
-      const download = await page.locator(".drawer-download").boundingBox();
-      assert(download.width >= 100 && download.x >= 0 && download.x + download.width <= width && download.height >= 44);
+      assert.equal(await page.locator(".drawer-download").count(), 0);
       assert.equal(await page.locator(".workspace-server > .sidebar-menu-trigger").count(), 0);
       await page.locator(".mobile-server-menu").click();
       await expect(page.locator(".context-menu")).toBeVisible();

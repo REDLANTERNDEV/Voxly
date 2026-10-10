@@ -114,11 +114,11 @@ const translations = {
     "desktopSettings.save": "Save shortcut",
     "desktopSettings.clear": "Clear shortcut",
     "desktopSettings.invalid":
-      "Use Ctrl, Alt, or Shift alone, Ctrl/Alt/Win with a letter or number, F1–F24, or Mouse 3/4/5.",
+      "Use a supported key or combination. Escape and Tab are reserved for recording controls.",
     "desktopSettings.draft": "Combination recorded. Save to activate it.",
     "desktopSettings.active": "Shortcut active",
     "desktopSettings.shortcutHint":
-      "Use these during calls, even with another app open. Ctrl, Alt, and Shift can be used alone; they also activate during combinations using that modifier.",
+      "Use left/right modifiers, letters, numbers, punctuation, navigation, numpad, F1–F24, or Mouse 3/4/5, alone or in combinations. Global shortcuts also activate while typing in another app.",
 
     "desktop.open": "Open in desktop",
     "desktop.download": "Download desktop",
@@ -132,7 +132,7 @@ const translations = {
     "desktopUpdate.manage": "View desktop updates",
     "settings.general": "General",
     "settings.notifications": "Notifications",
-    "settings.about": "About Voxly",
+    "settings.about": "About",
     "settings.desktopVersion": "Desktop app version",
     "settings.webVersion": "Web interface version",
     "settings.interface": "Interface",
@@ -1043,11 +1043,11 @@ const translations = {
     "desktopSettings.save": "Kısayolu kaydet",
     "desktopSettings.clear": "Kısayolu temizle",
     "desktopSettings.invalid":
-      "Tek başına Ctrl, Alt veya Shift, bir harf veya sayıyla Ctrl/Alt/Win, F1–F24 ya da Fare 3/4/5 kullanın.",
+      "Desteklenen bir tuş veya birleşim kullanın. Escape ve Tab kayıt denetimleri için ayrılmıştır.",
     "desktopSettings.draft": "Birleşim kaydedildi. Etkinleştirmek için kaydedin.",
     "desktopSettings.active": "Kısayol etkin",
     "desktopSettings.shortcutHint":
-      "Aramalarda, başka bir uygulama açıkken de kullanın. Ctrl, Alt ve Shift tek başına kullanılabilir; o tuşu içeren birleşimlerde de etkinleşir.",
+      "Sol/sağ değiştirici, harf, sayı, noktalama, gezinme, sayısal tuş takımı, F1–F24 veya Fare 3/4/5 tuşlarını tek başına ya da birleşim halinde kullanın. Genel kısayollar başka bir uygulamada yazarken de etkinleşir.",
 
     "desktop.open": "Masaüstünde aç",
     "desktop.download": "Masaüstü uygulamasını indir",
@@ -1061,7 +1061,7 @@ const translations = {
     "desktopUpdate.manage": "Masaüstü güncellemelerini görüntüle",
     "settings.general": "Genel",
     "settings.notifications": "Bildirimler",
-    "settings.about": "Voxly hakkında",
+    "settings.about": "Hakkında",
     "settings.desktopVersion": "Masaüstü uygulama sürümü",
     "settings.webVersion": "Web arayüzü sürümü",
     "settings.interface": "Arayüz",

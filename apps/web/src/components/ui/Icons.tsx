@@ -304,3 +304,20 @@ export function DownloadIcon() {
     </svg>
   );
 }
+
+export function PushPinIcon() {
+  return (
+    <svg className="ui-icon phosphor-icon" viewBox="0 0 256 256" aria-hidden="true">
+      <path d="M229.66,98.34a8,8,0,0,0,0-11.31L169,26.34a8,8,0,0,0-11.31,0L100.39,83.8S72.64,69.93,43,93.85a8,8,0,0,0-.65,11.91l107.9,107.89a8,8,0,0,0,12-.83c8.39-11.16,21.57-34.09,10.11-57Z" />
+      <line x1="96.29" y1="159.71" x2="48" y2="208" />
+    </svg>
+  );
+}
+export function InfoCircleIcon() {
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v6M12 7h.01" />
+    </svg>
+  );
+}

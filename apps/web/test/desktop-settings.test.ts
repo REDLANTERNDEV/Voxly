@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import {
   desktopSettingsAvailable,
   desktopKeyboardBinding,
+  desktopBindingLabel,
   desktopMouseBinding,
   rememberCompletedDesktopAuthentication,
   type DesktopSettingsBridge
@@ -61,7 +62,7 @@ describe("desktop-only settings", () => {
       else Reflect.deleteProperty(globalThis, "window");
     }
   });
-  it("records physical modified shortcuts without accepting typing or repeats", () => {
+  it("records physical modified shortcuts including plain keys while rejecting repeats", () => {
     const key = { code: "KeyM", ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, repeat: false };
     assert.equal(desktopKeyboardBinding(key), "Control+Shift+KeyM");
     for (const [modifier, flag] of [
@@ -79,14 +80,14 @@ describe("desktop-only settings", () => {
           repeat: false,
           [flag]: true
         };
-        assert.equal(desktopKeyboardBinding(event), modifier);
+        assert.equal(desktopKeyboardBinding(event), modifier + side);
         assert.equal(desktopKeyboardBinding({ ...event, repeat: true }), null);
       }
     }
-    assert.equal(desktopKeyboardBinding({ ...key, shiftKey: false, code: "ControlLeft" }), "Control");
-    assert.equal(desktopKeyboardBinding({ ...key, shiftKey: false, code: "ControlRight" }), "Control");
+    assert.equal(desktopKeyboardBinding({ ...key, shiftKey: false, code: "ControlLeft" }), "ControlLeft");
+    assert.equal(desktopKeyboardBinding({ ...key, shiftKey: false, code: "ControlRight" }), "ControlRight");
     assert.equal(desktopKeyboardBinding({ ...key, code: "KeyD" }), "Control+Shift+KeyD");
-    assert.equal(desktopKeyboardBinding({ ...key, ctrlKey: false }), null);
+    assert.equal(desktopKeyboardBinding({ ...key, ctrlKey: false }), "Shift+KeyM");
     assert.equal(desktopKeyboardBinding({ ...key, repeat: true }), null);
     assert.equal(desktopKeyboardBinding({ ...key, code: "F25" }), null);
     const mouse = { button: 3, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false };
@@ -147,4 +148,23 @@ describe("desktop settings presentation", () => {
     assert.match(settings, /settings-nav-footer/);
     assert.match(settings, /section\s+===\s+"notifications"/);
   });
+});
+
+it("records exact modifier sides in keyboard and mouse chords", () => {
+  const event = { code: "KeyM", ctrlKey: true, altKey: false, shiftKey: false, metaKey: false, repeat: false };
+  const held = new Set(["ControlRight"]);
+  assert.equal(desktopKeyboardBinding(event, held), "ControlRight+KeyM");
+  held.add("ShiftLeft");
+  assert.equal(
+    desktopKeyboardBinding({ ...event, shiftKey: true, code: "NumpadEnter" }, held),
+    "ControlRight+ShiftLeft+NumpadEnter"
+  );
+  assert.equal(desktopMouseBinding({ ...event, button: 4 }, held), "ControlRight+Mouse5");
+  assert.equal(desktopKeyboardBinding({ ...event, ctrlKey: false, code: "Space" }, new Set()), "Space");
+  for (const code of ["KeyM", "Digit1", "Enter", "ArrowLeft", "Semicolon", "Numpad1", "NumpadDivide", "F24"]) {
+    assert.equal(desktopKeyboardBinding({ ...event, ctrlKey: false, code }), code);
+  }
+  for (const code of ["Escape", "Tab", "F25", "Unidentified"])
+    assert.equal(desktopKeyboardBinding({ ...event, code }), null);
+  assert.equal(desktopBindingLabel("ControlRight+ShiftLeft+NumpadEnter"), "RCtrl + LShift + Numpad Enter");
 });

@@ -72,6 +72,14 @@ Use **Edit keybind**, press the combination, then **Stop recording** to save it.
 Escape, leaving the row, or losing window focus cancels recording. Notification
 sounds and desktop notifications are grouped in Settings → Notifications.
 New desktop profiles start with Ctrl+Shift+M for mute and Ctrl+Shift+D for deafen.
+New recordings distinguish left/right Ctrl, Alt, Shift and Windows keys. Existing
+generic modifier bindings still accept either side. Letters, numbers, punctuation,
+Space, Enter, editing/navigation keys, numpad keys, F1–F24 and Mouse 3/4/5 can be
+used alone or with modifiers. Escape cancels recording and Tab moves focus.
+OS-reserved combinations are unavailable. Plain global keys also activate while
+typing or gaming; the Windows observer leaves normal input available to that app.
+Bindings that overlap another action's combination are rejected. Verify both
+press and release in a call before relying on push-to-talk or push-to-mute.
 Existing custom or cleared shortcuts are preserved; push-to-talk and push-to-mute
 remain unassigned until configured. Preferences are local to this computer.
 

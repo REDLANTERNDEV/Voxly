@@ -5,8 +5,7 @@ use tauri::AppHandle;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_RCONTROL,
-    VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT,
+    GetAsyncKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, PeekMessageW, PostThreadMessageW,
@@ -15,21 +14,20 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN, WM_XBUTTONUP,
 };
 
-use crate::shortcuts::{
-    Action, ModifierKey, ModifierShortcutGates, MouseBinding, MouseShortcutGates, ALT, CONTROL,
-    SHIFT, SUPER,
-};
+use crate::shortcuts::{Action, MouseBinding, MouseShortcutGates, ALT, CONTROL, SHIFT, SUPER};
+
+use crate::input_bindings::{observed_key, PhysicalBinding, PhysicalShortcutGates};
 
 #[derive(Clone, Copy)]
 enum ObservedBinding {
     Mouse(MouseBinding),
-    Modifier(ModifierKey),
+    Physical(PhysicalBinding),
 }
 
 struct HookContext {
     app: AppHandle,
     gates: MouseShortcutGates,
-    modifiers: ModifierShortcutGates,
+    keyboard: PhysicalShortcutGates,
 }
 
 struct HookUpdate {
@@ -99,6 +97,9 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: usize, lparam: isize) ->
                 let Some(context) = context.as_mut() else {
                     return (None, None);
                 };
+                for (action, state) in context.keyboard.handle(0x200 + u16::from(button), pressed) {
+                    crate::shell::queue_voice_action(&context.app, action, state);
+                }
                 let dispatch = context.gates.handle(button, modifiers, pressed);
                 (dispatch.map(|_| context.app.clone()), dispatch)
             });
@@ -119,26 +120,18 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: usize, lparam: isize)
         )
     {
         let key = unsafe { &*(lparam as *const KBDLLHOOKSTRUCT) };
-        let observed = match key.vkCode {
-            value if value == VK_LCONTROL as u32 => Some((ModifierKey::Control, false)),
-            value if value == VK_RCONTROL as u32 => Some((ModifierKey::Control, true)),
-            value if value == VK_LMENU as u32 => Some((ModifierKey::Alt, false)),
-            value if value == VK_RMENU as u32 => Some((ModifierKey::Alt, true)),
-            value if value == VK_LSHIFT as u32 => Some((ModifierKey::Shift, false)),
-            value if value == VK_RSHIFT as u32 => Some((ModifierKey::Shift, true)),
-            _ => None,
-        };
-        if let Some((modifier, right)) = observed {
-            let pressed = matches!(wparam as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
-            let dispatch = CONTEXT.with(|slot| {
-                let mut context = slot.borrow_mut();
-                let context = context.as_mut()?;
-                context
-                    .modifiers
-                    .handle(modifier, right, pressed)
-                    .map(|event| (context.app.clone(), event))
-            });
-            if let Some((app, (action, pressed))) = dispatch {
+        let pressed = matches!(wparam as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
+        let physical = observed_key(key.scanCode, key.flags & 1 != 0, key.vkCode);
+        let dispatch = CONTEXT.with(|slot| {
+            let mut context = slot.borrow_mut();
+            let context = context.as_mut()?;
+            Some((
+                context.app.clone(),
+                context.keyboard.handle(physical, pressed),
+            ))
+        });
+        if let Some((app, events)) = dispatch {
+            for (action, pressed) in events {
                 crate::shell::queue_voice_action(&app, action, pressed);
             }
         }
@@ -154,11 +147,11 @@ fn set_binding(context: &mut HookContext, action: Action, binding: Option<Observ
             _ => None,
         },
     );
-    let modifier = match binding {
-        Some(ObservedBinding::Modifier(modifier)) => Some(modifier),
+    let physical = match binding {
+        Some(ObservedBinding::Physical(physical)) => Some(physical),
         _ => None,
     };
-    if let Some((old, pressed)) = context.modifiers.set(action, modifier) {
+    if let Some((old, pressed)) = context.keyboard.set(action, physical) {
         crate::shell::queue_voice_action(&context.app, old, pressed);
     }
 }
@@ -192,12 +185,12 @@ pub fn register(
 ) -> Result<(), &'static str> {
     register_observed(app, action, ObservedBinding::Mouse(binding))
 }
-pub fn register_modifier(
+pub fn register_physical(
     app: &AppHandle,
     action: Action,
-    modifier: ModifierKey,
+    binding: PhysicalBinding,
 ) -> Result<(), &'static str> {
-    register_observed(app, action, ObservedBinding::Modifier(modifier))
+    register_observed(app, action, ObservedBinding::Physical(binding))
 }
 fn register_observed(
     app: &AppHandle,
@@ -221,7 +214,7 @@ fn register_observed(
                 let mut context = HookContext {
                     app,
                     gates: MouseShortcutGates::default(),
-                    modifiers: ModifierShortcutGates::default(),
+                    keyboard: PhysicalShortcutGates::default(),
                 };
                 set_binding(&mut context, action, Some(binding));
                 *slot.borrow_mut() = Some(context)
@@ -279,7 +272,7 @@ fn register_observed(
             }
             CONTEXT.with(|slot| {
                 if let Some(context) = slot.borrow_mut().as_mut() {
-                    for (action, pressed) in context.modifiers.release_all() {
+                    for (action, pressed) in context.keyboard.release_all() {
                         crate::shell::queue_voice_action(&context.app, action, pressed);
                     }
                 }

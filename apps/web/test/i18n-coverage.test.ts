@@ -77,6 +77,8 @@ function readableEnglish(value: string) {
   if (value.length < 3) return false;
   if (untranslatedByDesign.has(value)) return false;
   if (domKeyNames.test(value) || httpMethods.test(value) || svgPath.test(value)) return false;
+  // Standard hardware key labels, distinct from interface prose.
+  if (/^(Mouse|Numpad |Intl \\+)$/.test(value)) return false;
   // Anything already carrying Turkish characters is not a leftover.
   if (/[çğıöşüÇĞİÖŞÜ]/.test(value)) return false;
   // A sentence opens with a capital and goes on in lower case; an identifier

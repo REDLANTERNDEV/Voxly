@@ -4,7 +4,16 @@ import { AudioDeviceSettings } from "../AudioDeviceSettings.js";
 import { DeviceSettings } from "../DeviceSettings.js";
 import { RecoverySettings } from "../RecoverySettings.js";
 import { PreferencesCard } from "../ui/Primitives.js";
-import { GearIcon, HeadsetIcon, ShieldIcon, UsersIcon, KeyboardIcon, BellIcon, CloseIcon } from "../ui/Icons.js";
+import {
+  GearIcon,
+  HeadsetIcon,
+  ShieldIcon,
+  UsersIcon,
+  KeyboardIcon,
+  BellIcon,
+  CloseIcon,
+  InfoCircleIcon
+} from "../ui/Icons.js";
 import type { TranslationKey } from "../../lib/i18n.js";
 import { ExternalPreviewSettings } from "../ExternalPreviewSettings.js";
 import { AccountDeletionSettings } from "../AccountDeletionSettings.js";
@@ -17,7 +26,6 @@ import {
 } from "../DesktopSettings.js";
 import { desktopSettingsAvailable } from "../../lib/desktopSettings.js";
 import { NotificationSoundSettings } from "../NotificationSoundSettings.js";
-import { webReleaseVersion } from "../../lib/applicationUpdates.js";
 import { ApplicationVersionSettings } from "../ApplicationUpdateStatus.js";
 
 /**
@@ -42,7 +50,7 @@ const sectionIcons = {
   general: <GearIcon />,
   shortcuts: <KeyboardIcon />,
   notifications: <BellIcon />,
-  about: <GearIcon />,
+  about: <InfoCircleIcon />,
   account: <UsersIcon />,
   audio: <HeadsetIcon off={false} />,
   appearance: <GearIcon />,
@@ -64,7 +72,11 @@ export function SettingsDialog(
     const returnFocus = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("dialog[open]"))
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        !document.querySelector("dialog[open], .confirm-dialog, .chat-dialog")
+      )
         onCloseRef.current();
     };
     window.addEventListener("keydown", onKeyDown);
@@ -105,10 +117,11 @@ export function SettingsDialog(
               className="settings-version-link"
               type="button"
               aria-current={section === "about"}
-              aria-label={`${props.t("settings.webVersion")}: ${webReleaseVersion ? `v${webReleaseVersion}` : "—"}`}
+              aria-label={props.t("settings.about")}
               onClick={() => setSection("about")}
             >
-              {props.t("settings.interface")} {webReleaseVersion ? `v${webReleaseVersion}` : "—"}
+              <InfoCircleIcon />
+              <span>{props.t("settings.about")}</span>
             </button>
           </div>
         </nav>

@@ -58,7 +58,7 @@ export function MessageBody({
             ? `@${mention.kind}`
             : deleted
               ? `@${t("common.deletedMember")}`
-              : `@${member?.nickname ?? mention.nickname} · #${member?.mentionCode ?? mention.mentionCode}`;
+              : `@${member?.nickname ?? mention.nickname}`;
         return mention.kind === "person" && !deleted && cards ? (
           <button type="button" className="message-mention" key={index} onClick={() => setSelectedId(mention.userId)}>
             {label}

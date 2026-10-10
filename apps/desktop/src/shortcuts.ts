@@ -18,59 +18,80 @@ export interface ShortcutSnapshot {
   pushToMuteShortcutError?: TranslationKey | null;
 }
 
-function standaloneModifier(
-  event: Pick<KeyboardEvent, "code" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey" | "repeat">
-): string | null {
-  if (event.repeat || event.metaKey) return null;
-  if (/^(ControlLeft|ControlRight)$/.test(event.code) && !event.altKey && !event.shiftKey) return "Control";
-  if (/^(AltLeft|AltRight)$/.test(event.code) && !event.ctrlKey && !event.shiftKey) return "Alt";
-  if (/^(ShiftLeft|ShiftRight)$/.test(event.code) && !event.ctrlKey && !event.altKey) return "Shift";
-  return null;
+const modifierGroups = [
+  ["Control", "ControlLeft", "ControlRight", "ctrlKey"],
+  ["Alt", "AltLeft", "AltRight", "altKey"],
+  ["Shift", "ShiftLeft", "ShiftRight", "shiftKey"],
+  ["Super", "MetaLeft", "MetaRight", "metaKey"]
+] as const;
+export function isShortcutModifier(code: string): boolean {
+  return /^(Control|Alt|Shift|Meta)(Left|Right)$/.test(code);
 }
-
+function recordedModifiers(
+  event: Pick<KeyboardEvent, "ctrlKey" | "altKey" | "shiftKey" | "metaKey">,
+  held?: ReadonlySet<string>
+): string[] {
+  return modifierGroups.flatMap(([generic, left, right, flag]) => {
+    if (!event[flag]) return [];
+    const sides = held ? [left, right].filter((code) => held.has(code)) : [];
+    return sides.length ? sides : [generic];
+  });
+}
 export function bindingFromKey(
-  event: Pick<KeyboardEvent, "code" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey" | "repeat">
+  event: Pick<KeyboardEvent, "code" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey" | "repeat">,
+  held?: ReadonlySet<string>
 ): string | null {
-  const modifier = standaloneModifier(event);
-  if (modifier) return modifier;
-  if (event.repeat || !/^(Key[A-Z]|Digit[0-9]|F([1-9]|1[0-9]|2[0-4]))$/.test(event.code)) return null;
-  if (!/^F/.test(event.code) && !(event.ctrlKey || event.altKey || event.metaKey)) return null;
-  return [
-    event.ctrlKey && "Control",
-    event.altKey && "Alt",
-    event.shiftKey && "Shift",
-    event.metaKey && "Super",
-    event.code
-  ]
-    .filter(Boolean)
-    .join("+");
+  if (event.repeat) return null;
+  if (isShortcutModifier(event.code)) return event.code;
+  if (
+    !/^(Key[A-Z]|Digit[0-9]|F([1-9]|1[0-9]|2[0-4])|Space|Enter|Backspace|Delete|Insert|Home|End|PageUp|PageDown|Arrow(Up|Down|Left|Right)|Backquote|Minus|Equal|BracketLeft|BracketRight|Backslash|IntlBackslash|Semicolon|Quote|Comma|Period|Slash|Numpad([0-9]|Add|Subtract|Multiply|Divide|Decimal|Enter))$/.test(
+      event.code
+    )
+  )
+    return null;
+  return [...recordedModifiers(event, held), event.code].join("+");
 }
-
 export function bindingFromMouse(
-  event: Pick<MouseEvent, "button" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey">
+  event: Pick<MouseEvent, "button" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey">,
+  held?: ReadonlySet<string>
 ): string | null {
   if (![1, 3, 4].includes(event.button)) return null;
-  const button = event.button === 1 ? 3 : event.button + 1;
-  return [
-    event.ctrlKey && "Control",
-    event.altKey && "Alt",
-    event.shiftKey && "Shift",
-    event.metaKey && "Super",
-    `Mouse${button}`
-  ]
-    .filter(Boolean)
-    .join("+");
+  return [...recordedModifiers(event, held), `Mouse${event.button === 1 ? 3 : event.button + 1}`].join("+");
 }
-
 export function bindingLabel(binding: string, mouseName = "Mouse"): string {
+  const names: Record<string, string> = {
+    Control: "Ctrl",
+    ControlLeft: "LCtrl",
+    ControlRight: "RCtrl",
+    AltLeft: "LAlt",
+    AltRight: "RAlt",
+    ShiftLeft: "LShift",
+    ShiftRight: "RShift",
+    Super: "Win",
+    MetaLeft: "LWin",
+    MetaRight: "RWin",
+    Backquote: "`",
+    Minus: "-",
+    Equal: "=",
+    BracketLeft: "[",
+    BracketRight: "]",
+    Backslash: "\\",
+    IntlBackslash: "Intl \\",
+    Semicolon: ";",
+    Quote: "'",
+    Comma: ",",
+    Period: ".",
+    Slash: "/"
+  };
   return binding
     .split("+")
-    .map((part) =>
-      part === "Control"
-        ? "Ctrl"
-        : part === "Super"
-          ? "Win"
-          : part.replace(/^(Key|Digit)/, "").replace(/^Mouse([345])$/, `${mouseName} $1`)
+    .map(
+      (part) =>
+        names[part] ??
+        part
+          .replace(/^(Key|Digit)/, "")
+          .replace(/^Mouse([345])$/, `${mouseName} $1`)
+          .replace(/^Numpad/, "Numpad ")
     )
     .join(" + ");
 }
@@ -97,6 +118,7 @@ export function mountShortcutSettings({
   let message: TranslationKey | null = null;
   let suppressedMouseButton: number | null = null;
   let pendingModifier: string | null = null;
+  const heldModifiers = new Set<string>();
 
   const refresh = () => {
     const fields = {
@@ -129,11 +151,13 @@ export function mountShortcutSettings({
   const cancelRecording = () => {
     recording = false;
     pendingModifier = null;
+    heldModifiers.clear();
     refresh();
   };
   record.addEventListener("click", () => {
     recording = !recording;
     pendingModifier = null;
+    heldModifiers.clear();
     message = null;
     refresh();
     if (recording) input.focus();
@@ -150,14 +174,15 @@ export function mountShortcutSettings({
     }
     event.preventDefault();
     if (event.repeat) return;
-    const binding = bindingFromKey(event);
+    if (isShortcutModifier(event.code)) heldModifiers.add(event.code);
+    const binding = bindingFromKey(event, heldModifiers);
     if (!binding) {
       pendingModifier = null;
       if (!/^(Control|Alt|Shift|Meta)(Left|Right)$/.test(event.code)) message = "shortcut_invalid";
       refresh();
       return;
     }
-    if (["Control", "Alt", "Shift"].includes(binding)) {
+    if (isShortcutModifier(binding)) {
       pendingModifier = binding;
       return;
     }
@@ -169,8 +194,9 @@ export function mountShortcutSettings({
     apply.focus();
   });
   input.addEventListener("keyup", (event) => {
+    heldModifiers.delete(event.code);
     if (!recording || !pendingModifier) return;
-    const released = standaloneModifier(event);
+    const released = isShortcutModifier(event.code) ? event.code : null;
     if (!released || released !== pendingModifier) return;
     event.preventDefault();
     pendingModifier = null;
@@ -185,7 +211,7 @@ export function mountShortcutSettings({
     (event) => {
       if (suppressedMouseButton === event.button) suppressedMouseButton = null;
       if (!recording) return;
-      const binding = bindingFromMouse(event);
+      const binding = bindingFromMouse(event, heldModifiers);
       if (!binding) return;
       event.preventDefault();
       event.stopPropagation();

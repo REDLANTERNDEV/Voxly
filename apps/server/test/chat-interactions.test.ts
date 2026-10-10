@@ -151,6 +151,17 @@ describe("chat interactions", () => {
     const input: MessageMentionInput = { kind: "person", userId: member.id, start: 3, end: 3 + label.length };
     const message = await post(`hi ${label}`, [input]);
     assert.deepEqual(message.mentions[0].recipientIds, [member.id]);
+    assert.equal(message.body, `hi @${target.nickname}`);
+    const duplicate = await invite(target.nickname);
+    const short = `@${target.nickname}`;
+    const plain = await post(short);
+    assert.deepEqual(plain.mentions, []);
+    const selected = await post(`😀 ${short}!`, [
+      { kind: "person", userId: duplicate.id, start: 3, end: 3 + short.length }
+    ]);
+    assert.equal(selected.body, `😀 ${short}!`);
+    assert.deepEqual(selected.mentions[0].recipientIds, [duplicate.id]);
+    assert.equal(selected.mentions[0].kind === "person" && selected.mentions[0].userId, duplicate.id);
     await app.server.inject({
       method: "PATCH",
       url: `/api/servers/${serverId}/members/${member.id}/nickname`,

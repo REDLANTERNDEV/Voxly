@@ -342,7 +342,7 @@ export function registerMessageRoutes(context: RouteContext) {
     const mentions = prepareMentions(database.sqlite, io, room.serverId, body.body, body.mentions);
     if (!mentions) return reply.code(400).send({ error: "invalid_mentions" });
     const message: ChatMessage = {
-      mentions,
+      ...rewriteMentionLabels(body.body, mentions),
       reactionState: { version: 0, reactions: [] },
       pinnedAt: null,
       id: crypto.randomUUID(),
@@ -352,7 +352,6 @@ export function registerMessageRoutes(context: RouteContext) {
       userId: user.id,
       nickname: sender.nickname,
       authorDeleted: false,
-      body: body.body,
       createdAt: new Date().toISOString(),
       editedAt: null,
       suppressedEmbedKeys: [],
@@ -748,8 +747,11 @@ function prepareMentions(
     if (input.kind === "person") {
       const target = people.find((person) => person.userId === input.userId);
       // A nickname can change while a draft waits in the outbox. The stable
-      // Membership identity/code must agree; readback canonicalizes the name.
-      if (!target || !body.slice(input.start, input.end).endsWith(` · #${target.mentionCode}`)) return null;
+      // Membership identity must remain active; readback canonicalizes the label.
+      // Accept legacy code-bearing drafts as well as nickname-only labels.
+      const label = body.slice(input.start, input.end);
+      if (!target || !label.startsWith("@") || label.length < 2) return null;
+      if (label.includes(" · #") && !label.endsWith(` · #${target.mentionCode}`)) return null;
       result.push({
         ...input,
         id: input.id ?? crypto.randomUUID(),

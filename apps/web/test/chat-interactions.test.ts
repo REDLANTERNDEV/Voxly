@@ -101,7 +101,7 @@ describe("person identity and mention presentation", () => {
     const renamed = reconcileMentionContent(original, {
       person: { userId: "person", nickname: "Deniz Uzun", mentionCode: "A7K2X9", role: "member" }
     });
-    assert.equal(renamed.body, "hi @Deniz Uzun · #A7K2X9! Ahmet");
+    assert.equal(renamed.body, "hi @Deniz Uzun! Ahmet");
     assert.equal(renamed.mentions[0].id, mention.id);
     assert.equal(renamed.mentions[0].recipientIds, mention.recipientIds);
     const selected = rebaseMentionSelection(original.mentions, renamed.mentions, {
@@ -179,7 +179,7 @@ describe("person identity and mention presentation", () => {
       recipientIds: ["person"]
     };
     const result = rewriteMentionLabels(body + " @here", [{ ...mention, nickname: "Deniz Uzun" }, here]);
-    assert.equal(result.body, "hi @Deniz Uzun · #A7K2X9! @here");
+    assert.equal(result.body, "hi @Deniz Uzun! @here");
     assert.equal(result.body.slice(result.mentions[1].start, result.mentions[1].end), "@here");
     assert.equal(result.mentions[0].kind === "person" && result.mentions[0].userId, "person");
   });

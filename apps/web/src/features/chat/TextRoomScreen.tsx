@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { serverPath } from "../../app/navigation.js";
 import type { ShellActions, ShellModel } from "../../app/types.js";
-import { ArrowIcon, CloseIcon, ReplyIcon } from "../../components/ui/Icons.js";
+import { ArrowIcon, CloseIcon, ReplyIcon, PushPinIcon } from "../../components/ui/Icons.js";
 import { EmptyState, RoomHeader } from "../../components/ui/Primitives.js";
 import { resolveRememberedRoom } from "../../lib/channelState.js";
 import { isMessageListNearBottom, messageListUpdateAction } from "../../lib/messages.js";
@@ -95,13 +95,17 @@ export function TextRoomScreen(props: TextRoomProps) {
       const style = getComputedStyle(field);
       const line = parseFloat(style.lineHeight) || 21;
       const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-      const limit = Math.min(line * (window.innerWidth <= 560 ? 6 : 15) + padding, window.innerHeight * 0.4);
+      const limit = Math.min(line * 6 + padding, (window.visualViewport?.height ?? window.innerHeight) * 0.4);
       field.style.height = `${Math.min(field.scrollHeight, limit)}px`;
       field.style.overflowY = field.scrollHeight > limit ? "auto" : "hidden";
     };
     resize();
     window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    window.visualViewport?.addEventListener("resize", resize);
+    return () => {
+      window.removeEventListener("resize", resize);
+      window.visualViewport?.removeEventListener("resize", resize);
+    };
   }, [draft]);
 
   useLayoutEffect(() => {
@@ -203,8 +207,15 @@ export function TextRoomScreen(props: TextRoomProps) {
       <RoomHeader
         title={props.currentRoom?.name ?? "lobby"}
         actions={
-          <button className="btn btn-ghost" type="button" aria-haspopup="dialog" onClick={() => setShowPins(true)}>
-            {props.t("chat.pins")}
+          <button
+            className="btn btn-ghost"
+            type="button"
+            aria-haspopup="dialog"
+            aria-label={props.t("chat.pins")}
+            title={props.t("chat.pins")}
+            onClick={() => setShowPins(true)}
+          >
+            <PushPinIcon />
           </button>
         }
         subtitle={props.t("room.generalTalk")}
@@ -221,9 +232,11 @@ export function TextRoomScreen(props: TextRoomProps) {
             className="btn btn-ghost chat-phone-pins"
             type="button"
             aria-haspopup="dialog"
+            aria-label={props.t("chat.pins")}
+            title={props.t("chat.pins")}
             onClick={() => setShowPins(true)}
           >
-            {props.t("chat.pins")}
+            <PushPinIcon />
           </button>
           {props.contextMessages !== null ? (
             <button
@@ -367,17 +380,18 @@ export function TextRoomScreen(props: TextRoomProps) {
               }}
               onSubmit={() => composerRef.current?.form?.requestSubmit()}
               onEscape={() => setReplyTarget(null)}
+              trailingControl={
+                <button
+                  className="btn btn-primary composer-send"
+                  type="submit"
+                  aria-label={props.t("common.send")}
+                  title={props.t("common.send")}
+                >
+                  <ArrowIcon />
+                </button>
+              }
             />
           </label>
-          <button
-            className="btn btn-primary composer-send"
-            type="submit"
-            aria-label={props.t("common.send")}
-            title={props.t("common.send")}
-          >
-            <ArrowIcon />
-            <span>{props.t("common.send")}</span>
-          </button>
         </form>
         <p className="error-text" aria-live="polite">
           {error}

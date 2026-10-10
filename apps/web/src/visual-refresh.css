@@ -3943,3 +3943,66 @@ select {
   line-height: 1;
   pointer-events: none;
 }
+
+/* Composer controls share a fixed top row while paragraphs grow below it. */
+.composer .chat-composer-input > .textarea {
+  min-height: 60px;
+  max-height: none;
+  padding: 18px 60px 18px;
+  resize: none;
+}
+.composer-send,
+.chat-emoji-trigger {
+  top: 8px;
+  bottom: auto;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.composer-send {
+  right: 8px;
+}
+.chat-emoji-trigger {
+  left: 8px;
+}
+.chat-composer-input > .textarea {
+  padding-left: 60px;
+  min-height: 60px;
+}
+.composer-send .ui-icon,
+.chat-emoji-trigger .ui-icon {
+  width: 20px;
+  height: 20px;
+}
+.ui-icon.phosphor-icon {
+  stroke-width: 16;
+}
+.settings-version-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Tall nested confirmations must scroll above Settings on short viewports. */
+.confirm-backdrop {
+  z-index: calc(var(--layer-modal) + 20);
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+.confirm-dialog {
+  max-height: calc(100dvh - max(16px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)));
+  min-height: 0;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+.confirm-dialog > * {
+  min-width: 0;
+}
+.confirm-actions {
+  flex-wrap: wrap;
+}

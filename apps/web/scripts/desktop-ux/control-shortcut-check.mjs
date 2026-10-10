@@ -15,7 +15,7 @@ try {
     await expect(row.getByRole("button", { name: "Stop recording", exact: true })).toBeVisible();
     await row.getByRole("button", { name: "Stop recording", exact: true }).click();
     const operations = JSON.parse(await page.locator("#desktop-operation-log").textContent());
-    assert.equal(operations.findLast((o) => o.kind === "shortcut").binding, modifier);
+    assert.equal(operations.findLast((o) => o.kind === "shortcut").binding, modifier + "Left");
   }
   let operations;
   await row.getByRole("button", { name: "Edit keybind", exact: true }).click();
@@ -23,8 +23,18 @@ try {
   await row.getByRole("textbox").press("Control+Shift+K");
   await row.getByRole("button", { name: "Stop recording", exact: true }).click();
   operations = JSON.parse(await page.locator("#desktop-operation-log").textContent());
-  assert.equal(operations.findLast((o) => o.kind === "shortcut").binding, "Control+Shift+KeyK");
+  assert.equal(operations.findLast((o) => o.kind === "shortcut").binding, "ControlLeft+ShiftLeft+KeyK");
   assert.deepEqual(operations.filter((o) => o.kind === "recording").at(-1), { kind: "recording", enabled: false });
+  for (const index of [0, 1, 2, 3]) {
+    const actionRow = page.locator(".desktop-shortcut-row").nth(index);
+    await actionRow.getByRole("button", { name: "Edit keybind", exact: true }).click();
+    await page.keyboard.down("ControlRight");
+    await page.keyboard.press("KeyM");
+    await page.keyboard.up("ControlRight");
+    await actionRow.getByRole("button", { name: "Stop recording", exact: true }).click();
+    const operations = JSON.parse(await page.locator("#desktop-operation-log").textContent());
+    assert.equal(operations.findLast((o) => o.kind === "shortcut").binding, "ControlRight+KeyM");
+  }
   console.log("Ctrl, Alt, and Shift alone save; longer Ctrl chords remain recordable.");
 } finally {
   await browser.close();

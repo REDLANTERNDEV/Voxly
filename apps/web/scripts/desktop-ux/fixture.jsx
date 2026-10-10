@@ -71,6 +71,12 @@ window.fetch = async (input, options) => {
   const path = String(input);
   let result = {};
   if (path.endsWith("/api/devices")) result = { devices: [] };
+  if (path.endsWith("/api/devices/links") && options?.method === "POST") {
+    if (window.fixtureLinkError) return new Response(JSON.stringify({ error: "unavailable" }), { status: 503 });
+    result = { linkId: id, code: "23456789AB", expiresInSeconds: 90 };
+  }
+  if (path.endsWith("/api/devices/links/waiting")) result = { waiting: window.fixtureLinkWaiting ?? null };
+  if (path.endsWith("/api/devices/links/approve")) result = { ok: true };
   if (path.includes("/recovery")) result = { present: true };
   if (path.includes("/deletion")) result = { request: null };
   if (path.endsWith("/desktop-launches") && options?.method === "POST") result = { id, account: "Mira" };

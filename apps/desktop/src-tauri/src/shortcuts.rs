@@ -1,3 +1,4 @@
+use crate::input_bindings::{overlaps, parse_physical, PhysicalBinding};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
@@ -175,6 +176,7 @@ pub enum Binding {
     Keyboard(Shortcut),
     Mouse(MouseBinding),
     Modifier(ModifierKey),
+    Physical(PhysicalBinding),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -185,6 +187,16 @@ pub enum ModifierKey {
 }
 
 pub fn parse_binding(binding: &str) -> Result<Binding, &'static str> {
+    let physical = parse_physical(binding)?;
+    if binding.contains("Left")
+        || binding.contains("Right")
+        || (!binding.contains('+')
+            && physical.key != 0
+            && !binding.starts_with('F')
+            && !binding.starts_with("Mouse"))
+    {
+        return Ok(Binding::Physical(physical));
+    }
     match binding {
         "Control" => return Ok(Binding::Modifier(ModifierKey::Control)),
         "Alt" => return Ok(Binding::Modifier(ModifierKey::Alt)),
@@ -203,8 +215,8 @@ pub fn parse_binding(binding: &str) -> Result<Binding, &'static str> {
         .and_then(|value| value.parse::<u8>().ok())
         .is_some_and(|number| (1..=24).contains(&number) && key == format!("F{number}"));
     let mouse = matches!(key, "Mouse3" | "Mouse4" | "Mouse5");
-    if !(letter || digit || function || mouse) || (parts.len() == 1 && !function && !mouse) {
-        return Err("shortcut_invalid");
+    if !(letter || digit || function || mouse) {
+        return Ok(Binding::Physical(physical));
     }
     let modifiers = ["Control", "Alt", "Shift", "Super"];
     let mut previous = None;
@@ -226,7 +238,7 @@ pub fn parse_binding(binding: &str) -> Result<Binding, &'static str> {
             .iter()
             .any(|part| matches!(*part, "Control" | "Alt" | "Super"))
     {
-        return Err("shortcut_invalid");
+        return Ok(Binding::Physical(physical));
     }
     if mouse {
         return Ok(Binding::Mouse(MouseBinding {
@@ -261,6 +273,17 @@ impl Registry for NativeRegistry<'_> {
                 .global_shortcut()
                 .register(shortcut)
                 .map_err(|_| "shortcut_unavailable"),
+            Binding::Physical(physical) => {
+                #[cfg(target_os = "windows")]
+                {
+                    crate::mouse_hook::register_physical(self.app, self.action, physical)
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    let _ = physical;
+                    Err("shortcut_unavailable")
+                }
+            }
             Binding::Mouse(mouse) => {
                 #[cfg(target_os = "windows")]
                 {
@@ -275,7 +298,14 @@ impl Registry for NativeRegistry<'_> {
             Binding::Modifier(modifier) => {
                 #[cfg(target_os = "windows")]
                 {
-                    crate::mouse_hook::register_modifier(self.app, self.action, modifier)
+                    {
+                        let _ = modifier;
+                        crate::mouse_hook::register_physical(
+                            self.app,
+                            self.action,
+                            parse_physical(binding)?,
+                        )
+                    }
                 }
                 #[cfg(not(target_os = "windows"))]
                 {
@@ -296,7 +326,7 @@ impl Registry for NativeRegistry<'_> {
                     .global_shortcut()
                     .unregister(shortcut)
                     .map_err(|_| "shortcut_failed")?,
-                Binding::Mouse(_) | Binding::Modifier(_) => {
+                Binding::Mouse(_) | Binding::Modifier(_) | Binding::Physical(_) => {
                     #[cfg(target_os = "windows")]
                     crate::mouse_hook::clear(self.action)?;
                 }
@@ -308,12 +338,12 @@ impl Registry for NativeRegistry<'_> {
 }
 
 /** Both physical keys of each modifier form one hold, independent of other shortcuts. */
-#[cfg(any(test, target_os = "windows"))]
+#[cfg(test)]
 #[derive(Default)]
 pub struct ModifierShortcutGates {
     gates: Vec<(Action, ModifierKey, [bool; 2])>,
 }
-#[cfg(any(test, target_os = "windows"))]
+#[cfg(test)]
 impl ModifierShortcutGates {
     pub fn set(&mut self, action: Action, modifier: Option<ModifierKey>) -> Option<(Action, bool)> {
         let release = self
@@ -361,7 +391,9 @@ impl ModifierShortcutGates {
 
 pub fn distinct_bindings(first: Option<&str>, second: Option<&str>) -> Result<(), &'static str> {
     if let (Some(first), Some(second)) = (first, second) {
-        if parse_binding(first)? == parse_binding(second)? {
+        parse_binding(first)?;
+        parse_binding(second)?;
+        if overlaps(parse_physical(first)?, parse_physical(second)?) {
             return Err("shortcut_duplicate");
         }
     }
@@ -485,7 +517,7 @@ mod tests {
                 Err("shortcut_duplicate")
             );
         }
-        assert!(parse_binding("Super").is_err());
+        assert!(parse_binding("Super").is_ok());
     }
 
     #[test]
@@ -720,7 +752,7 @@ mod tests {
         }
     }
     #[test]
-    fn binding_policy_requires_explicit_physical_keys_and_safe_modifiers() {
+    fn binding_policy_accepts_supported_physical_keys() {
         for binding in [
             "Control+Shift+KeyM",
             "Alt+Digit9",
@@ -733,11 +765,8 @@ mod tests {
             assert!(parse_binding(binding).is_ok(), "{binding}");
         }
         for binding in [
-            "KeyM",
-            "Shift+KeyM",
             "Control+Control+KeyM",
             "Alt+Control+KeyM",
-            "Control+Enter",
             "F25",
             "F01",
             "Alt+é",
@@ -751,7 +780,8 @@ mod tests {
         assert_eq!(
             match parse_binding("Control+Shift+Mouse5").unwrap() {
                 Binding::Mouse(mouse) => mouse,
-                Binding::Keyboard(_) | Binding::Modifier(_) => panic!("expected mouse binding"),
+                Binding::Keyboard(_) | Binding::Modifier(_) | Binding::Physical(_) =>
+                    panic!("expected mouse binding"),
             },
             MouseBinding {
                 button: 5,
@@ -761,7 +791,8 @@ mod tests {
         assert_eq!(
             match parse_binding("Control+Alt+Shift+Super+Mouse5").unwrap() {
                 Binding::Mouse(mouse) => mouse.modifiers,
-                Binding::Keyboard(_) | Binding::Modifier(_) => panic!("expected mouse binding"),
+                Binding::Keyboard(_) | Binding::Modifier(_) | Binding::Physical(_) =>
+                    panic!("expected mouse binding"),
             },
             CONTROL | ALT | SHIFT | SUPER
         );

@@ -42,7 +42,7 @@ describe("desktop shortcut registration and bridge", () => {
     assert.match(callback, /CallNextHookEx/);
     assert.doesNotMatch(callback, /return 1|suppress|GetForegroundWindow/);
   });
-  it("records physical key combinations and avoids ordinary typing and repeat", () => {
+  it("records physical key combinations and supports ordinary keys without repeating", () => {
     assert.equal(bindingFromKey(key), "Control+KeyM");
     for (const [modifier, flag] of [
       ["Control", "ctrlKey"],
@@ -59,12 +59,12 @@ describe("desktop shortcut registration and bridge", () => {
           repeat: false,
           [flag]: true
         };
-        assert.equal(bindingFromKey(event), modifier);
+        assert.equal(bindingFromKey(event), modifier + side);
         assert.equal(bindingFromKey({ ...event, repeat: true }), null);
       }
     }
-    assert.equal(bindingFromKey({ ...key, code: "ControlLeft" }), "Control");
-    assert.equal(bindingFromKey({ ...key, code: "ControlRight" }), "Control");
+    assert.equal(bindingFromKey({ ...key, code: "ControlLeft" }), "ControlLeft");
+    assert.equal(bindingFromKey({ ...key, code: "ControlRight" }), "ControlRight");
     assert.equal(bindingLabel("Control+Alt+KeyM"), "Ctrl + Alt + M");
     assert.equal(bindingLabel("Super+Digit9"), "Win + 9");
     assert.equal(
@@ -74,8 +74,6 @@ describe("desktop shortcut registration and bridge", () => {
     assert.equal(bindingFromKey({ ...key, ctrlKey: false, code: "F8" }), "F8");
     for (const event of [
       { ...key, repeat: true },
-      { ...key, ctrlKey: false },
-      { ...key, ctrlKey: false, shiftKey: true },
       { ...key, code: "F25" }
     ]) {
       assert.equal(bindingFromKey(event), null);
@@ -261,7 +259,7 @@ describe("desktop shortcut registration and bridge", () => {
           );
           elements.get("save-shortcut")!.dispatchEvent(new Event("click"));
           await Promise.resolve();
-          assert.equal(saved, chord ? modifier + "+F8" : modifier);
+          assert.equal(saved, chord ? modifier + "Left+F8" : modifier + "Left");
         }
     } finally {
       Object.assign(globalThis, { document: previousDocument, window: previousWindow });
@@ -411,4 +409,22 @@ describe("desktop shortcut registration and bridge", () => {
     bridge.dispatchDeafen();
     assert.equal(deafens, 2);
   });
+});
+
+it("records exact modifier sides in keyboard and mouse chords", () => {
+  const event = { code: "KeyM", ctrlKey: true, altKey: false, shiftKey: false, metaKey: false, repeat: false };
+  const held = new Set(["ControlRight"]);
+  assert.equal(bindingFromKey(event, held), "ControlRight+KeyM");
+  held.add("ShiftLeft");
+  assert.equal(
+    bindingFromKey({ ...event, shiftKey: true, code: "NumpadEnter" }, held),
+    "ControlRight+ShiftLeft+NumpadEnter"
+  );
+  assert.equal(bindingFromMouse({ ...event, button: 4 }, held), "ControlRight+Mouse5");
+  assert.equal(bindingFromKey({ ...event, ctrlKey: false, code: "Space" }, new Set()), "Space");
+  for (const code of ["KeyM", "Digit1", "Enter", "ArrowLeft", "Semicolon", "Numpad1", "NumpadDivide", "F24"]) {
+    assert.equal(bindingFromKey({ ...event, ctrlKey: false, code }), code);
+  }
+  for (const code of ["Escape", "Tab", "F25", "Unidentified"]) assert.equal(bindingFromKey({ ...event, code }), null);
+  assert.equal(bindingLabel("ControlRight+ShiftLeft+NumpadEnter"), "RCtrl + LShift + Numpad Enter");
 });

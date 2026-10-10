@@ -1,5 +1,5 @@
 import type { MessageMention, PresenceUser } from "@voxly/shared";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject, type ReactNode } from "react";
 import type { Translate } from "../../app/types.js";
 import { shouldSubmitComposer } from "../../lib/messages.js";
 import { editMentionRanges, mentionCandidates, rebaseMentionSelection } from "../../lib/chatInteractions.js";
@@ -18,7 +18,8 @@ export function ChatComposerInput({
   onEscape,
   label,
   id,
-  placeholder
+  placeholder,
+  trailingControl
 }: {
   body: string;
   mentions: MessageMention[];
@@ -32,6 +33,7 @@ export function ChatComposerInput({
   label: string;
   id?: string;
   placeholder?: string;
+  trailingControl?: ReactNode;
 }) {
   const localRef = useRef<HTMLTextAreaElement | null>(null);
   const fieldRef = inputRef ?? localRef;
@@ -116,12 +118,13 @@ export function ChatComposerInput({
   function selectMention(index: number) {
     const option = options[index];
     if (!option) return;
-    const next = body.slice(0, start) + option.text + " " + body.slice(caret);
+    const text = option.member ? `@${option.member.nickname}` : option.text;
+    const next = body.slice(0, start) + text + " " + body.slice(caret);
     const ranges = editMentionRanges(body, next, mentions, { start, end: caret });
     const base = {
       id: crypto.randomUUID(),
       start,
-      end: start + option.text.length,
+      end: start + text.length,
       nickname: option.member?.nickname ?? "",
       mentionCode: option.member?.mentionCode ?? "",
       authorDeleted: false,
@@ -136,7 +139,7 @@ export function ChatComposerInput({
       [...ranges, mention].sort((a, b) => a.start - b.start)
     );
     setDismissed(true);
-    placeCaret(start + option.text.length + 1);
+    placeCaret(start + text.length + 1);
   }
   return (
     <div className="chat-composer-input">
@@ -209,6 +212,7 @@ export function ChatComposerInput({
           }
         }}
       />
+      {trailingControl}
       {showSuggestions ? (
         <div className="mention-suggestions" id={listId} role="listbox" aria-label={t("chat.mentionPeople")}>
           {options.map((option, index) => (

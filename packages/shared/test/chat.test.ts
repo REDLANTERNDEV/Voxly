@@ -46,3 +46,36 @@ describe("Mention wire rules", () => {
     assert.equal(result.body.slice(result.mentions[0].start, result.mentions[0].end), "@#ABC123");
   });
 });
+
+it("canonicalizes legacy labels to nicknames and rebases following UTF-16 ranges", () => {
+  const legacy = "@Ahmet · #ABC123";
+  const body = `😀 ${legacy} and @here!`;
+  const mentions: MessageMention[] = [
+    {
+      id: "person-occurrence",
+      kind: "person",
+      userId: "person",
+      start: 3,
+      end: 3 + legacy.length,
+      nickname: "Deniz Uzun",
+      mentionCode: "ABC123",
+      authorDeleted: false,
+      recipientIds: ["person"]
+    },
+    {
+      id: "here-occurrence",
+      kind: "here",
+      start: body.indexOf("@here"),
+      end: body.indexOf("@here") + 5,
+      nickname: "",
+      mentionCode: "",
+      authorDeleted: false,
+      recipientIds: ["person"]
+    }
+  ];
+  const result = rewriteMentionLabels(body, mentions);
+  assert.equal(result.body, "😀 @Deniz Uzun and @here!");
+  assert.equal(result.body.slice(result.mentions[1].start, result.mentions[1].end), "@here");
+  assert.equal(result.mentions[0].id, mentions[0].id);
+  assert.deepEqual(rewriteMentionLabels(result.body, result.mentions), result);
+});

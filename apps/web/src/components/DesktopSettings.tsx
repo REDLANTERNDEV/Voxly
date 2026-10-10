@@ -7,6 +7,7 @@ import {
   desktopBindingLabel,
   desktopKeyboardBinding,
   desktopMouseBinding,
+  isShortcutModifier,
   type DesktopAction,
   type DesktopSettingsOperation,
   type DesktopSettingsSnapshot
@@ -302,8 +303,9 @@ function ShortcutRow({
         }
       });
     let suppressed: number | null = null;
+    const heldModifiers = new Set<string>();
     const mouse = (event: MouseEvent) => {
-      const value = desktopMouseBinding(event);
+      const value = desktopMouseBinding(event, heldModifiers);
       if (!value) return;
       event.preventDefault();
       event.stopPropagation();
@@ -328,14 +330,17 @@ function ShortcutRow({
       if (event.key === "Tab" || (event.target !== input.current && ["Enter", " "].includes(event.key))) return;
       event.preventDefault();
       event.stopPropagation();
-      const value = desktopKeyboardBinding(event);
+      if (isShortcutModifier(event.code)) heldModifiers.add(event.code);
+      const value = desktopKeyboardBinding(event, heldModifiers);
       if (value) {
         setDraft(value);
         setInvalid(false);
       } else if (!event.repeat && !/^(Control|Alt|Shift|Meta)(Left|Right)$/.test(event.code)) setInvalid(true);
     };
+    const keyRelease = (event: KeyboardEvent) => heldModifiers.delete(event.code);
     const blur = () => onRecording(null);
     window.addEventListener("keydown", key, true);
+    window.addEventListener("keyup", keyRelease, true);
     window.addEventListener("mousedown", mouse, true);
     window.addEventListener("mouseup", release, true);
     window.addEventListener("auxclick", release, true);
@@ -344,6 +349,7 @@ function ShortcutRow({
       live = false;
       void applyDesktopSettings({ kind: "recording", enabled: false }).catch(() => undefined);
       window.removeEventListener("keydown", key, true);
+      window.removeEventListener("keyup", keyRelease, true);
       window.removeEventListener("mousedown", mouse, true);
       window.removeEventListener("mouseup", release, true);
       window.removeEventListener("auxclick", release, true);

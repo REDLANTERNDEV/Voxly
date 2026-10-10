@@ -256,8 +256,8 @@ requirement.
 - The composer and message editor share the local emoji picker and Mention
   selector. Keep selection ranges through edits, trim rebasing, outbox retries
   and reply excerpts; editing a generated label turns it into ordinary text.
-- Resolve person Mentions by identity, with nickname and Mention code visible
-  in suggestions, labels and the person card. Include offline active people;
+- Resolve person Mentions by identity, with nickname-only labels and Mention codes
+  retained in suggestions and the person card. Include offline active people;
   derive online status only from authoritative presence. Collective labels use
   frozen server recipients for highlighting and preserve normal notification gates.
 - Message reactions use the shared catalogue and kind ceiling. At the ceiling,
@@ -678,15 +678,16 @@ folded into a width: a touchscreen laptop is wide and cannot right-click.
 - Keep the pins entry point available in the text-room viewport's compact
   toolbar when the room header is hidden. Historical navigation shares that
   toolbar; neither control adds a growing track to the room grid.
-- The composer stays one row: the field's heading goes off screen but stays in
-  the document, the send control keeps its mark and drops its word, and the
+- The composer grows to six lines, then scrolls internally; emoji and send
+  controls remain aligned at the top with 44px targets and 8px insets. The
+  field's heading goes off screen but stays in the document, the send control keeps its mark and drops its word, and the
   error line collapses while it is empty.
 - On mobile, account, room/connection status, ping, diagnostics, update status
   and member count live in the left drawer. The bottom dock contains only a
   compact call-control row during calls; outside calls it reserves no space.
   Keep Join available in the voice surface or drawer. Dock height variables,
   composer spacing and safe areas must agree. Download desktop is a labeled
-  drawer-footer action rather than a cramped rail icon. Desktop keeps its dock.
+  action on wide screens only. Desktop keeps its dock.
 - A control may drop its label at a narrow width only when it already carries
   that same wording as an accessible name. Add the name in the same change, and
   from the translation tables — never a bare English literal.

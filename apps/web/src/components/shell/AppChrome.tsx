@@ -5,7 +5,7 @@ import { serverPath } from "../../app/navigation.js";
 import { activeServerRole } from "../../app/presentation.js";
 import type { MemberAction, ShellActions, ShellModel } from "../../app/types.js";
 import { ConfirmDialog, NicknameDialog } from "../../components/ui/Dialogs.js";
-import { DownloadIcon, MenuIcon, UsersIcon } from "../../components/ui/Icons.js";
+import { MenuIcon, UsersIcon } from "../../components/ui/Icons.js";
 import { BrandLockup } from "../../components/ui/Navigation.js";
 import { NotificationViewport, useNotificationCenter } from "../../components/ui/Notifications.js";
 import type { AppNotification } from "../../lib/notifications.js";
@@ -205,17 +205,6 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
                 onOpenSettings={() => openSettings()}
                 onOpenAudioSettings={() => openSettings("audio")}
               />
-              {typeof window === "undefined" || window.__VOXLY_DESKTOP_V1__?.version !== 1 ? (
-                <a
-                  className="btn btn-ghost drawer-download"
-                  href="https://github.com/REDLANTERNDEV/Voxly/releases"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <DownloadIcon />
-                  <span>{props.t("desktop.download")}</span>
-                </a>
-              ) : null}
             </div>
           }
           onOpenSettings={() => openSettings()}

@@ -986,7 +986,7 @@ export function rewriteMentionLabels(body: string, mentions: MessageMention[]) {
         ? `@${mention.kind}`
         : mention.authorDeleted
           ? `@#${mention.mentionCode}`
-          : `@${mention.nickname} · #${mention.mentionCode}`;
+          : `@${mention.nickname}`;
     const start = result.length;
     result += label;
     rewritten.push({ ...mention, start, end: result.length });

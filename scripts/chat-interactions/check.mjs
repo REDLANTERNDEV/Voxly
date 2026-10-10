@@ -115,13 +115,13 @@ try {
   const targetIndex = (await page.getByRole("option").locator("span").allTextContents()).indexOf(firstLabel);
   for (let index = 0; index < targetIndex; index++) await field.press("ArrowDown");
   await field.press("Enter");
-  await expect(field).toHaveValue(`${firstLabel} `);
+  await expect(field).toHaveValue(`${firstLabel.split(" · #")[0]} `);
   await field.press("Enter");
   const mentionRow = page
     .locator(".message")
     .filter({ has: page.locator("button.message-mention") })
     .last();
-  await expect(mentionRow.locator("button.message-mention")).toBeVisible();
+  await expect(mentionRow.locator("button.message-mention")).toHaveText(firstLabel.split(" · #")[0]);
   await mentionRow.locator("button.message-mention").click();
   await expect(page.getByRole("dialog", { name: "Member details" })).toBeVisible();
   await expect(page.getByRole("dialog").locator(".mono")).toHaveText(firstLabel.match(/#[A-F0-9]{6}/)[0]);
@@ -259,7 +259,7 @@ try {
 
   const directory = await (await context.request.get(`${base}/api/servers/the-basement/directory`)).json();
   const target = directory.members.find((person) => person.userId === members[0].user.id);
-  const targetLabel = `@${target.nickname} · #${target.mentionCode}`;
+  const targetLabel = `@${target.nickname}`;
   const mentionInput = { kind: "person", userId: target.userId, start: 0, end: targetLabel.length };
   const editable = (
     await post(context.request, "/api/rooms/general/messages", { body: targetLabel, mentions: [mentionInput] })
@@ -293,8 +293,8 @@ try {
     headers: { origin: base }
   });
   assert.ok(renamed.ok());
-  await expect(field).toHaveValue(`@Deniz Uzun · #${target.mentionCode}  trailing text`);
-  await expect(editor).toHaveValue(`@Deniz Uzun · #${target.mentionCode} preserved edit`);
+  await expect(field).toHaveValue(`@Deniz Uzun  trailing text`);
+  await expect(editor).toHaveValue(`@Deniz Uzun preserved edit`);
   await expect(page.locator(".composer-reply-target")).toContainText("Deniz Uzun");
   assert.equal(await editor.evaluate((element) => element.selectionStart), (await editor.inputValue()).length);
 
