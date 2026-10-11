@@ -4,7 +4,6 @@ import {
   readVoiceTransport,
   updateVoiceRecoveryEligibility,
   voiceMediaStalled,
-  voiceQualityNeedsRecovery,
   voiceQualityReading,
   worstVoiceQuality,
   worstVoiceTransport,
@@ -39,6 +38,7 @@ export interface VoiceQuality {
   transport: VoiceTransportReading | null;
   recovering?: boolean;
   recoveryRequests: readonly VoiceQualityRecoveryRequest[];
+  /** Measured decoder progress that can settle a stall recovery, even with loss. */
   clearPeers: readonly VoiceStatsPeer[];
 }
 export function measuringVoiceQuality(): VoiceQuality {
@@ -173,7 +173,6 @@ export class VoiceQualityController {
           peer.connectionState === "connected" &&
           transport.candidatePairState === "succeeded"
         );
-        let eligible = false;
         for (const [key, stream] of next) {
           const baseline = before?.get(key);
           const last = baseline?.counters;
@@ -190,8 +189,6 @@ export class VoiceQualityController {
           stalled ||= stopped;
           if (reading) {
             peerReadings.push(reading);
-            // Use the same policy for streaks and requests; mild samples never qualify.
-            eligible ||= voiceQualityNeedsRecovery(reading, expecting);
           } else {
             allMeasured = false;
           }
@@ -213,7 +210,7 @@ export class VoiceQualityController {
         const state = this.recovery.get(peer) ?? initial;
         const transition = updateVoiceRecoveryEligibility(
           state,
-          peer.connectionState === "connected" && (stalled || eligible),
+          peer.connectionState === "connected" && stalled,
           this.now()
         );
         recovery.set(peer, transition.state);
@@ -221,8 +218,9 @@ export class VoiceQualityController {
           this.cooldown.set(userId, this.now());
           recoveryRequests.push({ peerUserId: userId, peer, requestId: ++this.sequence });
         }
-        if (allMeasured && !stalled && worst?.grade === "clear" && peer.connectionState === "connected")
-          clearPeers.push(current);
+        // Loss and timing correction belong to the browser's decoder. Replacing
+        // progressing media adds an interruption without repairing the network.
+        if (allMeasured && !stalled && worst && peer.connectionState === "connected") clearPeers.push(current);
       }
       // Any newly joined peer whose stats weren't requested is not yet measured.
       incomplete ||= [...live.values()].some((entry) => !previous.has(entry.peer));

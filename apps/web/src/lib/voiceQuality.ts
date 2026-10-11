@@ -200,20 +200,10 @@ export function worstVoiceTransport(readings: readonly VoiceTransportReading[]):
 }
 
 /**
- * A single bad stats sample can be a counter transition or a brief route
- * change. Rebuild only the affected peer after two consecutive degraded
- * samples, and leave enough time between rebuilds for the new route to settle.
+ * A single stall can be a counter transition or a brief route change. Recover
+ * only after two consecutive eligible observations, allowing each repair to
+ * settle before another attempt. Quality grades alone are not eligibility.
  */
-export function updateVoiceQualityRecovery(
-  state: VoiceQualityRecoveryState,
-  reading: VoiceQualityReading,
-  now: number,
-  expectingAudio = false,
-  stalled = false
-) {
-  return updateVoiceRecoveryEligibility(state, stalled || voiceQualityNeedsRecovery(reading, expectingAudio), now);
-}
-
 export function updateVoiceRecoveryEligibility(state: VoiceQualityRecoveryState, eligible: boolean, now: number) {
   if (!eligible) {
     return {
@@ -314,23 +304,6 @@ export function voiceQualityReading(previous: VoiceCounters, next: VoiceCounters
     slowedDownMs,
     bufferMs
   };
-}
-
-/**
- * Mild degradation is reported to the member but left to the jitter buffer.
- * Sustained audible concealment is different: the receiver is already
- * inventing enough non-silent audio to make speech sound broken. Severe loss
- * or resynchronization also qualifies while the remote member is speaking.
- */
-export function voiceQualityNeedsRecovery(reading: VoiceQualityReading, expectingAudio: boolean) {
-  return (
-    reading.grade === "breaking" &&
-    (reading.concealedMs >= breakingMsPerSecond ||
-      (expectingAudio &&
-        (reading.lossPercent >= breakingPercent ||
-          reading.spedUpMs >= breakingMsPerSecond ||
-          reading.slowedDownMs >= breakingMsPerSecond)))
-  );
 }
 
 /**

@@ -22,14 +22,18 @@ const turn = spawn(
   ],
   { stdio: "ignore" }
 );
-const child = spawn(process.execPath, ["scripts/voice-lab/run.mjs"], {
-  stdio: "inherit",
-  env: {
-    ...process.env,
-    TURN_REALM: "localhost",
-    TURN_STATIC_AUTH_SECRET: turnSecret
+const child = spawn(
+  process.execPath,
+  [process.env.VOICE_LAB_MATRIX === "1" ? "scripts/voice-lab/matrix.mjs" : "scripts/voice-lab/run.mjs"],
+  {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      TURN_REALM: "localhost",
+      TURN_STATIC_AUTH_SECRET: turnSecret
+    }
   }
-});
+);
 const cleanup = () => {
   child.kill();
   turn.kill();

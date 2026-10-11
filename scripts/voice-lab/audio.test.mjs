@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { metrics, compare, fixture } from "./audio.mjs";
+import { metrics, compare, fixture, decoderTimeline, phaseDifference } from "./audio.mjs";
 
 test("silence and clipped audio have distinct measured signatures", () => {
   assert.equal(metrics(new Float32Array(48000)).rms, 0);
@@ -29,6 +29,15 @@ test("silence cannot claim a measured delay or speech continuity", () => {
   assert.equal(result.comparisonAvailable, false);
   assert.equal(result.estimatedDelayMs, null);
   assert.equal(result.missingSpeechFraction, null);
+});
+
+test("total reception loss is measured as missing speech, not unavailable evidence", () => {
+  const speech = { envelope: Array.from({ length: 200 }, (_, index) => (index < 50 ? 0.2 : 0)) };
+  const result = compare(speech, { envelope: Array(200).fill(0) }, 0, 0);
+  assert.equal(result.missingSpeechFraction, 1);
+  assert.equal(result.longestMissingSpeechMs, 500);
+  assert.equal(result.missingSpeechIntervals, 1);
+  assert.equal(result.estimatedDelayMs, null);
 });
 
 test("decoder rates use one window and reject new receiver generations", async () => {
@@ -70,4 +79,53 @@ test("ended receivers explicitly report unavailable decoder measurements", async
   assert.deepEqual(decoderRates(before, [{ peerAlias: 1, audio: [] }]), [
     { peerAlias: 1, streamAlias: 1, available: false, reason: "receiver-ended" }
   ]);
+});
+
+test("continuous decoder evidence keeps valid segments on both sides of a replacement", () => {
+  const peer = (alias, samples) => ({
+    peerAlias: alias,
+    audio: [
+      {
+        streamAlias: 1,
+        packetsReceived: samples / 960,
+        packetsLost: 0,
+        jitterBufferEmittedCount: samples,
+        concealedSamples: samples / 10,
+        silentConcealedSamples: 0,
+        removedSamplesForAcceleration: 0,
+        insertedSamplesForDeceleration: 0,
+        jitterBufferDelay: samples * 0.04
+      }
+    ]
+  });
+  const result = decoderTimeline([
+    { atMs: 0, peers: [peer(1, 48000)] },
+    { atMs: 500, peers: [peer(1, 72000)] },
+    { atMs: 1000, peers: [peer(2, 12000)] },
+    { atMs: 1500, peers: [peer(2, 36000)] }
+  ]);
+  assert.equal(result.measuredMs, 1000);
+  assert.equal(result.unavailableMs, 500);
+  assert.equal(result.rates.bufferMs, 40);
+  assert.equal(result.rates.concealedMsPerSecond, 100);
+  assert.deepEqual(result.replacements, [{ atMs: 1000, peerAlias: 2 }]);
+});
+
+test("missing decoder counters stay unknown and cannot become zero loss", () => {
+  const result = decoderTimeline([
+    { atMs: 0, peers: [] },
+    { atMs: 500, peers: [{ peerAlias: 1, audio: [{ streamAlias: 1 }] }] }
+  ]);
+  assert.equal(result.measuredMs, 0);
+  assert.equal(result.rates.lossPercent, null);
+});
+
+test("paired fixture phase uses measured capture onset, not just the requested start", () => {
+  const recording = (onset) => ({
+    startedAt: 1000,
+    fixtureStartAt: 1200,
+    recordings: [{ stage: "capture", metrics: { firstSpeechMs: onset } }]
+  });
+  assert.equal(phaseDifference(recording(210), recording(230)), 20);
+  assert.equal(phaseDifference(recording(210), recording(null)), null);
 });

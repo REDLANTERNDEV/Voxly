@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import ts from "typescript";
+import { VoiceQualityController } from "../src/lib/voiceQualityController.js";
 import {
   advancePeerRecovery,
   initialPeerRecoveryState,
@@ -146,6 +147,52 @@ describe("connected peer audio recovery", () => {
     assert.equal(h.rebuilds, 0);
     h.recover("member", h.peer);
     assert.equal(h.requests, 2);
+  });
+
+  it("cancels the media deadline when stalled audio resumes under continuing loss", async () => {
+    const h = harness();
+    let resumed = false;
+    const peer = Object.assign(h.peer, {
+      getStats: async () =>
+        new Map([
+          [
+            "mic",
+            {
+              id: "mic",
+              type: "inbound-rtp",
+              kind: "audio",
+              trackIdentifier: "mic",
+              packetsReceived: resumed ? 85 : 50,
+              packetsLost: resumed ? 15 : 0,
+              concealedSamples: resumed ? 9600 : 0,
+              silentConcealedSamples: 0,
+              jitterBufferEmittedCount: resumed ? 96000 : 48000,
+              jitterBufferDelay: resumed ? 3840 : 1920,
+              removedSamplesForAcceleration: 0,
+              insertedSamplesForDeceleration: 0
+            }
+          ]
+        ])
+    }) as unknown as RTCPeerConnection;
+    const controller = new VoiceQualityController(() => [
+      { userId: "member", peer, expectingAudio: true, microphoneTrackIds: ["mic"] }
+    ]);
+    await controller.sample();
+    await controller.sample();
+    const stalled = await controller.sample();
+    assert.equal(stalled?.recoveryRequests.length, 1);
+    for (const request of stalled?.recoveryRequests ?? []) h.recover(request.peerUserId, request.peer);
+    assert.equal(h.requests, 1);
+    resumed = true;
+    const progress = await controller.sample();
+    assert.equal(progress?.grade, "breaking", "loss remains visible after the stall clears");
+    assert.equal(progress?.clearPeers.length, 1);
+    const confirm = callback("confirmPeerAudioRecovered", h.dependencies);
+    for (const entry of progress?.clearPeers ?? []) confirm(entry.userId, entry.peer);
+    h.expire();
+    assert.equal(h.rebuilds, 0, "the expired recovery deadline must not interrupt resumed audio");
+    assert.equal(h.peerRecoveryStatesRef.current.get("member")?.phase, "stable");
+    controller.dispose();
   });
 
   it("ignores stale quality requests and clear readings after peer replacement", () => {

@@ -54,7 +54,7 @@ export function advancePeerRecovery(
 
   if (event.type === "connected" || event.type === "restart_succeeded") {
     // ICE can remain connected throughout an audio fault and its restart.
-    // Only a fresh clear decoder sample can confirm a quality recovery.
+    // Only a fresh sample showing resumed audio can confirm a media recovery.
     if (state.phase === "restarting" && state.reason === "quality") return { state, action: "wait" };
     return { state: initialPeerRecoveryState(), action: "cancel" as const };
   }

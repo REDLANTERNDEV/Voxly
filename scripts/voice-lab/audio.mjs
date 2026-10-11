@@ -80,6 +80,9 @@ export function metrics(samples, sampleRate = 48000) {
   }
   return {
     durationMs: (samples.length / sampleRate) * 1000,
+    firstSpeechMs: envelope.some((value) => value > 0.0001)
+      ? envelope.findIndex((value) => value > Math.max(0.0001, Math.max(...envelope) * 0.08)) * 10
+      : null,
     rms: Math.sqrt(energy / Math.max(1, samples.length)),
     peak,
     clippedFraction: clipping / Math.max(1, samples.length),
@@ -92,17 +95,19 @@ export function metrics(samples, sampleRate = 48000) {
 export function compare(source, received, sourceStart, receivedStart) {
   const a = source.envelope,
     b = received.envelope;
-  if (!a.some((value) => value > 0.0001) || !b.some((value) => value > 0.0001)) {
+  if (!a.some((value) => value > 0.0001)) {
     return {
       comparisonAvailable: false,
       envelopeCorrelation: null,
       estimatedDelayMs: null,
       missingSpeechFraction: null,
+      missingSpeechIntervals: null,
       longestMissingSpeechMs: null
     };
   }
+  const receivedSpeech = b.some((value) => value > 0.0001);
   let best = { correlation: -1, lag: 0 };
-  for (let lag = -100; lag <= 100; lag++) {
+  for (let lag = receivedSpeech ? -100 : 0; lag <= (receivedSpeech ? 100 : 0); lag++) {
     let aa = 0,
       bb = 0,
       ab = 0,
@@ -123,6 +128,7 @@ export function compare(source, received, sourceStart, receivedStart) {
     receivedPeak = Math.max(...b, 0.000001);
   let active = 0,
     missing = 0,
+    missingIntervals = 0,
     missingRun = 0,
     longestMissing = 0;
   for (let i = 0; i < a.length; i++) {
@@ -132,14 +138,16 @@ export function compare(source, received, sourceStart, receivedStart) {
     const absent = expected && b[j] < receivedPeak * 0.02;
     if (expected) active++;
     if (absent) missing++;
+    if (absent && missingRun === 0) missingIntervals++;
     missingRun = absent ? missingRun + 1 : 0;
     longestMissing = Math.max(longestMissing, missingRun);
   }
   return {
     comparisonAvailable: best.correlation >= 0,
     envelopeCorrelation: best.correlation,
-    estimatedDelayMs: receivedStart - sourceStart + best.lag * 10,
+    estimatedDelayMs: receivedSpeech ? receivedStart - sourceStart + best.lag * 10 : null,
     missingSpeechFraction: missing / Math.max(1, active),
+    missingSpeechIntervals: missingIntervals,
     longestMissingSpeechMs: longestMissing * 10
   };
 }
@@ -177,6 +185,7 @@ export function decoderRates(before, after) {
         peerAlias: peer.peerAlias,
         streamAlias: audio.streamAlias,
         available: true,
+        emittedSamples: emitted,
         lossPercent:
           received !== null && lost !== null && received + lost > 0 ? (lost / (received + lost)) * 100 : null,
         concealedMsPerSecond:
@@ -198,4 +207,55 @@ export function decoderRates(before, after) {
         });
     }
   return readings;
+}
+
+/** Sum disjoint stable decoder windows; replacement intervals remain unknown. */
+export function decoderTimeline(snapshots) {
+  const fields = ["lossPercent", "concealedMsPerSecond", "spedUpMsPerSecond", "slowedDownMsPerSecond", "bufferMs"];
+  const windows = [];
+  const replacements = [];
+  const knownPeers = new Set(snapshots[0]?.peers.map((peer) => peer.peerAlias));
+  let measuredMs = 0;
+  let unavailableMs = 0;
+  for (let index = 1; index < snapshots.length; index++) {
+    const before = snapshots[index - 1],
+      after = snapshots[index];
+    const durationMs = Math.max(0, after.atMs - before.atMs);
+    const readings = decoderRates(before.peers, after.peers);
+    const complete =
+      readings.length > 0 &&
+      readings.every((reading) => reading.available && fields.every((field) => Number.isFinite(reading[field])));
+    measuredMs += complete ? durationMs : 0;
+    unavailableMs += complete ? 0 : durationMs;
+    windows.push({ atMs: after.atMs, durationMs, complete, readings });
+    for (const peer of after.peers) {
+      if (!knownPeers.has(peer.peerAlias)) replacements.push({ atMs: after.atMs, peerAlias: peer.peerAlias });
+      knownPeers.add(peer.peerAlias);
+    }
+  }
+  const available = windows.flatMap((window) => window.readings.filter((reading) => reading.available));
+  const rates = Object.fromEntries(
+    fields.map((field) => {
+      const readings = available.filter((reading) => Number.isFinite(reading[field]));
+      const emitted = readings.reduce((sum, reading) => sum + reading.emittedSamples, 0);
+      return [
+        field,
+        emitted ? readings.reduce((sum, reading) => sum + reading[field] * reading.emittedSamples, 0) / emitted : null
+      ];
+    })
+  );
+  return { measuredMs, unavailableMs, rates, replacements, windows };
+}
+
+/** Both transport paths must encounter the same word/pause phase. */
+export function phaseDifference(actual, reference) {
+  const onset = (result) => {
+    const first = result.recordings.find((recording) => recording.stage === "capture")?.metrics.firstSpeechMs;
+    return Number.isFinite(first) && Number.isFinite(result.fixtureStartAt)
+      ? result.startedAt + first - result.fixtureStartAt
+      : null;
+  };
+  const a = onset(actual),
+    b = onset(reference);
+  return a === null || b === null ? null : Math.abs(a - b);
 }

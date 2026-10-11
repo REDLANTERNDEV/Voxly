@@ -47,6 +47,31 @@ function harness() {
 }
 
 describe("voice quality controller", () => {
+  it("reports sustained loss and decoder correction without rebuilding progressing audio", async () => {
+    for (const expectingAudio of [false, true]) {
+      const h = harness();
+      h.source = [{ userId: "member", peer: h.peer, expectingAudio, microphoneTrackIds: ["mic"] }];
+      await h.sample([report(0)], 0);
+      for (let seconds = 4; seconds <= 32; seconds += 4) {
+        const next = await h.sample(
+          [
+            report(seconds, {
+              packetsReceived: seconds * 35,
+              packetsLost: seconds * 15,
+              concealedSamples: seconds * 9600,
+              removedSamplesForAcceleration: seconds * 5760,
+              insertedSamplesForDeceleration: seconds * 3840
+            })
+          ],
+          seconds * 1000
+        );
+        assert.equal(next?.grade, "breaking");
+        assert.equal(next?.reading?.lossPercent, 30);
+        assert.equal(next?.reading?.concealedMs, 200);
+        assert.equal(next?.recoveryRequests.length, 0, "progressing audio must survive beyond the recovery cooldown");
+      }
+    }
+  });
   it("measures per stream so a new screen receiver cannot hide broken microphone audio", async () => {
     const h = harness();
     await h.sample([report(1)]);
@@ -130,31 +155,26 @@ describe("voice quality controller", () => {
     await h.sample([report(1, { jitterBufferEmittedCount: undefined })]);
     assert.equal((await h.sample([report(2, { jitterBufferEmittedCount: undefined })]))?.grade, "measuring");
   });
-  it("requires consecutive severe samples and retains cooldown through peer replacement", async () => {
+  it("requires consecutive stalls and retains cooldown through peer replacement", async () => {
     const h = harness();
     await h.sample([report(0)], 0);
-    assert.equal(
-      (await h.sample([report(1, { removedSamplesForAcceleration: 5760 })], 4000))?.recoveryRequests.length,
-      0
-    );
-    assert.equal(
-      (await h.sample([report(2, { removedSamplesForAcceleration: 11520 })], 8000))?.recoveryRequests.length,
-      1
-    );
+    assert.equal((await h.sample([report(0)], 4000))?.recoveryRequests.length, 0);
+    assert.equal((await h.sample([report(0)], 8000))?.recoveryRequests.length, 1);
     const replacement = { connectionState: "connected", getStats: h.peer.getStats } as RTCPeerConnection;
     h.source = [{ userId: "member", peer: replacement, expectingAudio: true }];
     await h.sample([report(0)], 9000);
-    await h.sample([report(1, { concealedSamples: 5760 })], 13000);
-    assert.equal((await h.sample([report(2, { concealedSamples: 11520 })], 17000))?.recoveryRequests.length, 0);
-    assert.equal((await h.sample([report(3, { concealedSamples: 17280 })], 23000))?.recoveryRequests.length, 1);
+    await h.sample([report(0)], 13000);
+    assert.equal((await h.sample([report(0)], 17000))?.recoveryRequests.length, 0);
+    assert.equal((await h.sample([report(0)], 23000))?.recoveryRequests.length, 1);
   });
   it("a missing measurement breaks the consecutive failure streak", async () => {
     const h = harness();
     await h.sample([report(0)]);
-    await h.sample([report(1, { concealedSamples: 5760 })]);
+    await h.sample([report(0)]);
     await h.sample([]);
-    await h.sample([report(2, { concealedSamples: 11520 })]);
-    assert.equal((await h.sample([report(3, { concealedSamples: 17280 })]))?.recoveryRequests.length, 0);
+    await h.sample([report(0)]);
+    assert.equal((await h.sample([report(0)]))?.recoveryRequests.length, 0);
+    assert.equal((await h.sample([report(0)]))?.recoveryRequests.length, 1);
   });
   it("does not interpret a silent screen as stalled speech", async () => {
     const h = harness();
@@ -172,6 +192,16 @@ describe("voice quality controller", () => {
     assert.equal(next?.grade, "breaking");
     assert.equal(next?.symptom, "gaps");
     assert.equal((await h.sample([report(1)]))?.recoveryRequests.length, 1);
+  });
+  it("confirms resumed decoder progress even while packet loss remains breaking", async () => {
+    const h = harness();
+    await h.sample([report(1)]);
+    await h.sample([report(1)]);
+    assert.equal((await h.sample([report(1)]))?.recoveryRequests.length, 1);
+    const resumed = await h.sample([report(2, { packetsLost: 15, concealedSamples: 9600 })]);
+    assert.equal(resumed?.grade, "breaking");
+    assert.equal(resumed?.recoveryRequests.length, 0);
+    assert.equal(resumed?.clearPeers[0]?.peer, h.peer, "resumed media must cancel the stall recovery deadline");
   });
   it("ignores results from a replaced connection and keeps sampling single-flight", async () => {
     const h = harness();

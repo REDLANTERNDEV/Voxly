@@ -630,6 +630,21 @@ HTTPS URLs. Check the reverse proxy's forwarded protocol headers.
 Deploy Coturn and perform the relay checks in [docs/turn.md](turn.md). This is
 normally a NAT/firewall issue rather than an Nginx issue.
 
+### Voice breaks up during a call
+
+Confirm both members are running the updated client in Settings → About. After
+deploying an update, reload an older browser or PWA outside the active call.
+Packet loss and timing correction remain visible in the voice quality signal;
+the client preserves progressing audio and lets the browser adapt. Automatic
+media repair requires sustained stalled audio while speech is expected.
+Disconnected or failed media connections still have their own recovery path.
+
+During an interruption, the affected listener can download the voice diagnostics
+report beside the voice quality signal. A report from the speaker at the same
+time helps distinguish capture, transport, and playback failures. These reports
+contain bounded diagnostic measurements, not recorded conversation audio, and
+are downloaded locally rather than uploaded automatically.
+
 ### The Music account stays offline
 
 ```sh

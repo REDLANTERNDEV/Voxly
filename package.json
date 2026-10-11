@@ -22,8 +22,9 @@
     "desktop:dev": "npm run dev -w @voxly/desktop",
     "desktop:build": "npm run bundle -w @voxly/desktop -- -- --locked",
     "test:voice:browser": "node scripts/voice-lab/run.mjs",
+    "test:voice:matrix": "node scripts/voice-lab/matrix.mjs",
     "test:chat:browser": "node scripts/chat-interactions/check.mjs",
-    "test:voice:metrics": "node --test scripts/voice-lab/audio.test.mjs",
+    "test:voice:metrics": "node --test \"scripts/voice-lab/*.test.mjs\"",
     "test:session:browser": "node scripts/session-reliability/check.mjs"
   },
   "engines": {

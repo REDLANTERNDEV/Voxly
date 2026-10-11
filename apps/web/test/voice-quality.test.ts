@@ -4,10 +4,9 @@ import { readFileSync } from "node:fs";
 import {
   readVoiceCounters,
   readVoiceTransport,
-  updateVoiceQualityRecovery,
+  updateVoiceRecoveryEligibility,
   voiceMediaStalled,
   voiceQualityReading,
-  voiceQualityNeedsRecovery,
   worstVoiceTransport,
   worstVoiceQuality,
   type VoiceCounters,
@@ -132,16 +131,13 @@ describe("voice quality counters", () => {
 
 describe("voice quality reading", () => {
   for (const field of ["removedSamplesForAcceleration", "insertedSamplesForDeceleration"] as const) {
-    it(`grades severe ${field} at the boundary and makes it eligible only during speech`, () => {
+    it(`grades severe ${field} at the boundary`, () => {
       const reading = voiceQualityReading(counters(), clean({ [field]: SAMPLE_RATE * 0.06 }));
       assert.ok(reading);
       assert.equal(reading.grade, "breaking");
-      assert.equal(voiceQualityNeedsRecovery(reading, true), true);
-      assert.equal(voiceQualityNeedsRecovery(reading, false), false);
       const below = voiceQualityReading(counters(), clean({ [field]: SAMPLE_RATE * 0.059 }));
       assert.ok(below);
       assert.equal(below.grade, "unstable");
-      assert.equal(voiceQualityNeedsRecovery(below, true), false);
     });
   }
 
@@ -362,50 +358,33 @@ describe("worst voice quality", () => {
 });
 
 describe("voice quality recovery", () => {
-  const degraded = {
-    grade: "breaking" as const,
-    symptom: "jitter" as const,
-    lossPercent: 0,
-    concealedMs: 60,
-    spedUpMs: 0,
-    slowedDownMs: 0,
-    bufferMs: 40
-  };
-
-  const clear = {
-    ...degraded,
-    grade: "clear" as const,
-    symptom: "none" as const,
-    concealedMs: 0
-  };
-
-  it("requires two consecutive degraded samples before recovery", () => {
+  it("requires two consecutive eligible stalls before recovery", () => {
     let state: VoiceQualityRecoveryState = { consecutiveDegradedSamples: 0, lastRecoveryAt: null };
 
-    const first = updateVoiceQualityRecovery(state, degraded, 1_000);
+    const first = updateVoiceRecoveryEligibility(state, true, 1_000);
     state = first.state;
     assert.equal(first.recover, false);
 
-    const second = updateVoiceQualityRecovery(state, degraded, 5_000);
+    const second = updateVoiceRecoveryEligibility(state, true, 5_000);
     assert.equal(second.recover, true);
   });
 
-  it("resets the consecutive count after a clear sample", () => {
+  it("resets the consecutive count after a non-stalled sample", () => {
     let state: VoiceQualityRecoveryState = { consecutiveDegradedSamples: 0, lastRecoveryAt: null };
-    state = updateVoiceQualityRecovery(state, degraded, 1_000).state;
-    state = updateVoiceQualityRecovery(state, clear, 2_000).state;
+    state = updateVoiceRecoveryEligibility(state, true, 1_000).state;
+    state = updateVoiceRecoveryEligibility(state, false, 2_000).state;
 
-    const next = updateVoiceQualityRecovery(state, degraded, 3_000);
+    const next = updateVoiceRecoveryEligibility(state, true, 3_000);
     assert.equal(next.recover, false);
   });
 
   it("does not recover the same peer again during the cooldown", () => {
     let state: VoiceQualityRecoveryState = { consecutiveDegradedSamples: 0, lastRecoveryAt: null };
-    state = updateVoiceQualityRecovery(state, degraded, 1_000).state;
-    state = updateVoiceQualityRecovery(state, degraded, 5_000).state;
+    state = updateVoiceRecoveryEligibility(state, true, 1_000).state;
+    state = updateVoiceRecoveryEligibility(state, true, 5_000).state;
 
-    state = updateVoiceQualityRecovery(state, degraded, 6_000).state;
-    const duringCooldown = updateVoiceQualityRecovery(state, degraded, 7_000);
+    state = updateVoiceRecoveryEligibility(state, true, 6_000).state;
+    const duringCooldown = updateVoiceRecoveryEligibility(state, true, 7_000);
     assert.equal(duringCooldown.recover, false);
   });
 

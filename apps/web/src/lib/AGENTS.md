@@ -60,12 +60,12 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
 
 - Keep the voice resume window at ten minutes from the first disconnect. Saving
   state again must not extend that original deadline.
-- Keep quality-triggered recovery conservative: an isolated or unstable quality
-  sample stays diagnostic. Request peer recovery after two consecutive
-  `breaking` samples when audible concealment reaches 60 ms per second, or when
-  speech is expected and loss or resynchronization reaches its breaking
-  threshold. Keep the 15-second recovery cooldown. A speaking peer with no RTP
-  remains a separate two-sample stall trigger.
+- Keep loss, audible concealment, and timing correction diagnostic while audio
+  progresses; let the browser adapt without replacing the peer. Request media
+  recovery after two consecutive confirmed stalls while microphone speech is
+  expected, retaining the 15-second cooldown across peer replacements. Fresh
+  measured decoder progress settles that recovery even if quality remains
+  `breaking`. Preserve independent failed/disconnected transport recovery.
 - Recovery is single-flight and ordered: acknowledged join, snapshot refresh,
   then acknowledged visual-subscription restoration.
 - Retry failed or timed-out recovery after two seconds while connected and
