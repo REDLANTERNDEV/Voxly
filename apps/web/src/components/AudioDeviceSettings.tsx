@@ -79,6 +79,7 @@ export function AudioDeviceSettings(
     showNotificationSounds?: boolean;
   }
 ) {
+  const { onOpen, onClose } = props;
   const [isOpen, setIsOpen] = useState(false);
   const [testPending, setTestPending] = useState(false);
   const [dismissedStatus, setDismissedStatus] = useState("");
@@ -91,10 +92,10 @@ export function AudioDeviceSettings(
   const closeRef = useRef<() => void>(() => undefined);
 
   const close = useCallback(() => {
-    props.onClose();
+    onClose();
     setIsOpen(false);
     window.setTimeout(() => triggerRef.current?.focus(), 0);
-  }, [props.onClose]);
+  }, [onClose]);
   closeRef.current = close;
 
   const open = useCallback(() => {
@@ -111,8 +112,8 @@ export function AudioDeviceSettings(
     });
     setPosition({ left: next.x, top: next.y, width });
     setIsOpen(true);
-    void props.onOpen().catch(() => undefined);
-  }, [props.onOpen]);
+    void onOpen().catch(() => undefined);
+  }, [onOpen]);
 
   // Inline has no "open" moment, so it refreshes on mount instead — otherwise
   // the member sees an empty device list until something else happens to ask.

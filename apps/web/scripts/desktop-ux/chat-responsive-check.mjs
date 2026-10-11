@@ -28,6 +28,7 @@ try {
           const style = getComputedStyle(field);
           return {
             field: box(field),
+            scrollbar: style.scrollbarWidth,
             emoji: box(emoji),
             send: box(send),
             scrolling: field.scrollHeight > field.clientHeight,
@@ -43,10 +44,17 @@ try {
         assert.equal(s.height, 44);
         assert(e.x >= f.x + 7 && e.x + e.width < s.x);
         assert(s.x + s.width <= f.x + f.width - 7);
+        assert.equal(geometry.scrollbar, "none");
         assert(f.height <= geometry.cap + 1);
         if (text.split("\n").length > 6) {
           assert(geometry.scrolling);
           assert.equal(geometry.overflow, "auto");
+          const scroll = await field.evaluate((element) => {
+            element.scrollTop = 0;
+            element.scrollTop = element.scrollHeight;
+            return element.scrollTop;
+          });
+          assert(scroll > 0, "Long drafts must remain scrollable with the scrollbar hidden");
         }
         assert(f.x >= 0 && f.x + f.width <= width);
       }

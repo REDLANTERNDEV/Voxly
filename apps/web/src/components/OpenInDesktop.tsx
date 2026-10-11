@@ -36,6 +36,7 @@ export function OpenInDesktop({ t, authenticated = false }: { t: Translate; auth
     typeof window === "undefined"
       ? null
       : desktopOpenLink(window.location.origin, window.__VOXLY_DESKTOP_V1__?.version === 1, launch?.id);
+  const canOpenDesktop = Boolean(href);
 
   useEffect(() => {
     mounted.current = true;
@@ -61,7 +62,8 @@ export function OpenInDesktop({ t, authenticated = false }: { t: Translate; auth
     }
   }, []);
   useEffect(() => {
-    if (!authenticated || !href || waiting || (showing && outcome === "waiting") || outcome === "approved") return;
+    if (!authenticated || !canOpenDesktop || waiting || (showing && outcome === "waiting") || outcome === "approved")
+      return;
     if (!launch) {
       void prepare();
       return;
@@ -77,7 +79,7 @@ export function OpenInDesktop({ t, authenticated = false }: { t: Translate; auth
       window.clearTimeout(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, [authenticated, Boolean(href), showing, outcome, waiting, launch, prepare]);
+  }, [authenticated, canOpenDesktop, showing, outcome, waiting, launch, prepare]);
 
   useEffect(() => {
     if (!showing || !launch || outcome !== "waiting" || waiting) return;

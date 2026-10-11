@@ -1,6 +1,6 @@
 import type { ChatMessage, ChatMessageReply, MessageMention } from "@voxly/shared";
 import type { FormEvent } from "react";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { serverPath } from "../../app/navigation.js";
 import type { ShellActions, ShellModel } from "../../app/types.js";
 import { ArrowIcon, CloseIcon, ReplyIcon, PushPinIcon } from "../../components/ui/Icons.js";
@@ -108,7 +108,7 @@ export function TextRoomScreen(props: TextRoomProps) {
     };
   }, [draft]);
 
-  useLayoutEffect(() => {
+  const resetRoomPresentation = useEffectEvent(() => {
     previousMessageIdsRef.current = messageListIds(
       displayedMessages.map((message) => message.id),
       props.outbox
@@ -117,6 +117,9 @@ export function TextRoomScreen(props: TextRoomProps) {
     setHasNewMessages(false);
     scrollToLatest("auto");
     setRevealedEmbeds(new Set());
+  });
+  useLayoutEffect(() => {
+    resetRoomPresentation();
   }, [roomId, scrollToLatest]);
 
   useLayoutEffect(() => {

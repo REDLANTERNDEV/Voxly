@@ -191,7 +191,8 @@ describe("desktop system notifications", () => {
     );
     const hook = readFileSync("src/app/useNotificationSounds.ts", "utf8");
     assert.match(hook, /desktopDeliveryRef.current\(key/);
-    assert.match(hook, /enabled:\s+readDesktopNotifications\(user.id\),\s+focused:\s+windowFocused\(\)/);
+    assert.match(hook, /const\s+accountId\s*=\s*user\?\.id/);
+    assert.match(hook, /enabled:\s+readDesktopNotifications\(accountId\),\s+focused:\s+windowFocused\(\)/);
     assert.match(
       hook,
       /return\s+allowed\s+\?\s+play\("message",\s+\{\s+roomId:\s+message.roomId,\s+kind:\s+"text"\s+\}\)\s+:\s+false/

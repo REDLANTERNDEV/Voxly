@@ -57,6 +57,7 @@ export function useWorkspaceController({
   roomServerIdsRef: RefObject<Record<string, string>>;
   routeRef: RefObject<Route>;
 }) {
+  const accountId = user?.id;
   const [servers, setServers] = useState<ServerSummary[]>([]);
 
   const [serverListReady, setServerListReady] = useState(false);
@@ -82,16 +83,19 @@ export function useWorkspaceController({
   // that cannot wait for a render that a ref would not trigger.
   const [afkRoomIds, setAfkRoomIds] = useState<string[]>([]);
 
-  const indexRooms = useCallback((nextRooms: RoomSummary[]) => {
-    for (const room of nextRooms) roomServerIdsRef.current[room.id] = room.serverId;
-    for (const serverId of new Set(nextRooms.map((room) => room.serverId))) {
-      indexAfkRoom(afkRoomIdsByServerRef.current, serverId, nextRooms);
-    }
-    setAfkRoomIds((current) => {
-      const next = Object.values(afkRoomIdsByServerRef.current).sort();
-      return next.length === current.length && next.every((id, index) => id === current[index]) ? current : next;
-    });
-  }, []);
+  const indexRooms = useCallback(
+    (nextRooms: RoomSummary[]) => {
+      for (const room of nextRooms) roomServerIdsRef.current[room.id] = room.serverId;
+      for (const serverId of new Set(nextRooms.map((room) => room.serverId))) {
+        indexAfkRoom(afkRoomIdsByServerRef.current, serverId, nextRooms);
+      }
+      setAfkRoomIds((current) => {
+        const next = Object.values(afkRoomIdsByServerRef.current).sort();
+        return next.length === current.length && next.every((id, index) => id === current[index]) ? current : next;
+      });
+    },
+    [roomServerIdsRef]
+  );
   const activeServerId =
     route.name === "text" || route.name === "voice" || route.name === "owner"
       ? route.serverId
@@ -138,7 +142,7 @@ export function useWorkspaceController({
         if (target) navigate(serverPath(serverId, target.kind, target.id));
       }
     },
-    [indexRooms, navigate]
+    [indexRooms, navigate, routeRef]
   );
 
   const refreshServersAfterDeletion = useCallback(
@@ -166,7 +170,7 @@ export function useWorkspaceController({
       setUncategorizedPosition(roomResponse.uncategorizedPosition);
       navigate(firstServerRoomPath(targetServer.id, roomResponse.rooms));
     },
-    [indexRooms, navigate]
+    [indexRooms, navigate, routeRef]
   );
 
   const loadAcceptedServer = useCallback(
@@ -191,7 +195,7 @@ export function useWorkspaceController({
   }, [servers]);
 
   useEffect(() => {
-    if (!user) {
+    if (!accountId) {
       setServerListReady(false);
       setOnlineUsersByServer({});
       setServerMembersByServer({});
@@ -217,10 +221,11 @@ export function useWorkspaceController({
     return () => {
       mounted = false;
     };
-  }, [navigate, user?.id]);
+  }, [navigate, accountId]);
 
+  const hasActiveMembership = servers.some((server) => server.id === activeServerId);
   useEffect(() => {
-    if (!user || !serverListReady || serverListError || !servers.some((server) => server.id === activeServerId)) return;
+    if (!accountId || !serverListReady || serverListError || !hasActiveMembership) return;
     let mounted = true;
     setRoomsLoad({ serverId: activeServerId, state: "loading" });
     fetchServerRooms(activeServerId)
@@ -251,11 +256,11 @@ export function useWorkspaceController({
     return () => {
       mounted = false;
     };
-  }, [activeServerId, indexRooms, navigate, serverListReady, serverListError, user?.id]);
+  }, [activeServerId, indexRooms, hasActiveMembership, serverListReady, serverListError, accountId]);
 
   useEffect(() => {
     if (
-      user &&
+      accountId &&
       route.name === "landing" &&
       serverListReady &&
       roomsLoad.serverId === activeServerId &&
@@ -263,7 +268,7 @@ export function useWorkspaceController({
     ) {
       navigate(activeRooms.length ? firstServerRoomPath(activeServerId, activeRooms) : "/invite");
     }
-  }, [user?.id, route.name, serverListReady, roomsLoad, activeServerId, activeRooms, navigate]);
+  }, [accountId, route.name, serverListReady, roomsLoad, activeServerId, activeRooms, navigate]);
 
   useEffect(() => {
     if (route.name !== "owner" && route.name !== "text" && route.name !== "voice") return;

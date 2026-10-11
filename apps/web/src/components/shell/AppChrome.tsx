@@ -21,6 +21,7 @@ import { VoiceDock } from "./VoiceDock.js";
 import { StageActionsContext } from "./StageMemberActions.js";
 import { WorkspaceRail } from "./WorkspaceRail.js";
 export function AppChrome(props: ShellModel & ShellActions & { children: ReactNode; mobileTitle: string }) {
+  const { onCloseAudioSettings } = props;
   const mobileRoomsRef = useRef<HTMLButtonElement | null>(null);
   const canModerate = activeServerRole(props) === "owner";
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -37,6 +38,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
   } | null>(null);
   const [activeActionMenu, dispatchActionMenu] = useReducer(contextMenuReducer, null);
   const notifications = useNotificationCenter();
+  const { push: pushNotification, dismiss: dismissNotification } = notifications;
   const deletionRequestRevisionRef = useRef(props.deletionRequestRevision);
   const previousVoiceErrorRef = useRef(props.voiceError);
   const closeActionMenu = useCallback(() => dispatchActionMenu({ type: "close" }), []);
@@ -46,10 +48,10 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
     setSettingsOpen(true);
   }, []);
   const closeSettings = useCallback(() => {
-    props.onCloseAudioSettings();
+    onCloseAudioSettings();
     setSettingsOpen(false);
     setSettingsContextError("");
-  }, [props.onCloseAudioSettings]);
+  }, [onCloseAudioSettings]);
   const openActionMenu = useCallback((input: Parameters<SidebarActionMenuController["open"]>[0]) => {
     dispatchActionMenu({
       type: "open",
@@ -91,11 +93,11 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
     const previous = previousVoiceErrorRef.current;
     previousVoiceErrorRef.current = props.voiceError;
     if (previous.startsWith("voiceError.microphone") && previous !== props.voiceError) {
-      notifications.dismiss(`voice-error:${previous}`);
+      dismissNotification(`voice-error:${previous}`);
       setSettingsContextError((current) => (current === previous ? "" : current));
     }
     if (!props.voiceError) return;
-    notifications.push({
+    pushNotification({
       id: `voice-error:${props.voiceError}`,
       tone: "danger",
       titleKey: "notification.voiceErrorTitle",
@@ -103,30 +105,30 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
       timeoutMs: null,
       action: props.voiceError === "voiceError.microphoneDisconnected" ? undefined : "open-audio-settings"
     });
-  }, [notifications.push, notifications.dismiss, props.voiceError, props.voiceErrorRevision]);
+  }, [pushNotification, dismissNotification, props.voiceError, props.voiceErrorRevision]);
 
   useEffect(() => {
     if (!props.voiceNotice) return;
-    notifications.push({
+    pushNotification({
       id: `voice-notice:${props.voiceNotice}`,
       tone: "neutral",
       titleKey: "notification.voiceNoticeTitle",
       messageKey: props.voiceNotice,
       timeoutMs: 5_200
     });
-  }, [notifications.push, props.voiceNotice, props.voiceNoticeRevision]);
+  }, [pushNotification, props.voiceNotice, props.voiceNoticeRevision]);
 
   useEffect(() => {
     if (props.deletionRequestRevision === deletionRequestRevisionRef.current) return;
     deletionRequestRevisionRef.current = props.deletionRequestRevision;
-    notifications.push({
+    pushNotification({
       id: `account-deletion-request:${props.deletionRequestRevision}`,
       tone: "danger",
       titleKey: "notification.accountDeletionRequestTitle",
       messageKey: "notification.accountDeletionRequestCopy",
       timeoutMs: null
     });
-  }, [notifications.push, props.deletionRequestRevision]);
+  }, [pushNotification, props.deletionRequestRevision]);
 
   const handleNotificationAction = useCallback(
     (item: AppNotification) => {

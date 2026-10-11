@@ -171,13 +171,14 @@ export function OwnerAccountsSection({ t }: { t: Translate }) {
     [t]
   );
 
+  const invalidateRequests = useCallback(() => {
+    ++searchRequest.current;
+    ++detailRequest.current;
+  }, []);
   useEffect(() => {
     void search("");
-    return () => {
-      ++searchRequest.current;
-      ++detailRequest.current;
-    };
-  }, [search]);
+    return invalidateRequests;
+  }, [search, invalidateRequests]);
 
   useEffect(() => {
     if (selected) detailHeading.current?.focus();

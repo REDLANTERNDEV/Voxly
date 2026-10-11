@@ -82,7 +82,7 @@ export function useMicrophoneTest(
       }
       return false;
     }
-  }, []);
+  }, [pendingCaptures]);
 
   useEffect(() => {
     volumeRef.current = volume;

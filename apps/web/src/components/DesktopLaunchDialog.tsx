@@ -15,9 +15,10 @@ export function DesktopLaunchDialog({
   const titleId = useId();
   useEffect(() => {
     const returnFocus = document.activeElement as HTMLElement | null;
-    dialog.current?.showModal();
+    const element = dialog.current;
+    element?.showModal();
     return () => {
-      dialog.current?.close();
+      element?.close();
       returnFocus?.focus();
     };
   }, []);

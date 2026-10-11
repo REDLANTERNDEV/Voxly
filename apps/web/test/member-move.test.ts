@@ -45,9 +45,10 @@ describe("owner member move", () => {
   it("carries the move out through the ordinary join, not a bespoke path", () => {
     // The AFK room's forced mute and the automatic leave of the previous room
     // both come free that way.
+    assert.match(app, /const\s+\{[^}]*\bjoin\b[^}]*\}\s*=\s*audio\.voice/);
     assert.match(
       app,
-      /moveVoiceRef\.current\s+=\s+\(\s*roomId:\s+string\s*\)\s+=>\s*\s+\{\s*\s+void\s+audio\.voice\.join\(\s*roomId,\s+\[\],\s+\{\s*\s*\}\s*\);\s+\s*\}/
+      /moveVoiceRef\.current\s+=\s+\(\s*roomId:\s+string\s*\)\s+=>\s*\s+\{\s*\s+void\s+join\(\s*roomId,\s+\[\],\s+\{\s*\s*\}\s*\);\s+\s*\}/
     );
   });
 

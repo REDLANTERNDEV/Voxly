@@ -10,7 +10,8 @@ describe("audio device settings permission flow", () => {
     assert.match(source, /createPortal\(/);
     assert.match(source, /role="dialog"/);
     assert.match(source, /closeButtonRef\.current\?\.focus\(\)/);
-    assert.match(source, /props\.onOpen\(\)\.catch\(\(\)\s+=>\s+undefined\)/);
+    assert.match(source, /const\s+\{\s*onOpen,\s*onClose\s*\}\s*=\s*props/);
+    assert.match(source, /onOpen\(\)\.catch\(\(\)\s+=>\s+undefined\)/);
     assert.doesNotMatch(source, /<details/);
     assert.match(styles, /\.audio-device-popover\s*\{[^}]*position:\s*fixed[^}]*max-height:/s);
   });
@@ -21,7 +22,8 @@ describe("audio device settings permission flow", () => {
     assert.match(source, /value=\{props\.inputVolume\}/);
     assert.match(source, /value=\{props\.outputVolume\}/);
     assert.match(source, /props\.microphoneTestActive\s+\?\s+props\.labels\.stopTest\s+:\s+props\.labels\.startTest/);
-    assert.match(source, /props\.onClose\(\)/);
+    assert.match(source, /const\s+\{\s*onOpen,\s*onClose\s*\}\s*=\s*props/);
+    assert.match(source, /onClose\(\)/);
   });
 
   it("exposes noise suppression as a switch that disables when unsupported", () => {

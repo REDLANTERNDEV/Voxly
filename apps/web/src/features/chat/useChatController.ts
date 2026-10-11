@@ -95,7 +95,7 @@ export function useChatController({
       writeRoomHistory(window.localStorage, next);
       return next;
     });
-  }, [route]);
+  }, [route, setRoomHistory]);
 
   useEffect(() => {
     if (!user || route.name !== "text" || currentRoom?.kind !== "text") return;
@@ -158,11 +158,13 @@ export function useChatController({
     };
   }, []);
   useEffect(() => {
-    if (!user || route.name !== "text" || currentRoom?.id !== route.roomId || historicalRoomId === route.roomId) return;
+    const accountId = user?.id;
+    if (!accountId || route.name !== "text" || currentRoom?.id !== route.roomId || historicalRoomId === route.roomId)
+      return;
     const through = loadedWatermarks[route.roomId];
     if (
       !canMarkRoomRead({
-        loaded: through !== undefined && loadedAccountsRef.current.get(route.roomId) === user.id,
+        loaded: through !== undefined && loadedAccountsRef.current.get(route.roomId) === accountId,
         visible: document.visibilityState === "visible",
         focused: document.hasFocus()
       }) ||

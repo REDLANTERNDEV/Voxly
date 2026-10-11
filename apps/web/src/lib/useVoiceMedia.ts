@@ -3,7 +3,7 @@ import { ScreenRecoveryOwner, type ScreenPlaybackStatus } from "./screenRecovery
 import { VoicePeerOwner } from "./voicePeerOwner.js";
 import { MicrophoneOwner } from "./microphoneOwner.js";
 import { stepMicrophoneHealth, type MicrophoneHealthState } from "./microphoneHealth.js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { isRtcRecoveryRequest } from "@voxly/shared";
 import type {
   PublicUser,
@@ -245,7 +245,7 @@ export function useVoiceMedia({
   useEffect(() => {
     microphoneVolumeRef.current = microphoneVolume;
     microphoneInputRef.current?.setVolume(microphoneVolume);
-  }, [microphoneVolume]);
+  }, [microphoneInputRef, microphoneVolume]);
 
   // Suppression is a value on the live capture graph, so the preference reaches
   // the audio on the next block. It used to require releasing the device and
@@ -255,7 +255,7 @@ export function useVoiceMedia({
   useEffect(() => {
     noiseSuppressionRef.current = noiseSuppression;
     microphoneInputRef.current?.setNoiseSuppression(noiseSuppression);
-  }, [noiseSuppression]);
+  }, [microphoneInputRef, noiseSuppression]);
 
   useEffect(() => {
     userIdRef.current = user?.id ?? null;
@@ -446,7 +446,7 @@ export function useVoiceMedia({
         setLocalPreviews((current) => current.filter((preview) => preview.kind !== kind));
       }
     },
-    [stopSpeakingMonitor]
+    [desktopMicrophone, microphoneInputRef, screenQualityOwner, stopSpeakingMonitor]
   );
 
   const closePeers = useCallback(() => {
@@ -475,41 +475,44 @@ export function useVoiceMedia({
     ignoredOfferPeersRef.current.clear();
     setRemoteStreams([]);
     setPeerConnectionStates({});
-  }, []);
+  }, [peerOwner, screenQualityOwner]);
 
-  const removePeer = useCallback((peerUserId: string, options: PeerRemovalOptions = {}) => {
-    const peer = peersRef.current.get(peerUserId);
-    if (options.expectedPeer && peer !== options.expectedPeer) return false;
-    screenQualityOwner.release(peerUserId);
-    if (peer) offeredPeersRef.current.delete(peer);
-    peerOwner.release(peerUserId, peer);
-    const connectionTimeout = peerConnectionTimeoutsRef.current.get(peerUserId);
-    if (connectionTimeout !== undefined) window.clearTimeout(connectionTimeout);
-    peerConnectionTimeoutsRef.current.delete(peerUserId);
-    peersRef.current.delete(peerUserId);
-    remoteStreamKindsRef.current.delete(peerUserId);
-    if (!options.preserveVisualSubscriptions) {
-      viewerVisualSubscriptionsRef.current.delete(peerUserId);
-    }
-    makingOfferPeersRef.current.delete(peerUserId);
-    offerGenerationsRef.current.delete(peerUserId);
-    pendingOfferPeersRef.current.delete(peerUserId);
-    pendingCandidatesRef.current.delete(peerUserId);
-    if (!options.preserveRecoveryState) {
-      peerRecoveryStatesRef.current.delete(peerUserId);
-    }
-    ignoredOfferPeersRef.current.delete(peerUserId);
-    const recoveryTimer = peerRecoveryTimersRef.current.get(peerUserId);
-    if (recoveryTimer) window.clearTimeout(recoveryTimer);
-    peerRecoveryTimersRef.current.delete(peerUserId);
-    setRemoteStreams((current) => current.filter((item) => item.userId !== peerUserId));
-    setPeerConnectionStates((current) => {
-      const next = { ...current };
-      delete next[peerUserId];
-      return next;
-    });
-    return Boolean(peer);
-  }, []);
+  const removePeer = useCallback(
+    (peerUserId: string, options: PeerRemovalOptions = {}) => {
+      const peer = peersRef.current.get(peerUserId);
+      if (options.expectedPeer && peer !== options.expectedPeer) return false;
+      screenQualityOwner.release(peerUserId);
+      if (peer) offeredPeersRef.current.delete(peer);
+      peerOwner.release(peerUserId, peer);
+      const connectionTimeout = peerConnectionTimeoutsRef.current.get(peerUserId);
+      if (connectionTimeout !== undefined) window.clearTimeout(connectionTimeout);
+      peerConnectionTimeoutsRef.current.delete(peerUserId);
+      peersRef.current.delete(peerUserId);
+      remoteStreamKindsRef.current.delete(peerUserId);
+      if (!options.preserveVisualSubscriptions) {
+        viewerVisualSubscriptionsRef.current.delete(peerUserId);
+      }
+      makingOfferPeersRef.current.delete(peerUserId);
+      offerGenerationsRef.current.delete(peerUserId);
+      pendingOfferPeersRef.current.delete(peerUserId);
+      pendingCandidatesRef.current.delete(peerUserId);
+      if (!options.preserveRecoveryState) {
+        peerRecoveryStatesRef.current.delete(peerUserId);
+      }
+      ignoredOfferPeersRef.current.delete(peerUserId);
+      const recoveryTimer = peerRecoveryTimersRef.current.get(peerUserId);
+      if (recoveryTimer) window.clearTimeout(recoveryTimer);
+      peerRecoveryTimersRef.current.delete(peerUserId);
+      setRemoteStreams((current) => current.filter((item) => item.userId !== peerUserId));
+      setPeerConnectionStates((current) => {
+        const next = { ...current };
+        delete next[peerUserId];
+        return next;
+      });
+      return Boolean(peer);
+    },
+    [peerOwner, screenQualityOwner]
+  );
 
   const schedulePeerRecovery = useCallback(
     (peerUserId: string, expectedPeer?: RTCPeerConnection, event: PeerRecoveryEvent = { type: "failed" }) => {
@@ -581,36 +584,39 @@ export function useVoiceMedia({
     []
   );
 
-  const syncLocalTracks = useCallback((peer: RTCPeerConnection, peerUserId: string) => {
-    const currentTracks = new Set<MediaStreamTrack>();
-    let screenSender: RTCRtpSender | null = null;
-    let screenTrack: MediaStreamTrack | null = null;
-    const subscribedKinds = viewerVisualSubscriptionsRef.current.get(peerUserId) ?? new Set<VisualMediaKind>();
-    const streams: Array<[LocalStreamKind, MediaStream | undefined]> = [
-      ["mic", localStreamsRef.current.mic],
-      ["camera", localStreamsRef.current.camera],
-      ["screen", localStreamsRef.current.screen]
-    ];
-    for (const [kind, stream] of streams) {
-      if (!stream || (kind !== "mic" && !subscribedKinds.has(kind))) continue;
-      for (const track of stream.getTracks()) {
-        currentTracks.add(track);
-        const existingSender = peer.getSenders().find((sender) => sender.track === track);
-        const sender = existingSender ?? peer.addTrack(track, stream);
-        if (kind === "screen" && track.kind === "video") {
-          screenSender = sender;
-          screenTrack = track;
+  const syncLocalTracks = useCallback(
+    (peer: RTCPeerConnection, peerUserId: string) => {
+      const currentTracks = new Set<MediaStreamTrack>();
+      let screenSender: RTCRtpSender | null = null;
+      let screenTrack: MediaStreamTrack | null = null;
+      const subscribedKinds = viewerVisualSubscriptionsRef.current.get(peerUserId) ?? new Set<VisualMediaKind>();
+      const streams: Array<[LocalStreamKind, MediaStream | undefined]> = [
+        ["mic", localStreamsRef.current.mic],
+        ["camera", localStreamsRef.current.camera],
+        ["screen", localStreamsRef.current.screen]
+      ];
+      for (const [kind, stream] of streams) {
+        if (!stream || (kind !== "mic" && !subscribedKinds.has(kind))) continue;
+        for (const track of stream.getTracks()) {
+          currentTracks.add(track);
+          const existingSender = peer.getSenders().find((sender) => sender.track === track);
+          const sender = existingSender ?? peer.addTrack(track, stream);
+          if (kind === "screen" && track.kind === "video") {
+            screenSender = sender;
+            screenTrack = track;
+          }
         }
       }
-    }
 
-    screenQualityOwner.sync(peerUserId, peer, screenSender, screenTrack);
-    for (const sender of peer.getSenders()) {
-      if (sender.track && !currentTracks.has(sender.track)) {
-        peer.removeTrack(sender);
+      screenQualityOwner.sync(peerUserId, peer, screenSender, screenTrack);
+      for (const sender of peer.getSenders()) {
+        if (sender.track && !currentTracks.has(sender.track)) {
+          peer.removeTrack(sender);
+        }
       }
-    }
-  }, []);
+    },
+    [screenQualityOwner]
+  );
 
   const sendOffer = useCallback(
     async (peerUserId: string, peer: RTCPeerConnection) => {
@@ -855,7 +861,7 @@ export function useVoiceMedia({
 
       return peer;
     },
-    [isCurrentPeer, requestPeerRecovery, schedulePeerRecovery, syncLocalTracks]
+    [isCurrentPeer, peerOwner, requestPeerRecovery, schedulePeerRecovery, socket, syncLocalTracks]
   );
 
   const ensureInitialOffer = useCallback(
@@ -871,7 +877,7 @@ export function useVoiceMedia({
         return;
       void sendOffer(peerUserId, peer).catch(() => setError("voiceError.startPeer"));
     },
-    [sendOffer]
+    [sendOffer, setError]
   );
 
   const recoverPeer = useCallback(
@@ -978,7 +984,7 @@ export function useVoiceMedia({
         setError("voiceError.rtcConfig");
       }
     }
-  }, [iceServers, requestPeerRecovery]);
+  }, [iceServers, requestPeerRecovery, setError]);
 
   /**
    * The live peer connections, for the quality sampler. Exposed as an accessor
@@ -1005,14 +1011,14 @@ export function useVoiceMedia({
       recovering: ["restarting", "rebuilding"].includes(peerRecoveryStatesRef.current.get(userId)?.phase ?? ""),
       expectingAudio: members.get(userId) === true
     }));
-  }, []);
+  }, [microphoneInputRef, peerOwner]);
 
   const screenReceivers = useCallback(
     () =>
       [...peersRef.current].flatMap(([userId, peer]) =>
         peerOwner.screenReceivers(peer).map((receiver) => ({ userId, peer, receiver }))
       ),
-    []
+    [peerOwner]
   );
 
   const renegotiatePeers = useCallback(() => {
@@ -1020,18 +1026,21 @@ export function useVoiceMedia({
       syncLocalTracks(peer, peerUserId);
       void sendOffer(peerUserId, peer).catch(() => setError("voiceError.updateMedia"));
     }
-  }, [sendOffer, syncLocalTracks]);
+  }, [sendOffer, setError, syncLocalTracks]);
 
-  const prepareMicrophoneInput = useCallback((rawStream: MediaStream) => {
-    // Record the device this graph was opened with so the switch effect can
-    // tell an already-applied change from a pending one.
-    appliedMicrophoneCaptureRef.current = { deviceId: microphoneDeviceIdRef.current };
-    const input = createMicrophoneInput(rawStream, microphoneVolumeRef.current, {
-      noiseSuppression: noiseSuppressionRef.current
-    });
-    desktopMicrophone.apply(input.voiceStream.getAudioTracks(), false);
-    return input;
-  }, []);
+  const prepareMicrophoneInput = useCallback(
+    (rawStream: MediaStream) => {
+      // Record the device this graph was opened with so the switch effect can
+      // tell an already-applied change from a pending one.
+      appliedMicrophoneCaptureRef.current = { deviceId: microphoneDeviceIdRef.current };
+      const input = createMicrophoneInput(rawStream, microphoneVolumeRef.current, {
+        noiseSuppression: noiseSuppressionRef.current
+      });
+      desktopMicrophone.apply(input.voiceStream.getAudioTracks(), false);
+      return input;
+    },
+    [desktopMicrophone]
+  );
 
   // Reached when the capture is gone and no replacement is coming: the device
   // was unplugged, or a reopen failed after the previous capture was released.
@@ -1074,7 +1083,7 @@ export function useVoiceMedia({
       persistVoiceResume();
       renegotiatePeers();
     },
-    [emitMediaState, persistVoiceResume, renegotiatePeers, stopStream]
+    [desktopMicrophone, emitMediaState, micLockedByRoom, persistVoiceResume, renegotiatePeers, setError, stopStream]
   );
 
   const activateMicrophoneInput = useCallback(
@@ -1096,7 +1105,7 @@ export function useVoiceMedia({
       });
       startSpeakingMonitor(input);
     },
-    [handleMicrophoneLost, startSpeakingMonitor]
+    [desktopMicrophone, handleMicrophoneLost, micLockedByRoom, microphoneInputRef, startSpeakingMonitor]
   );
 
   const visualSubscriptionRequest = useRef(0);
@@ -1140,7 +1149,7 @@ export function useVoiceMedia({
           };
         })
     );
-  }, []);
+  }, [peerOwner]);
   syncScreenRecoveryRef.current = syncScreenRecovery;
 
   useEffect(() => {
@@ -1281,7 +1290,7 @@ export function useVoiceMedia({
       }
       syncScreenRecoveryRef.current();
     },
-    [emitMediaState, ensureInitialOffer, ensurePeer, persistVoiceResume, removePeer]
+    [desktopMicrophone, emitMediaState, ensureInitialOffer, ensurePeer, persistVoiceResume, removePeer]
   );
 
   const join = useCallback(
@@ -1429,16 +1438,19 @@ export function useVoiceMedia({
       );
     },
     [
-      activateMicrophoneInput,
-      applyVoiceSnapshot,
-      persistVoiceResume,
-      prepareMicrophoneInput,
-      setVisualSubscriptions,
       socket,
-      stopStream,
       user,
       pendingJoin,
-      pendingCaptures
+      setError,
+      pendingCaptures,
+      desktopMicrophone,
+      prepareMicrophoneInput,
+      stopStream,
+      activateMicrophoneInput,
+      micLockedByRoom,
+      applyVoiceSnapshot,
+      setVisualSubscriptions,
+      persistVoiceResume
     ]
   );
 
@@ -1518,7 +1530,17 @@ export function useVoiceMedia({
     return () => {
       cancelled = true;
     };
-  }, [activateMicrophoneInput, activeRoomId, microphoneDeviceId, prepareMicrophoneInput, stopStream]);
+  }, [
+    activateMicrophoneInput,
+    activeRoomId,
+    desktopMicrophone,
+    micLockedByRoom,
+    microphoneDeviceId,
+    pendingCaptures,
+    prepareMicrophoneInput,
+    setError,
+    stopStream
+  ]);
 
   const leave = useCallback(() => {
     microphoneRecoveryRef.current = null;
@@ -1570,7 +1592,7 @@ export function useVoiceMedia({
     setError("");
     setControls(createInitialVoiceControls());
     releaseUnusedSharedAudioOutput();
-  }, [closePeers, socket, stopStream, pendingJoin]);
+  }, [desktopMicrophone, pendingJoin, socket, stopStream, closePeers, setError]);
 
   const toggleMic = useCallback(async () => {
     microphoneRecoveryRef.current = null;
@@ -1658,10 +1680,15 @@ export function useVoiceMedia({
     await emitMediaState({ mic: media.mic, speaking: media.mic ? speakingRef.current : false });
   }, [
     activateMicrophoneInput,
+    desktopMicrophone,
     emitMediaState,
+    micLockedByRoom,
+    microphoneInputRef,
+    pendingCaptures,
     persistVoiceResume,
     prepareMicrophoneInput,
     renegotiatePeers,
+    setError,
     stopStream
   ]);
 
@@ -1731,8 +1758,11 @@ export function useVoiceMedia({
     }
   }, [
     activateMicrophoneInput,
+    desktopMicrophone,
     emitMediaState,
+    micLockedByRoom,
     microphoneDevices,
+    microphoneInputRef,
     pendingCaptures,
     pendingJoin,
     persistVoiceResume,
@@ -1742,9 +1772,12 @@ export function useVoiceMedia({
     socket
   ]);
 
+  const recoverAfterDeviceScan = useEffectEvent(() => {
+    void recoverMicrophone();
+  });
   useEffect(() => {
     // Settled device scans and a newly ended source each permit one attempt.
-    void recoverMicrophone();
+    recoverAfterDeviceScan();
   }, [microphoneDeviceRevision, microphoneRecoveryRevision]);
 
   const setDeafened = useCallback(
@@ -1863,7 +1896,7 @@ export function useVoiceMedia({
       setControls(acceptedControls);
       return acceptedControls.deafen.on === deafened;
     },
-    [emitMediaState]
+    [desktopMicrophone, emitMediaState, micLockedByRoom, setError]
   );
 
   const toggleDeafen = useCallback(() => {
@@ -1901,7 +1934,7 @@ export function useVoiceMedia({
     } catch {
       setError("voiceError.cameraPermissionDenied");
     }
-  }, [activeRoomId, emitMediaState, renegotiatePeers, stopStream]);
+  }, [activeRoomId, emitMediaState, pendingCaptures, renegotiatePeers, setError, stopStream]);
 
   const toggleScreen = useCallback(async () => {
     if (!activeRoomId) return;
@@ -1945,7 +1978,7 @@ export function useVoiceMedia({
     } catch {
       setError("voiceError.screenSharePermissionDenied");
     }
-  }, [activeRoomId, emitMediaState, renegotiatePeers, stopStream]);
+  }, [activeRoomId, emitMediaState, pendingCaptures, renegotiatePeers, setError, stopStream]);
 
   const toggleControl = useCallback(
     (key: VoiceControlKey) => {
@@ -2091,6 +2124,7 @@ export function useVoiceMedia({
       rememberRemoteStreamKinds,
       schedulePeerRecovery,
       sendOffer,
+      setError,
       socket
     ]
   );
@@ -2275,7 +2309,20 @@ export function useVoiceMedia({
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
     };
-  }, [closePeers, join, leave, persistVoiceResume, requestSnapshot, setVisualSubscriptions, socket, stopStream]);
+  }, [
+    closePeers,
+    desktopMicrophone,
+    join,
+    leave,
+    micLockedByRoom,
+    pendingJoin,
+    persistVoiceResume,
+    requestSnapshot,
+    setError,
+    setVisualSubscriptions,
+    socket,
+    stopStream
+  ]);
 
   useEffect(() => {
     if (!socket) return;
@@ -2319,6 +2366,7 @@ export function useVoiceMedia({
     recoverPeer,
     schedulePeerRecovery,
     sendOffer,
+    setError,
     socket,
     syncLocalTracks
   ]);
@@ -2387,7 +2435,7 @@ export function useVoiceMedia({
       window.clearInterval(timer);
       unwatch();
     };
-  }, []);
+  }, [desktopMicrophone, micLockedByRoom, microphoneInputRef, pendingCaptures, pendingJoin]);
 
   const getDesktopCallState = useCallback(() => {
     const report = desktopCallState({

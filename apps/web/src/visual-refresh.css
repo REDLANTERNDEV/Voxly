@@ -3944,12 +3944,17 @@ select {
   pointer-events: none;
 }
 
-/* Composer controls share a fixed top row while paragraphs grow below it. */
+/* Keep controls inside the composer and allow scrolling without a visible scrollbar. */
 .composer .chat-composer-input > .textarea {
   min-height: 60px;
   max-height: none;
-  padding: 18px 60px 18px;
+  width: 100%;
+  padding: 18px 60px;
+  scrollbar-width: none;
   resize: none;
+}
+.composer .chat-composer-input > .textarea::-webkit-scrollbar {
+  display: none;
 }
 .composer-send,
 .chat-emoji-trigger {

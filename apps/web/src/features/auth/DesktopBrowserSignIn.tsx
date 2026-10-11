@@ -206,10 +206,11 @@ export function DesktopBrowserApproval({
   const [error, setError] = useState(false);
   const [answering, setAnswering] = useState(false);
   const [answered, setAnswered] = useState<"approved" | "refused" | null>(null);
+  const accountId = user?.id;
 
   useEffect(() => {
     if (authState === "loading") return;
-    if (!user || !id) {
+    if (!accountId || !id) {
       setLoading(false);
       return;
     }
@@ -228,7 +229,7 @@ export function DesktopBrowserApproval({
     return () => {
       live = false;
     };
-  }, [authState, id, user?.id]);
+  }, [authState, id, accountId]);
 
   const answer = async (approve: boolean) => {
     setAnswering(true);

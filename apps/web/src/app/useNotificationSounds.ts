@@ -58,6 +58,7 @@ export function useNotificationSounds({
   activeTextRoomIdRef: React.RefObject<string | null>;
   onNotificationActivate(target: DesktopNotificationTarget): void;
 }) {
+  const accountId = user?.id;
   const [preferences, setPreferences] = useState<NotificationSoundPreferences>(DEFAULT_NOTIFICATION_SOUNDS);
   const playerRef = useRef<NotificationSoundPlayer | null>(null);
   const preferencesRef = useRef(preferences);
@@ -74,22 +75,22 @@ export function useNotificationSounds({
   deafenedRef.current = deafened;
 
   useEffect(() => {
-    setPreferences(user ? readNotificationSounds(user.id) : { ...DEFAULT_NOTIFICATION_SOUNDS });
+    setPreferences(accountId ? readNotificationSounds(accountId) : { ...DEFAULT_NOTIFICATION_SOUNDS });
     return () => {
       desktopDeliveryRef.current?.dispose();
       desktopDeliveryRef.current = null;
     };
-  }, [user?.id]);
+  }, [accountId]);
 
   // Warm the cues as soon as there is a session rather than on the first one
   // that fires. Building the element lazily meant the very first join, mute, or
   // message cue waited on its own download before it could sound, which is the
   // case where being late is most noticeable.
   useEffect(() => {
-    if (!user) return;
+    if (!accountId) return;
     playerRef.current ??= createNotificationSoundPlayer();
     playerRef.current.prime();
-  }, [user?.id]);
+  }, [accountId]);
 
   useEffect(
     () => () => {
@@ -102,34 +103,34 @@ export function useNotificationSounds({
   const play = useCallback(
     (key: NotificationSoundKey, target?: DesktopNotificationTarget) => {
       if (!notificationSoundAllowed(key, preferencesRef.current, { deafened: deafenedRef.current })) return false;
-      if (user && isDesktopNotificationKind(key)) {
+      if (accountId && isDesktopNotificationKind(key)) {
         desktopDeliveryRef.current ??= createDesktopNotificationDelivery(window);
         desktopDeliveryRef.current(key, {
-          userId: user.id,
-          enabled: readDesktopNotifications(user.id),
+          userId: accountId,
+          enabled: readDesktopNotifications(accountId),
           focused: windowFocused(),
           deafened: deafenedRef.current,
           preferences: preferencesRef.current,
           target: target ?? (activeVoiceRoomId ? { roomId: activeVoiceRoomId, kind: "voice" } : undefined),
-          isCurrent: () => activationRef.current.userId === user.id,
+          isCurrent: () => activationRef.current.userId === accountId,
           activate: (destination) => activationRef.current.activate(destination)
         });
       }
       playerRef.current ??= createNotificationSoundPlayer();
       return playerRef.current.play(key, preferencesRef.current.volume);
     },
-    [user?.id, activeVoiceRoomId]
+    [accountId, activeVoiceRoomId]
   );
 
   const changeNotificationSounds = useCallback(
     (patch: Partial<NotificationSoundPreferences>) => {
       setPreferences((current) => {
         const next = { ...current, ...patch, volume: clampNotificationVolume(patch.volume ?? current.volume) };
-        if (user) writeNotificationSounds(user.id, next);
+        if (accountId) writeNotificationSounds(accountId, next);
         return next;
       });
     },
-    [user?.id]
+    [accountId]
   );
 
   // Joining, moving, and leaving are all observable as a change of the active
@@ -186,15 +187,15 @@ export function useNotificationSounds({
 
   const notifyMessage = useCallback(
     (message: ChatMessage) => {
-      if (!user) return false;
+      if (!accountId) return false;
       const allowed = shouldPlayMessageSound(message, {
-        currentUserId: user.id,
+        currentUserId: accountId,
         activeTextRoomId: activeTextRoomIdRef.current,
         windowFocused: windowFocused()
       });
       return allowed ? play("message", { roomId: message.roomId, kind: "text" }) : false;
     },
-    [activeTextRoomIdRef, play, user?.id]
+    [activeTextRoomIdRef, play, accountId]
   );
 
   return { notificationSounds: preferences, changeNotificationSounds, notifyMessage };

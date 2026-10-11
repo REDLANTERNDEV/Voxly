@@ -8,8 +8,10 @@ describe("microphone test lifecycle integration", () => {
     const app = readAppSource();
     const voice = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
 
-    assert.match(app, /await\s+voice\.setDeafened\(\s*true\s*\)/);
-    assert.match(app, /await\s+microphoneTest\.start\(\s*\s*\)/);
+    assert.match(app, /const\s+\{[^}]*\bsetDeafened\b[^}]*\}\s*=\s*voice/);
+    assert.match(app, /const\s+\{[^}]*\bstart:\s*startTest\b[^}]*\}\s*=\s*microphoneTest/);
+    assert.match(app, /await\s+setDeafened\(\s*true\s*\)/);
+    assert.match(app, /await\s+isolateMicrophoneTest\(\s*\)[\s\S]*?await\s+startTest\(\s*\)/);
     assert.match(app, /shouldRestoreMicrophoneTestDeafen/);
     assert.match(voice, /const\s+setDeafened\s+=\s+useCallback\(\s*async\s+\(\s*deafened:\s+boolean\s*\)/);
     assert.match(voice, /setDeafened,/);
@@ -27,9 +29,10 @@ describe("microphone test lifecycle integration", () => {
   it("stops microphone monitoring whenever the settings window closes", () => {
     const chrome = readFileSync("src/components/shell/AppChrome.tsx", "utf8");
 
+    assert.match(chrome, /const\s+\{\s*onCloseAudioSettings\s*\}\s*=\s*props/);
     assert.match(
       chrome,
-      /const\s+closeSettings\s+=\s+useCallback\(\s*\(\s*\s*\)\s+=>\s*\s+\{\s*[\s\S]*?props\.onCloseAudioSettings\(\s*\s*\);[\s\S]*?setSettingsOpen\(\s*false\s*\);[\s\S]*?\s*\},\s+\[props\.onCloseAudioSettings\]\s*\)/
+      /const\s+closeSettings\s+=\s+useCallback\(\s*\(\s*\s*\)\s+=>\s*\s+\{\s*[\s\S]*?onCloseAudioSettings\(\s*\s*\);[\s\S]*?setSettingsOpen\(\s*false\s*\);[\s\S]*?\s*\},\s+\[onCloseAudioSettings\]\s*\)/
     );
     assert.match(
       chrome,

@@ -47,7 +47,7 @@ export function InviteScreen({
   const onTurnstileUnavailable = useCallback(() => {
     setTurnstileToken("");
     setFieldError("invite.turnstileUnavailable");
-  }, [t]);
+  }, []);
 
   useEffect(() => {
     const token = extractInviteToken(initialToken);

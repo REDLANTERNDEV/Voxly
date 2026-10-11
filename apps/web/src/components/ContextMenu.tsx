@@ -4,7 +4,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
-  useMemo,
+  useState,
   useRef,
   type ReactNode
 } from "react";
@@ -29,7 +29,7 @@ export function ContextMenu({
   children: ReactNode;
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const overlays = useMemo(() => new Set<HTMLElement>(), [descriptor]);
+  const [overlays] = useState(() => new Set<HTMLElement>());
   const { refs, floatingStyles, isPositioned } = useFloating({
     placement: "bottom-start",
     strategy: "fixed",
@@ -44,17 +44,18 @@ export function ContextMenu({
       })
     ]
   });
+  const { setFloating, setPositionReference } = refs;
   const setMenuRef = useCallback(
     (node: HTMLDivElement | null) => {
       menuRef.current = node;
-      refs.setFloating(node);
+      setFloating(node);
     },
-    [refs.setFloating]
+    [setFloating]
   );
   useLayoutEffect(() => {
     const point = descriptor.anchor ?? descriptor.position;
-    refs.setPositionReference({ getBoundingClientRect: () => new DOMRect(point.x, point.y, 0, 0) });
-  }, [descriptor, refs.setPositionReference]);
+    setPositionReference({ getBoundingClientRect: () => new DOMRect(point.x, point.y, 0, 0) });
+  }, [descriptor, setPositionReference]);
   useEffect(() => {
     menuRef.current?.querySelector<HTMLElement>("button:not([disabled]), input:not([disabled])")?.focus();
     const outside = (event: PointerEvent) => {

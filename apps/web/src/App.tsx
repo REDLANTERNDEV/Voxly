@@ -60,6 +60,7 @@ export function App() {
     return () => window.removeEventListener("popstate", handlePop);
   }, []);
   const session = useSessionController(route, navigate);
+  const { completeAuthentication } = session;
   const preferences = usePresentationPreferences(session.user?.id ?? null);
   const { theme, language, timeFormat, t, changeLanguage, changeTheme, changeTimeFormat } = preferences;
   checkStillSignedInRef.current = session.checkStillSignedIn;
@@ -71,19 +72,20 @@ export function App() {
     roomServerIdsRef,
     routeRef
   });
+  const { loadAcceptedServer } = workspace;
   const handleOwnerClaimed = useCallback(
     (claimed: PublicUser) => {
-      session.completeAuthentication(claimed);
+      completeAuthentication(claimed);
       navigate(`/app/server/${defaultServerId}/owner`);
     },
-    [navigate, session.completeAuthentication]
+    [navigate, completeAuthentication]
   );
   const handleAccessClaimed = useCallback(
     (claimed: PublicUser, serverId: string) => {
-      session.completeAuthentication(claimed);
-      void workspace.loadAcceptedServer(serverId).catch(() => navigate("/"));
+      completeAuthentication(claimed);
+      void loadAcceptedServer(serverId).catch(() => navigate("/"));
     },
-    [navigate, session.completeAuthentication, workspace.loadAcceptedServer]
+    [navigate, completeAuthentication, loadAcceptedServer]
   );
   const serverNotifications = useServerNotifications(
     session.user,
@@ -160,6 +162,9 @@ export function App() {
     activeTextRoomIdRef: chat.activeTextRoomIdRef,
     onNotificationActivate: workspace.openNotificationTarget
   });
+  const { activeRoomId, join, requestSnapshot } = audio.voice;
+  const { stopMicrophoneTest } = audio;
+  const microphoneTestActive = audio.microphoneTest.active;
   const musicQueues = useMusicQueue(realtime.socket);
   const localVoiceSpeaking = Boolean(
     audio.voice.activeRoomId &&
@@ -178,13 +183,13 @@ export function App() {
   // the same join the member would have performed themselves.
   useEffect(() => {
     moveVoiceRef.current = (roomId: string) => {
-      void audio.voice.join(roomId, [], {});
+      void join(roomId, [], {});
     };
-  }, [audio.voice.join]);
+  }, [join]);
 
   useEffect(() => {
-    if (route.name === "voice") audio.voice.requestSnapshot(route.roomId);
-  }, [route, audio.voice.requestSnapshot]);
+    if (route.name === "voice") requestSnapshot(route.roomId);
+  }, [route, requestSnapshot]);
   useEffect(() => {
     notifyMessageRef.current = audio.notifyMessage;
   }, [audio.notifyMessage]);
@@ -232,12 +237,12 @@ export function App() {
     : "";
   const onJoinVoice = useCallback(
     async (roomId: string, options: VoiceJoinRequest = {}) => {
-      if (!audio.voice.activeRoomId && audio.microphoneTest.active) await audio.stopMicrophoneTest();
+      if (!activeRoomId && microphoneTestActive) await stopMicrophoneTest();
       return joinVoiceWithAudioUnlock(roomId, unlockSharedAudioOutput, releaseUnusedSharedAudioOutput, (nextRoomId) =>
-        audio.voice.join(nextRoomId, options.visualTargets ?? [], options)
+        join(nextRoomId, options.visualTargets ?? [], options)
       );
     },
-    [audio.microphoneTest.active, audio.stopMicrophoneTest, audio.voice.activeRoomId, audio.voice.join]
+    [microphoneTestActive, stopMicrophoneTest, activeRoomId, join]
   );
   const shellProps = user
     ? ({

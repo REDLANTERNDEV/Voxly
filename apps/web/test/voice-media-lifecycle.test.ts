@@ -105,10 +105,11 @@ describe("voice snapshot reconciliation", () => {
     const source = readAppSource();
     const join = source.match(/const\s+onJoinVoice[\s\S]*?onJoinVoice,/)?.[0] ?? "";
 
-    assert.match(join, /audio\.microphoneTest\.active/);
-    assert.match(join, /audio\.stopMicrophoneTest/);
-    assert.match(join, /!audio\.voice\.activeRoomId/);
-    assert.ok(join.indexOf("audio.stopMicrophoneTest") < join.indexOf("joinVoiceWithAudioUnlock"));
+    assert.match(source, /const\s+\{[^}]*\bactiveRoomId\b[^}]*\}\s*=\s*audio\.voice/);
+    assert.match(source, /const\s+\{\s*stopMicrophoneTest\s*\}\s*=\s*audio/);
+    assert.match(source, /const\s+microphoneTestActive\s*=\s*audio\.microphoneTest\.active/);
+    assert.match(join, /if\s*\(\s*!activeRoomId\s*&&\s*microphoneTestActive\s*\)\s*await\s+stopMicrophoneTest\(\s*\)/);
+    assert.ok(join.indexOf("await stopMicrophoneTest") < join.indexOf("joinVoiceWithAudioUnlock"));
   });
 
   it("releases unused audio playback in the canonical voice leave path", () => {
@@ -346,7 +347,11 @@ describe("voice snapshot reconciliation", () => {
 
     assert.match(source, /const\s+noiseSuppressionRef\s+=\s+useRef\(\s*noiseSuppression\s*\)/);
     assert.match(effect[0] ?? "", /microphoneInputRef\.current\?\.setNoiseSuppression\(\s*noiseSuppression\s*\)/);
-    assert.equal((effect[1] ?? "").trim(), "noiseSuppression");
+    assert.deepEqual(
+      (effect[1] ?? "").split(",").map((dependency) => dependency.trim()),
+      ["microphoneInputRef", "noiseSuppression"]
+    );
+    assert.match(source, /const\s+\[microphoneInputRef\]\s*=\s*useState\(\s*\(\)\s*=>\s*new\s+MicrophoneOwner\(\)/);
     assert.doesNotMatch(source, /openMicrophoneCapture\(\s*[^)]*noiseSuppression/);
   });
 

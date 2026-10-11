@@ -48,7 +48,9 @@ export function useListenerAudio({
   activeTextRoomIdRef: React.RefObject<string | null>;
   onNotificationActivate(target: DesktopNotificationTarget): void;
 }) {
-  const audioDevices = useAudioDevices({ userId: user?.id });
+  const accountId = user?.id;
+  const audioDevices = useAudioDevices({ userId: accountId });
+  const { refresh: refreshAudioDevices } = audioDevices;
   const [audioLevels, setAudioLevels] = useState<AudioLevels>(DEFAULT_AUDIO_LEVELS);
   const [noiseSuppression, setNoiseSuppression] = useState(DEFAULT_NOISE_SUPPRESSION);
   const [noiseSuppressionSupported] = useState(browserSupportsNoiseSuppression);
@@ -64,6 +66,7 @@ export function useListenerAudio({
     microphoneVolume: audioLevels.input,
     noiseSuppression
   });
+  const { recoverPeer, confirmPeerAudioRecovered, getDesktopCallState, setDeafened } = voice;
   const connectionHealth = useConnectionHealth(socket);
   // Only while there is a call to measure. Outside a voice room the signalling
   // round trip is the only connection a member has, and reporting on it is
@@ -76,12 +79,12 @@ export function useListenerAudio({
   };
   useEffect(() => {
     for (const request of voiceQuality.recoveryRequests) {
-      voice.recoverPeer(request.peerUserId, request.peer);
+      recoverPeer(request.peerUserId, request.peer);
     }
     for (const { userId, peer } of voiceQuality.clearPeers) {
-      voice.confirmPeerAudioRecovered(userId, peer);
+      confirmPeerAudioRecovered(userId, peer);
     }
-  }, [voice.recoverPeer, voice.confirmPeerAudioRecovered, voiceQuality.recoveryRequests, voiceQuality.clearPeers]);
+  }, [recoverPeer, confirmPeerAudioRecovered, voiceQuality.recoveryRequests, voiceQuality.clearPeers]);
   const notifications = useNotificationSounds({
     user,
     activeVoiceRoomId: voice.activeRoomId,
@@ -98,16 +101,17 @@ export function useListenerAudio({
     voice.microphoneMonitorStream,
     noiseSuppression
   );
+  const { isBusy: isMicrophoneTestBusy, stop: stopTest, start: startTest } = microphoneTest;
   const microphoneTestDeafenRef = useRef<MicrophoneTestDeafenLease | null>(null);
   const microphoneTestStartingRef = useRef(false);
   useEffect(
     () =>
       subscribeDesktopCallState(window, () => ({
-        ...voice.getDesktopCallState(),
+        ...getDesktopCallState(),
         microphoneTest:
-          microphoneTest.isBusy() || microphoneTestStartingRef.current || Boolean(microphoneTestDeafenRef.current)
+          isMicrophoneTestBusy() || microphoneTestStartingRef.current || Boolean(microphoneTestDeafenRef.current)
       })),
-    [voice.getDesktopCallState, microphoneTest.isBusy]
+    [getDesktopCallState, isMicrophoneTestBusy]
   );
   const [memberVolumes, setMemberVolumes] = useState<Record<string, number>>({});
   const [screenVolumes, setScreenVolumes] = useState<Record<string, number>>({});
@@ -115,16 +119,19 @@ export function useListenerAudio({
   const [pendingLiveWatch, setPendingLiveWatch] = useState<LiveWatchRequest | null>(null);
 
   useEffect(() => {
-    if (voice.activeRoomId) void audioDevices.refresh(false).catch(() => undefined);
-  }, [audioDevices.refresh, voice.activeRoomId]);
+    if (voice.activeRoomId) void refreshAudioDevices(false).catch(() => undefined);
+  }, [refreshAudioDevices, voice.activeRoomId]);
   useEffect(() => subscribeBlockedAudioOutputs(setAudioPlaybackBlocked), []);
   useEffect(() => {
     activeVoiceRoomRef.current = voice.activeRoomId;
     leaveVoiceRef.current = voice.leave;
-  }, [voice.activeRoomId, voice.leave]);
-  useEffect(() => setMemberVolumes(user ? readUserVolumes(user.id) : {}), [user?.id]);
-  useEffect(() => setAudioLevels(user ? readAudioLevels(user.id) : { ...DEFAULT_AUDIO_LEVELS }), [user?.id]);
-  useEffect(() => setNoiseSuppression(user ? readNoiseSuppression(user.id) : DEFAULT_NOISE_SUPPRESSION), [user?.id]);
+  }, [voice.activeRoomId, voice.leave, activeVoiceRoomRef, leaveVoiceRef]);
+  useEffect(() => setMemberVolumes(accountId ? readUserVolumes(accountId) : {}), [accountId]);
+  useEffect(() => setAudioLevels(accountId ? readAudioLevels(accountId) : { ...DEFAULT_AUDIO_LEVELS }), [accountId]);
+  useEffect(
+    () => setNoiseSuppression(accountId ? readNoiseSuppression(accountId) : DEFAULT_NOISE_SUPPRESSION),
+    [accountId]
+  );
   useEffect(() => {
     const ids = voice.remoteStreams.filter((item) => item.kind === "screen").map((item) => item.stream.id);
     setScreenVolumes((current) => pruneVolumes(current, ids));
@@ -134,19 +141,19 @@ export function useListenerAudio({
     (kind: keyof AudioLevels, volume: number) => {
       setAudioLevels((current) => {
         const next = { ...current, [kind]: clampVolumePercent(volume) };
-        if (user) writeAudioLevels(user.id, next);
+        if (accountId) writeAudioLevels(accountId, next);
         return next;
       });
     },
-    [user?.id]
+    [accountId]
   );
 
   const changeNoiseSuppression = useCallback(
     (enabled: boolean) => {
       setNoiseSuppression(enabled);
-      if (user) writeNoiseSuppression(user.id, enabled);
+      if (accountId) writeNoiseSuppression(accountId, enabled);
     },
-    [user?.id]
+    [accountId]
   );
 
   const isolateMicrophoneTest = useCallback(async () => {
@@ -157,27 +164,27 @@ export function useListenerAudio({
     }
     if (microphoneTestDeafenRef.current?.roomId === roomId) return true;
     const claim = claimMicrophoneTestDeafen(roomId, voice.controls.deafen.on);
-    if (claim.shouldDeafen && !(await voice.setDeafened(true))) return false;
+    if (claim.shouldDeafen && !(await setDeafened(true))) return false;
     microphoneTestDeafenRef.current = claim.lease;
     return true;
-  }, [voice.activeRoomId, voice.controls.deafen.on, voice.setDeafened]);
+  }, [voice.activeRoomId, voice.controls.deafen.on, setDeafened]);
 
   const stopMicrophoneTest = useCallback(async () => {
-    microphoneTest.stop();
+    stopTest();
     const lease = microphoneTestDeafenRef.current;
-    if (shouldRestoreMicrophoneTestDeafen(lease, voice.activeRoomId)) await voice.setDeafened(false);
+    if (shouldRestoreMicrophoneTestDeafen(lease, voice.activeRoomId)) await setDeafened(false);
     if (microphoneTestDeafenRef.current === lease) microphoneTestDeafenRef.current = null;
-  }, [microphoneTest.stop, voice.activeRoomId, voice.setDeafened]);
+  }, [stopTest, voice.activeRoomId, setDeafened]);
 
   const startMicrophoneTest = useCallback(async () => {
     microphoneTestStartingRef.current = true;
     try {
       if (!(await isolateMicrophoneTest())) return;
-      if (!(await microphoneTest.start())) await stopMicrophoneTest();
+      if (!(await startTest())) await stopMicrophoneTest();
     } finally {
       microphoneTestStartingRef.current = false;
     }
-  }, [isolateMicrophoneTest, microphoneTest.start, stopMicrophoneTest]);
+  }, [isolateMicrophoneTest, startTest, stopMicrophoneTest]);
 
   const toggleMicrophoneTest = useCallback(async () => {
     if (microphoneTest.active) await stopMicrophoneTest();
@@ -210,20 +217,20 @@ export function useListenerAudio({
     }
     if (microphoneTestDeafenRef.current?.roomId === voice.activeRoomId) return;
     void isolateMicrophoneTest().then((isolated) => {
-      if (!isolated) microphoneTest.stop();
+      if (!isolated) stopTest();
     });
-  }, [isolateMicrophoneTest, microphoneTest.active, microphoneTest.stop, voice.activeRoomId]);
+  }, [isolateMicrophoneTest, microphoneTest.active, stopTest, voice.activeRoomId]);
 
   const changeMemberVolume = useCallback(
     (userId: string, volume: number) => {
-      if (!user) return;
+      if (!accountId) return;
       setMemberVolumes((current) => {
         const next = setVolume(current, userId, volume);
-        writeUserVolumes(user.id, next);
+        writeUserVolumes(accountId, next);
         return next;
       });
     },
-    [user]
+    [accountId]
   );
   const changeScreenVolume = useCallback((streamId: string, volume: number) => {
     setScreenVolumes((current) => setVolume(current, streamId, volume));

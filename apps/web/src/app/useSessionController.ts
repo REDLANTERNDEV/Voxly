@@ -1,5 +1,5 @@
 import type { PublicUser } from "@voxly/shared";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { ApiError, fetchConfig, fetchMe, fetchRtcConfig } from "../api.js";
 import { createAuthRequestGate } from "../lib/authRequestGate.js";
 import { checkSessionAfterDisconnect } from "../lib/sessionCheck.js";
@@ -11,6 +11,7 @@ import type { LoadState, Route } from "./types.js";
 
 export function useSessionController(route: Route, navigate: (path: string) => void) {
   const [user, setUser] = useState<PublicUser | null>(null);
+  const accountId = user?.id;
   const [authState, setAuthState] = useState<LoadState>("loading");
   /** Empty unless the member was signed out for a reason they should be told. */
   const [signedOutReason, setSignedOutReason] = useState<
@@ -100,7 +101,7 @@ export function useSessionController(route: Route, navigate: (path: string) => v
   }, []);
 
   useEffect(() => {
-    if (!user) {
+    if (!accountId) {
       setRtcConfig({ iceServers: [], expiresAt: null });
       setRtcConfigError("");
       setRtcConfigReady(true);
@@ -139,7 +140,24 @@ export function useSessionController(route: Route, navigate: (path: string) => v
       cancelled = true;
       if (refreshTimer) window.clearTimeout(refreshTimer);
     };
-  }, [user?.id]);
+  }, [accountId]);
+
+  // Session lookup runs once at startup; its result follows the current route
+  // rather than re-fetching authentication on every navigation.
+  const redirectSignedOut = useEffectEvent(() => {
+    if (
+      !new Set(["landing", "invite", "owner-claim", "access-claim", "link-device", "desktop-verify", "recover"]).has(
+        route.name
+      )
+    ) {
+      navigate(
+        resolveInitialRoute({
+          isAuthenticated: false,
+          inviteToken: getInviteTokenFromPath(window.location.pathname) || null
+        })
+      );
+    }
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -162,24 +180,7 @@ export function useSessionController(route: Route, navigate: (path: string) => v
           // to another Device; delayed requests also produce this result.
           setSignedOutReason(error.code === "session_reused" ? "reused" : "");
           setAuthState("ready");
-          if (
-            !new Set([
-              "landing",
-              "invite",
-              "owner-claim",
-              "access-claim",
-              "link-device",
-              "desktop-verify",
-              "recover"
-            ]).has(route.name)
-          ) {
-            navigate(
-              resolveInitialRoute({
-                isAuthenticated: false,
-                inviteToken: getInviteTokenFromPath(window.location.pathname) || null
-              })
-            );
-          }
+          redirectSignedOut();
         } else setAuthState("error");
       });
     return () => {

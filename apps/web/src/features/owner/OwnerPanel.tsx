@@ -143,17 +143,18 @@ export function OwnerPanel(props: OwnerPanelProps) {
     (item) => !item.installationOwnerOnly || props.user.role === "owner"
   );
 
+  const { activeServerId, t } = props;
   const reload = useCallback(async () => {
     const requestId = ++reloadRequestRef.current;
     try {
-      const data = await fetchServerOwnerData(props.activeServerId);
+      const data = await fetchServerOwnerData(activeServerId);
       if (requestId !== reloadRequestRef.current) return;
       setUsers(data.users);
       setInvites(data.invites);
     } catch {
-      if (requestId === reloadRequestRef.current) setStatus(props.t("owner.dataError"));
+      if (requestId === reloadRequestRef.current) setStatus(t("owner.dataError"));
     }
-  }, [props.activeServerId, props.t]);
+  }, [activeServerId, t]);
 
   useEffect(() => {
     setAccessLink(null);

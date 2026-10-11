@@ -64,7 +64,7 @@ export function RecoverScreen({
         setBusy(false);
       }
     },
-    [code, t]
+    [code, onRecovered, turnstileSiteKey, turnstileToken]
   );
 
   return (

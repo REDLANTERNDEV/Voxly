@@ -1,5 +1,5 @@
 import type { VisualTarget } from "@voxly/shared";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { serverPath } from "../../app/navigation.js";
 import { initial, presenceFromUser } from "../../app/presentation.js";
 import type { LiveWatchRequest, ShellActions, ShellModel, VoiceChromeModel } from "../../app/types.js";
@@ -71,6 +71,7 @@ type VoiceRoomProps = Pick<
   >;
 
 export function VoiceRoomScreen(props: VoiceRoomProps) {
+  const { visualTargets, onSetVisualSubscriptions } = props;
   const [localStageKeys, setLocalStageKeys] = useState<string[]>([]);
   const [screenStageKeys, setScreenStageKeys] = useState<string[]>([]);
   const [suppressedKeys, setSuppressedKeys] = useState<Set<string>>(new Set());
@@ -158,6 +159,8 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
         (source) => source.ownerId === pendingLiveWatch.publisherUserId && source.kind === "screen"
       ) ?? null)
     : null;
+  const requestedLiveSourceKey = requestedLiveSource?.key;
+  const hasViewedSnapshot = Boolean(viewedSnapshot);
   const selectedRemoteKeys = new Set(
     inViewedVoiceRoom ? props.visualTargets.map(visualTargetKey).filter((key) => !suppressedKeys.has(key)) : []
   );
@@ -189,15 +192,14 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
 
   const availableSourceKeys = visualSources.map((source) => source.key).join("|");
   useEffect(() => {
-    const available = new Set(visualSources.map((source) => source.key));
+    const available = new Set(availableSourceKeys ? availableSourceKeys.split("|") : []);
     setLocalStageKeys((keys) => keys.filter((key) => available.has(key)));
     setScreenStageKeys((keys) => keys.filter((key) => available.has(key)));
     setFocusedSourceKey((key) => (key && available.has(key) ? key : null));
     if (!inViewedVoiceRoom) return;
-    const remaining = props.visualTargets.filter((target) => available.has(visualTargetKey(target)));
-    if (remaining.length !== props.visualTargets.length)
-      void props.onSetVisualSubscriptions(remaining).catch(() => undefined);
-  }, [availableSourceKeys, inViewedVoiceRoom]);
+    const remaining = visualTargets.filter((target) => available.has(visualTargetKey(target)));
+    if (remaining.length !== visualTargets.length) void onSetVisualSubscriptions(remaining).catch(() => undefined);
+  }, [availableSourceKeys, inViewedVoiceRoom, visualTargets, onSetVisualSubscriptions]);
 
   const updateRemoteSelection = async (targets: VisualTarget[], focusKey: string | null) => {
     const generation = selectionGeneration.current;
@@ -318,7 +320,9 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
     window.setTimeout(() => tileButtons.current.get(source.key)?.focus(), 0);
   };
 
-  useEffect(() => {
+  // A LIVE request runs when its source or room becomes ready. Rendering a new
+  // source object or changing a presentation callback must not repeat it.
+  const joinRequestedLive = useEffectEvent(() => {
     if (!pendingLiveWatch) {
       liveWatchAttemptRef.current = null;
       return;
@@ -350,9 +354,12 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
         setStageStatus(props.t("voice.sourceUnavailable"));
         props.onLiveWatchHandled();
       });
-  }, [pendingLiveWatch, props.activeVoiceRoomId, props.socketState, requestedLiveSource?.key, viewedRoomId]);
-
+  });
   useEffect(() => {
+    joinRequestedLive();
+  }, [pendingLiveWatch, props.activeVoiceRoomId, props.socketState, requestedLiveSourceKey, viewedRoomId]);
+
+  const selectRequestedLive = useEffectEvent(() => {
     if (!pendingLiveWatch || props.socketState !== "live" || !inViewedVoiceRoom || !requestedLiveSource) return;
     if (requestedLiveSource.ownerIsLocal) {
       setLocalStageKeys([requestedLiveSource.key]);
@@ -382,14 +389,20 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
         if (generation === selectionGeneration.current && latestWatch.current === pendingLiveWatch)
           props.onLiveWatchHandled();
       });
-  }, [pendingLiveWatch?.publisherUserId, inViewedVoiceRoom, props.socketState, requestedLiveSource?.key, viewedRoomId]);
-
+  });
   useEffect(() => {
+    selectRequestedLive();
+  }, [pendingLiveWatch, inViewedVoiceRoom, props.socketState, requestedLiveSourceKey, viewedRoomId]);
+
+  const rejectUnavailableLive = useEffectEvent(() => {
     if (pendingLiveWatch && viewedSnapshot && props.socketState === "live" && !requestedLiveSource) {
       setStageStatus(props.t("voice.sourceUnavailable"));
       props.onLiveWatchHandled();
     }
-  }, [pendingLiveWatch, Boolean(viewedSnapshot), requestedLiveSource?.key, props.socketState]);
+  });
+  useEffect(() => {
+    rejectUnavailableLive();
+  }, [pendingLiveWatch, hasViewedSnapshot, requestedLiveSourceKey, props.socketState]);
 
   return (
     <main className="main-panel" id="main-content">

@@ -1,6 +1,7 @@
 import type { CategorySummary, RoomKind, RoomSummary, ServerRoomLayout } from "@voxly/shared";
 import {
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -141,6 +142,14 @@ export function ChannelOrganizer({
     }
   }, [collapsed, serverId]);
 
+  const closeEditor = useCallback(() => {
+    const trigger = editor?.trigger;
+    setEditor(null);
+    setEditorName("");
+    setEditorError(false);
+    window.setTimeout(() => trigger?.focus(), 0);
+  }, [editor]);
+
   useEffect(() => {
     if (!editor) return;
     const previousOverflow = document.body.style.overflow;
@@ -174,15 +183,7 @@ export function ChannelOrganizer({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [editor, editorBusy]);
-
-  function closeEditor() {
-    const trigger = editor?.trigger;
-    setEditor(null);
-    setEditorName("");
-    setEditorError(false);
-    window.setTimeout(() => trigger?.focus(), 0);
-  }
+  }, [editor, editorBusy, closeEditor]);
 
   function openEditor(
     kind: EditorState["kind"],

@@ -1,7 +1,7 @@
 import { stageClickAction } from "./stageTileSelection.js";
 import { StreamActions } from "./StreamActions.js";
 import type { VisualMediaKind, VisualTarget, VoiceMediaState, VoiceModerationState } from "@voxly/shared";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { voiceStatusItems } from "../../app/presentation.js";
 import type { Translate } from "../../app/types.js";
 import { MaximizeIcon, VolumeIcon } from "../../components/ui/Icons.js";
@@ -233,11 +233,16 @@ export function RecoveringScreenVideo({
 export function RemoteAudio({ stream, muted, volume }: { stream: MediaStream; muted: boolean; volume: number }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const outputRef = useRef<AudioOutput | null>(null);
+  // Volume changes update the existing sink; only stream replacement owns
+  // playback setup and disposal.
+  const connectOutput = useEffectEvent((audio: HTMLAudioElement, stream: MediaStream) =>
+    connectAudioOutput(audio, stream, { muted, volume })
+  );
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || stream.getAudioTracks().length === 0) return;
-    const output = connectAudioOutput(audio, stream, { muted, volume });
+    const output = connectOutput(audio, stream);
     outputRef.current = output;
     return () => {
       output.dispose();

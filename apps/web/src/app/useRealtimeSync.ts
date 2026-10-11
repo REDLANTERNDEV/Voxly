@@ -127,7 +127,7 @@ export function useRealtimeSync({
       next.disconnect();
       setSocket(null);
     };
-  }, [user]);
+  }, [user, activeVoiceRoomRef, checkStillSignedInRef, forceLeaveNoticeRef, leaveVoiceRef, moveVoiceRef]);
 
   useEffect(() => {
     if (!socket || route.name !== "text") return;
