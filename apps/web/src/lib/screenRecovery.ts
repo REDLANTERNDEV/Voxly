@@ -58,7 +58,7 @@ export class ScreenRecoveryOwner {
             ? "failed"
             : old?.played && (old.interruptedAt === null || this.now() - old.interruptedAt < 5_000)
               ? "ready"
-              : old
+              : old?.played
                 ? "reconnecting"
                 : "connecting"
       };
@@ -128,10 +128,10 @@ export class ScreenRecoveryOwner {
     this.clearPresentationTimer(entry);
     entry.startedAt = this.now() - 10_000;
     entry.ready = false;
-    entry.interruptedAt = this.now() - 5_000;
+    entry.interruptedAt = entry.played ? this.now() - 5_000 : null;
     entry.faultSince = null;
     entry.lastRepairAt = null;
-    this.update(entry, "reconnecting");
+    this.update(entry, entry.played ? "reconnecting" : "connecting");
   }
   async sample() {
     if (this.disposed || this.sampling) return;
@@ -186,7 +186,6 @@ export class ScreenRecoveryOwner {
         if (entry.lastRepairAt !== null && now - entry.lastRepairAt < 15_000) continue;
         entry.busy = true;
         entry.lastRepairAt = now;
-        if (!entry.played) this.update(entry, "reconnecting");
         try {
           await this.repair(id, entry.peer, () => !this.disposed && this.entries.get(id) === entry);
         } catch {

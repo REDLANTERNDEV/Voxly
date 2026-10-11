@@ -216,14 +216,10 @@ export function RecoveringScreenVideo({
         aria-hidden="true"
       />
       <video className="call-video" ref={videoRef} autoPlay playsInline muted hidden={!decoded || failed} />
-      {failed || (!hasPicture && !decoded) ? (
-        <span className="screen-stage-placeholder">
-          {t(failed ? "voice.retry" : connectionStatus === "reconnecting" ? "voice.reconnecting" : "voice.connecting")}
-        </span>
-      ) : null}
-      {!failed && hasPicture && connectionStatus === "reconnecting" ? (
+      {failed ? <span className="screen-stage-placeholder">{t("voice.retry")}</span> : null}
+      {!failed && ((!hasPicture && !decoded) || connectionStatus === "reconnecting") ? (
         <span className="screen-recovery-overlay" role="status">
-          {t("voice.reconnecting")}
+          {t(connectionStatus === "reconnecting" ? "voice.reconnecting" : "voice.connecting")}
         </span>
       ) : null}
     </span>

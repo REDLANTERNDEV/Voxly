@@ -35,6 +35,43 @@ function harness() {
   };
 }
 describe("ongoing screen recovery", () => {
+  it("keeps the first Watch connecting as its peer and receiver arrive before playback", () => {
+    const h = harness();
+    h.owner.sync([]);
+    h.owner.sync([{ publisherId: "publisher", peer: null, receiver: null }]);
+    assert.equal(h.owner.status("publisher"), "connecting");
+    h.owner.sync([{ ...h.target, receiver: null }]);
+    assert.equal(h.owner.status("publisher"), "connecting");
+    h.owner.sync([h.target]);
+    assert.equal(h.owner.status("publisher"), "connecting");
+    h.owner.notePlayback("publisher", h.track);
+    assert.equal(h.owner.status("publisher"), "ready");
+    h.owner.dispose();
+  });
+
+  it("keeps initial connection repairs and Retry connecting until the first playback", async () => {
+    const h = harness();
+    h.time(10_000);
+    await h.owner.sample();
+    assert.equal(h.repairs.length, 1);
+    assert.equal(h.owner.status("publisher"), "connecting");
+    h.owner.retry("publisher");
+    assert.equal(h.owner.status("publisher"), "connecting");
+    h.owner.sync([{ ...h.target, peer: {} as RTCPeerConnection, receiver: null }]);
+    assert.equal(h.owner.status("publisher"), "connecting");
+    h.owner.dispose();
+  });
+
+  it("uses Reconnecting for explicit Retry after prior playback", () => {
+    const h = harness();
+    h.owner.notePlayback("publisher", h.track);
+    h.owner.retry("publisher");
+    assert.equal(h.owner.status("publisher"), "reconnecting");
+    h.owner.sync([{ ...h.target, peer: {} as RTCPeerConnection, receiver: null }]);
+    assert.equal(h.owner.status("publisher"), "reconnecting");
+    h.owner.dispose();
+  });
+
   it("announces exactly at the grace deadline without waiting for another stats sample", (t) => {
     t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
     const h = harness();
@@ -232,6 +269,7 @@ describe("ongoing screen recovery", () => {
     assert.equal(h.owner.status("publisher"), "failed");
     assert.equal(h.repairs.length, 1);
     h.owner.retry("publisher");
+    assert.equal(h.owner.status("publisher"), "connecting");
     await h.owner.sample();
     assert.equal(h.repairs.length, 2);
     h.owner.dispose();

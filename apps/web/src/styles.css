@@ -6897,7 +6897,7 @@ button.reply-quote:focus-visible .reply-quote-body {
 .screen-recovery-overlay {
   position: absolute;
   left: 50%;
-  bottom: 12px;
+  top: 12px;
   transform: translateX(-50%);
   padding: 5px 10px;
   border-radius: 6px;

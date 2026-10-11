@@ -63,3 +63,60 @@ it("renders no video, stage, speaking activity, or Music panel outside the chann
   assert.match(html, /Watch stream/);
   assert.match(html, /stream-unwatched-background/);
 });
+
+it("shows Connecting on first screen Watch even when the existing voice peer is recovering", () => {
+  for (const language of ["en", "tr"] as const) {
+    const html = renderToStaticMarkup(
+      <VoiceRoomScreen
+        screenConnectionWarnings={{}}
+        user={{ id: "self", nickname: "Self", role: "member", bannedAt: null }}
+        currentNickname="Self"
+        route={{ name: "voice", roomId: room.id, serverId: room.serverId }}
+        activeServerId="server"
+        rooms={{ text: [], voice: [room] }}
+        currentRoom={room}
+        socketState="live"
+        activeVoiceRoomId="voice"
+        controls={createInitialVoiceControls()}
+        visualTargets={[{ publisherUserId: "publisher", kind: "screen" }]}
+        voiceSnapshots={{
+          voice: {
+            roomId: "voice",
+            viewerInVoiceRoom: true,
+            members: [
+              publisher,
+              {
+                user: { userId: "self", nickname: "Self", role: "member" },
+                media: { mic: true, camera: false, screen: false, speaking: false, deafened: false },
+                moderation: { muted: false, deafened: false },
+                mediaInstanceId: "self-instance"
+              }
+            ]
+          }
+        }}
+        musicQueues={{}}
+        remoteStreams={[]}
+        peerConnectionStates={{ publisher: "reconnecting" }}
+        screenPlaybackStates={{}}
+        localPreviews={[]}
+        memberVolumes={{}}
+        screenVolumes={{}}
+        roomHistory={{}}
+        pendingLiveWatch={null}
+        audioLevels={{ input: 100, output: 100 }}
+        t={(key, values) => translate(language, key, values)}
+        onNavigate={() => {}}
+        onJoinVoice={async () => false}
+        onWatchLive={() => {}}
+        onLiveWatchHandled={() => {}}
+        onRequestVoiceSnapshot={() => {}}
+        onSetVisualSubscriptions={async () => ({ ok: true, targets: [] })}
+        onMemberVolumeChange={() => {}}
+        onScreenVolumeChange={() => {}}
+        onMusicControl={async () => ({ ok: false, error: "not_in_voice_room" })}
+      />
+    );
+    assert.ok(html.includes(translate(language, "voice.connecting")));
+    assert.ok(!html.includes(translate(language, "voice.reconnecting")));
+  }
+});

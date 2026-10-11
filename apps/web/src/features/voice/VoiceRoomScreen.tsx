@@ -145,8 +145,8 @@ export function VoiceRoomScreen(props: VoiceRoomProps) {
         connectionStatus:
           participant.userId === props.user.id
             ? "ready"
-            : kind === "screen" && props.screenPlaybackStates?.[participant.userId]
-              ? props.screenPlaybackStates[participant.userId]
+            : kind === "screen"
+              ? (props.screenPlaybackStates?.[participant.userId] ?? "connecting")
               : connectionStatusFor(
                   props.peerConnectionStates[participant.userId] ?? "new",
                   Boolean(streamByKey.get(remoteStreamKey(participant.userId, kind)))

@@ -26,6 +26,10 @@ function RecoveryFixture() {
       () => now.current
     );
     window.screenRecoveryFixture = {
+      watch() {
+        setSelected(true);
+        owner.current.sync([{ publisherId: "fixture", peer: null, receiver: null }]);
+      },
       start(color = "#ff0000") {
         const canvas = document.createElement("canvas");
         canvas.width = 1280;
@@ -81,7 +85,10 @@ function RecoveryFixture() {
     };
   }, []);
   return (
-    <div id="recovery-fixture" style={{ position: "relative", width: 640, height: 360, background: "#111" }}>
+    <div
+      id="recovery-fixture"
+      style={{ position: "relative", width: "min(640px, 100%)", aspectRatio: "16 / 9", background: "#111" }}
+    >
       {selected ? (
         <RecoveringScreenVideo
           stream={stream}
