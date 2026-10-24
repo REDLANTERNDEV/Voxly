@@ -369,6 +369,14 @@ export const musicInputMaxLength = 2_048;
 export const musicTitleMaxLength = 200;
 
 /**
+ * The longest Track the bot will play, in seconds. The bot keeps every encoded
+ * frame of the Track that is playing, in one process that serves every server,
+ * so length is a memory bound rather than a taste: two hours is about 120 MB of
+ * buffered audio against the bot container's default 320 MB limit.
+ */
+export const musicTrackMaxSeconds = 2 * 60 * 60;
+
+/**
  * How many Results a search may answer with.
  *
  * Bounded for the same reason the Queue is: every string in the list is
@@ -632,6 +640,8 @@ export type MusicControlError =
   | "track_unavailable"
   /** A broadcast rather than a Track. It has no end, so it cannot be queued. */
   | "live_stream"
+  /** A Track longer than `musicTrackMaxSeconds`, which the bot will not hold. */
+  | "track_too_long"
   /** The extractor itself failed — missing, crashed, or being refused by the
    * source. Distinct from the two above because nothing about the link is
    * wrong and trying again later may well work. */
@@ -690,7 +700,13 @@ export type MusicCommandAck =
       ok: false;
       error: Extract<
         MusicControlError,
-        "unsupported_link" | "track_unavailable" | "live_stream" | "extractor_failed" | "queue_full" | "bot_failed"
+        | "unsupported_link"
+        | "track_unavailable"
+        | "live_stream"
+        | "track_too_long"
+        | "extractor_failed"
+        | "queue_full"
+        | "bot_failed"
       >;
     };
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
-import { musicSearchResultsMax, musicTitleMaxLength } from "@voxly/shared";
+import { musicSearchResultsMax, musicTitleMaxLength, musicTrackMaxSeconds } from "@voxly/shared";
 import {
   classifyExtractorFailure,
   classifyFetchFailure,
@@ -115,6 +115,15 @@ describe("reading what the extractor said about a video", () => {
         url: "https://www.youtube.com/watch?v=aB3dE5gH7jK"
       }
     });
+  });
+
+  it("refuses a Track longer than the bot will hold in memory", () => {
+    // Every encoded frame of a Track stays buffered while it plays, in one
+    // process shared by every server, so length is a memory bound.
+    const video = JSON.parse(fixture("video.json")) as Record<string, unknown>;
+    const at = (duration: number) => parseTrackMetadata(JSON.stringify({ ...video, duration }));
+    assert.equal(at(musicTrackMaxSeconds).ok, true);
+    assert.deepEqual(at(musicTrackMaxSeconds + 1), { ok: false, error: "track_too_long" });
   });
 
   it("refuses a live stream, which has no end to queue after", () => {

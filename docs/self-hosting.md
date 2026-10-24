@@ -150,6 +150,10 @@ row lights while it plays, the same as anyone speaking. Only someone already in
 the channel can ask for music, and the bot will not play in the AFK channel. A
 link it cannot play — a playlist, a live stream, a video that is private,
 deleted or blocked where your server is — says so rather than doing nothing.
+Videos longer than two hours are refused too: the bot keeps the whole Track it
+is playing in memory, and one process serves every server, so length is what
+keeps it inside its default 320 MB limit. If you raise `VOXLY_BOT_MEMORY_LIMIT`,
+the two-hour bound still applies; it is set in `musicTrackMaxSeconds`.
 
 The bot leaves a channel by itself five minutes after the last person leaves it,
 and the queue goes with it. The wait is deliberate: reloading a page takes you
@@ -335,7 +339,13 @@ Socket.IO. If Nginx already hosts other applications, add Voxly as a separate
 
 Keep the `X-Forwarded-For` header in place. Voxly rate limits by client IP, and
 without that header every request appears to come from the proxy, so one
-abusive client would consume the limit for everyone. If you ever expose the
+abusive client would consume the limit for everyone. Set it to `$remote_addr`
+as the example does, not `$proxy_add_x_forwarded_for`: Voxly reads the leftmost
+address, and appending would keep whatever the client sent there. Behind
+Cloudflare, restore the visitor address with nginx's realip module
+(`set_real_ip_from` for Cloudflare's ranges and `real_ip_header
+CF-Connecting-IP`) so `$remote_addr` is the visitor rather than the edge. Caddy 2.5
+and later replaces the header by default and needs no change. If you ever expose the
 application port directly to the internet instead, set `TRUST_PROXY=false` so a
 forged header cannot be used to evade those limits. Both Compose files pass
 `TRUST_PROXY` from `.env` into the container; leaving it unset keeps the default

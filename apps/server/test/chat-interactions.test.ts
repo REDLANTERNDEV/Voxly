@@ -202,6 +202,56 @@ describe("chat interactions", () => {
     assert.equal(deleted.mentions[0].nickname, "");
     assert.ok(!deleted.body.includes("Ahmet") && !deleted.body.includes("Deniz"));
   });
+  it("bounds how far one message's Mentions can multiply", async () => {
+    const label = "@Ahmet ";
+    const people = (count: number): MessageMentionInput[] =>
+      Array.from({ length: count }, (_, index) => ({
+        kind: "person",
+        userId: member.id,
+        start: index * label.length,
+        end: index * label.length + label.length - 1
+      }));
+    const send = (body: string, mentions: MessageMentionInput[]) =>
+      app.server.inject({
+        method: "POST",
+        url: "/api/rooms/general/messages",
+        cookies: owner.cookies,
+        payload: { body, mentions }
+      });
+
+    // Every collective label stores a frozen copy of the server's recipients,
+    // so its occurrences, and Mentions overall, are capped per message.
+    assert.equal((await send(label.repeat(51).trimEnd(), people(51))).statusCode, 400);
+    const collective = "@everyone @everyone @here";
+    assert.equal(
+      (
+        await send(collective, [
+          { kind: "everyone", start: 0, end: 9 },
+          { kind: "everyone", start: 10, end: 19 },
+          { kind: "here", start: 20, end: 25 }
+        ])
+      ).statusCode,
+      400
+    );
+
+    // Names are resolved on read, once per message rather than once per label.
+    await post(label.repeat(50).trimEnd(), people(50));
+    const prepare = app.sqlite.prepare.bind(app.sqlite);
+    let statements = 0;
+    app.sqlite.prepare = ((sql: string) => {
+      statements += 1;
+      return prepare(sql);
+    }) as typeof app.sqlite.prepare;
+    try {
+      const history = await app.server.inject({ url: "/api/rooms/general/messages", cookies: owner.cookies });
+      assert.equal(history.statusCode, 200);
+      assert.equal((history.json().messages as ChatMessage[]).at(-1)?.mentions.length, 50);
+    } finally {
+      app.sqlite.prepare = prepare;
+    }
+    assert.ok(statements < 25, `history read prepared ${statements} statements`);
+  });
+
   it("freezes everyone recipients and refuses out-of-server, Bot and invalid-range mentions", async () => {
     const message = await post("@everyone", [{ kind: "everyone", start: 0, end: 9 }], member);
     assert.deepEqual(new Set(message.mentions[0].recipientIds), new Set([owner.id, member.id]));

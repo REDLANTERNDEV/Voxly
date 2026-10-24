@@ -405,6 +405,9 @@ before changing it.
   from active Memberships and live connections when the label is introduced;
   preserve retained labels' recipients on edit and never replay notifications.
   Resolve names on read and anonymize generated labels for Deleted accounts.
+  A message carries at most 50 Mentions and 2 collective labels, because each
+  collective label stores its own recipient snapshot; resolve a message's
+  person Mentions in one lookup, not one per label.
 - Mention codes are persisted once per Membership with a Server-scoped unique
   index and collision retries. Backfill missing codes without changing existing
   ones; reactivation and nickname updates preserve them.

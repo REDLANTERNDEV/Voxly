@@ -2,7 +2,7 @@ import cookie from "@fastify/cookie";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import staticPlugin from "@fastify/static";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { Server } from "socket.io";
 import { z } from "zod";
 import type { ClientToServerEvents, PresenceUser, ServerToClientEvents } from "@voxly/shared";
@@ -132,11 +132,30 @@ const voiceModerationBodySchema = z
   .strict()
   .refine((body) => body.muted !== undefined || body.deafened !== undefined);
 
+/**
+ * Request-log fields. An invite link carries its bearer token in the path
+ * (`/invite/<token>`, served by the SPA fallback), and the default serializer
+ * would write it to stdout on every visit. Raw tokens are never logged.
+ */
+export const requestLogOptions = {
+  serializers: {
+    req(request: FastifyRequest) {
+      return {
+        method: request.method,
+        url: request.url.replace(/^\/invite\/[^?#]*(?:[?#].*)?$/, "/invite/<redacted>"),
+        host: request.host,
+        remoteAddress: request.ip,
+        remotePort: request.socket?.remotePort
+      };
+    }
+  }
+};
+
 export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<VoxlyApp> {
   const database = await openDatabase(options.databasePath);
   seedMusicBots(database);
   const server = Fastify({
-    logger: options.logger ?? false,
+    logger: options.logger ? requestLogOptions : false,
     // Every supported Voxly topology terminates TLS in a reverse proxy, so the
     // socket address is always the proxy's. Without this, per-IP rate limits
     // would collapse into a single shared bucket and one abusive client would
@@ -751,7 +770,9 @@ function registerRealtime(
         else presence.idleSockets.delete(socket.id);
         const after = presenceStatusOf(online, user.userId);
         if (before === after) return;
-        for (const serverId of serverIds) {
+        // Read at emit time: a kick or ban leaves this socket connected, and
+        // the list captured at connection would keep reporting to that server.
+        for (const serverId of activeServerIds(database.sqlite, user.userId)) {
           io.to(`server:${serverId}`).emit("presence:serverStatus", { serverId, userId: user.userId, status: after });
         }
       })
@@ -815,7 +836,7 @@ function registerRealtime(
       // so the derived status has to be re-published rather than left stale.
       const wasIdle = current.idleSockets.delete(socket.id);
       if (wasIdle && current.sockets.size > 0 && presenceStatusOf(online, user.userId) === "online") {
-        for (const serverId of serverIds) {
+        for (const serverId of activeServerIds(database.sqlite, user.userId)) {
           io.to(`server:${serverId}`).emit("presence:serverStatus", {
             serverId,
             userId: user.userId,

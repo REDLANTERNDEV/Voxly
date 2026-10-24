@@ -15,6 +15,7 @@
  * symptom of that is noise that sounds like a broken library.
  */
 
+import { musicTrackMaxSeconds } from "@voxly/shared";
 import { RtpHeader, RtpPacket } from "werift";
 
 /** 20 ms at 48 kHz: the frame size everything here assumes. */
@@ -137,6 +138,14 @@ export const prebufferFrames = 100;
  * "there are no more frames", which are the same absence and want opposite
  * responses: wait, or finish.
  */
+/**
+ * The most frames a buffer will hold: the longest playable Track plus a minute
+ * of slack for a stated duration that was rounded down. A source whose audio
+ * runs past that ends there rather than growing the one process every server
+ * shares.
+ */
+export const trackBufferMaxFrames = ((musicTrackMaxSeconds + 60) * 1000) / opusFrameMs;
+
 export class TrackBuffer {
   private readonly packets: Buffer[] = [];
   private done = false;
@@ -150,7 +159,13 @@ export class TrackBuffer {
   }
 
   append(packets: Buffer[]) {
-    for (const packet of packets) this.packets.push(packet);
+    for (const packet of packets) {
+      if (this.packets.length >= trackBufferMaxFrames) {
+        this.done = true;
+        return;
+      }
+      this.packets.push(packet);
+    }
   }
 
   /** No more audio is coming. Whatever is here is the whole Track. */

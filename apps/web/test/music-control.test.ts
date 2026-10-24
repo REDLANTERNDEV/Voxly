@@ -283,6 +283,7 @@ describe("what a refusal says", () => {
       "unsupported_link",
       "track_unavailable",
       "live_stream",
+      "track_too_long",
       "extractor_failed",
       "bot_timeout",
       "queue_full",

@@ -1156,6 +1156,28 @@ describe("Voxly realtime MVP", () => {
     assert.equal((await back).status, "online");
   });
 
+  it("stops publishing a kicked member's away status to the server they left", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
+    sockets.push(ownerSocket, memberSocket);
+    await waitForSocketRoom(app, ownerSocket, "server:the-basement");
+
+    const kick = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/the-basement/members/${member.user.id}/kick`,
+      cookies: owner.cookies
+    });
+    assert.equal(kick.statusCode, 204);
+
+    // The socket stays connected after a kick; the list of servers it may
+    // speak to must not be the one captured when it connected.
+    const quiet = expectNoEvent(ownerSocket, "presence:serverStatus");
+    memberSocket.emit("presence:setStatus", "idle");
+    await quiet;
+  });
+
   it("keeps a member online while any of their connections is still active", async () => {
     // Two tabs, one idle: the person is at the keyboard.
     const owner = await bootstrapOwner(app);

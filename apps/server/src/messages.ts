@@ -75,6 +75,14 @@ export type MessageRow = {
  */
 const maxSuppressedEmbedKeys = 16;
 
+/**
+ * How far one message's Mentions may multiply. Each collective label freezes a
+ * copy of the server's recipients into the stored message and every broadcast
+ * of it, so collective labels are the tighter bound.
+ */
+const maxMentionsPerMessage = 50;
+const maxCollectiveMentionsPerMessage = 2;
+
 /** The bounds on a message body, shared by posting one and editing one. */
 const mentionSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -308,7 +316,7 @@ export function registerMessageRoutes(context: RouteContext) {
     const body = z
       .object({
         body: messageBodySchema,
-        mentions: z.array(mentionSchema).max(1000).default([]),
+        mentions: z.array(mentionSchema).max(maxMentionsPerMessage).default([]),
         replyToMessageId: z.string().min(1).max(64).optional()
       })
       .parse(request.body);
@@ -409,7 +417,7 @@ export function registerMessageRoutes(context: RouteContext) {
     }
     const { roomId, messageId } = messageParamsSchema.parse(request.params);
     const body = z
-      .object({ body: messageBodySchema, mentions: z.array(mentionSchema).max(1000).default([]) })
+      .object({ body: messageBodySchema, mentions: z.array(mentionSchema).max(maxMentionsPerMessage).default([]) })
       .parse(request.body);
     if (!requireTextRoom(database, roomId, user.id, reply)) return;
     const current = messageById(database.sqlite, roomId, messageId);
@@ -690,15 +698,26 @@ function storedMentions(json = "[]"): MessageMention[] {
 }
 
 function resolveMentions(sqlite: DatabaseSync | undefined, serverId: string, json?: string): MessageMention[] {
-  return storedMentions(json).map((mention) => {
+  const mentions = storedMentions(json);
+  // One lookup per message, not per label: history reads every message's
+  // Mentions, and a label repeated many times would otherwise be a query each.
+  const userIds = [...new Set(mentions.flatMap((mention) => (mention.kind === "person" ? [mention.userId] : [])))];
+  const targets = new Map(
+    sqlite && userIds.length
+      ? all<{ userId: string; nickname: string; mentionCode: string; authorDeleted: number }>(
+          sqlite,
+          `select users.id as userId,
+            case when users.deleted_at is null then coalesce(server_members.nickname, users.nickname) else '' end as nickname,
+            server_members.mention_code as mentionCode, users.deleted_at is not null as authorDeleted
+           from server_members join users on users.id = server_members.user_id
+           where server_members.server_id = ? and users.id in (${userIds.map(() => "?").join(", ")})`,
+          [serverId, ...userIds]
+        ).map((target) => [target.userId, target])
+      : []
+  );
+  return mentions.map((mention) => {
     if (mention.kind !== "person" || !sqlite) return mention;
-    const target = one<{ nickname: string; mentionCode: string; authorDeleted: number }>(
-      sqlite,
-      `select case when users.deleted_at is null then coalesce(server_members.nickname, users.nickname) else '' end as nickname,
-        server_members.mention_code as mentionCode, users.deleted_at is not null as authorDeleted
-       from server_members join users on users.id = server_members.user_id where server_members.server_id = ? and users.id = ?`,
-      [serverId, mention.userId]
-    );
+    const target = targets.get(mention.userId);
     return {
       ...mention,
       nickname: target?.nickname ?? "",
@@ -717,6 +736,7 @@ function prepareMentions(
   previous?: ChatMessage
 ): MessageMention[] | null {
   if (!validMentionRanges(body, inputs)) return null;
+  if (inputs.filter((input) => input.kind !== "person").length > maxCollectiveMentionsPerMessage) return null;
   const occurrenceIds = inputs.flatMap((input) => (input.id ? [input.id] : []));
   if (new Set(occurrenceIds).size !== occurrenceIds.length) return null;
   const onlineIds = new Set(

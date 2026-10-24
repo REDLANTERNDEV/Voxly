@@ -16,6 +16,7 @@
 import {
   musicSearchResultsMax,
   musicTitleMaxLength,
+  musicTrackMaxSeconds,
   type MusicCommandAck,
   type MusicSearchResult,
   type MusicTrackFailure,
@@ -188,6 +189,9 @@ export function parseTrackMetadata(stdout: string): TrackResult {
 
   const named = playableVideo(fields);
   if (!named) return { ok: false, error: "extractor_failed" };
+  // Refused before the fetch, because the whole Track is buffered while it
+  // plays. `TrackBuffer` holds the same bound for a source that runs long.
+  if (named.durationSeconds > musicTrackMaxSeconds) return { ok: false, error: "track_too_long" };
 
   return { ok: true, track: { ...named, url: watchUrlFor(named.id) } };
 }

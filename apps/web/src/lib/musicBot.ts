@@ -453,6 +453,8 @@ export function musicErrorKey(error: MusicControlError): TranslationKey {
       return "music.errorUnavailable";
     case "live_stream":
       return "music.errorLive";
+    case "track_too_long":
+      return "music.errorTooLong";
     case "extractor_failed":
       return "music.errorSource";
     case "bot_timeout":

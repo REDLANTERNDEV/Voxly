@@ -2,7 +2,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
-import { OggOpusReader, framesDueBy, opusFrameMs, opusFrameSamples, rtpFrameAt, toRtpPacket } from "../src/audio.js";
+import { musicTrackMaxSeconds } from "@voxly/shared";
+import {
+  OggOpusReader,
+  TrackBuffer,
+  framesDueBy,
+  opusFrameMs,
+  opusFrameSamples,
+  rtpFrameAt,
+  toRtpPacket,
+  trackBufferMaxFrames
+} from "../src/audio.js";
 import { readOggOpus } from "./ogg.js";
 
 /**
@@ -240,3 +250,16 @@ function page(headerType: number, granule: number, sequence: number, body: Buffe
 function oggFile(packets: Buffer[]) {
   return Buffer.concat(packets.map((packet, index) => page(index === 0 ? 2 : 0, index * 960, index, packet)));
 }
+
+describe("TrackBuffer", () => {
+  it("holds no more than the longest playable Track, whatever the fetch delivers", () => {
+    // The extractor's stated duration is checked before fetching; this bound is
+    // for a source whose audio runs past what it said.
+    const buffer = new TrackBuffer();
+    const frame = Buffer.from([1]);
+    buffer.append(Array.from({ length: trackBufferMaxFrames + 5 }, () => frame));
+    assert.equal(buffer.length, trackBufferMaxFrames);
+    assert.equal(buffer.complete, true);
+    assert.ok(trackBufferMaxFrames >= (musicTrackMaxSeconds * 1000) / opusFrameMs);
+  });
+});
