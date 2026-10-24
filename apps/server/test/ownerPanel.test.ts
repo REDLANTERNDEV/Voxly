@@ -225,6 +225,42 @@ describe("the owner panel", () => {
       assert.equal(me.statusCode, 401);
     });
 
+    it("revokes the invites a banned member issued, so they cannot rejoin under a new account", async () => {
+      const owner = await bootstrapOwner(app);
+      const member = await acceptInvite(app, owner.cookies, "Ada");
+      const granted = await app.server.inject({
+        method: "PATCH",
+        url: `/api/servers/${defaultServerId}/members/${member.user.id}/permissions`,
+        cookies: owner.cookies,
+        payload: { canInvite: true }
+      });
+      assert.equal(granted.statusCode, 200);
+      const issued = await app.server.inject({
+        method: "POST",
+        url: `/api/servers/${defaultServerId}/invites`,
+        cookies: member.cookies,
+        payload: { label: "Kept for later", expiresInMinutes: 43200, maxUses: 100 }
+      });
+      assert.equal(issued.statusCode, 201);
+
+      const ban = await app.server.inject({
+        method: "POST",
+        url: `/api/owner/users/${member.user.id}/ban`,
+        cookies: owner.cookies
+      });
+      assert.equal(ban.statusCode, 204);
+
+      // The server-scoped ban closes this replay with `revokeInvitesCreatedBy`;
+      // the installation-wide ban is the stronger action and must close it too.
+      const rejoin = await app.server.inject({
+        method: "POST",
+        url: "/api/invites/accept",
+        payload: { inviteToken: issued.json().invite.token, nickname: "Not Ada" }
+      });
+      assert.equal(rejoin.statusCode, 404);
+      assert.equal(rejoin.json().error, "invite_invalid");
+    });
+
     it("refuses a member id that is not a UUID before it bans anything", async () => {
       const owner = await bootstrapOwner(app);
 

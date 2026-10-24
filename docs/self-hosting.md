@@ -337,7 +337,9 @@ Keep the `X-Forwarded-For` header in place. Voxly rate limits by client IP, and
 without that header every request appears to come from the proxy, so one
 abusive client would consume the limit for everyone. If you ever expose the
 application port directly to the internet instead, set `TRUST_PROXY=false` so a
-forged header cannot be used to evade those limits.
+forged header cannot be used to evade those limits. Both Compose files pass
+`TRUST_PROXY` from `.env` into the container; leaving it unset keeps the default
+of `true`.
 
 Do not add security headers in the proxy. Voxly sets its own CSP, HSTS,
 `X-Frame-Options`, `X-Content-Type-Options`, and `Referrer-Policy` so that every

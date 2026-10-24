@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { translate } from "../src/lib/i18n.js";
+import { createInitialVoiceControls, moveJoinOptions, toggleVoiceControl } from "../src/lib/voiceControls.js";
 
 const menus = readFileSync("src/components/shell/SidebarMenus.tsx", "utf8");
 const rail = readFileSync("src/components/shell/ChannelRail.tsx", "utf8");
 const panel = readFileSync("src/components/shell/MemberPanel.tsx", "utf8");
 const app = readFileSync("src/App.tsx", "utf8");
+const voiceMedia = readFileSync("src/lib/useVoiceMedia.ts", "utf8");
 
 describe("owner member move", () => {
   it("opens the channel list from the row, on hover and on focus alike", () => {
@@ -45,10 +47,49 @@ describe("owner member move", () => {
   it("carries the move out through the ordinary join, not a bespoke path", () => {
     // The AFK room's forced mute and the automatic leave of the previous room
     // both come free that way.
-    assert.match(app, /const\s+\{[^}]*\bjoin\b[^}]*\}\s*=\s*audio\.voice/);
+    assert.match(app, /const\s+\{[^}]*\bmoveTo\b[^}]*\}\s*=\s*audio\.voice/);
     assert.match(
       app,
-      /moveVoiceRef\.current\s+=\s+\(\s*roomId:\s+string\s*\)\s+=>\s*\s+\{\s*\s+void\s+join\(\s*roomId,\s+\[\],\s+\{\s*\s*\}\s*\);\s+\s*\}/
+      /moveVoiceRef\.current\s+=\s+\(\s*roomId:\s+string\s*\)\s+=>\s*\{\s*void\s+moveTo\(\s*roomId\s*\);\s*\}/
+    );
+    assert.match(voiceMedia, /join\(\s*roomId,\s*\[\],\s*moveJoinOptions\(/);
+  });
+
+  it("keeps the member's own mute and deafen across the move", () => {
+    // A move is the owner's instruction, not the member's choice to start
+    // talking: only intentional joins may start mic-on.
+    const controls = createInitialVoiceControls();
+    const base = {
+      moderationMuted: false,
+      microphoneOnBeforeModerationMute: true,
+      microphoneOnBeforeDeafen: true,
+      hasLiveMicrophone: true
+    };
+    const selfMuted = { ...controls, mic: { ...controls.mic, on: false } };
+    assert.deepEqual(moveJoinOptions({ ...base, controls: selfMuted }), { microphoneEnabled: false, deafened: false });
+    assert.deepEqual(moveJoinOptions({ ...base, controls }), { microphoneEnabled: true, deafened: false });
+
+    const selfDeafened = toggleVoiceControl(controls, "deafen");
+    assert.deepEqual(moveJoinOptions({ ...base, controls: selfDeafened }), { microphoneEnabled: true, deafened: true });
+    // Undeafen never acquires a microphone, so neither does a move while deafened.
+    assert.deepEqual(moveJoinOptions({ ...base, controls: selfDeafened, hasLiveMicrophone: false }), {
+      microphoneEnabled: false,
+      deafened: true
+    });
+
+    // An owner mute is the server's to lift; the move carries the member's own
+    // preference underneath it so the unmute restores it.
+    const ownerMuted = { ...controls, mic: { ...controls.mic, on: false } };
+    assert.deepEqual(moveJoinOptions({ ...base, controls: ownerMuted, moderationMuted: true }), {
+      microphoneEnabled: true,
+      deafened: false
+    });
+  });
+
+  it("never opens the microphone before the join is acknowledged while deafened or owner-muted", () => {
+    assert.match(
+      voiceMedia,
+      /desktopMicrophone\.apply\(\[track\],\s*!joinDeafened\s*&&\s*!moderationRef\.current\.muted\)/
     );
   });
 

@@ -50,6 +50,28 @@ config=/tmp/turnserver.conf
   printf 'cert=%s/fullchain.pem\n' "$cert_dir"
   printf 'pkey=%s/privkey.pem\n' "$cert_dir"
   printf '%s\n' fingerprint lt-cred-mech use-auth-secret no-cli no-multicast-peers simple-log new-log-timestamp
+  # Every account that can sign in receives relay credentials, and this server
+  # runs on the host network. Without these, a member could relay to the host's
+  # private interfaces, the Docker bridge (and the app behind the proxy), or a
+  # cloud metadata address. Real peers are reached at public or relay addresses.
+  for range in \
+    0.0.0.0-0.255.255.255 \
+    10.0.0.0-10.255.255.255 \
+    100.64.0.0-100.127.255.255 \
+    127.0.0.0-127.255.255.255 \
+    169.254.0.0-169.254.255.255 \
+    172.16.0.0-172.31.255.255 \
+    192.0.0.0-192.0.0.255 \
+    192.168.0.0-192.168.255.255 \
+    198.18.0.0-198.19.255.255 \
+    240.0.0.0-255.255.255.255 \
+    ::1 \
+    ::ffff:0.0.0.0-::ffff:255.255.255.255 \
+    64:ff9b::-64:ff9b::ffff:ffff \
+    fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff \
+    fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff; do
+    printf 'denied-peer-ip=%s\n' "$range"
+  done
   printf 'log-file=stdout\n'
 } > "$config"
 

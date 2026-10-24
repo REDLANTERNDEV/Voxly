@@ -115,8 +115,18 @@ export function registerOwnerPanelRoutes(context: RouteContext) {
     // closes the HTTP path; evicting the sockets closes the realtime path, which
     // otherwise keeps serving messages and WebRTC signalling on the connection
     // that was already open.
+    // Invites are bearer tokens with no tie to their creator's standing, so a
+    // banned member could otherwise replay one of their own under a fresh
+    // nickname — the server-scoped ban closes that with `revokeInvitesCreatedBy`,
+    // and account deletion revokes them on every server, as this does.
     if (bannable) {
       revokeSessionsForUser(database.sqlite, userId, now);
+      run(
+        database.sqlite,
+        `update invites set revoked_at = ?
+         where created_by_user_id = ? and revoked_at is null and (expires_at is null or expires_at > ?)`,
+        [now, userId, now]
+      );
     }
     // Deliberately outside the guard, and deliberately not moved inside it
     // during the extraction. Banning an owner, or a user id that names nobody,
@@ -143,9 +153,14 @@ export function registerOwnerPanelRoutes(context: RouteContext) {
       return;
     }
     const { sessionId } = z.object({ sessionId: z.string().uuid() }).parse(request.params);
+    const session = one<{ user_id: string }>(database.sqlite, "select user_id from sessions where id = ?", [sessionId]);
     revokeSession(database.sqlite, sessionId);
     audit(database, owner.id, "session.revoked", sessionId, undefined, sessionId);
     database.save();
+    // Sockets authenticate once, at handshake, so the revoked row alone leaves
+    // an open connection serving messages and signalling — the same reason
+    // logout and Device revoke evict theirs.
+    if (session) realtime.disconnectDevice(session.user_id, sessionId);
     return reply.code(204).send();
   });
 }

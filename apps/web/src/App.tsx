@@ -162,7 +162,7 @@ export function App() {
     activeTextRoomIdRef: chat.activeTextRoomIdRef,
     onNotificationActivate: workspace.openNotificationTarget
   });
-  const { activeRoomId, join, requestSnapshot } = audio.voice;
+  const { activeRoomId, join, moveTo, requestSnapshot } = audio.voice;
   const { stopMicrophoneTest } = audio;
   const microphoneTestActive = audio.microphoneTest.active;
   const musicQueues = useMusicQueue(realtime.socket);
@@ -180,12 +180,12 @@ export function App() {
     reportStatus: (status) => realtime.socket?.emit("presence:setStatus", status)
   });
   // The move arrives as an instruction, not a state change, so it runs through
-  // the same join the member would have performed themselves.
+  // the same join, keeping the member's own mute and deafen.
   useEffect(() => {
     moveVoiceRef.current = (roomId: string) => {
-      void join(roomId, [], {});
+      void moveTo(roomId);
     };
-  }, [join]);
+  }, [moveTo]);
 
   useEffect(() => {
     if (route.name === "voice") requestSnapshot(route.roomId);

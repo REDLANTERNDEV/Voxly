@@ -36,6 +36,10 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   replacement's guard or publish newly acquired capture.
 - Receive-only joins must not request microphone permission. Intentional normal
   and LIVE joins may start mic-on only after a live enabled track is ready.
+- An owner move is not an intentional join: `moveTo` carries the member's own
+  mute, deafen and pre-mute preferences into the join (`moveJoinOptions`), and
+  no join enables the microphone before its ACK while deafened or owner-muted,
+  because the previous room's peers are still connected until the snapshot.
 - Keep voice-channel activation as a deterministic transition: disconnected
   targets join directly, the active target opens, and a different active room
   requires move confirmation. The UI must navigate only after a successful

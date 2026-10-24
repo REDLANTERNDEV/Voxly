@@ -63,10 +63,11 @@ interface LinkRow extends Record<string, unknown> {
   confirmation: string | null;
   approved_at: string | null;
   refused_at: string | null;
+  approved_session_id: string | null;
 }
 
 const linkColumns =
-  "id, user_id, expires_at, consumed_at, claimed_at, claim_label, confirmation, approved_at, refused_at";
+  "id, user_id, expires_at, consumed_at, claimed_at, claim_label, confirmation, approved_at, refused_at, approved_session_id";
 
 function isExpired(row: { expires_at: string }, now = Date.now()) {
   return new Date(row.expires_at).getTime() <= now;
@@ -211,13 +212,17 @@ export function registerDeviceLinkRoutes({ fastify, database, secureCookies, tur
     // `refused` until somebody claims afresh, and any new claim needs its own
     // approval regardless. The deadline is not extended again, so a code cannot
     // be kept alive by claiming and refusing in a loop.
-    run(
-      database.sqlite,
-      parsed.data.approve
-        ? "update device_links set approved_at = ? where id = ?"
-        : "update device_links set refused_at = ? where id = ?",
-      [now, link.id]
-    );
+    // Approval is bound to the session that gave it, so signing that Device out
+    // — or redeeming Recovery — withdraws an approval nobody has collected yet.
+    if (parsed.data.approve) {
+      run(database.sqlite, "update device_links set approved_at = ?, approved_session_id = ? where id = ?", [
+        now,
+        user.sessionId,
+        link.id
+      ]);
+    } else {
+      run(database.sqlite, "update device_links set refused_at = ? where id = ?", [now, link.id]);
+    }
     if (parsed.data.approve) audit(database, user.id, "device.linked", user.id);
     database.save();
     return reply.send({ ok: true });
@@ -318,7 +323,15 @@ export function registerDeviceLinkRoutes({ fastify, database, secureCookies, tur
         "select id from device_links where id = ? and consumed_at is null",
         [link.id]
       );
-      if (!claimed) {
+      // Rechecked here, beside the mint, as desktop authorization does: an
+      // approval from a session revoked since — by Recovery, Device revoke or
+      // the owner — must not produce a session that outlives the sign-out.
+      const approvingSession = one<{ id: string }>(
+        database.sqlite,
+        "select id from sessions where id = ? and user_id = ? and revoked_at is null and expires_at > ?",
+        [link.approved_session_id, user.id, new Date().toISOString()]
+      );
+      if (!claimed || !approvingSession) {
         database.sqlite.exec("rollback");
         return reply.send({ status: "expired" });
       }

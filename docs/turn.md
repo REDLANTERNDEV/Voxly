@@ -173,6 +173,13 @@ VOXLY_TURN_MEMORY_RESERVATION=32m
 and Coturn must use the same value. Rotating it invalidates credentials signed
 with the previous value.
 
+The generated configuration also refuses relays to private, loopback,
+link-local, CGNAT and reserved addresses (`denied-peer-ip`). Every account that
+can sign in receives relay credentials and Coturn runs on the host network, so
+without these a member could use the relay to reach the host's private
+interfaces, the Docker bridge, or a cloud metadata address. Browsers on the same
+LAN connect to each other directly and do not need the relay for that path.
+
 The default total quota fits inside the 41-port relay range. Increase the port
 range before increasing `TURN_TOTAL_QUOTA`.
 

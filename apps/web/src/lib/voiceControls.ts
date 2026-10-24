@@ -44,6 +44,28 @@ export function createInitialVoiceControls(): VoiceControls {
   };
 }
 
+/**
+ * What an owner move carries into the join. A move is the owner's instruction,
+ * not the member's choice to start talking, so it keeps their self-managed mute
+ * and deafen rather than taking the join default — only intentional joins may
+ * start mic-on. Under an owner mute it carries the member's own preference, so
+ * the eventual unmute restores what they had chosen; while deafened it keeps the
+ * pre-deafen preference, but never asks for a microphone that is not already
+ * live, the way undeafen never does.
+ */
+export function moveJoinOptions(state: {
+  controls: VoiceControls;
+  moderationMuted: boolean;
+  microphoneOnBeforeModerationMute: boolean;
+  microphoneOnBeforeDeafen: boolean;
+  hasLiveMicrophone: boolean;
+}): { microphoneEnabled: boolean; deafened: boolean } {
+  const deafened = state.controls.deafen.on;
+  if (deafened) return { microphoneEnabled: state.microphoneOnBeforeDeafen && state.hasLiveMicrophone, deafened };
+  const microphoneEnabled = state.moderationMuted ? state.microphoneOnBeforeModerationMute : state.controls.mic.on;
+  return { microphoneEnabled, deafened };
+}
+
 export function toggleVoiceControl(
   controls: VoiceControls,
   key: VoiceControlKey,

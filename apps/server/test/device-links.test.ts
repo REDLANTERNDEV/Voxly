@@ -28,6 +28,28 @@ describe("linking a second Device", () => {
     await app.close();
   });
 
+  it("does not hand out a session for an approval whose approving session was revoked", async () => {
+    const laptop = await bootstrapOwner(app);
+    const recovery = await app.server.inject({ method: "POST", url: "/api/recovery", cookies: laptop.cookies });
+    assert.equal(recovery.statusCode, 201);
+    const { code } = await mintCode(app, laptop.cookies);
+    const claim = await claimCode(app, code, phone);
+    assert.equal((await approve(app, laptop.cookies, true)).statusCode, 200);
+
+    // Redeeming the Recovery code signs every other session out; an approval
+    // granted by one of those sessions must not outlive it (ADR-0014).
+    const redeemed = await app.server.inject({
+      method: "POST",
+      url: "/api/recovery/redeem",
+      payload: { code: recovery.json().code }
+    });
+    assert.equal(redeemed.statusCode, 200);
+
+    const collected = await collect(app, claim.json().claimToken, phone);
+    assert.equal(collected.json().status, "expired");
+    assert.equal(collected.cookies.length, 0);
+  });
+
   it("links a Device once the member approves, and both stay signed in", async () => {
     const laptop = await bootstrapOwner(app);
     const { code } = await mintCode(app, laptop.cookies);

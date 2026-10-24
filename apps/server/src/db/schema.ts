@@ -73,7 +73,9 @@ export const deviceLinks = sqliteTable("device_links", {
   /** Shown on both Devices while approval is waiting. Not a secret. */
   confirmation: text("confirmation"),
   approvedAt: text("approved_at"),
-  refusedAt: text("refused_at")
+  refusedAt: text("refused_at"),
+  /** The session that approved; collection mints nothing once it is revoked. */
+  approvedSessionId: text("approved_session_id")
 });
 
 /** Public launch correlation only; the browser session authorizes approval. */

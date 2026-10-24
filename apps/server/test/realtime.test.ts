@@ -1355,6 +1355,38 @@ describe("Voxly realtime MVP", () => {
     await assert.rejects(connectSocket(baseUrl, tokenFromCookies(member.cookies)), /connect_error/);
   });
 
+  it("terminates only the revoked session's sockets when the owner closes one session", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Mallory");
+    const target = app.sqlite.prepare("select id from sessions where user_id = ?").get(member.user.id) as
+      { id: string } | undefined;
+    assert.ok(target);
+    const otherToken = createSession({ sqlite: app.sqlite, save() {}, close() {} }, member.user.id, "Second Device");
+    const revokedSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
+    const keptSocket = await connectSocket(baseUrl, otherToken);
+    sockets.push(revokedSocket, keptSocket);
+
+    const disconnected = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("socket was never disconnected")), 1000);
+      revokedSocket.once("disconnect", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+    const revoke = await app.server.inject({
+      method: "POST",
+      url: `/api/owner/sessions/${target.id}/revoke`,
+      cookies: owner.cookies
+    });
+    assert.equal(revoke.statusCode, 204);
+
+    // Sockets authenticate once, at handshake, so revoking the row alone would
+    // leave this connection receiving messages and relaying signals.
+    await disconnected;
+    assert.equal(app.io.sockets.sockets.get(revokedSocket.id ?? ""), undefined);
+    assert.equal(keptSocket.connected, true);
+  });
+
   it("blocks realtime access for a globally banned member that is still connected", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Mallory");

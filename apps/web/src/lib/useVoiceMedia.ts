@@ -19,6 +19,7 @@ import type { VoxlySocket } from "../socket.js";
 import type { VoiceErrorKey } from "./i18n.js";
 import {
   createInitialVoiceControls,
+  moveJoinOptions,
   toggleVoiceControl,
   type VoiceControlKey,
   type VoiceControls
@@ -99,6 +100,8 @@ interface UseVoiceMediaInput {
 
 export interface VoiceJoinOptions {
   microphoneEnabled?: boolean;
+  /** Arrive self-deafened; only an owner move carries this. */
+  deafened?: boolean;
 }
 
 type PeerSignal =
@@ -1316,6 +1319,7 @@ export function useVoiceMedia({
           const microphoneEnabled = afkRoomIdsRef.current.includes(roomId)
             ? false
             : (options.microphoneEnabled ?? true);
+          const joinDeafened = options.deafened ?? false;
           let mic = previousMic;
           let acquiredInput: MicrophoneInput | null = null;
 
@@ -1334,8 +1338,11 @@ export function useVoiceMedia({
                 return false;
               }
             }
+            // Peers from the room being left are still connected until the new
+            // snapshot prunes them, so a deafened or owner-muted member must not
+            // transmit before the ACK reconciles their controls.
             mic.getAudioTracks().forEach((track) => {
-              desktopMicrophone.apply([track], true);
+              desktopMicrophone.apply([track], !joinDeafened && !moderationRef.current.muted);
             });
           }
 
@@ -1346,8 +1353,8 @@ export function useVoiceMedia({
 
           const nextControls: VoiceControls = {
             ...previousControls,
-            mic: { ...previousControls.mic, on: microphoneEnabled },
-            deafen: { ...previousControls.deafen, on: false }
+            mic: { ...previousControls.mic, on: microphoneEnabled && !joinDeafened },
+            deafen: { ...previousControls.deafen, on: joinDeafened }
           };
           const candidateStreams = {
             ...localStreamsRef.current,
@@ -1391,7 +1398,9 @@ export function useVoiceMedia({
           moderationRef.current = response.state.moderation;
           setVoiceModeration(response.state.moderation);
           microphoneEnabledRef.current = acceptedControls.mic.on;
-          microphoneOnBeforeDeafenRef.current = acceptedControls.mic.on;
+          microphoneOnBeforeDeafenRef.current = acceptedControls.deafen.on
+            ? microphoneEnabled
+            : acceptedControls.mic.on;
           deafenTransitionRef.current += 1;
           controlsRef.current = acceptedControls;
           if (!roomRef.current) voiceDiagnostics.begin();
@@ -1452,6 +1461,24 @@ export function useVoiceMedia({
       setVisualSubscriptions,
       persistVoiceResume
     ]
+  );
+
+  /** An owner move: the same join, carrying the member's own mute and deafen. */
+  const moveTo = useCallback(
+    (roomId: string) =>
+      join(
+        roomId,
+        [],
+        moveJoinOptions({
+          controls: controlsRef.current,
+          moderationMuted: moderationRef.current.muted,
+          microphoneOnBeforeModerationMute: microphoneOnBeforeModerationMuteRef.current,
+          microphoneOnBeforeDeafen: microphoneOnBeforeDeafenRef.current,
+          hasLiveMicrophone:
+            localStreamsRef.current.mic?.getAudioTracks().some((track) => track.readyState === "live") ?? false
+        })
+      ),
+    [join]
   );
 
   useEffect(() => {
@@ -2463,6 +2490,7 @@ export function useVoiceMedia({
     error,
     errorRevision,
     join,
+    moveTo,
     leave,
     localPreviews,
     microphoneMonitorStream,

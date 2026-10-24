@@ -148,7 +148,8 @@ function migrate(sqlite: DatabaseSync) {
       claim_label text,
       confirmation text,
       approved_at text,
-      refused_at text
+      refused_at text,
+      approved_session_id text
     );
 
     create table if not exists desktop_launches (
@@ -317,6 +318,7 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "servers", "afk_timeout_minutes", "integer");
   addColumnIfMissing(sqlite, "servers", "uncategorized_position", "integer not null default 0");
   addColumnIfMissing(sqlite, "invites", "server_id", "text");
+  addColumnIfMissing(sqlite, "device_links", "approved_session_id", "text");
   addColumnIfMissing(sqlite, "invites", "max_uses", "integer default 1");
   addColumnIfMissing(sqlite, "audit_events", "server_id", "text");
   addColumnIfMissing(sqlite, "audit_events", "session_id", "text");
