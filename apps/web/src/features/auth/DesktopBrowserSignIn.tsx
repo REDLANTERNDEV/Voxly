@@ -1,5 +1,5 @@
 import { AuthEntryFrame } from "./AuthEntryFrame.js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PublicUser } from "@voxly/shared";
 import {
   answerDesktopAuthorization,
@@ -13,6 +13,7 @@ import type { Translate } from "../../app/types.js";
 import { rememberCompletedDesktopAuthentication } from "../../lib/desktopSettings.js";
 import { desktopLaunchFromSearch } from "../../lib/desktopLinks.js";
 import { createDesktopApprovalWindow } from "../../lib/desktopApprovalWindow.js";
+import { pollDesktopAuthorization } from "../../lib/desktopAuthorizationPoll.js";
 import type { LanguageCode } from "../../lib/i18n.js";
 
 /** The private collection secret lives only in this desktop webview's memory. */
@@ -37,56 +38,36 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
     };
   }, []);
 
+  // Stable, so a parent re-render cannot restart the poll mid-sign-in.
+  const linked = useEffectEvent(onLinked);
   useEffect(() => {
     if (!request || outcome !== "pending") return;
     let live = true;
     const requestRevision = revision.current;
-    let timeout = 0;
-    let delay = 1500;
-    const deadline = Date.now() + request.expiresInSeconds * 1000;
-    const poll = async () => {
-      if (Date.now() >= deadline) {
-        void approvalWindow.current?.restore();
+    const stop = pollDesktopAuthorization({
+      request,
+      collect: collectDesktopAuthorization,
+      remember: (status, isCurrent) => rememberCompletedDesktopAuthentication(window, status, isCurrent),
+      restore: () => approvalWindow.current?.restore() ?? Promise.resolve(),
+      onLinked: linked,
+      onOutcome: setOutcome,
+      isLive: () => live && revision.current === requestRevision,
+      isMounted: () => mounted.current,
+      holdsRequest: () => current.current === request,
+      releaseRequest: () => {
         current.current = null;
-        setOutcome("expired");
-        return;
-      }
-      try {
-        const response = await collectDesktopAuthorization(request.id, request.secret);
-        if (!live || revision.current !== requestRevision || current.current !== request) return;
-        if (response.status === "approved") {
-          current.current = null;
-          await rememberCompletedDesktopAuthentication(
-            window,
-            response.status,
-            () => live && revision.current === requestRevision
-          );
-          if (!live || revision.current !== requestRevision) return;
-          await approvalWindow.current?.restore();
-          if (!live || revision.current !== requestRevision) return;
-          onLinked();
-          return;
-        }
-        if (response.status !== "pending") {
-          void approvalWindow.current?.restore();
-          current.current = null;
-          setOutcome(response.status);
-          return;
-        }
-      } catch {
-        // A transient network failure should not consume the request.
-      }
-      if (live) {
-        delay = Math.min(delay + 750, 5000);
-        timeout = window.setTimeout(() => void poll(), delay);
-      }
-    };
-    timeout = window.setTimeout(() => void poll(), delay);
+      },
+      schedule: (run, delayMs) => {
+        const timeout = window.setTimeout(run, delayMs);
+        return () => window.clearTimeout(timeout);
+      },
+      now: Date.now
+    });
     return () => {
       live = false;
-      window.clearTimeout(timeout);
+      stop();
     };
-  }, [request, outcome, onLinked]);
+  }, [request, outcome]);
 
   // Only from a launch the member's own browser created (ADR-0027): the
   // approval is then bound to them, not to whichever member is asked.

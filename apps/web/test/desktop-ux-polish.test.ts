@@ -93,8 +93,12 @@ describe("desktop UX polish", () => {
     assert.match(modal, /returnFocus\?\.focus\(\)/);
     assert.match(modal, /onCancel=\{\(event\)\s+=>\s+\{\s+event\.preventDefault\(\)/);
     const auth = readFileSync("src/features/auth/DesktopBrowserSignIn.tsx", "utf8");
-    assert.match(auth, /revision\.current\s+!==\s+requestRevision\s+\|\|\s+current\.current\s+!==\s+request/);
-    assert.match(auth, /request\.expiresInSeconds\s+\*\s+1000/);
+    // A stale or superseded response is ignored, and the request still expires.
+    assert.match(auth, /isLive: \(\) => live && revision\.current === requestRevision/);
+    assert.match(auth, /holdsRequest: \(\) => current\.current === request/);
+    const poll = readFileSync("src/lib/desktopAuthorizationPoll.ts", "utf8");
+    assert.match(poll, /if \(!poll\.isLive\(\) \|\| !poll\.holdsRequest\(\)\) return;/);
+    assert.match(poll, /poll\.request\.expiresInSeconds\s+\*\s+1000/);
     const composer = readFileSync("src/features/chat/TextRoomScreen.tsx", "utf8");
     assert.match(composer, /<footer\s+className="composer"\s+onClick/);
     assert.match(
