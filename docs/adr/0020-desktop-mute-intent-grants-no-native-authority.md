@@ -1,5 +1,30 @@
 # ADR-0020 — Desktop mute intent grants no native authority
 
+> **Amendment (October 2026 security audit).** Shortcut editing moved into Voxly
+> Settings under [ADR-0023](0023-desktop-settings-have-local-authority.md), and
+> that bridge let the Installation name any binding, so a page could bind keys
+> nobody pressed and watch them system-wide. The page may still start and stop
+> a recording, but a binding it asks for is committed only if it is exactly the
+> chord the native low-level hook saw the person press during that recording —
+> real input, not injected, with a Voxly window in front (`matches_observed`,
+> `authorize_remote_binding`). Otherwise the bridge answers
+> `shortcut_unobserved`. Clearing and resetting a binding need no evidence. The
+> local shell keeps its own typed bindings.
+>
+> **Second amendment (October 2026).** The page also decided _when_ a recording
+> started, so it could switch one on while the member typed in chat and turn a
+> captured `H` into a global shortcut. Two rules close that. First, a remote
+> `shortcut` request, including a clear, no longer saves anything. Native code
+> holds the request (`RemoteShortcuts`), brings the Home shell forward, and the
+> Home shell asks the member to confirm the action, keys and Installation
+> origin. Only the local Confirm commits, through `answer_shortcut_request`,
+> which the shell alone may call, and it saves the binding native code held
+> rather than one named by the answer. A newer request, window replacement or a
+> new voice generation drops the pending one. The remote call answers
+> `shortcut_pending`. Second, a recording the page starts ends by itself without
+> saving after 15 seconds. The observed-chord check above stays as a second
+> layer, so the member is only ever asked about keys they really pressed.
+
 The Windows desktop needs global microphone mute without giving an
 installation control of OS shortcut registration. Use a version-1, top-frame,
 exact-origin bootstrap with a single mute subscription: Rust sends a fixed

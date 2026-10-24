@@ -1,7 +1,9 @@
 # ADR-0016 — Session reuse requires confirmed delivery
 
 - **Status:** refined by [ADR-0031](0031-stale-session-rejection-preserves-successors.md)
-  for cookie delivery and confirmed stale-token rejection
+  for cookie delivery and confirmed stale-token rejection, and by
+  [ADR-0033](0033-replacement-confirmation-waits-for-persistence.md), which
+  counts a sighting as confirmation only once the cookie could be on disk
 - **Date:** 2026-09-19
 - **Context:** refines ADR-0015 after a reproducible false-positive sign-out
 

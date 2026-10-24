@@ -10,11 +10,17 @@ application must not give an Installation general native authority
 ([ADR-0019](0019-desktop-keeps-native-authority-local.md)). Any future bridge must
 offer a bounded settings intent or a validated finite setting, with current
 origin/generation checks; never expose general IPC or remote updater control.
+The settings bridge answers the remote Installation with its own call settings
+only — the saved Installation list, the default and open-on-startup are blanked
+— and refuses `default`, `rename` and `display` from it; those stay with the
+local shell (October 2026 audit).
 
 After successful browser-approved sign-in, offer a selected-by-default local
 choice to remember that Installation and open it on startup. The remembered
 origin comes from the locally selected Installation, not an authentication
-payload or external link. Members can disable startup opening, change the
+payload or external link. "Locally selected" means saved, typed, or confirmed
+with Home's Open for a linked unsaved address; a window a link opened without
+that confirmation never remembers itself (October 2026 audit). Members can disable startup opening, change the
 preferred Installation, or explicitly return to welcome. A failed startup
 connection offers Retry and Choose another installation. This keeps returning
 members out of setup without treating a link as authority to replace a call or

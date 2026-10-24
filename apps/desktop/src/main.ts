@@ -7,9 +7,10 @@ import { createQuitRequest, performTransition, type CallState } from "./transiti
 import "./styles.css";
 import "./home.css";
 import { installationMenus } from "./popover.js";
-import { startupInstallation } from "./home.js";
+import { desktopLinkNeedsConfirmation, startupInstallation } from "./home.js";
 import { installVerifiedUpdate, type UpdateSnapshot } from "./updates.js";
 import { mountShortcutSettings, type ShortcutSnapshot } from "./shortcuts.js";
+import { presentShortcutRequest, type ShortcutRequest } from "./shortcutRequest.js";
 
 interface Installation {
   id: string;
@@ -442,11 +443,57 @@ async function receiveDesktopLink() {
   if (!target) return false;
   pendingDesktopLink = target;
   renderInstallations();
+  if (desktopLinkNeedsConfirmation(target, state?.preferences) && !(await confirmOpenLink(target))) {
+    if (pendingDesktopLink === target) pendingDesktopLink = null;
+    renderInstallations();
+    return true;
+  }
   if (busy) deferredDesktopLink = target;
   else await openDesktopLink(target);
   return true;
 }
 
+/** The local Open for an address a link named but the member never saved. */
+function confirmOpenLink(target: DesktopLink): Promise<boolean> {
+  const dialog = element<HTMLDialogElement>("open-link-dialog");
+  const opener = document.activeElement as HTMLElement | null;
+  element("open-link-origin").textContent = target.origin;
+  dialog.returnValue = "cancel";
+  dialog.showModal();
+  return new Promise((resolve) =>
+    dialog.addEventListener(
+      "close",
+      () => {
+        opener?.focus();
+        resolve(dialog.returnValue === "confirm");
+      },
+      { once: true }
+    )
+  );
+}
+
+/** The local answer to a remote Installation's shortcut change (ADR-0020). */
+function confirmShortcutRequest(text: string): Promise<boolean> {
+  const dialog = element<HTMLDialogElement>("shortcut-request-dialog");
+  const opener = document.activeElement as HTMLElement | null;
+  // A newer request replaces the one on screen; its old answer is ignored natively.
+  if (dialog.open) dialog.close("cancel");
+  element("shortcut-request-body").textContent = text;
+  dialog.returnValue = "cancel";
+  dialog.showModal();
+  return new Promise((resolve) =>
+    dialog.addEventListener(
+      "close",
+      () => {
+        opener?.focus();
+        resolve(dialog.returnValue === "confirm");
+      },
+      { once: true }
+    )
+  );
+}
+
+// Reached only for a saved Installation or after the member's local Open.
 async function openDesktopLink(target: DesktopLink, reload = false) {
   await run(async () => {
     attemptedConnection = target;
@@ -457,7 +504,8 @@ async function openDesktopLink(target: DesktopLink, reload = false) {
         address: target.origin,
         confirmLeave: confirmed,
         reload,
-        desktopLaunch: target.launchId
+        desktopLaunch: target.launchId,
+        chosenLocally: true
       })
     );
     if (next) {
@@ -583,7 +631,10 @@ element("installation-form").addEventListener("submit", (event) => {
     attemptedConnection = { id: "", origin: address };
     status("checking");
     const next = await transition((confirmed) =>
-      openConnection({ id: "", origin: address }, { id: "", address, confirmLeave: confirmed, reload: false })
+      openConnection(
+        { id: "", origin: address },
+        { id: "", address, confirmLeave: confirmed, reload: false, chosenLocally: true }
+      )
     );
     if (next) {
       state = next;
@@ -868,6 +919,19 @@ async function start() {
             renderInstallations();
           })
           .catch((error) => status(errorKey(error)));
+      }),
+      listen<ShortcutRequest>("shell:shortcut-request", (event) => {
+        void presentShortcutRequest(
+          event.payload,
+          confirmShortcutRequest,
+          (id, accept) => invoke<Snapshot>("answer_shortcut_request", { id, accept }),
+          t
+        )
+          .then((next) => {
+            state = next as Snapshot;
+            renderInstallations();
+          })
+          .catch((error: unknown) => status(errorKey(error)));
       }),
       listen("shell:preferences", () => {
         void invoke<Snapshot>("shell_state")

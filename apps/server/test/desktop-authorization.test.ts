@@ -33,12 +33,29 @@ describe("browser approval for a desktop Device", () => {
     return cookieJar(response);
   }
 
-  async function create() {
+  async function launch(cookies: Record<string, string>, requestOrigin = origin) {
     const response = await app.server.inject({
       method: "POST",
-      url: "/api/devices/desktop-authorizations",
-      headers: { origin, "user-agent": desktopAgent }
+      url: "/api/devices/desktop-launches",
+      headers: { origin: requestOrigin },
+      cookies
     });
+    assert.equal(response.statusCode, 201);
+    return response.json() as { id: string; account: string };
+  }
+
+  async function arrive(id: string, requestOrigin = origin) {
+    return app.server.inject({
+      method: "POST",
+      url: "/api/devices/desktop-authorizations",
+      headers: { origin: requestOrigin, "user-agent": desktopAgent },
+      payload: { launchId: id }
+    });
+  }
+
+  /** Every request starts from a launch in the member's own signed-in browser. */
+  async function create(cookies: Record<string, string>) {
+    const response = await arrive((await launch(cookies)).id);
     assert.equal(response.statusCode, 201);
     return response.json() as { id: string; secret: string; confirmation: string };
   }
@@ -64,7 +81,7 @@ describe("browser approval for a desktop Device", () => {
 
   it("requires explicit browser approval and sets the new Device cookie only on collection", async () => {
     const cookies = await owner();
-    const request = await create();
+    const request = await create(cookies);
     const preview = await app.server.inject({
       method: "GET",
       url: `/api/devices/desktop-authorizations/${request.id}`,
@@ -110,7 +127,7 @@ describe("browser approval for a desktop Device", () => {
 
   it("does not let a public id, wrong secret, or another origin collect a session", async () => {
     const cookies = await owner();
-    const request = await create();
+    const request = await create(cookies);
     assert.equal((await collect(request.id, request.id)).statusCode, 404);
     assert.equal((await decision(request.id, cookies, true, "https://other.example.com")).statusCode, 404);
     assert.equal((await collect(request.id, request.secret, "https://other.example.com")).statusCode, 404);
@@ -124,26 +141,36 @@ describe("browser approval for a desktop Device", () => {
       const response = await app.server.inject({ method: "POST", url: "/api/devices/desktop-authorizations", headers });
       assert.equal(response.statusCode, 400);
     }
-    assert.equal(
-      (
-        await app.server.inject({
-          method: "POST",
-          url: "/api/devices/desktop-authorizations",
-          headers: { origin: "http://127.0.0.1:5173" }
-        })
-      ).statusCode,
-      201
-    );
+    const cookies = await owner();
+    const local = await launch(cookies, "http://127.0.0.1:5173");
+    assert.equal((await arrive(local.id, "http://127.0.0.1:5173")).statusCode, 201);
+  });
+
+  it("refuses a desktop request that no browser launch started", async () => {
+    // Without a launch, the request's author is anyone, and any member who
+    // approved it would hand that stranger their account. Missing and unknown
+    // launches answer alike, so neither says which it was.
+    await owner();
+    for (const payload of [undefined, {}, { launchId: crypto.randomUUID() }]) {
+      const response = await app.server.inject({
+        method: "POST",
+        url: "/api/devices/desktop-authorizations",
+        headers: { origin, "user-agent": desktopAgent },
+        ...(payload ? { payload } : {})
+      });
+      assert.equal(response.statusCode, 404);
+      assert.deepEqual(response.json(), { error: "authorization_invalid" });
+    }
   });
 
   it("keeps refusal, cancellation, expiry, and replay terminal", async () => {
     const cookies = await owner();
-    const refused = await create();
+    const refused = await create(cookies);
     assert.equal((await decision(refused.id, cookies, false)).statusCode, 200);
     assert.equal((await collect(refused.id, refused.secret)).json().status, "refused");
     assert.equal((await decision(refused.id, cookies, true)).statusCode, 404);
 
-    const cancelled = await create();
+    const cancelled = await create(cookies);
     const cancel = await app.server.inject({
       method: "POST",
       url: `/api/devices/desktop-authorizations/${cancelled.id}/cancel`,
@@ -154,7 +181,7 @@ describe("browser approval for a desktop Device", () => {
     assert.equal((await collect(cancelled.id, cancelled.secret)).json().status, "expired");
     assert.equal((await decision(cancelled.id, cookies, true)).statusCode, 404);
 
-    const expired = await create();
+    const expired = await create(cookies);
     app.sqlite
       .prepare("update desktop_authorizations set expires_at = ? where id = ?")
       .run("2000-01-01T00:00:00.000Z", expired.id);
@@ -164,7 +191,7 @@ describe("browser approval for a desktop Device", () => {
 
   it("rejects collection if the approving browser session is revoked", async () => {
     const cookies = await owner();
-    const request = await create();
+    const request = await create(cookies);
     await decision(request.id, cookies, true);
     app.sqlite
       .prepare(
@@ -175,26 +202,6 @@ describe("browser approval for a desktop Device", () => {
     assert.equal(result.json().status, "expired");
     assert.equal(result.cookies.length, 0);
   });
-  async function launch(cookies: Record<string, string>) {
-    const response = await app.server.inject({
-      method: "POST",
-      url: "/api/devices/desktop-launches",
-      headers: { origin },
-      cookies
-    });
-    assert.equal(response.statusCode, 201);
-    return response.json() as { id: string; account: string };
-  }
-
-  async function arrive(id: string, requestOrigin = origin) {
-    return app.server.inject({
-      method: "POST",
-      url: "/api/devices/desktop-authorizations",
-      headers: { origin: requestOrigin, "user-agent": desktopAgent },
-      payload: { launchId: id }
-    });
-  }
-
   it("joins browser launch to a private desktop request without authorizing the public id", async () => {
     const cookies = await owner();
     const opened = await launch(cookies);
@@ -233,7 +240,7 @@ describe("browser approval for a desktop Device", () => {
     const opened = await launch(cookies);
     const request = (await arrive(opened.id)).json() as { id: string; secret: string };
     // The manually approved flow gives the same Account another Device.
-    const other = await create();
+    const other = await create(cookies);
     await decision(other.id, cookies, true);
     const collected = await collect(other.id, other.secret);
     const otherCookies = cookieJar(collected);

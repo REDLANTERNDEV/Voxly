@@ -179,12 +179,6 @@ export function inviteLifecycleKey(invite: OwnerInvite): TranslationKey {
   return "common.active";
 }
 
-export function extractInviteToken(value: string) {
-  const trimmed = value.trim();
-  const slashIndex = trimmed.lastIndexOf("/");
-  return slashIndex >= 0 ? trimmed.slice(slashIndex + 1) : trimmed;
-}
-
 export function formatShortDate(
   value: string | null,
   language: LanguageCode,

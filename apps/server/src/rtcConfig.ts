@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 
-const defaultCredentialTtlSeconds = 24 * 60 * 60;
+const defaultCredentialTtlSeconds = 60 * 60;
 const publicStunServer: IceServer = { urls: "stun:stun.l.google.com:19302" };
 
 export interface IceServer {

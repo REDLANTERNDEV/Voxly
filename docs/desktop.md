@@ -69,7 +69,11 @@ contains microphone mode and push-to-talk release delay; Settings → Shortcuts
 contains all four bindings. These controls require both the updated desktop
 build and the updated web deployment, and are hidden in ordinary browsers.
 Use **Edit keybind**, press the combination, then **Stop recording** to save it.
-Escape, leaving the row, or losing window focus cancels recording. Notification
+Escape, leaving the row, or losing window focus cancels recording. The desktop
+app saves only the keys its own input hook saw you press during the recording,
+with a Voxly window in front; keys sent by another program do not count. If the
+page asks for anything else, Settings says Voxly did not see those keys pressed
+and you record again. Notification
 sounds and desktop notifications are grouped in Settings → Notifications.
 New desktop profiles start with Ctrl+Shift+M for mute and Ctrl+Shift+D for deafen.
 New recordings distinguish left/right Ctrl, Alt, Shift and Windows keys. Existing
@@ -122,8 +126,11 @@ fails, use the tray's Home action and Retry loading or another address.
 
 The installation interface provides Invite and Link code paths. On an updated
 installation, **Sign in with browser** appears on the desktop Link a device
-screen. Start it, open the verification address in your default browser, compare
-the number shown in both windows, and approve. The desktop window collects its
+screen. **Start browser sign-in** opens this installation's `/desktop/sign-in`
+page in your default browser. Sign in there if needed, choose **Open in
+desktop**, compare the number shown in both windows, and approve. Every request
+starts in your own signed-in browser, so an approval can only ever sign in the
+desktop that browser opened. The desktop window collects its
 session through its own webview; the approving browser remains signed in. The
 request expires after 90 seconds; leaving the desktop screen sends cancellation.
 The existing Link code path remains available: open Account & devices on a
@@ -146,9 +153,12 @@ to loopback development origins; credentials, shell origins, fragments, extra
 parameters, non-root paths, and malformed IDs are rejected.
 
 **Open in desktop** restores the currently open Installation without reloading,
-changing Accounts, or interrupting media. Remembered and unfamiliar addresses
-open directly after validation and health checking; switching keeps the existing
-call-aware confirmation. A protocol link alone never saves an unfamiliar address.
+changing Accounts, or interrupting media. Remembered addresses
+open directly after validation and health checking; an address you have not
+saved first asks **Open this address?** in Home, and opens only if you choose
+Open. Switching keeps the existing call-aware confirmation. A protocol link
+alone never opens or saves an unfamiliar address, and a sign-in completed in a
+window you did not open yourself is never remembered.
 Successful browser-approved desktop sign-in remembers it, selects it as default,
 and enables automatic opening. Cancelling a transition leaves the current call
 and Installation intact. Offline failures return to Home with recovery controls.
@@ -220,7 +230,9 @@ Rebuild the Windows shell and deploy the updated web client for this flow.
 The separate [state bridge](adr/0022-desktop-call-reports-grant-no-actions.md)
 grants only finite reporting to the current exact origin and unique window
 generation. It carries no identities or native actions and persists no report.
-Shortcut and installation management and updater trust remain local.
+Shortcut and installation management and updater trust remain local. The
+Installation page never sees your other saved Installations, and cannot rename
+them, change the default, or change which one opens at startup.
 
 ### Window appearance
 
@@ -337,6 +349,12 @@ mute and deafen combinations. Both accept keyboard shortcuts or Mouse 3/4/5
 with optional modifiers. Changing or clearing one keeps the other registered;
 the same combination cannot serve both actions. Preferences survive restart,
 and registration conflicts retain the previous working binding.
+
+Changing a shortcut from Voxly Settings inside an Installation adds one step:
+the Home window opens and asks you to confirm the action, the keys and the
+Installation's address before anything is saved. Cancel, or a newer request,
+leaves your shortcuts unchanged. A recording started from Voxly Settings stops
+by itself after 15 seconds.
 
 Shortcuts act only in an existing connected voice room. Deafen silences the
 microphone and participant voices; subscribed screen audio keeps its own volume.

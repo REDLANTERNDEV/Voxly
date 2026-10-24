@@ -2,6 +2,7 @@
 mod diagnostics;
 mod installation;
 mod notification_commands;
+mod remote_shortcuts;
 mod runtime;
 mod settings;
 mod tray;
@@ -36,11 +37,17 @@ pub(crate) struct Shell {
     pub(crate) voice_generation: AtomicU64,
     voice_target: std::sync::RwLock<Option<Installation>>,
     push_to_talk_release_delay_ms: AtomicU16,
+    /// A remote Installation's shortcut request and recording; see ADR-0020.
+    remote_shortcuts: std::sync::Mutex<remote_shortcuts::RemoteShortcuts>,
 }
 
 pub(crate) struct Inner {
     preferences: Preferences,
     pub(crate) active: Option<Installation>,
+    /// Whether the member opened the active Installation themselves: a saved
+    /// entry, a typed address, or a link they confirmed with the local Open.
+    /// Only such an Installation may remember itself after signing in.
+    active_chosen_locally: bool,
     loading: bool,
     loading_attempt: u64,
     shortcuts: [shortcuts::Registration; 4],
@@ -79,6 +86,38 @@ fn snapshot(inner: &Inner) -> ShellSnapshot {
         push_to_talk_shortcut_error: inner.shortcuts[2].error,
         registered_push_to_mute_shortcut: inner.shortcuts[3].active.clone(),
         push_to_mute_shortcut_error: inner.shortcuts[3].error,
+    }
+}
+
+/// What the Installation in the remote window may see: its own call settings,
+/// not the member's other Installations or which of them opens at startup.
+/// Those are other operators' servers, and choosing between them is the local
+/// shell's (ADR-0023).
+fn for_remote(mut snapshot: ShellSnapshot) -> ShellSnapshot {
+    snapshot.preferences.installations.clear();
+    snapshot.preferences.default_installation_id = None;
+    snapshot.preferences.open_on_startup = false;
+    snapshot
+}
+
+#[cfg(test)]
+impl ShellSnapshot {
+    fn for_test(preferences: Preferences) -> Self {
+        ShellSnapshot {
+            preferences,
+            active: None,
+            loading: false,
+            platform: "test",
+            shell_version: "0",
+            registered_mute_shortcut: None,
+            shortcut_error: None,
+            registered_deafen_shortcut: None,
+            deafen_shortcut_error: None,
+            registered_push_to_talk_shortcut: None,
+            push_to_talk_shortcut_error: None,
+            registered_push_to_mute_shortcut: None,
+            push_to_mute_shortcut_error: None,
+        }
     }
 }
 

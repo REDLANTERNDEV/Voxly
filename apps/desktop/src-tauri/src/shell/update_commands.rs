@@ -247,6 +247,7 @@ pub(super) async fn install_shell_update(
     shell.reports.invalidate();
     *shell.voice_target.write().map_err(|_| "window_failed")? = None;
     inner.active = None;
+    inner.active_chosen_locally = false;
     // No await between teardown and install: no new Installation can open under this lease.
     if prepared.launch().is_err() {
         updates.install_failed(&app);

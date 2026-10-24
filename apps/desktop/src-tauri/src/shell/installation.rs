@@ -190,6 +190,9 @@ async fn check_health(origin: &str) -> Result<(), &'static str> {
     }
 }
 
+// Each argument is one IPC field the Home shell sends; bundling them would
+// only rename the same eight values.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub(super) async fn connect_installation(
     window: WebviewWindow,
@@ -199,6 +202,7 @@ pub(super) async fn connect_installation(
     reload: bool,
     desktop_launch: Option<String>,
     address: Option<String>,
+    chosen_locally: Option<bool>,
 ) -> Result<ShellSnapshot, &'static str> {
     trusted_shell(&window)?;
     let app = window.app_handle().clone();
@@ -272,6 +276,7 @@ pub(super) async fn connect_installation(
     shell.reports.invalidate();
     *shell.voice_target.write().map_err(|_| "window_failed")? = None;
     inner.active = None;
+    inner.active_chosen_locally = false;
     platform::open_installation(
         &app,
         &saved,
@@ -281,10 +286,19 @@ pub(super) async fn connect_installation(
         desktop_launch.as_deref(),
     )?;
     *shell.voice_target.write().map_err(|_| "window_failed")? = Some(saved.clone());
+    // A saved entry was chosen when it was saved; anything else only if the
+    // Home shell says the member typed it or confirmed the link's Open.
+    inner.active_chosen_locally = chosen_locally.unwrap_or(false)
+        || inner
+            .preferences
+            .installations
+            .iter()
+            .any(|entry| entry.id == saved.id);
     inner.active = Some(saved.clone());
     inner.loading = true;
     inner.loading_attempt = attempt;
     shell.recording_shortcut.store(false, Ordering::Release);
+    super::settings::discard_remote_shortcuts(&shell);
     let loading_app = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(20)).await;
@@ -320,6 +334,7 @@ pub(super) async fn cancel_connection(
         shell.reports.invalidate();
         *shell.voice_target.write().map_err(|_| "window_failed")? = None;
         inner.active = None;
+        inner.active_chosen_locally = false;
         inner.loading = false;
     }
     show_shell(&app);
@@ -344,6 +359,7 @@ pub(super) async fn disconnect_installation(
     shell.reports.invalidate();
     *shell.voice_target.write().map_err(|_| "window_failed")? = None;
     inner.active = None;
+    inner.active_chosen_locally = false;
     inner.loading = false;
     Ok(snapshot(&inner))
 }

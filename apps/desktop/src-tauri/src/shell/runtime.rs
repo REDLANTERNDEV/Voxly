@@ -50,6 +50,7 @@ pub(super) fn run() {
             super::notification_commands::close_desktop_notification,
             super::installation::shell_state,
             super::settings::desktop_settings,
+            super::settings::answer_shortcut_request,
             super::installation::take_desktop_link,
             super::installation::transition_state,
             super::installation::report_call_state,
@@ -126,6 +127,7 @@ pub(super) fn run() {
                 inner: Mutex::new(Inner {
                     preferences,
                     active: None,
+                    active_chosen_locally: false,
                     loading: false,
                     loading_attempt: 0,
                     shortcuts: registrations,
@@ -137,6 +139,7 @@ pub(super) fn run() {
                 voice_generation: AtomicU64::new(0),
                 voice_target: std::sync::RwLock::new(None),
                 push_to_talk_release_delay_ms: AtomicU16::new(release_delay_ms),
+                remote_shortcuts: Default::default(),
             });
             if updates_enabled {
                 let update_app = app.handle().clone();

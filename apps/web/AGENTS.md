@@ -70,7 +70,10 @@ requirement.
   lookup. Clear authentication only after a second current 401; retain it on
   successful verification or network/server failure. Generic 401 copy describes
   unavailable browser access without attributing it to another Device.
-- Treat an authenticated `/invite/:token` route as intent to accept. Share one
+- Invite links carry the token in the fragment (`/invite#<token>`), which no
+  request or proxy log sees; keep reading the older `/invite/<token>` shape, and
+  replace the address with `/invite` once the invite screen holds the token.
+- Treat an authenticated invite route as intent to accept. Share one
   in-flight request per token, auto-accept a valid new membership, and use the
   returned `serverId` for both success and `already_server_member` navigation.
 - After an existing user accepts an invite to another server, fetch the complete

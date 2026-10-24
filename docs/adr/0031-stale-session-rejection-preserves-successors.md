@@ -3,6 +3,8 @@
 - **Status:** accepted
 - **Date:** 2026-10-10
 - **Context:** refines [ADR-0016](0016-session-reuse-requires-confirmed-delivery.md)
+- **Refined by:** [ADR-0033](0033-replacement-confirmation-waits-for-persistence.md):
+  confirmation waits until the replacement could have been persisted
 
 ## Context
 

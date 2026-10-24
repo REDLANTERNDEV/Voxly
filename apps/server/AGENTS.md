@@ -203,6 +203,10 @@ queries across endpoints.
 
 - Invite, session, access-claim, and owner-claim tokens are stored only as
   hashes. Do not log or persist raw values.
+- With `VOXLY_PUBLIC_URL` set, writes and Socket.IO handshakes whose `Origin` is
+  present and foreign are refused (`originPolicy.ts`); Origin-less callers (the
+  bot, CLIs) pass. Under HTTPS, browsers' unprefixed session cookies are ignored.
+  See ADR-0032; keep new write routes and transports behind the same hook.
 - A browser Session lasts 180 days, renewed on the 15-minute activity touch
   or within seven days of expiry. Renew the row, but write a cookie only for a
   current browser credential or its recovery replacement. Logout does not

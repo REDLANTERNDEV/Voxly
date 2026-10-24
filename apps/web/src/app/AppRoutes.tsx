@@ -1,5 +1,6 @@
 import type { useChatController } from "../features/chat/useChatController.js";
 import { AuthEntryFrame } from "../features/auth/AuthEntryFrame.js";
+import { OpenInDesktop } from "../components/OpenInDesktop.js";
 import type { ChatMessage, PublicUser } from "@voxly/shared";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AppShellSkeleton } from "../components/AppShellSkeleton.js";
@@ -188,6 +189,23 @@ export function AppRoutes({
         t={t}
         onLanguageChange={changeLanguage}
       />
+    );
+  }
+  if (route.name === "desktop-start") {
+    return renderSurface(
+      <AuthEntryFrame language={language} t={t} onLanguageChange={changeLanguage}>
+        <section className="link-panel">
+          <strong>{t("desktopSignIn.startTitle")}</strong>
+          {user ? (
+            <>
+              <p className="muted small">{t("desktopSignIn.startCopy")}</p>
+              <OpenInDesktop t={t} authenticated />
+            </>
+          ) : (
+            <p className="muted small">{t("desktopSignIn.startSignedOut")}</p>
+          )}
+        </section>
+      </AuthEntryFrame>
     );
   }
   if (route.name === "recover") {

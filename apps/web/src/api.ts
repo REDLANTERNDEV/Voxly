@@ -43,7 +43,9 @@ export class ApiError extends Error {
 const ownerClaimRequests = new Map<string, Promise<CurrentUserResponse>>();
 const accessClaimRequests = new Map<string, Promise<AccessClaimResponse>>();
 const sessionRotatedHeaderName = "X-Voxly-Session-Rotated";
-let sessionConfirmation: Promise<void> | null = null;
+/** Just past the server's persistence window (ADR-0033); a sooner echo confirms nothing. */
+const sessionConfirmationDelayMs = 5 * 60 * 1000 + 10_000;
+let sessionConfirmation: ReturnType<typeof setTimeout> | null = null;
 
 export async function apiGet<T>(path: string): Promise<T> {
   return request<T>(path);
@@ -155,8 +157,9 @@ export interface DesktopAuthorization {
   expiresInSeconds: number;
 }
 
-export async function createDesktopAuthorization(launchId?: string) {
-  return apiPost<DesktopAuthorization>("/api/devices/desktop-authorizations", launchId ? { launchId } : {});
+/** Always from a launch: the server refuses a request no signed-in browser started. */
+export async function createDesktopAuthorization(launchId: string) {
+  return apiPost<DesktopAuthorization>("/api/devices/desktop-authorizations", { launchId });
 }
 
 export function createDesktopLaunch() {
@@ -539,7 +542,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
 
   if (response.headers.get(sessionRotatedHeaderName) === "1") {
-    void confirmSessionRotation();
+    scheduleSessionConfirmation();
   }
 
   if (!response.ok) {
@@ -566,24 +569,18 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 /**
  * Prove that the browser received a rotated httpOnly cookie without exposing
- * its value to JavaScript. Failure is deliberately recoverable: the next
- * ordinary request can confirm it, or the server can retry an unconfirmed
- * rotation instead of signing the member out.
+ * its value to JavaScript, once the browser has had time to write it to disk:
+ * the server ignores a sooner echo (ADR-0033). Failure is deliberately
+ * recoverable: the next ordinary request can confirm it, or the server can
+ * retry an unconfirmed rotation instead of signing the member out.
  */
-async function confirmSessionRotation() {
-  if (!sessionConfirmation) {
-    const pending = fetch("/api/session/confirm", {
-      method: "POST",
-      credentials: "include"
-    })
-      .then(() => undefined)
-      .catch(() => undefined);
-    const confirmation = pending.finally(() => {
-      if (sessionConfirmation === confirmation) sessionConfirmation = null;
-    });
-    sessionConfirmation = confirmation;
-  }
-  await sessionConfirmation;
+function scheduleSessionConfirmation() {
+  // A newer rotation restarts the wait: its replacement is the one to confirm.
+  if (sessionConfirmation !== null) clearTimeout(sessionConfirmation);
+  sessionConfirmation = setTimeout(() => {
+    sessionConfirmation = null;
+    void fetch("/api/session/confirm", { method: "POST", credentials: "include" }).catch(() => undefined);
+  }, sessionConfirmationDelayMs);
 }
 
 export function fetchNotificationState() {

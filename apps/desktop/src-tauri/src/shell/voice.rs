@@ -153,7 +153,7 @@ pub(super) async fn reset_shortcut(
     change_shortcut(app, window, shell, None, action, true).await
 }
 
-async fn set_shortcut(
+pub(super) async fn set_shortcut(
     app: tauri::AppHandle,
     window: WebviewWindow,
     shell: tauri::State<'_, Shell>,

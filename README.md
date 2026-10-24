@@ -129,6 +129,7 @@ Docker Compose reads `.env` from the repository root. Start from
 | `VOXLY_YTDLP_VERSION` / `VOXLY_YTDLP_CLIENT`                           | The yt-dlp release built into the bot image, and the upstream client it presents |
 | `VOXLY_BOT_MEMORY_LIMIT` / `VOXLY_BOT_MEMORY_RESERVATION`              | Music bot container memory ceiling and reservation                               |
 | `TURN_REALM` / `TURN_STATIC_AUTH_SECRET`                               | Enable authenticated self-hosted TURN                                            |
+| `TURN_CREDENTIAL_TTL_SECONDS`                                          | Relay credential lifetime, and so how long removal takes to reach TURN (`3600`)  |
 | `VOXLY_TURN_MEMORY_LIMIT`                                              | Hard Coturn container memory ceiling                                             |
 | `VOXLY_TURN_MEMORY_RESERVATION`                                        | Soft Coturn memory reservation                                                   |
 

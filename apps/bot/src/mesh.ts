@@ -98,6 +98,8 @@ interface Peer {
   pendingCandidates: RTCIceCandidateInit[];
   /** An offer has actually gone out, not merely been attempted. */
   offered: boolean;
+  /** Which `updateIceServers` this connection was built with. */
+  iceGeneration: number;
   makingOffer: boolean;
   pendingOffer: boolean;
   ignoringOffer: boolean;
@@ -115,9 +117,23 @@ export class VoiceMesh {
   private readonly peers = new Map<string, Peer>();
   private readonly log: (message: string) => void;
   private started = false;
+  private iceServers: IceServer[];
+  private iceGeneration = 0;
 
   constructor(private readonly options: MeshOptions) {
     this.log = options.log ?? (() => undefined);
+    this.iceServers = options.iceServers;
+  }
+
+  /**
+   * Fresh TURN credentials for a Set that outlasts the ones it started with.
+   * Listeners built from now on use them; one built with the old ones is rebuilt
+   * rather than ICE-restarted when it next needs recovery, because a restart
+   * reuses the gatherer, and with it the expired credentials.
+   */
+  updateIceServers(iceServers: IceServer[]) {
+    this.iceServers = iceServers;
+    this.iceGeneration += 1;
   }
 
   get listenerUserIds() {
@@ -201,7 +217,7 @@ export class VoiceMesh {
 
     const connection = new RTCPeerConnection({
       codecs: { audio: [opusCodec] },
-      iceServers: this.options.iceServers
+      iceServers: this.iceServers
     });
 
     const output = this.options.createOutput(userId);
@@ -216,6 +232,7 @@ export class VoiceMesh {
       streamId,
       pendingCandidates: [],
       offered: false,
+      iceGeneration: this.iceGeneration,
       makingOffer: false,
       pendingOffer: false,
       ignoringOffer: false,
@@ -272,6 +289,10 @@ export class VoiceMesh {
       peer.recoveryTimer = null;
     }
     peer.recoveryGeneration += 1;
+    if (peer.iceGeneration !== this.iceGeneration) {
+      this.rebuildPeer(peer);
+      return;
+    }
     if (!shouldInitiatePeerConnection(this.options.selfUserId, peer.userId)) {
       this.emitSignal(peer.userId, { type: "recovery-request" });
       return;

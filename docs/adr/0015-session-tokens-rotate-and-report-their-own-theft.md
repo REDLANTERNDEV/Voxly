@@ -4,6 +4,7 @@
 - **Date:** 2026-08-31
 - **Context:** follows [ADR-0014](0014-members-link-their-own-devices.md); a stolen cookie is currently worth 180 days
 - **Refined by:** [ADR-0016](0016-session-reuse-requires-confirmed-delivery.md), which replaces time-only reuse detection
+- **Amended by:** [ADR-0032](0032-writes-and-handshakes-check-their-origin.md): `lax` does not stop a same-site sibling subdomain, so writes and handshakes now check Origin
 
 ## Context
 

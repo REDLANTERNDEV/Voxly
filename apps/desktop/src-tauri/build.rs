@@ -4,6 +4,7 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "shell_state",
             "desktop_settings",
+            "answer_shortcut_request",
             "save_voice_diagnostics",
             "take_desktop_link",
             "transition_state",

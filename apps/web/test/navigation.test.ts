@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   firstServerRoomPath,
+  getInviteToken,
   getOwnerClaimTokenFromHash,
   parsePathRoute,
   resolveInitialRoute
@@ -16,11 +17,18 @@ describe("frontend navigation", () => {
   });
 
   it("keeps invite tokens on the invite screen for unauthenticated users", () => {
-    assert.equal(resolveInitialRoute({ isAuthenticated: false, inviteToken: "VX-123" }), "/invite/VX-123");
+    assert.equal(resolveInitialRoute({ isAuthenticated: false, inviteToken: "VX-123" }), "/invite#VX-123");
   });
 
   it("routes unauthenticated users without an invite to the landing page", () => {
     assert.equal(resolveInitialRoute({ isAuthenticated: false, inviteToken: null }), "/");
+  });
+
+  it("reads invite tokens from the fragment, where no server or proxy log sees them", () => {
+    assert.equal(getInviteToken("/invite", "#abc%20123"), "abc 123");
+    // Links shared before the move put the token in the path; they still work.
+    assert.equal(getInviteToken("/invite/legacy-token", ""), "legacy-token");
+    assert.equal(getInviteToken("/", "#abc"), "");
   });
 
   it("reads owner claim tokens from URL fragments", () => {
@@ -32,7 +40,9 @@ describe("frontend navigation", () => {
     assert.deepEqual(parsePathRoute("/"), { name: "landing" });
     assert.deepEqual(parsePathRoute("/invite"), { name: "invite", token: "" });
     assert.deepEqual(parsePathRoute("/invite/VX-123"), { name: "invite", token: "VX-123" });
+    assert.deepEqual(parsePathRoute("/invite", "#VX-123"), { name: "invite", token: "VX-123" });
     assert.deepEqual(parsePathRoute("/desktop/verify/1234"), { name: "desktop-verify", id: "1234" });
+    assert.deepEqual(parsePathRoute("/desktop/sign-in"), { name: "desktop-start" });
   });
 
   it("keeps server identity in new routes and maps legacy room links to the default server", () => {

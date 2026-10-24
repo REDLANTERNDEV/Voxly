@@ -27,8 +27,10 @@ desktop Account is preserved rather than silently replaced by the browser's.
 
 Once a signed-out desktop window has created its authorization and confirmation
 number, a browser-correlated launch minimizes that window so the browser's
-approval remains accessible. Manual desktop sign-in yields when the member
-chooses Open browser. Approval, refusal and expiry restore a successfully
+approval remains accessible. There is no longer a manual request without a
+launch: the desktop window's Start browser sign-in opens `/desktop/sign-in` in
+the member's browser, which offers Open in desktop and so creates the launch
+(amended after the October 2026 audit; see ADR-0021). Approval, refusal and expiry restore a successfully
 minimized window; stale attempts cannot change focus. The optional,
 parameterless `minimize_installation` action uses the same exact-origin,
 window-label and generation checks as `activate_installation` (ADR-0024).

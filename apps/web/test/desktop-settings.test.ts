@@ -168,3 +168,27 @@ it("records exact modifier sides in keyboard and mouse chords", () => {
     assert.equal(desktopKeyboardBinding({ ...event, code }), null);
   assert.equal(desktopBindingLabel("ControlRight+ShiftLeft+NumpadEnter"), "RCtrl + LShift + Numpad Enter");
 });
+
+describe("a shortcut the desktop did not see pressed", () => {
+  it("tells the member to record it again, in both languages", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { translate } = await import("../src/lib/i18n.js");
+    const source = readFileSync("src/components/DesktopSettings.tsx", "utf8");
+    // The desktop app binds only keys its own hook saw; a mismatch is a retry,
+    // not a conflict with another application.
+    assert.match(source, /error === "shortcut_unobserved"\s*\?\s*"desktopSettings\.unobserved"/);
+    assert.notEqual(translate("en", "desktopSettings.unobserved"), translate("tr", "desktopSettings.unobserved"));
+  });
+});
+
+describe("a shortcut waiting for the member's confirmation in the Voxly window", () => {
+  it("is a neutral status that refreshes when the member returns, in both languages", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { translate } = await import("../src/lib/i18n.js");
+    const source = readFileSync("src/components/DesktopSettings.tsx", "utf8");
+    // Not shown as a failure: nothing went wrong, the Home window is asking.
+    assert.match(source, /error === "shortcut_pending"\)\s*return \(\s*<p className="muted small" role="status">/);
+    assert.match(source, /if \(error !== "shortcut_pending"\) return;[\s\S]*addEventListener\("focus", refresh\)/);
+    assert.notEqual(translate("en", "desktopSettings.pending"), translate("tr", "desktopSettings.pending"));
+  });
+});

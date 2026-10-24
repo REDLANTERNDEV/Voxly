@@ -507,7 +507,10 @@ as evidence checks, without assuming they caused the incident.
 
 New `session.stale_rejected` events identify confirmed old credentials rejected
 after grace, once per credential. This still blocks the old credential but
-deliberately leaves its valid successor signed in. Structured authentication
+deliberately leaves its valid successor signed in. A replacement only counts
+as delivered once it is five minutes old, so a browser or desktop app killed
+before writing its newest cookie to disk recovers instead of being signed out
+(ADR-0033). Structured authentication
 logs include safe reason codes (`missing_cookie`, `unknown_token`, `revoked`,
 `expired`, `account_unavailable`, `stale_token`), request identifiers and Session
 ids where known; delivery recovery logs use `session.recovered`. No credentials
@@ -636,6 +639,13 @@ rule disables WebSockets for `/socket.io/`.
 
 Set `VOXLY_PUBLIC_URL` to the exact public HTTPS origin and do not mix HTTP and
 HTTPS URLs. Check the reverse proxy's forwarded protocol headers.
+
+### Pages load but nothing can be posted, or realtime never connects
+
+Voxly refuses writes and realtime connections from any browser origin other
+than `VOXLY_PUBLIC_URL` (ADR-0032), so a sibling subdomain cannot act as a
+signed-in member. Open the installation at exactly that address — not a LAN IP,
+a second hostname, or `http://` when it is set to `https://`.
 
 ### Voice works only on the same network
 

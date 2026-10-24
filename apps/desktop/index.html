@@ -269,6 +269,27 @@
         ><button value="confirm" data-i18n="continue">Continue</button>
       </form>
     </dialog>
+    <dialog id="open-link-dialog" aria-labelledby="open-link-title" aria-describedby="open-link-body">
+      <h2 id="open-link-title" data-i18n="openLinkTitle"></h2>
+      <p id="open-link-body" data-i18n="openLinkBody"></p>
+      <p id="open-link-origin" class="code-face"></p>
+      <form method="dialog" class="actions">
+        <button value="cancel" autofocus data-i18n="cancel">Cancel</button
+        ><button value="confirm" data-i18n="openLinkConfirm">Open</button>
+      </form>
+    </dialog>
+    <dialog
+      id="shortcut-request-dialog"
+      aria-labelledby="shortcut-request-title"
+      aria-describedby="shortcut-request-body"
+    >
+      <h2 id="shortcut-request-title" data-i18n="shortcutRequestTitle"></h2>
+      <p id="shortcut-request-body"></p>
+      <form method="dialog" class="actions">
+        <button value="cancel" autofocus data-i18n="cancel">Cancel</button
+        ><button value="confirm" data-i18n="shortcutRequestConfirm">Change shortcut</button>
+      </form>
+    </dialog>
     <dialog id="tray-dialog" aria-labelledby="tray-title" aria-describedby="tray-body">
       <h2 id="tray-title" data-i18n="trayTitle"></h2>
       <p id="tray-body" data-i18n="trayBody"></p>

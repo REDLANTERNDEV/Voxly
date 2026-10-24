@@ -371,3 +371,23 @@ describe("Listener media instance replacement", () => {
     });
   }
 });
+
+describe("TURN credentials the mesh was started with", () => {
+  it("builds Listeners that arrive after a refresh with the new servers", async () => {
+    const bot = startBot(botBelow);
+    const listener = new FakeListener({ relay: bot.relay, userId: listenerMiddle, peerUserId: botBelow });
+    bot.listeners.push(listener);
+    try {
+      const refreshed = [{ urls: "stun:refreshed.example.test:3478" }];
+      bot.mesh.updateIceServers(refreshed);
+      bot.mesh.applySnapshot(snapshotOf(botBelow, listenerMiddle));
+      await listener.announce();
+      const peers = (bot.mesh as unknown as { peers: Map<string, { connection: { config: { iceServers: unknown } } }> })
+        .peers;
+      await until(() => peers.has(listenerMiddle), "the Listener's peer");
+      assert.deepEqual(peers.get(listenerMiddle)?.connection.config.iceServers, refreshed);
+    } finally {
+      await bot.close();
+    }
+  });
+});

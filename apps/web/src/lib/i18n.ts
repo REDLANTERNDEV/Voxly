@@ -92,11 +92,14 @@ const translations = {
     "desktopSettings.startup": "Always open the default installation",
     "desktopSettings.home": "Home",
     "desktopSettings.failed": "Could not save desktop settings. Try again.",
+    "desktopSettings.pending": "Confirm the change in the Voxly window to save this shortcut.",
     "desktopSettings.duplicate": "Each action needs a different shortcut. Your previous binding is retained.",
     "desktopSettings.required":
       "This microphone mode needs a shortcut. Switch to Open mic in Audio before clearing or resetting it.",
     "desktopSettings.conflict":
       "Shortcut unavailable. Another application may be using it; choose a different binding.",
+    "desktopSettings.unobserved":
+      "Voxly did not see those keys pressed. Select Edit keybind, press the shortcut with this window in front, then select Stop recording.",
     "desktopSettings.microphone": "Desktop microphone",
     "desktopSettings.modeHint": "Choose how your microphone works. Assign held shortcuts in Shortcuts.",
     "desktopSettings.mode": "Microphone mode",
@@ -341,10 +344,14 @@ const translations = {
     "desktopSignIn.useCode": "Use a Link code instead",
     "desktopSignIn.expiredBrowser": "This request expired. Open Voxly again to retry.",
     "desktopSignIn.title": "Sign in with browser",
-    "desktopSignIn.copy": "Already signed in on this installation in your browser? Approve this desktop Device there.",
+    "desktopSignIn.copy":
+      "Already signed in on this installation in your browser? Start there: your browser opens Voxly here and asks you to approve.",
+    "desktopSignIn.startTitle": "Sign in to the Voxly desktop app",
+    "desktopSignIn.startCopy":
+      "Open Voxly in the desktop app from here, then approve the code it shows. Only start this from your own computer.",
+    "desktopSignIn.startSignedOut":
+      "Sign in on this installation in this browser first, then open this page again. Or use a Link code in the desktop app.",
     "desktopSignIn.start": "Start browser sign-in",
-    "desktopSignIn.compare": "Check that this code matches your browser.",
-    "desktopSignIn.openBrowser": "Open in browser",
     "desktopSignIn.waiting": "Waiting for browser approval…",
     "desktopSignIn.refused": "The browser refused this request.",
     "desktopSignIn.expired": "This request expired. Start a new one from the desktop window.",
@@ -1021,11 +1028,14 @@ const translations = {
     "desktopSettings.startup": "Her zaman varsayılan kurulumu aç",
     "desktopSettings.home": "Ana sayfa",
     "desktopSettings.failed": "Masaüstü ayarları kaydedilemedi. Yeniden deneyin.",
+    "desktopSettings.pending": "Bu kısayolu kaydetmek için değişikliği Voxly penceresinde onaylayın.",
     "desktopSettings.duplicate": "Her işlev farklı bir kısayol gerektirir. Önceki birleşiminiz korundu.",
     "desktopSettings.required":
       "Bu mikrofon modu için kısayol gerekli. Silmeden veya sıfırlamadan önce Ses bölümünde Açık mikrofonu seçin.",
     "desktopSettings.conflict":
       "Kısayol kullanılamıyor. Başka bir uygulama kullanıyor olabilir; farklı bir birleşim seçin.",
+    "desktopSettings.unobserved":
+      "Voxly bu tuşlara basıldığını görmedi. Kısayolu düzenle’yi seçin, bu pencere öndeyken kısayola basın, ardından Kaydı durdur’u seçin.",
     "desktopSettings.microphone": "Masaüstü mikrofonu",
     "desktopSettings.modeHint":
       "Mikrofonunuzun nasıl çalışacağını seçin. Basılı tutulan kısayolları Kısayollar bölümünden atayın.",
@@ -1271,10 +1281,14 @@ const translations = {
     "desktopSignIn.useCode": "Bağlama kodu kullan",
     "desktopSignIn.expiredBrowser": "İsteğin süresi doldu. Yeniden denemek için Voxly’yi tekrar aç.",
     "desktopSignIn.title": "Tarayıcıyla giriş yap",
-    "desktopSignIn.copy": "Bu kurulumda tarayıcında zaten girişli misin? Bu masaüstü cihazına oradan onay ver.",
+    "desktopSignIn.copy":
+      "Bu kurulumda tarayıcında zaten girişli misin? Oradan başlat: tarayıcın Voxly’yi burada açar ve onaylamanı ister.",
+    "desktopSignIn.startTitle": "Voxly masaüstü uygulamasında giriş yap",
+    "desktopSignIn.startCopy":
+      "Buradan Voxly’yi masaüstü uygulamasında aç, sonra gösterdiği kodu onayla. Bunu yalnızca kendi bilgisayarından başlat.",
+    "desktopSignIn.startSignedOut":
+      "Önce bu tarayıcıda bu kuruluma giriş yap, sonra bu sayfayı yeniden aç. Ya da masaüstü uygulamasında bağlama kodu kullan.",
     "desktopSignIn.start": "Tarayıcıyla girişi başlat",
-    "desktopSignIn.compare": "Bu kodun tarayıcındaki kodla eşleştiğini kontrol et.",
-    "desktopSignIn.openBrowser": "Tarayıcıda aç",
     "desktopSignIn.waiting": "Tarayıcı onayı bekleniyor…",
     "desktopSignIn.refused": "Tarayıcı bu isteği reddetti.",
     "desktopSignIn.expired": "Bu isteğin süresi doldu. Masaüstü penceresinden yeni bir istek başlat.",

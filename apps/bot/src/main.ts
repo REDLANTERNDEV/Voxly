@@ -3,7 +3,7 @@ import { createSessionHolder } from "./credentials.js";
 import { createMusicResponder } from "./music.js";
 import { createMusicBotPresence } from "./presence.js";
 import { publishQueueVia, setSocketFor } from "./socket.js";
-import { fetchIceServers } from "./voxly.js";
+import { fetchRtcConfig } from "./voxly.js";
 
 /**
  * A configuration mistake is worth exiting for — there is nothing to serve
@@ -37,8 +37,8 @@ const presence = createMusicBotPresence({
       selfUserId: session.userId,
       environment,
       publish: publishQueueVia(socket, log),
-      loadIceServers: () =>
-        fetchIceServers({
+      loadRtcConfig: () =>
+        fetchRtcConfig({
           serverUrl: environment.serverUrl,
           cookieName,
           sessionToken: credentials.token,

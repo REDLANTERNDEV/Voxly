@@ -23,6 +23,7 @@
     "allow-cancel-shell-update",
     "allow-install-shell-update",
     "allow-quit-app",
+    "allow-answer-shortcut-request",
     "allow-set-mute-shortcut",
     "allow-set-deafen-shortcut",
     "allow-set-push-to-talk-shortcut",

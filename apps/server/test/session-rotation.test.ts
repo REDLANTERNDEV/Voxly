@@ -140,6 +140,7 @@ describe("session token rotation", () => {
     ageToken(app, 16);
     const rotated = await request(app, owner.cookies);
     const current = tokenFromCookies(cookieJar(rotated));
+    ageUnconfirmedRetiredTokens(app, 6);
     const confirmed = await app.server.inject({
       method: "POST",
       url: "/api/session/confirm",
@@ -170,6 +171,7 @@ describe("session token rotation", () => {
     const invite = created.json().invite as { id: string; token: string };
     ageToken(app, 16);
     const rotated = await request(app, owner.cookies);
+    ageUnconfirmedRetiredTokens(app, 6);
     await request(app, cookieJar(rotated));
     ageRetiredTokens(app, 5);
 
@@ -257,6 +259,7 @@ describe("session token rotation", () => {
     const current = cookieJar(firstRotation);
     // Once the replacement has returned, the retired value is no longer needed
     // for delivery recovery and can age out normally.
+    ageUnconfirmedRetiredTokens(app, 6);
     await request(app, current);
     ageRetiredTokens(app, 31 * 24 * 60);
     ageToken(app, 16);
@@ -291,6 +294,16 @@ function ageRetiredTokens(app: VoxlyApp, minutes: number) {
            replacement_seen_at = case when replacement_seen_at is null then null else ? end`
     )
     .run(agedAt, agedAt);
+}
+
+/**
+ * Moves only the retire time back, leaving delivery unconfirmed, so the next
+ * sighting of the replacement is past the persistence window (ADR-0033).
+ */
+function ageUnconfirmedRetiredTokens(app: VoxlyApp, minutes: number) {
+  app.sqlite
+    .prepare("update session_tokens set superseded_at = ? where replacement_seen_at is null")
+    .run(new Date(Date.now() - minutes * 60 * 1000).toISOString());
 }
 
 function expiryOf(app: VoxlyApp, token: string) {

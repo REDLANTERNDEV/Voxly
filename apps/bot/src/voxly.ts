@@ -47,10 +47,24 @@ export interface VoxlyHttp {
  * failure nobody would connect back to a session lifetime.
  */
 export async function fetchIceServers(http: VoxlyHttp): Promise<IceServer[]> {
+  return (await fetchRtcConfig(http)).iceServers;
+}
+
+/** The servers and when their TURN credentials run out (epoch seconds), if they do. */
+export interface RtcConfig {
+  iceServers: IceServer[];
+  expiresAt: number | null;
+}
+
+/** The same read, keeping the expiry so a Set that outlasts it can refresh. */
+export async function fetchRtcConfig(http: VoxlyHttp): Promise<RtcConfig> {
   const config = await getJsonAuthenticated(http, "/api/rtc/config");
-  if (typeof config !== "object" || config === null) return [];
-  const iceServers = (config as { iceServers?: unknown }).iceServers;
-  return Array.isArray(iceServers) ? (iceServers as IceServer[]) : [];
+  if (typeof config !== "object" || config === null) return { iceServers: [], expiresAt: null };
+  const { iceServers, expiresAt } = config as { iceServers?: unknown; expiresAt?: unknown };
+  return {
+    iceServers: Array.isArray(iceServers) ? (iceServers as IceServer[]) : [],
+    expiresAt: typeof expiresAt === "number" && Number.isFinite(expiresAt) ? expiresAt : null
+  };
 }
 
 async function getJsonAuthenticated(http: VoxlyHttp, path: string) {

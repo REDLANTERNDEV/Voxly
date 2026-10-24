@@ -173,7 +173,8 @@ describe("frontend api", () => {
     assert.equal(requestedPath, "/api/rtc/config");
   });
 
-  it("confirms a rotated http-only session without reading its token", async () => {
+  it("confirms a rotated http-only session without reading its token, once it can be on disk", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
     const requests: Array<{ path: string; method?: string; credentials?: RequestCredentials }> = [];
     globalThis.fetch = async (input, init) => {
       requests.push({ path: String(input), method: init?.method, credentials: init?.credentials });
@@ -188,14 +189,21 @@ describe("frontend api", () => {
     };
 
     await fetchRtcConfig();
+    await fetchRtcConfig();
+    // A sooner echo would confirm nothing: the server waits for persistence.
+    t.mock.timers.tick(5 * 60_000);
+    assert.equal(requests.filter((request) => request.path === "/api/session/confirm").length, 0);
+    t.mock.timers.tick(10_000);
 
     assert.deepEqual(requests, [
+      { path: "/api/rtc/config", method: undefined, credentials: "include" },
       { path: "/api/rtc/config", method: undefined, credentials: "include" },
       { path: "/api/session/confirm", method: "POST", credentials: "include" }
     ]);
   });
 
-  it("does not fail the member's request when rotation confirmation loses the network", async () => {
+  it("does not fail the member's request when rotation confirmation loses the network", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
     globalThis.fetch = async (input) => {
       if (String(input) === "/api/session/confirm") throw new TypeError("network unavailable");
       return new Response(JSON.stringify({ iceServers: [], expiresAt: null }), {
@@ -208,6 +216,8 @@ describe("frontend api", () => {
     };
 
     const config = await fetchRtcConfig();
+    t.mock.timers.tick(5 * 60_000 + 10_000);
+    await Promise.resolve();
 
     assert.deepEqual(config, { iceServers: [], expiresAt: null });
   });

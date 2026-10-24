@@ -19,7 +19,8 @@ import {
   requireUser,
   logoutBrowserSessions,
   sessionCookieName,
-  setSessionCookie
+  setSessionCookie,
+  withoutUnprotectedSessionCookies
 } from "./auth/sessions.js";
 import {
   bearerToken,
@@ -79,6 +80,7 @@ import {
   socketsForUser
 } from "./socket.js";
 import { createMusicRealtime } from "./music.js";
+import { createOriginPolicy, isBrowserRequest } from "./originPolicy.js";
 import { createVoiceRealtime } from "./voice.js";
 import type { TurnstileConfig } from "./turnstile.js";
 import type { RtcConfigProvider } from "./rtcConfig.js";
@@ -169,6 +171,16 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
     global: false
   });
   await server.register(cookie);
+  const originPolicy = createOriginPolicy(options.publicUrl);
+  // Registered after the cookie parser, so the cookies it narrows are parsed.
+  server.addHook("onRequest", async (request, reply) => {
+    if (!originPolicy.allowsRequest(request.method, request.headers.origin)) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
+    if (options.secureCookies && isBrowserRequest(request.headers)) {
+      request.cookies = withoutUnprotectedSessionCookies(request.cookies) as typeof request.cookies;
+    }
+  });
   server.setErrorHandler((error, request, reply) => {
     if (error instanceof z.ZodError) {
       reply.code(400).send({ error: "bad_request" });
@@ -188,10 +200,11 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
   });
 
   const io = new Server<ClientToServerEvents, ServerToClientEvents>(server.server, {
-    serveClient: false
+    serveClient: false,
+    allowRequest: (request, callback) => callback(null, originPolicy.allowsHandshake(request.headers.origin))
   });
 
-  const realtime = registerRealtime(io, database, server.log);
+  const realtime = registerRealtime(io, database, server.log, options.secureCookies);
   // What a route group is handed, and deliberately nothing more; `http.ts` says
   // why each field is here.
   const context: RouteContext = {
@@ -721,17 +734,21 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
 function registerRealtime(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
   database: VoxlyDatabase,
-  logger: FastifyInstance["log"]
+  logger: FastifyInstance["log"],
+  secureCookies: boolean
 ): RealtimeModeration {
   const online: OnlineRegistry = new Map();
   const voice = createVoiceRealtime(io, database);
   const music = createMusicRealtime(io, database, voice);
 
   io.use((socket, next) => {
-    const user = authenticateSocket(database, socket.handshake.headers.cookie, socket.handshake.headers["user-agent"], {
-      logger,
-      requestId: socket.id
-    });
+    const user = authenticateSocket(
+      database,
+      socket.handshake.headers.cookie,
+      socket.handshake.headers["user-agent"],
+      { logger, requestId: socket.id },
+      secureCookies && isBrowserRequest(socket.handshake.headers)
+    );
     if (!user) {
       next(new Error("unauthorized"));
       return;

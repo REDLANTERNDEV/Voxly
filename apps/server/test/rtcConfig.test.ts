@@ -40,13 +40,13 @@ describe("RTC configuration", () => {
     ]);
   });
 
-  it("defaults TURN credentials to 24 hours", () => {
+  it("defaults TURN credentials to one hour, the most a removed account keeps the relay", () => {
     const config = resolveRtcConfig({
       TURN_REALM: "turn.voxly.example",
       TURN_STATIC_AUTH_SECRET: "0123456789abcdef0123456789abcdef"
     });
 
-    assert.equal(createUserRtcConfig(config, "user-1", 1_700_000_000).expiresAt, 1_700_086_400);
+    assert.equal(createUserRtcConfig(config, "user-1", 1_700_000_000).expiresAt, 1_700_003_600);
   });
 
   it("rejects partial TURN configuration", () => {

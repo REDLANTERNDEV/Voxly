@@ -12,6 +12,7 @@ import { createMusicResponder, gracePeriodMs } from "../src/music.js";
 import { TrackBuffer } from "../src/audio.js";
 import type { MusicSet, MusicSetOptions, SetSocket } from "../src/set.js";
 import type { TrackAudio } from "../src/stream.js";
+import { until } from "./listener.js";
 import type { SearchResult, TrackResult } from "../src/track.js";
 
 /**
@@ -79,6 +80,8 @@ function harness(
     searchAs?: SearchResult;
     /** Parks the extractor mid-answer, so a test can hold the chain open. */
     holdResolve?: boolean;
+    /** When the RTC configuration says its TURN credentials run out, epoch seconds. */
+    rtcExpiresAt?: number;
   } = {}
 ) {
   const created: FakeSet[] = [];
@@ -132,6 +135,9 @@ function harness(
       },
       async end() {
         events.push("end");
+      },
+      updateIceServers(servers) {
+        events.push(`ice:${servers.map((server) => String(server.urls)).join(",")}`);
       }
     };
     created.push(set);
@@ -165,9 +171,12 @@ function harness(
     // Its own sequence, so a test that names an entry does not have to know
     // which ids the Set log consumed on the way past.
     mintLineId: () => `line-${(logged += 1)}`,
-    loadIceServers: async () => {
+    loadRtcConfig: async () => {
       iceRequests.push(Date.now());
-      return [];
+      return {
+        iceServers: [{ urls: `turn:request-${iceRequests.length}` }],
+        expiresAt: options.rtcExpiresAt ?? null
+      };
     },
     createSet: createSet as never,
     resolve: async (_environment, url) => {
@@ -412,6 +421,30 @@ describe("a pasted link", () => {
     assert.equal(iceRequests.length, 1);
   });
 
+  it("refreshes TURN credentials before they run out, for as long as the Set lasts", async () => {
+    // The browsers in the room refresh theirs five minutes ahead; a Set can
+    // outlast the credentials it started with, and a relay it then needs would
+    // refuse them.
+    const expiresAt = Math.floor(Date.now() / 1000) + 3600;
+    const { responder, iceRequests, created, waiting, expireGracePeriod, forceLeave } = harness({
+      rtcExpiresAt: expiresAt
+    });
+
+    await responder.handle(add(), "lobby", ada);
+    assert.equal(iceRequests.length, 1);
+    const [wait] = waiting();
+    assert.ok(wait !== undefined && wait <= 3_300_000 && wait > 3_200_000, `refresh scheduled in ${wait} ms`);
+
+    expireGracePeriod();
+    await until(() => iceRequests.length === 2, "a second RTC configuration read", 2000);
+    await until(() => created[0]?.events.includes("ice:turn:request-2") ?? false, "the new servers in the Set", 2000);
+    assert.equal(waiting().length, 1, "and the next refresh is scheduled");
+
+    forceLeave("lobby");
+    await until(() => created[0]?.events.includes("end") ?? false, "the Set to end", 2000);
+    assert.deepEqual(waiting(), [], "an ended Set refreshes nothing");
+  });
+
   it("ends the Set it was running when summoned somewhere else", async () => {
     const { responder, created, cancelled } = harness();
 
@@ -549,7 +582,7 @@ describe("a typed name", () => {
       selfUserId: "aaaa-bot",
       environment,
       publish: () => undefined,
-      loadIceServers: async () => [],
+      loadRtcConfig: async () => ({ iceServers: [], expiresAt: null }),
       search: async (_environment, name) => {
         if (running.length > 0) overlapped.push(name);
         running.push(name);

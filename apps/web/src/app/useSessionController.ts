@@ -4,7 +4,7 @@ import { ApiError, fetchConfig, fetchMe, fetchRtcConfig } from "../api.js";
 import { createAuthRequestGate } from "../lib/authRequestGate.js";
 import { checkSessionAfterDisconnect } from "../lib/sessionCheck.js";
 import type { VoiceErrorKey } from "../lib/i18n.js";
-import { getInviteTokenFromPath, resolveInitialRoute } from "../lib/navigation.js";
+import { getInviteToken, resolveInitialRoute } from "../lib/navigation.js";
 import type { AppConfigResponse, RtcConfigResponse } from "../types.js";
 import { rtcConfigAfterFetchFailure, rtcConfigRetryMs } from "./rtcConfig.js";
 import type { LoadState, Route } from "./types.js";
@@ -146,14 +146,21 @@ export function useSessionController(route: Route, navigate: (path: string) => v
   // rather than re-fetching authentication on every navigation.
   const redirectSignedOut = useEffectEvent(() => {
     if (
-      !new Set(["landing", "invite", "owner-claim", "access-claim", "link-device", "desktop-verify", "recover"]).has(
-        route.name
-      )
+      !new Set([
+        "landing",
+        "invite",
+        "owner-claim",
+        "access-claim",
+        "link-device",
+        "desktop-verify",
+        "desktop-start",
+        "recover"
+      ]).has(route.name)
     ) {
       navigate(
         resolveInitialRoute({
           isAuthenticated: false,
-          inviteToken: getInviteTokenFromPath(window.location.pathname) || null
+          inviteToken: getInviteToken(window.location.pathname, window.location.hash) || null
         })
       );
     }

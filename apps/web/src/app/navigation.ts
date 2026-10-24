@@ -3,8 +3,10 @@ import type { Route, ThemeChoice } from "./types.js";
 
 const themeKey = "voxly:theme";
 
-export function parseRoute(pathname: string): Route {
-  const route = parsePathRoute(pathname);
+/** Takes a path that may carry a fragment: an invite link's token rides there. */
+export function parseRoute(path: string): Route {
+  const hashIndex = path.indexOf("#");
+  const route = hashIndex >= 0 ? parsePathRoute(path.slice(0, hashIndex), path.slice(hashIndex)) : parsePathRoute(path);
   if (route.name === "owner-claim") {
     return { name: "owner-claim", token: getOwnerClaimTokenFromHash(window.location.hash) };
   }

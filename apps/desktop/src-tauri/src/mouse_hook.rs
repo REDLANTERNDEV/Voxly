@@ -1,22 +1,26 @@
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::sync::{mpsc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
 use tauri::AppHandle;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows_sys::Win32::System::Threading::GetCurrentThreadId;
+use windows_sys::Win32::System::Threading::{GetCurrentProcessId, GetCurrentThreadId};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, DispatchMessageW, GetMessageW, PeekMessageW, PostThreadMessageW,
-    SetWindowsHookExW, UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE,
-    WH_KEYBOARD_LL, WH_MOUSE_LL, WM_APP, WM_KEYDOWN, WM_KEYUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
-    WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN, WM_XBUTTONUP,
+    CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
+    PeekMessageW, PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG,
+    MSLLHOOKSTRUCT, PM_NOREMOVE, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_APP, WM_KEYDOWN, WM_KEYUP,
+    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN,
+    WM_XBUTTONUP,
 };
 
 use crate::shortcuts::{Action, MouseBinding, MouseShortcutGates, ALT, CONTROL, SHIFT, SUPER};
 
-use crate::input_bindings::{observed_key, PhysicalBinding, PhysicalShortcutGates};
+use crate::input_bindings::{
+    observed_key, PhysicalBinding, PhysicalShortcutGates, ShortcutCapture,
+};
 
 #[derive(Clone, Copy)]
 enum ObservedBinding {
@@ -46,6 +50,90 @@ struct HookThread {
 }
 
 static HOOK: OnceLock<Mutex<Option<HookThread>>> = OnceLock::new();
+
+/// Input synthesized by another program (`SendInput`), as the hooks flag it.
+/// A page that could inject keys could otherwise "press" its own binding.
+const KEY_INJECTED: u32 = 0x10;
+const MOUSE_INJECTED: u32 = 0x01;
+
+/// A remote Installation's shortcut recording: what the person pressed, as the
+/// hook saw it. `active` stops at the end of recording; the chord stays until
+/// the binding is committed or the recording is discarded.
+struct Capture {
+    active: bool,
+    keys: ShortcutCapture,
+}
+
+static CAPTURE: Mutex<Option<Capture>> = Mutex::new(None);
+
+/// Begins recording the keys the person presses, starting the hook if no
+/// shortcut is using it yet.
+pub fn begin_capture(app: &AppHandle) -> Result<(), &'static str> {
+    {
+        let mut hook = HOOK
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .map_err(|_| "shortcut_failed")?;
+        ensure_running(&mut hook, app)?;
+    }
+    *CAPTURE.lock().map_err(|_| "shortcut_failed")? = Some(Capture {
+        active: true,
+        keys: ShortcutCapture::default(),
+    });
+    Ok(())
+}
+
+/// Stops adding keys; the chord already pressed stays for the commit.
+pub fn pause_capture() {
+    if let Ok(mut capture) = CAPTURE.lock() {
+        if let Some(capture) = capture.as_mut() {
+            capture.active = false;
+        }
+    }
+}
+
+/// The recorded chord, once; the hook stops if nothing else needs it.
+pub fn take_capture() -> Option<BTreeSet<u16>> {
+    let taken = CAPTURE.lock().ok()?.take();
+    if let Ok(mut hook) = HOOK.get_or_init(|| Mutex::new(None)).lock() {
+        let _ = stop_if_idle(&mut hook);
+    }
+    taken.map(|capture| capture.keys.chord().clone())
+}
+
+fn capturing() -> bool {
+    CAPTURE
+        .lock()
+        .map(|capture| capture.is_some())
+        .unwrap_or(false)
+}
+
+/// Only presses made while a Voxly window is in front count: typing into some
+/// other program during a recording is not choosing a Voxly shortcut.
+fn foreground_is_voxly() -> bool {
+    let window = unsafe { GetForegroundWindow() };
+    if window.is_null() {
+        return false;
+    }
+    let mut process = 0u32;
+    unsafe { GetWindowThreadProcessId(window, &mut process) };
+    process == unsafe { GetCurrentProcessId() }
+}
+
+/// Called from the hook procedures for every key and observed mouse button.
+/// `try_lock`, never `lock`: a low-level hook must not wait.
+fn observe_capture(code: u16, pressed: bool, injected: bool) {
+    if injected {
+        return;
+    }
+    if let Ok(mut capture) = CAPTURE.try_lock() {
+        if let Some(capture) = capture.as_mut() {
+            if capture.active && (!pressed || foreground_is_voxly()) {
+                capture.keys.observe(code, pressed);
+            }
+        }
+    }
+}
 thread_local! {
     static CONTEXT: RefCell<Option<HookContext>> = const { RefCell::new(None) };
 }
@@ -91,6 +179,11 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: usize, lparam: isize) ->
         };
         if let Some(button) = button {
             let pressed = matches!(wparam as u32, WM_MBUTTONDOWN | WM_XBUTTONDOWN);
+            observe_capture(
+                0x200 + u16::from(button),
+                pressed,
+                mouse.flags & MOUSE_INJECTED != 0,
+            );
             let modifiers = if pressed { current_modifiers() } else { 0 };
             let (app, action) = CONTEXT.with(|slot| {
                 let mut context = slot.borrow_mut();
@@ -122,6 +215,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: usize, lparam: isize)
         let key = unsafe { &*(lparam as *const KBDLLHOOKSTRUCT) };
         let pressed = matches!(wparam as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
         let physical = observed_key(key.scanCode, key.flags & 1 != 0, key.vkCode);
+        observe_capture(physical, pressed, key.flags & KEY_INJECTED != 0);
         let dispatch = CONTEXT.with(|slot| {
             let mut context = slot.borrow_mut();
             let context = context.as_mut()?;
@@ -201,8 +295,16 @@ fn register_observed(
         .get_or_init(|| Mutex::new(None))
         .lock()
         .map_err(|_| "shortcut_failed")?;
-    if let Some(running) = hook.as_mut() {
-        return update(running, action, Some(binding));
+    ensure_running(&mut hook, app)?;
+    let running = hook.as_mut().ok_or("shortcut_failed")?;
+    update(running, action, Some(binding))
+}
+
+/// Starts the hook thread with no bindings if it is not already running. A
+/// shortcut or a recording may be the first thing to need it.
+fn ensure_running(hook: &mut Option<HookThread>, app: &AppHandle) -> Result<(), &'static str> {
+    if hook.is_some() {
+        return Ok(());
     }
     let (send, receive) = mpsc::sync_channel(1);
     let (updates, pending) = mpsc::channel::<HookUpdate>();
@@ -211,13 +313,11 @@ fn register_observed(
         .name("voxly-input-shortcut".into())
         .spawn(move || {
             CONTEXT.with(|slot| {
-                let mut context = HookContext {
+                *slot.borrow_mut() = Some(HookContext {
                     app,
                     gates: MouseShortcutGates::default(),
                     keyboard: PhysicalShortcutGates::default(),
-                };
-                set_binding(&mut context, action, Some(binding));
-                *slot.borrow_mut() = Some(context)
+                })
             });
             // A message queue must exist before PostThreadMessageW may stop us.
             // MSG contains only Win32 handles, integers, and a POINT; zero is valid.
@@ -282,13 +382,11 @@ fn register_observed(
         .map_err(|_| "shortcut_unavailable")?;
     match receive.recv().map_err(|_| "shortcut_unavailable")? {
         Ok(id) => {
-            let mut bindings = [None; 4];
-            bindings[action.index()] = Some(binding);
             *hook = Some(HookThread {
                 id,
                 join,
                 updates,
-                bindings,
+                bindings: [None; 4],
             });
             Ok(())
         }
@@ -297,6 +395,23 @@ fn register_observed(
             Err(error)
         }
     }
+}
+
+/// Stops the hook thread once no shortcut and no recording needs it.
+fn stop_if_idle(hook: &mut Option<HookThread>) -> Result<(), &'static str> {
+    let Some(running) = hook.as_ref() else {
+        return Ok(());
+    };
+    if running.bindings.iter().any(Option::is_some) || capturing() {
+        return Ok(());
+    }
+    if unsafe { PostThreadMessageW(running.id, WM_QUIT, 0, 0) } == 0 {
+        return Err("shortcut_failed");
+    }
+    if let Some(running) = hook.take() {
+        running.join.join().map_err(|_| "shortcut_failed")?;
+    }
+    Ok(())
 }
 
 pub fn clear(action: Action) -> Result<(), &'static str> {
@@ -310,17 +425,6 @@ pub fn clear(action: Action) -> Result<(), &'static str> {
     if running.bindings[action.index()].is_none() {
         return Ok(());
     }
-    if running
-        .bindings
-        .iter()
-        .enumerate()
-        .any(|(index, binding)| index != action.index() && binding.is_some())
-    {
-        return update(running, action, None);
-    }
-    if unsafe { PostThreadMessageW(running.id, WM_QUIT, 0, 0) } == 0 {
-        return Err("shortcut_failed");
-    }
-    let running = hook.take().unwrap();
-    running.join.join().map_err(|_| "shortcut_failed")
+    update(running, action, None)?;
+    stop_if_idle(&mut hook)
 }

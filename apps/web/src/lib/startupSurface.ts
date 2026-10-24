@@ -5,6 +5,7 @@ export type StartupRouteName =
   | "access-claim"
   | "link-device"
   | "desktop-verify"
+  | "desktop-start"
   | "recover"
   | "text"
   | "voice"

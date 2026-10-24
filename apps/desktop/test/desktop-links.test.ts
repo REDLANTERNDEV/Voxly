@@ -34,7 +34,9 @@ describe("desktop link native boundary", () => {
     assert.ok(ui.indexOf('await listen("shell:desktop-link"') < ui.lastIndexOf("await receiveDesktopLink()"));
     const receive = ui.split("async function receiveDesktopLink()")[1].split("function localMediaActive")[0];
     const intake = receive.split("async function openDesktopLink")[0];
-    assert.doesNotMatch(intake, /preferences\.installations\.some/);
+    // An unsaved address waits for a local Open; a saved one opens directly.
+    assert.match(intake, /desktopLinkNeedsConfirmation\(target, state\?\.preferences\)/);
+    assert.match(receive, /chosenLocally/);
     assert.doesNotMatch(receive, /save_installation/);
     assert.match(receive, /address: target\.origin/);
     assert.match(intake, /if \(busy\) deferredDesktopLink = target/);

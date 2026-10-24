@@ -13,7 +13,7 @@ import { publicUser, type UserRow } from "./users.js";
 const lifetimeMs = 90_000;
 const idSchema = z.object({ id: z.string().uuid() });
 const secretSchema = z.object({ secret: z.string().min(32).max(128) });
-const createSchema = z.object({ launchId: z.string().uuid().optional() });
+const createSchema = z.object({ launchId: z.string().uuid() });
 const decisionSchema = z.object({ approve: z.boolean() });
 const collectLimit = { rateLimit: { max: 40, timeWindow: "1 minute" } };
 
@@ -144,9 +144,12 @@ export function registerDesktopAuthorizationRoutes({ fastify, database, secureCo
   fastify.post("/api/devices/desktop-authorizations", { config: unauthenticatedWriteLimit }, async (request, reply) => {
     const origin = requestOrigin(request);
     if (!origin) return reply.code(400).send({ error: "invalid_request" });
+    // Every request starts from a launch in a signed-in browser (ADR-0027), so
+    // the approval is bound to the member who asked for it. A request with no
+    // launch could be anyone's, and any member who approved it would hand its
+    // author their account. Missing and unknown launches answer alike.
     const parsed = createSchema.safeParse(request.body ?? {});
-    if (!parsed.success) return reply.code(400).send({ error: "invalid_request" });
-    const launch = parsed.data.launchId
+    const launch = parsed.success
       ? one<LaunchRow>(
           database.sqlite,
           `select l.* from desktop_launches l join sessions s on s.id = l.session_id and s.user_id = l.user_id
@@ -156,7 +159,7 @@ export function registerDesktopAuthorizationRoutes({ fastify, database, secureCo
           [parsed.data.launchId, origin, new Date().toISOString(), new Date().toISOString()]
         )
       : null;
-    if (parsed.data.launchId && !launch) return reply.code(404).send({ error: "authorization_invalid" });
+    if (!launch) return reply.code(404).send({ error: "authorization_invalid" });
     const id = crypto.randomUUID();
     const secret = createOpaqueToken();
     const confirmation = createConfirmationNumber();
@@ -168,16 +171,14 @@ export function registerDesktopAuthorizationRoutes({ fastify, database, secureCo
     ]);
     database.sqlite.exec("begin immediate");
     try {
-      if (launch) {
-        const claimed = database.sqlite
-          .prepare(
-            "update desktop_launches set authorization_id = ? where id = ? and authorization_id is null and cancelled_at is null and expires_at > ?"
-          )
-          .run(id, launch.id, now.toISOString());
-        if (claimed.changes !== 1) {
-          database.sqlite.exec("rollback");
-          return reply.code(404).send({ error: "authorization_invalid" });
-        }
+      const claimed = database.sqlite
+        .prepare(
+          "update desktop_launches set authorization_id = ? where id = ? and authorization_id is null and cancelled_at is null and expires_at > ?"
+        )
+        .run(id, launch.id, now.toISOString());
+      if (claimed.changes !== 1) {
+        database.sqlite.exec("rollback");
+        return reply.code(404).send({ error: "authorization_invalid" });
       }
       run(
         database.sqlite,
@@ -236,11 +237,11 @@ export function registerDesktopAuthorizationRoutes({ fastify, database, secureCo
         ? one<LaunchRow>(database.sqlite, "select * from desktop_launches where authorization_id = ?", [row.id])
         : null;
       if (
-        launch &&
-        (launch.user_id !== user.id ||
-          launch.session_id !== user.sessionId ||
-          launch.cancelled_at ||
-          new Date(launch.expires_at).getTime() <= Date.now())
+        !launch ||
+        launch.user_id !== user.id ||
+        launch.session_id !== user.sessionId ||
+        launch.cancelled_at ||
+        new Date(launch.expires_at).getTime() <= Date.now()
       )
         return reply.code(404).send({ error: "authorization_invalid" });
       if (!row || !live(row) || row.approved_at || row.refused_at || requestOrigin(request) !== row.origin) {

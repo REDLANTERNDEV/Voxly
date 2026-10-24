@@ -75,6 +75,7 @@ test("a stale request rejects only its credential, not the current session", asy
     );
     t.mock.timers.tick(16 * 60_000);
     const current = cookieJar(await app.server.inject({ method: "GET", url: "/api/me", cookies: original }));
+    t.mock.timers.tick(5 * 60_000 + 1_000);
     await app.server.inject({ method: "POST", url: "/api/session/confirm", cookies: current });
     t.mock.timers.tick(121_000);
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -116,6 +117,49 @@ async function fixture(t: TestContext, secure = false) {
   const me = (cookies = jar) => app.server.inject({ method: "GET", url: "/api/me", cookies });
   return { app, jar, me, userId: boot.json().user.id as string };
 }
+
+test("a browser that restarts before persisting a confirmed replacement stays signed in", async (t) => {
+  const { app, jar, me } = await fixture(t, true);
+  const persisted = { ...jar };
+  t.mock.timers.tick(16 * 60_000);
+  const rotated = await me();
+  assert.equal(rotated.headers["x-voxly-session-rotated"], "1");
+  applyCookies(jar, rotated);
+  // The replacement reached the browser's memory and came straight back.
+  assert.equal(
+    (await app.server.inject({ method: "POST", url: "/api/session/confirm", cookies: jar })).statusCode,
+    204
+  );
+  // The process dies before the cookie store is written; only the old value survives.
+  t.mock.timers.tick(121_000);
+  const reopened = await me(persisted);
+  assert.equal(reopened.statusCode, 200, "a lost cookie write must not sign the member out");
+  assert.ok(
+    reopened.cookies.some((cookie) => cookie.value),
+    "recovery issues a fresh credential"
+  );
+  const stale = app.sqlite
+    .prepare("select count(*) as count from audit_events where action = 'session.stale_rejected'")
+    .get();
+  assert.equal(stale?.count, 0);
+});
+
+test("a confirmation after the persistence window makes the predecessor stale", async (t) => {
+  const { app, jar, me } = await fixture(t);
+  const original = { ...jar };
+  t.mock.timers.tick(16 * 60_000);
+  applyCookies(jar, await me());
+  t.mock.timers.tick(5 * 60_000 + 1_000);
+  assert.equal(
+    (await app.server.inject({ method: "POST", url: "/api/session/confirm", cookies: jar })).statusCode,
+    204
+  );
+  t.mock.timers.tick(121_000);
+  const stale = await me(original);
+  assert.equal(stale.statusCode, 401);
+  assert.equal(stale.json().error, "session_reused");
+  assert.equal((await me(jar)).statusCode, 200);
+});
 
 test("a delayed renewal cannot overwrite a later confirmed rotation", async (t) => {
   const { app, jar, me } = await fixture(t);
@@ -240,6 +284,7 @@ test("a rejected stale credential cannot revoke its successor through logout", a
   const original = { ...jar };
   t.mock.timers.tick(16 * 60_000);
   applyCookies(jar, await me());
+  t.mock.timers.tick(5 * 60_000 + 1_000);
   await me();
   t.mock.timers.tick(121_000);
   await app.server.inject({ method: "POST", url: "/api/logout", cookies: original });

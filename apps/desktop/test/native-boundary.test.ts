@@ -85,6 +85,14 @@ describe("desktop native trust boundary", () => {
     }
   });
 
+  it("gives the remote Installation only its own call settings", () => {
+    const settings = readFileSync("src-tauri/src/shell/settings.rs", "utf8");
+    const command = settings.split("pub(super) async fn desktop_settings(")[1].split("async fn apply(")[0];
+    // Refused before any work, and every answer to a remote caller redacted.
+    assert.match(command, /if remote && !remote_permits\(&operation\)/);
+    assert.match(command, /result\.map\(for_remote\)/);
+  });
+
   it("keeps the voice intent bridge separate from native authority", () => {
     const source = readFileSync("src-tauri/src/platform.rs", "utf8");
     assert.match(source, /\.data_directory\(data\.join\("profiles"\)\.join\(&saved.id\)\)/);

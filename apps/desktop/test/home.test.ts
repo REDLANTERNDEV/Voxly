@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import vm from "node:vm";
-import { startupInstallation } from "../src/home.js";
+import { desktopLinkNeedsConfirmation, startupInstallation } from "../src/home.js";
 
 test("startup opens only the selected default and yields to handoff, disabled startup, and active calls", () => {
   const first = { id: "first", origin: "https://first.example" };
@@ -93,4 +93,25 @@ test("startup includes a decorative circular indicator and honors reduced motion
   const styles = readFileSync("src/home.css", "utf8");
   assert.match(styles, /\.startup-spinner\s*\{[^}]*animation: startup-spinner-spin 0\.9s linear infinite/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.startup-spinner\s*\{\s*animation: none/);
+});
+
+test("asks before opening a linked address that was never saved", () => {
+  // Any web page can launch voxly://open with any origin. Opening it directly
+  // let a stranger's site load in the desktop window and save itself as the
+  // startup Installation (ADR-0027 keeps a local Open action for new addresses).
+  const preferences = { installations: [{ id: "saved", origin: "https://chat.example.com" }] };
+  assert.equal(
+    desktopLinkNeedsConfirmation({ id: "saved", origin: "https://chat.example.com", launchId: null }, preferences),
+    false
+  );
+  for (const launchId of [null, "00000000-0000-4000-8000-000000000000"]) {
+    assert.equal(
+      desktopLinkNeedsConfirmation({ id: "other", origin: "https://chat-evil.example", launchId }, preferences),
+      true
+    );
+  }
+  assert.equal(
+    desktopLinkNeedsConfirmation({ id: "x", origin: "https://chat.example.com", launchId: null }, undefined),
+    true
+  );
 });

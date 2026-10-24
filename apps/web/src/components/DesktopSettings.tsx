@@ -32,6 +32,20 @@ function useDesktopSettings() {
       live.current = false;
     };
   }, []);
+  useEffect(() => {
+    if (error !== "shortcut_pending") return;
+    // The member answers in the Home window; focus returns here afterwards.
+    const refresh = () =>
+      void applyDesktopSettings({ kind: "read" })
+        .then((next) => {
+          if (!live.current) return;
+          setSnapshot(next);
+          setError("");
+        })
+        .catch(() => undefined);
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [error]);
   async function save(operation: DesktopSettingsOperation) {
     setPending(true);
     setError("");
@@ -55,6 +69,13 @@ function useDesktopSettings() {
   return { snapshot, pending, error, save };
 }
 function Feedback({ error, t }: { error: string; t: Translate }) {
+  // Not a failure: the Home window is asking the member to confirm.
+  if (error === "shortcut_pending")
+    return (
+      <p className="muted small" role="status">
+        {t("desktopSettings.pending")}
+      </p>
+    );
   return error ? (
     <p className="error-text small" role="alert">
       {t(
@@ -64,7 +85,9 @@ function Feedback({ error, t }: { error: string; t: Translate }) {
             ? "desktopSettings.required"
             : error === "shortcut_unavailable"
               ? "desktopSettings.conflict"
-              : "desktopSettings.failed"
+              : error === "shortcut_unobserved"
+                ? "desktopSettings.unobserved"
+                : "desktopSettings.failed"
       )}
     </p>
   ) : null;

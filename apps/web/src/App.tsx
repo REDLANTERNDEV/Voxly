@@ -25,7 +25,7 @@ import { defaultServerId } from "./lib/navigation.js";
 import { DEFAULT_VOLUME_PERCENT } from "./lib/voiceVolume.js";
 import { ClientUpdateBoundary } from "./components/ClientUpdateNotice.js";
 export function App() {
-  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
+  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname + window.location.hash));
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [roomHistory, setRoomHistory] = useState<RoomHistory>(() => readRoomHistory(window.localStorage));
   const routeRef = useRef(route);
@@ -52,7 +52,7 @@ export function App() {
 
   useEffect(() => {
     const handlePop = () => {
-      const nextRoute = parseRoute(window.location.pathname);
+      const nextRoute = parseRoute(window.location.pathname + window.location.hash);
       routeRef.current = nextRoute;
       setRoute(nextRoute);
     };

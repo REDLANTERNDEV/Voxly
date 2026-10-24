@@ -141,7 +141,7 @@ describe("voice snapshot reconciliation", () => {
   it("handles Back/Forward as route changes without leaving or remounting voice", () => {
     const app = readSource("src/App.tsx");
     const pop = app.match(/const\s+handlePop\s+=\s+\(\s*\)\s+=>\s+\{\s*[\s\S]*?\n\s+\}\s*;/)?.[0] ?? "";
-    assert.match(pop, /parseRoute\(\s*window.location.pathname\s*\)/);
+    assert.match(pop, /parseRoute\(\s*window.location.pathname(?:\s*\+\s*window.location.hash)?\s*\)/);
     assert.match(pop, /setRoute\(\s*nextRoute\s*\)/);
     assert.doesNotMatch(pop, /leave|reload|location\.(?:assign|replace)|joinVoice/);
     assert.match(app, /window.addEventListener\(\s*"popstate",\s+handlePop\s*\)/);

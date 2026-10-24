@@ -160,7 +160,7 @@ TURN_REALM=turn.example.com
 TURN_EXTERNAL_IP=203.0.113.10
 TURN_STATIC_AUTH_SECRET=replace-with-the-generated-secret
 TURN_CERT_DIR=/opt/voxly/secrets/turn
-TURN_CREDENTIAL_TTL_SECONDS=86400
+TURN_CREDENTIAL_TTL_SECONDS=3600
 TURN_MIN_PORT=49160
 TURN_MAX_PORT=50160
 TURN_USER_QUOTA=50
@@ -172,6 +172,14 @@ VOXLY_TURN_MEMORY_RESERVATION=32m
 `TURN_STATIC_AUTH_SECRET` must contain at least 32 random bytes. The application
 and Coturn must use the same value. Rotating it invalidates credentials signed
 with the previous value.
+
+`TURN_CREDENTIAL_TTL_SECONDS` (default 3600) is how long each relay credential
+lasts. Coturn checks the credential's own signature and expiry and never asks
+Voxly, so a banned or deleted account keeps its relay until the credential runs
+out: the TTL is the longest that removal takes to reach TURN. Browsers and the
+Music bot fetch fresh credentials five minutes before expiry, which restarts ICE
+on each call once per TTL. A shorter TTL removes access sooner at the cost of
+more frequent restarts; do not go below about ten minutes.
 
 The generated configuration also refuses relays to private, loopback,
 link-local, CGNAT and reserved addresses (`denied-peer-ip`). Every account that
@@ -318,7 +326,7 @@ secret to the environment of the Voxly web application service and redeploy it:
 ```dotenv
 TURN_REALM=turn.example.com
 TURN_STATIC_AUTH_SECRET=replace-with-the-same-generated-secret
-TURN_CREDENTIAL_TTL_SECONDS=86400
+TURN_CREDENTIAL_TTL_SECONDS=3600
 ```
 
 ## 6. Certificate renewal

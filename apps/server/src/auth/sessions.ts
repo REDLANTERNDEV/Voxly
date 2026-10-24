@@ -67,6 +67,19 @@ function cookieCandidates(cookies: SessionCookies) {
   });
 }
 
+/**
+ * Drops the session cookies a sibling subdomain could have set. Under HTTPS
+ * only the `__Host-` names are out of a sibling's reach; the plain name stays
+ * readable for callers that are not browsers — the Music bot is told that name
+ * and sends it from Node — and for plain-HTTP installations, which have nothing
+ * to protect it with.
+ */
+export function withoutUnprotectedSessionCookies(cookies: SessionCookies): SessionCookies {
+  return Object.fromEntries(
+    Object.entries(cookies).filter(([name]) => !sessionCookiePattern.test(name) || name.startsWith("__Host-"))
+  );
+}
+
 /** Latest represented Session, then its authoritative current credential. */
 export function readSessionToken(sqlite: DatabaseSync, cookies: SessionCookies) {
   const candidates = cookieCandidates(cookies).flatMap((cookie) => {
@@ -113,6 +126,14 @@ const tokenRotationMs = 15 * 60 * 1000;
  * the delivery-recovery path instead of turning elapsed time into evidence.
  */
 const tokenGraceMs = 2 * 60 * 1000;
+
+/**
+ * How long a replacement must have existed before seeing it counts as
+ * delivered. Browsers batch cookie writes (Chromium, and so WebView2, every
+ * thirty seconds or so); a replacement echoed back sooner may never reach disk
+ * if the browser, the phone tab or the desktop app is killed. See ADR-0033.
+ */
+const tokenPersistenceMs = 5 * 60 * 1000;
 
 /**
  * How long a retired value is remembered so that its reuse can still be
@@ -540,11 +561,19 @@ function recoverUnconfirmedRotation(
   return true;
 }
 
-/** A returned replacement is the evidence time alone could never provide. */
+/**
+ * A returned replacement is the evidence time alone could never provide — but
+ * only once the browser has had time to write it down. Seen sooner, it may
+ * still live only in memory, and a browser killed then reopens holding its
+ * predecessor. See ADR-0033.
+ */
 function confirmReplacementDelivery(database: VoxlyDatabase, sessionId: string, now = new Date()) {
   const changed = database.sqlite
-    .prepare("update session_tokens set replacement_seen_at = ? where session_id = ? and replacement_seen_at is null")
-    .run(now.toISOString(), sessionId).changes;
+    .prepare(
+      `update session_tokens set replacement_seen_at = ?
+       where session_id = ? and replacement_seen_at is null and superseded_at <= ?`
+    )
+    .run(now.toISOString(), sessionId, new Date(now.getTime() - tokenPersistenceMs).toISOString()).changes;
   if (changed > 0) database.save();
 }
 
@@ -585,9 +614,15 @@ export function authenticateSocket(
   database: VoxlyDatabase,
   cookieHeader: string | undefined,
   userAgent?: string,
-  diagnostics?: { logger: FastifyRequest["log"]; requestId: string }
+  diagnostics?: { logger: FastifyRequest["log"]; requestId: string },
+  /** Read only the `__Host-` names: an HTTPS installation's browser handshake. */
+  protectedCookiesOnly = false
 ) {
-  const { result } = authenticateCookies(database, parseCookieHeader(cookieHeader ?? ""));
+  const cookies = parseCookieHeader(cookieHeader ?? "");
+  const { result } = authenticateCookies(
+    database,
+    protectedCookiesOnly ? withoutUnprotectedSessionCookies(cookies) : cookies
+  );
   if (diagnostics && (result.status === "reused" || result.status === "unauthorized")) {
     diagnostics.logger.info(
       {

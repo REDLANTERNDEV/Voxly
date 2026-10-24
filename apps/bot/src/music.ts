@@ -52,7 +52,7 @@ import {
 import { createMusicSet, type MusicSet, type SetSocket } from "./set.js";
 import { fetchTrackAudio, resolveTrack, searchTracks, type TrackAudio } from "./stream.js";
 import { resolverFor, type Track } from "./track.js";
-import type { IceServer } from "./voxly.js";
+import type { IceServer, RtcConfig } from "./voxly.js";
 
 export interface MusicResponderOptions {
   socket: SetSocket;
@@ -64,8 +64,11 @@ export interface MusicResponderOptions {
    * request the server authorizes rather than a broadcast. See ADR-0005.
    */
   publish: (payload: { roomId: string; state: MusicQueueState }) => void;
-  /** Re-read per Set: TURN credentials are short-lived and minted per user. */
-  loadIceServers: () => Promise<IceServer[]>;
+  /**
+   * Read when a Set starts, and again before its TURN credentials run out:
+   * they are short-lived and minted per user, and a Set can outlast them.
+   */
+  loadRtcConfig: () => Promise<RtcConfig>;
   createSet?: typeof createMusicSet;
   resolve?: typeof resolveTrack;
   search?: typeof searchTracks;
@@ -96,6 +99,10 @@ export interface MusicResponder {
   close: () => Promise<void>;
   currentRoomId: () => string | null;
 }
+
+/** How far ahead of expiry, and how often at most, TURN credentials are refreshed. */
+const rtcRefreshLeadMs = 5 * 60_000;
+const rtcRefreshFloorMs = 60_000;
 
 /** Nothing to report: the request either worked or was about no Track at all. */
 const acknowledged: MusicCommandAck = { ok: true, kind: "track", track: null };
@@ -128,6 +135,8 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
   const startTimer = options.setTimeout ?? ((callback, milliseconds) => setTimeout(callback, milliseconds));
   const stopTimer = options.clearTimeout ?? ((timer) => clearTimeout(timer));
   let set: MusicSet | null = null;
+  /** The wait before the Set's TURN credentials run out, when they do. */
+  let rtcRefresh: NodeJS.Timeout | null = null;
   let audio: TrackAudio | null = null;
   let playback: PlaybackState = emptyPlayback();
   let queue: Promise<void> = Promise.resolve();
@@ -320,9 +329,38 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
       .catch(() => undefined);
   }
 
+  /**
+   * Re-read the RTC configuration five minutes before its credentials expire,
+   * as the browsers in the room do, and hand the new servers to the Set. A
+   * failed read tries again a minute later rather than giving up on the Set.
+   */
+  function scheduleRtcRefresh(started: MusicSet, expiresAt: number | null) {
+    if (rtcRefresh) stopTimer(rtcRefresh);
+    rtcRefresh = null;
+    if (expiresAt === null) return;
+    const wait = Math.max(rtcRefreshFloorMs, expiresAt * 1000 - Date.now() - rtcRefreshLeadMs);
+    rtcRefresh = startTimer(() => {
+      rtcRefresh = null;
+      if (set !== started) return;
+      void options
+        .loadRtcConfig()
+        .then((config) => {
+          if (set !== started) return;
+          started.updateIceServers(config.iceServers);
+          scheduleRtcRefresh(started, config.expiresAt);
+        })
+        .catch((cause: unknown) => {
+          log(`could not refresh the RTC configuration (${String(cause)}); trying again shortly`);
+          if (set === started) scheduleRtcRefresh(started, Date.now() / 1000);
+        });
+    }, wait);
+  }
+
   async function endCurrentSet() {
     const current = set;
     set = null;
+    if (rtcRefresh) stopTimer(rtcRefresh);
+    rtcRefresh = null;
     if (current) {
       // Before the membership goes, not after: a publish from a member the
       // server has already seen leave is a publish the server refuses, and the
@@ -369,9 +407,9 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
     // connects two peers that can see each other directly, which is the common
     // self-hosted case, and refusing to play at all would be a worse answer
     // than playing without TURN.
-    const iceServers = await options.loadIceServers().catch((cause: unknown) => {
+    const { iceServers, expiresAt } = await options.loadRtcConfig().catch((cause: unknown) => {
       log(`could not read the RTC configuration (${String(cause)}); continuing without TURN`);
-      return [] as IceServer[];
+      return { iceServers: [] as IceServer[], expiresAt: null };
     });
     // Held before it is begun, so a join that fails part-way through is a Set
     // the error path can find and end rather than one left holding a
@@ -415,6 +453,7 @@ export function createMusicResponder(options: MusicResponderOptions): MusicRespo
     });
     set = started;
     await started.begin();
+    scheduleRtcRefresh(started, expiresAt);
     return started;
   }
 

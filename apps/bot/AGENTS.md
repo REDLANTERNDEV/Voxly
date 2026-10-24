@@ -107,6 +107,10 @@ The bot is a peer in the mesh, not a server-side mixer. Read
 Listener, and `docs/adr/0002-werift-for-the-bot-webrtc-stack.md` before reaching
 for a library feature.
 
+- TURN credentials are read when a Set starts and again five minutes before
+  they expire, for as long as the Set lasts. New servers go to the mesh, which
+  builds new Listeners with them and rebuilds, rather than ICE-restarts, a
+  Listener whose connection still holds the old ones.
 - Apply `shouldInitiatePeerConnection` and `shouldIgnoreIncomingOffer` from
   `@voxly/shared` exactly as the browser does. The bot deviated from them in the
   ticket 03 spike, to work around a client that offered no media sections when

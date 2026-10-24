@@ -11,6 +11,7 @@ export type PathRoute =
   | { name: "owner-claim" }
   | { name: "link-device" }
   | { name: "desktop-verify"; id: string }
+  | { name: "desktop-start" }
   | { name: "recover" }
   | { name: "access-claim"; token: string }
   | { name: "text"; serverId: string; roomId: string }
@@ -30,15 +31,15 @@ export function resolveInitialRoute(input: InitialRouteInput) {
   }
 
   if (input.inviteToken) {
-    return `/invite/${encodeURIComponent(input.inviteToken)}`;
+    return `/invite#${encodeURIComponent(input.inviteToken)}`;
   }
 
   return "/";
 }
 
-export function parsePathRoute(pathname: string): PathRoute {
+export function parsePathRoute(pathname: string, hash = ""): PathRoute {
   if (pathname === "/") return { name: "landing" };
-  if (pathname === "/invite") return { name: "invite", token: "" };
+  if (pathname === "/invite") return { name: "invite", token: getInviteToken(pathname, hash) };
   if (pathname.startsWith("/owner")) return { name: "owner", serverId: defaultServerId };
   if (pathname === "/setup/owner") return { name: "owner-claim" };
   // The arriving Device has no session, so this route must resolve before any
@@ -50,6 +51,9 @@ export function parsePathRoute(pathname: string): PathRoute {
   if (pathname === "/link-device" || pathname === "/link") return { name: "link-device" };
   const desktopVerification = pathname.match(/^\/desktop\/verify\/([^/]+)$/);
   if (desktopVerification) return { name: "desktop-verify", id: decodeURIComponent(desktopVerification[1]) };
+  // Where a desktop window sends its member to begin a sign-in: their browser,
+  // where the launch that binds the approval to them is created.
+  if (pathname === "/desktop/sign-in") return { name: "desktop-start" };
   if (pathname === "/recover") return { name: "recover" };
   if (pathname === "/access/claim")
     return { name: "access-claim", token: getAccessClaimTokenFromHash(window.location.hash) };
@@ -77,6 +81,18 @@ export function parsePathRoute(pathname: string): PathRoute {
     };
   if (pathname.startsWith("/invite/")) return { name: "invite", token: getInviteTokenFromPath(pathname) };
   return { name: "landing" };
+}
+
+/** An invite token from the fragment (current links) or the path (older links). */
+export function getInviteToken(pathname: string, hash: string) {
+  if (pathname === "/invite" && hash.length > 1) {
+    try {
+      return decodeURIComponent(hash.slice(1));
+    } catch {
+      return "";
+    }
+  }
+  return getInviteTokenFromPath(pathname);
 }
 
 export function getInviteTokenFromPath(pathname: string) {

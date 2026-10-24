@@ -3,10 +3,11 @@ import type { PublicUser } from "@voxly/shared";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { acceptInvite, ApiError, previewInvite } from "../../api.js";
-import { extractInviteToken, inviteAvailabilityCopy, inviteStatusTitle, statusClass } from "../../app/presentation.js";
+import { inviteAvailabilityCopy, inviteStatusTitle, statusClass } from "../../app/presentation.js";
 import type { Translate } from "../../app/types.js";
 import { ArrowIcon } from "../../components/ui/Icons.js";
 import { type TranslationKey, type LanguageCode } from "../../lib/i18n.js";
+import { extractInviteToken } from "../../lib/invites.js";
 import { loadTurnstile } from "../../lib/turnstile.js";
 import type { TimeFormatPreference } from "../../lib/timeFormat.js";
 export function InviteScreen({
@@ -48,6 +49,12 @@ export function InviteScreen({
     setTurnstileToken("");
     setFieldError("invite.turnstileUnavailable");
   }, []);
+
+  // The token is in hand; take it out of the address bar and history, the way
+  // Link device does with its code.
+  useEffect(() => {
+    if (initialToken) window.history.replaceState(null, "", "/invite");
+  }, [initialToken]);
 
   useEffect(() => {
     const token = extractInviteToken(initialToken);

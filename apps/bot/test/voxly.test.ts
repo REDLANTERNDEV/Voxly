@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { BotEnvironment } from "../src/config.js";
 import { describe, it } from "node:test";
 import { createSessionHolder } from "../src/credentials.js";
-import { fetchIceServers, type FetchJson } from "../src/voxly.js";
+import { fetchIceServers, fetchRtcConfig, type FetchJson } from "../src/voxly.js";
 
 const environment: BotEnvironment = {
   serverUrl: "http://127.0.0.1:3000",
@@ -40,6 +40,26 @@ describe("reading the RTC configuration", () => {
     assert.deepEqual(servers, [{ urls: "stun:example.test" }]);
     assert.equal(calls[0].url, "http://127.0.0.1:3000/api/rtc/config");
     assert.equal(calls[0].cookie, "voxly_session=token-one");
+  });
+
+  it("reports when the credentials expire, so a long Set can refresh them", async () => {
+    const { fetchImpl } = fetchDouble([
+      { status: 200, body: { iceServers: [{ urls: "turn:example.test" }], expiresAt: 1_700_003_600 } }
+    ]);
+    assert.deepEqual(
+      await fetchRtcConfig({ serverUrl: environment.serverUrl, cookieName: "c", sessionToken: "t", fetchImpl }),
+      { iceServers: [{ urls: "turn:example.test" }], expiresAt: 1_700_003_600 }
+    );
+    const { fetchImpl: withoutExpiry } = fetchDouble([{ status: 200, body: { iceServers: [] } }]);
+    assert.deepEqual(
+      await fetchRtcConfig({
+        serverUrl: environment.serverUrl,
+        cookieName: "c",
+        sessionToken: "t",
+        fetchImpl: withoutExpiry
+      }),
+      { iceServers: [], expiresAt: null }
+    );
   });
 
   it("answers with no servers rather than a shape nobody can use", async () => {

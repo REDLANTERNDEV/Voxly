@@ -19,7 +19,6 @@ import type { LanguageCode } from "../../lib/i18n.js";
 export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: () => void }) {
   const [launchId] = useState(() => desktopLaunchFromSearch(window.location.search));
   const automaticStarted = useRef(false);
-  const [usingLaunch, setUsingLaunch] = useState(false);
   const [request, setRequest] = useState<DesktopAuthorization | null>(null);
   const current = useRef<DesktopAuthorization | null>(null);
   const mounted = useRef(false);
@@ -89,13 +88,14 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
     };
   }, [request, outcome, onLinked]);
 
-  const start = useCallback(async (automaticLaunchId?: string) => {
+  // Only from a launch the member's own browser created (ADR-0027): the
+  // approval is then bound to them, not to whichever member is asked.
+  const start = useCallback(async (fromLaunchId: string) => {
     const startingRevision = ++revision.current;
     setBusy(true);
     setError(false);
-    setUsingLaunch(Boolean(automaticLaunchId));
     try {
-      const created = await createDesktopAuthorization(automaticLaunchId);
+      const created = await createDesktopAuthorization(fromLaunchId);
       if (!mounted.current || revision.current !== startingRevision) {
         void cancelDesktopAuthorization(created.id, created.secret).catch(() => undefined);
         return;
@@ -108,7 +108,7 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
         () => mounted.current && revision.current === startingRevision
       );
       approvalWindow.current = nativeWindow;
-      if (automaticLaunchId) void nativeWindow.minimize();
+      void nativeWindow.minimize();
     } catch {
       if (mounted.current && revision.current === startingRevision) setError(true);
     } finally {
@@ -131,30 +131,16 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
     if (pending) void cancelDesktopAuthorization(pending.id, pending.secret).catch(() => undefined);
   };
 
-  const address = request ? `${window.location.origin}/desktop/verify/${encodeURIComponent(request.id)}` : "";
   return (
     <section className="link-panel desktop-browser-sign-in">
       <strong>{t("desktopSignIn.title")}</strong>
       {request && outcome === "pending" ? (
         <>
           <p className="desktop-launch-origin">{window.location.origin}</p>
-          <p className="muted small">{t(usingLaunch ? "desktopSignIn.returnBrowser" : "desktopSignIn.compare")}</p>
+          <p className="muted small">{t("desktopSignIn.returnBrowser")}</p>
           <span className="link-confirmation code-face" aria-label={t("link.confirmationLabel")}>
             {request.confirmation}
           </span>
-          {!usingLaunch ? (
-            <>
-              <a
-                className="btn btn-primary"
-                href={address}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => void approvalWindow.current?.minimize()}
-              >
-                {t("desktopSignIn.openBrowser")}
-              </a>
-            </>
-          ) : null}
           <p className="muted small" role="status">
             {t("desktopSignIn.waiting")}
           </p>
@@ -176,9 +162,15 @@ export function DesktopBrowserSignIn({ t, onLinked }: { t: Translate; onLinked: 
               {t("desktopSignIn.failed")}
             </p>
           ) : null}
-          <button className="btn btn-primary" type="button" disabled={busy} onClick={() => void start()}>
+          <a
+            className="btn btn-primary"
+            href={`${window.location.origin}/desktop/sign-in`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-disabled={busy}
+          >
             {t("desktopSignIn.start")}
-          </button>
+          </a>
         </>
       )}
     </section>

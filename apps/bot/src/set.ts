@@ -106,6 +106,8 @@ export interface MusicSet {
   stop: () => void;
   /** Ends the Set. Safe to call twice; the second call does nothing. */
   end: () => Promise<void>;
+  /** Fresh TURN credentials, for a Set that outlasts the ones it began with. */
+  updateIceServers: (iceServers: IceServer[]) => void;
 }
 
 export function createMusicSet(options: MusicSetOptions): MusicSet {
@@ -271,6 +273,9 @@ export function createMusicSet(options: MusicSetOptions): MusicSet {
       }
       joined = true;
       log(`joined voice room ${roomId}`);
+    },
+    updateIceServers(iceServers) {
+      if (!ended) mesh.updateIceServers(iceServers);
     },
     loadTrack(audio) {
       if (ended) return;

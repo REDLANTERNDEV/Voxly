@@ -1,12 +1,35 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { buildInviteUrl, inviteReference, maskSecretLink, resolveInviteOrigin } from "../src/lib/invites.js";
+import {
+  buildInviteUrl,
+  extractInviteToken,
+  inviteReference,
+  maskSecretLink,
+  resolveInviteOrigin
+} from "../src/lib/invites.js";
 import { readAppSource } from "./app-source.js";
 
 describe("owner invite display", () => {
   it("builds a shareable invite URL from the one-time token", () => {
-    assert.equal(buildInviteUrl("abc 123", "http://127.0.0.1:3000/"), "http://127.0.0.1:3000/invite/abc%20123");
+    // In the fragment, which browsers never send: no request or access log
+    // along the way records the token.
+    assert.equal(buildInviteUrl("abc 123", "http://127.0.0.1:3000/"), "http://127.0.0.1:3000/invite#abc%20123");
+    assert.equal(
+      maskSecretLink(buildInviteUrl("tok", "https://voxly.example.com")),
+      "https://voxly.example.com/invite#••••••••••••"
+    );
+  });
+
+  it("takes the token out of a pasted link of either shape", () => {
+    assert.equal(extractInviteToken(" https://voxly.example.com/invite#new-shape-token "), "new-shape-token");
+    assert.equal(extractInviteToken("https://voxly.example.com/invite/old-shape-token"), "old-shape-token");
+    assert.equal(extractInviteToken("bare-token"), "bare-token");
+  });
+
+  it("drops the token from the address bar once the invite screen has it", () => {
+    const source = readFileSync("src/features/auth/InviteScreen.tsx", "utf8");
+    assert.match(source, /window\.history\.replaceState\(\s*null,\s*"",\s*"\/invite"\s*\)/);
   });
 
   it("labels stored invite ids as references, not invite tokens", () => {

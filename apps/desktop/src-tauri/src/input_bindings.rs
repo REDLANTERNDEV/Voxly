@@ -9,7 +9,6 @@ pub struct PhysicalBinding {
     pub modifiers: [u8; 4],
 }
 
-#[cfg(any(test, target_os = "windows"))]
 const MODIFIER_KEYS: [[u16; 2]; 4] = [[0x1d, 0x11d], [0x38, 0x138], [0x2a, 0x36], [0x15b, 0x15c]];
 
 pub fn key_code(code: &str) -> Option<u16> {
@@ -242,6 +241,67 @@ impl PhysicalShortcutGates {
     }
 }
 
+/// Whether `binding` names exactly the keys in `chord` — no key the person did
+/// not press, and none they pressed left out. A side-neutral modifier is
+/// satisfied by either side. This is how a remote Installation's requested
+/// binding is held to what the native hook saw (ADR-0020).
+pub fn matches_observed(
+    binding: &PhysicalBinding,
+    chord: &std::collections::BTreeSet<u16>,
+) -> bool {
+    if chord.is_empty() || (binding.key != 0 && !chord.contains(&binding.key)) {
+        return false;
+    }
+    let sides_present = MODIFIER_KEYS
+        .iter()
+        .zip(binding.modifiers)
+        .all(|(keys, required)| {
+            let left = chord.contains(&keys[0]);
+            let right = chord.contains(&keys[1]);
+            match required {
+                0 => !left && !right,
+                1 => left && !right,
+                2 => right && !left,
+                3 => left && right,
+                _ => left || right,
+            }
+        });
+    let nothing_else = chord
+        .iter()
+        .all(|code| *code == binding.key || MODIFIER_KEYS.iter().any(|keys| keys.contains(code)));
+    sides_present && nothing_else
+}
+
+/// The last chord pressed while a remote Installation records a shortcut: the
+/// keys held together since everything was last released. Fed by the native
+/// hook from real, non-injected input; a fresh press after a full release
+/// starts a new chord, so a fumbled attempt does not linger in it.
+#[cfg(any(test, target_os = "windows"))]
+#[derive(Default)]
+pub struct ShortcutCapture {
+    held: std::collections::BTreeSet<u16>,
+    chord: std::collections::BTreeSet<u16>,
+}
+
+#[cfg(any(test, target_os = "windows"))]
+impl ShortcutCapture {
+    pub fn observe(&mut self, key: u16, pressed: bool) {
+        if pressed {
+            if self.held.is_empty() {
+                self.chord.clear();
+            }
+            self.held.insert(key);
+            self.chord.insert(key);
+        } else {
+            self.held.remove(&key);
+        }
+    }
+
+    pub fn chord(&self) -> &std::collections::BTreeSet<u16> {
+        &self.chord
+    }
+}
+
 /// Function keys use their stable VK; other keys use scan code + extended bit.
 #[cfg(any(test, target_os = "windows"))]
 pub fn observed_key(scan: u32, extended: bool, virtual_key: u32) -> u16 {
@@ -352,5 +412,60 @@ mod tests {
             parse_physical("Control+Alt+Delete"),
             Err("shortcut_unavailable")
         );
+    }
+
+    #[test]
+    fn capture_keeps_only_the_last_chord_the_person_pressed() {
+        let mut capture = ShortcutCapture::default();
+        // A fumbled first attempt, fully released, then Ctrl+Shift+M.
+        capture.observe(0x25, true);
+        capture.observe(0x25, false);
+        for key in [0x1d, 0x2a, 0x32] {
+            capture.observe(key, true);
+        }
+        for key in [0x32, 0x2a, 0x1d] {
+            capture.observe(key, false);
+        }
+        assert_eq!(capture.chord(), &[0x1d, 0x2a, 0x32].into_iter().collect());
+        // A repeat of a held key is not a new chord.
+        capture.observe(0x1d, true);
+        capture.observe(0x1d, true);
+        capture.observe(0x1d, false);
+        assert_eq!(capture.chord(), &[0x1d].into_iter().collect());
+    }
+
+    #[test]
+    fn a_binding_must_be_exactly_the_keys_that_were_pressed() {
+        let chord = |keys: &[u16]| {
+            keys.iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<u16>>()
+        };
+        let binding = |text: &str| parse_physical(text).unwrap();
+        assert!(matches_observed(
+            &binding("ControlLeft+ShiftLeft+KeyM"),
+            &chord(&[0x1d, 0x2a, 0x32])
+        ));
+        // Side-neutral modifiers accept either side.
+        assert!(matches_observed(
+            &binding("Control+KeyM"),
+            &chord(&[0x11d, 0x32])
+        ));
+        assert!(matches_observed(&binding("ControlLeft"), &chord(&[0x1d])));
+        assert!(matches_observed(
+            &binding("Alt+Mouse4"),
+            &chord(&[0x138, 0x204])
+        ));
+        // A key the page named but nobody pressed, or one pressed but left out.
+        assert!(!matches_observed(&binding("KeyM"), &chord(&[0x1d, 0x32])));
+        assert!(!matches_observed(
+            &binding("ControlLeft+KeyM"),
+            &chord(&[0x32])
+        ));
+        assert!(!matches_observed(
+            &binding("ControlRight+KeyM"),
+            &chord(&[0x1d, 0x32])
+        ));
+        assert!(!matches_observed(&binding("KeyA"), &chord(&[])));
     }
 }
