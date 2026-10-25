@@ -22,7 +22,11 @@ pub(super) async fn run(app: &tauri::AppHandle, card: update_card::LaunchCard) {
     card.close();
     let shell = app.clone();
     let _ = app.run_on_main_thread(move || {
-        let _ = super::runtime::open_shell(&shell);
+        // Setup fails the same way when Home cannot be built. Exiting leaves
+        // Voxly startable again, where carrying on would leave only a tray icon.
+        if super::runtime::open_shell(&shell).is_err() {
+            shell.exit(1);
+        }
     });
 }
 

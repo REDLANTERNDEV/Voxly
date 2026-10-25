@@ -80,8 +80,6 @@ pub(super) fn run() {
         ])
         .setup(|app| {
             crate::platform::configure_taskbar_identity(app.handle());
-            // A relaunch after a silent update closes the card that waited for it.
-            crate::update_card::dismiss();
             if let Ok(cache) = app.path().app_cache_dir() {
                 update_installer::cleanup(&cache.join("updates"));
             }
@@ -151,6 +149,12 @@ pub(super) fn run() {
                 .then(|| crate::update_card::LaunchCard::open(language))
                 .flatten();
             let home_waits = launch_card.is_some();
+            // A relaunch after a silent update closes the install card that waited
+            // for it. A launch card does that itself once it is drawn, so the two
+            // overlap and the screen is never left empty between them.
+            if !home_waits {
+                crate::update_card::dismiss();
+            }
             if updates_enabled {
                 let update_app = app.handle().clone();
                 tauri::async_runtime::spawn(async move {

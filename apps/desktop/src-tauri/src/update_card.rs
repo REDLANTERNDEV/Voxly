@@ -319,11 +319,11 @@ mod window {
         ShellExecuteExW, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, DrawIconEx, FindWindowW,
-        GetClientRect, GetMessageW, KillTimer, LoadCursorW, LoadImageW, PostMessageW,
-        PostQuitMessage, RegisterClassW, SetForegroundWindow, SetProcessDPIAware, SetTimer,
-        SetWindowTextW, SystemParametersInfoW, TranslateMessage, CS_HREDRAW, CS_VREDRAW, DI_NORMAL,
-        HICON, IDC_ARROW, IMAGE_ICON, LR_DEFAULTCOLOR, MSG, SPI_GETCLIENTAREAANIMATION,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, DrawIconEx,
+        FindWindowExW, FindWindowW, GetClientRect, GetMessageW, KillTimer, LoadCursorW, LoadImageW,
+        PostMessageW, PostQuitMessage, RegisterClassW, SetForegroundWindow, SetProcessDPIAware,
+        SetTimer, SetWindowTextW, SystemParametersInfoW, TranslateMessage, CS_HREDRAW, CS_VREDRAW,
+        DI_NORMAL, HICON, IDC_ARROW, IMAGE_ICON, LR_DEFAULTCOLOR, MSG, SPI_GETCLIENTAREAANIMATION,
         SPI_GETWORKAREA, SW_SHOWNORMAL, WM_APP, WM_CLOSE, WM_DESTROY, WM_ERASEBKGND, WM_PAINT,
         WM_TIMER, WNDCLASSW, WS_EX_TOPMOST, WS_POPUP, WS_VISIBLE,
     };
@@ -361,6 +361,8 @@ mod window {
         progress: Option<f32>,
         // Install mode only: the installed version to reopen if the update fails.
         app: Option<PathBuf>,
+        // Launch mode: close the install card this one follows, once drawn.
+        replace_others: bool,
         relaunched: bool,
         scale: f32,
         animate: bool,
@@ -375,10 +377,11 @@ mod window {
             (value * self.scale).round() as i32
         }
 
+        /// The window title is what Narrator reads and the taskbar shows, so it
+        /// carries the stage as well as the heading.
         fn title(&self) -> Vec<u16> {
-            wide(OsStr::new(
-                &text(self.language, self.stage, &self.version).title,
-            ))
+            let text = text(self.language, self.stage, &self.version);
+            wide(OsStr::new(&format!("{} · {}", text.title, text.detail)))
         }
 
         fn relaunch(&mut self) {
@@ -505,6 +508,7 @@ mod window {
             stage,
             version,
             progress: None,
+            replace_others: app.is_none(),
             app,
             relaunched: false,
             scale,
@@ -743,6 +747,22 @@ mod window {
         DeleteObject(bitmap);
         DeleteDC(dc);
         EndPaint(hwnd, &painting);
+        if with_card(|card| std::mem::take(&mut card.replace_others)) == Some(true) {
+            close_other_cards(hwnd);
+        }
+    }
+
+    /// Every card shares the class, so this finds the install card a relaunch
+    /// followed, and closes it only now that this one is on screen.
+    unsafe fn close_other_cards(own: HWND) {
+        let class = wide(OsStr::new(CLASS));
+        let mut other = FindWindowExW(null_mut(), null_mut(), class.as_ptr(), null());
+        while !other.is_null() {
+            if other != own {
+                PostMessageW(other, WM_CLOSE, 0, 0);
+            }
+            other = FindWindowExW(null_mut(), other, class.as_ptr(), null());
+        }
     }
 
     unsafe fn rounded(dc: HDC, area: RECT, radius: i32, color: COLORREF) {
