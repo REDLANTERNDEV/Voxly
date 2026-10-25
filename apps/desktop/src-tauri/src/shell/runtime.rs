@@ -146,13 +146,14 @@ pub(super) fn run() {
                 tauri::async_runtime::spawn(async move {
                     loop {
                         let updates = update_app.state::<updates::Updates>();
-                        if updates.check(&update_app).await.is_ok()
+                        let scheduled = updates::Trigger::Scheduled;
+                        if updates.check(&update_app, scheduled).await.is_ok()
                             && updates.background_download_allowed()
                         {
-                            let _ = updates.download(&update_app).await;
+                            let _ = updates.download(&update_app, scheduled).await;
                         }
                         // Native scheduling also runs while every window is hidden.
-                        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                        tokio::time::sleep(updates.next_check_delay()).await;
                     }
                 });
             }

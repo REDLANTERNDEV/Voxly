@@ -130,7 +130,7 @@ async fn check_requested(app: &tauri::AppHandle) -> Result<updates::Snapshot, &'
     if !tray_check_needed(updates.snapshot().phase) {
         return Ok(updates.snapshot());
     }
-    match updates.check(app).await {
+    match updates.check(app, updates::Trigger::Requested).await {
         Err("update_busy") => Ok(updates.snapshot()),
         result => result,
     }
@@ -186,7 +186,7 @@ pub(super) async fn download_shell_update(
     updates: tauri::State<'_, updates::Updates>,
 ) -> Result<updates::Snapshot, &'static str> {
     trusted_shell(&window)?;
-    updates.download(&app).await
+    updates.download(&app, updates::Trigger::Requested).await
 }
 
 #[tauri::command]

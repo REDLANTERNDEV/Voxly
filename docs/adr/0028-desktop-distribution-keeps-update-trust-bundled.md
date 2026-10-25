@@ -18,7 +18,10 @@ capture stops and the Installation webview is destroyed before Windows install.
 Endpoint failure, tampered signatures and cancelled downloads leave calls usable.
 
 Native checks run at application startup and hourly while the process remains
-alive, including hidden tray sessions. Available installers are downloaded and
+alive, including hidden tray sessions. A scheduled check or download that cannot
+reach the service — routinely the first one after the PC resumes from sleep —
+keeps the last known state and retries after two, then ten minutes; manual
+checks and verification failures always report. Available installers are downloaded and
 verified quietly. Cancelling a download or discarding it suppresses automatic
 download of that version for the current process; a manual download remains
 available. Installation content may read only public update status/version and

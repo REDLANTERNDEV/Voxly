@@ -68,12 +68,32 @@ pub struct Snapshot {
     pub error: Option<&'static str>,
 }
 
+/// Scheduled work keeps the last known state through an unreachable network
+/// (typically just after resume); a person's request always reports.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Trigger {
+    Scheduled,
+    Requested,
+}
+
+const SCHEDULED_CHECK: Duration = Duration::from_secs(3600);
+
+/// Quick retries after silent scheduled failures, then the ordinary hour.
+pub fn check_delay(scheduled_failures: u32) -> Duration {
+    match scheduled_failures {
+        1 => Duration::from_secs(120),
+        2 => Duration::from_secs(600),
+        _ => SCHEDULED_CHECK,
+    }
+}
+
 struct Inner {
     snapshot: Snapshot,
     candidate: Option<Update>,
     bytes: Option<Vec<u8>>,
     cancel: Option<oneshot::Sender<()>>,
     cancelled_version: Option<String>,
+    scheduled_failures: u32,
 }
 
 pub struct Updates {
@@ -99,8 +119,13 @@ impl Updates {
                 bytes: None,
                 cancel: None,
                 cancelled_version: None,
+                scheduled_failures: 0,
             }),
         }
+    }
+
+    pub fn next_check_delay(&self) -> Duration {
+        check_delay(self.inner.lock().unwrap().scheduled_failures)
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -120,14 +145,19 @@ impl Updates {
         inner.snapshot.error = error;
     }
 
-    pub async fn check(&self, app: &tauri::AppHandle) -> Result<Snapshot, &'static str> {
+    pub async fn check(
+        &self,
+        app: &tauri::AppHandle,
+        trigger: Trigger,
+    ) -> Result<Snapshot, &'static str> {
         let _lease = self.operation.try_lock().map_err(|_| "update_busy")?;
-        if self.snapshot().phase == "disabled" {
-            return Ok(self.snapshot());
+        let prior = self.snapshot();
+        if prior.phase == "disabled" {
+            return Ok(prior);
         }
         // A verified download is retained until explicitly discarded or installed.
         if self.inner.lock().unwrap().bytes.is_some() {
-            return Ok(self.snapshot());
+            return Ok(prior);
         }
         self.phase("checking", None);
         crate::shell::publish_update_state(app);
@@ -151,6 +181,19 @@ impl Updates {
             Ok::<_, &'static str>(update)
         }
         .await;
+        let settled = self.settle_check(&prior, result, trigger);
+        crate::shell::publish_update_state(app);
+        settled
+    }
+
+    /// A silent scheduled failure restores `prior` and returns the error so no
+    /// download follows; every other outcome is published as the new state.
+    fn settle_check(
+        &self,
+        prior: &Snapshot,
+        result: Result<Option<Update>, &'static str>,
+        trigger: Trigger,
+    ) -> Result<Snapshot, &'static str> {
         let mut inner = self.inner.lock().unwrap();
         match result {
             Ok(candidate) => {
@@ -162,19 +205,27 @@ impl Updates {
                 };
                 inner.snapshot.error = None;
                 inner.candidate = candidate;
+                inner.scheduled_failures = 0;
+            }
+            Err(error) if silent(error, trigger) => {
+                inner.snapshot.phase = prior.phase;
+                inner.snapshot.error = prior.error;
+                inner.scheduled_failures = inner.scheduled_failures.saturating_add(1);
+                return Err(error);
             }
             Err(error) => {
                 inner.snapshot.phase = "error";
                 inner.snapshot.error = Some(error);
             }
         }
-        let snapshot = inner.snapshot.clone();
-        drop(inner);
-        crate::shell::publish_update_state(app);
-        Ok(snapshot)
+        Ok(inner.snapshot.clone())
     }
 
-    pub async fn download(&self, app: &tauri::AppHandle) -> Result<Snapshot, &'static str> {
+    pub async fn download(
+        &self,
+        app: &tauri::AppHandle,
+        trigger: Trigger,
+    ) -> Result<Snapshot, &'static str> {
         let _lease = self.operation.try_lock().map_err(|_| "update_busy")?;
         let (candidate, cancel) = {
             let mut inner = self.inner.lock().unwrap();
@@ -201,23 +252,31 @@ impl Updates {
             _ = cancel => Err("update_cancelled"),
             result = tokio::time::timeout(Duration::from_secs(180), self.fetch(&candidate, key)) => result.unwrap_or(Err("update_unavailable")),
         };
+        let snapshot = self.settle_download(result, trigger);
+        crate::shell::publish_update_state(app);
+        Ok(snapshot)
+    }
+
+    fn settle_download(&self, result: Result<Vec<u8>, &'static str>, trigger: Trigger) -> Snapshot {
         let mut inner = self.inner.lock().unwrap();
         inner.cancel = None;
         match result {
             Ok(bytes) => {
                 inner.bytes = Some(bytes);
                 inner.snapshot.phase = "ready";
+                inner.scheduled_failures = 0;
             }
             Err(error) => {
                 inner.bytes = None;
                 inner.snapshot.phase = "available";
-                inner.snapshot.error = Some(error);
+                if silent(error, trigger) {
+                    inner.scheduled_failures = inner.scheduled_failures.saturating_add(1);
+                } else {
+                    inner.snapshot.error = Some(error);
+                }
             }
         }
-        let snapshot = inner.snapshot.clone();
-        drop(inner);
-        crate::shell::publish_update_state(app);
-        Ok(snapshot)
+        inner.snapshot.clone()
     }
 
     async fn fetch(&self, update: &Update, key: &str) -> Result<Vec<u8>, &'static str> {
@@ -303,6 +362,11 @@ async fn fetch_verified(
     }
     verify(&bytes, signature, key)?;
     Ok(bytes)
+}
+
+/// Only an unreachable service is retried quietly; verification failures always show.
+fn silent(error: &str, trigger: Trigger) -> bool {
+    trigger == Trigger::Scheduled && error == "update_unavailable"
 }
 
 fn manifest_error(error: tauri_plugin_updater::Error) -> &'static str {
@@ -468,5 +532,73 @@ mod tests {
         assert!(updates.background_download_allowed());
         updates.phase("available", Some("update_signature"));
         assert!(!updates.background_download_allowed());
+    }
+
+    fn settled(updates: &Updates) -> (&'static str, Option<&'static str>) {
+        let snapshot = updates.snapshot();
+        (snapshot.phase, snapshot.error)
+    }
+
+    #[test]
+    fn scheduled_checks_keep_the_last_state_while_the_service_is_unreachable() {
+        for prior in ["idle", "current"] {
+            let updates = Updates::new(true);
+            updates.phase(prior, None);
+            let before = updates.snapshot();
+            // Resume: the hourly check fires before the network is back.
+            updates.phase("checking", None);
+            let result =
+                updates.settle_check(&before, Err("update_unavailable"), Trigger::Scheduled);
+            assert_eq!(result.err(), Some("update_unavailable"));
+            assert_eq!(settled(&updates), (prior, None));
+        }
+        let updates = Updates::new(true);
+        let before = updates.snapshot();
+        assert!(updates
+            .settle_check(&before, Err("update_unavailable"), Trigger::Requested)
+            .is_ok());
+        assert_eq!(settled(&updates), ("error", Some("update_unavailable")));
+        for error in ["update_invalid", "update_signature"] {
+            let updates = Updates::new(true);
+            let before = updates.snapshot();
+            assert!(updates
+                .settle_check(&before, Err(error), Trigger::Scheduled)
+                .is_ok());
+            assert_eq!(settled(&updates), ("error", Some(error)));
+        }
+    }
+
+    #[test]
+    fn interrupted_scheduled_downloads_stay_quietly_available_for_the_next_cycle() {
+        let updates = Updates::new(true);
+        {
+            let mut inner = updates.inner.lock().unwrap();
+            inner.snapshot.phase = "downloading";
+            inner.snapshot.version = Some("0.2.0".into());
+        }
+        updates.settle_download(Err("update_unavailable"), Trigger::Scheduled);
+        assert_eq!(settled(&updates), ("available", None));
+        assert!(updates.background_download_allowed());
+        updates.settle_download(Err("update_unavailable"), Trigger::Requested);
+        assert_eq!(settled(&updates), ("available", Some("update_unavailable")));
+        updates.phase("downloading", None);
+        updates.settle_download(Err("update_signature"), Trigger::Scheduled);
+        assert_eq!(settled(&updates), ("available", Some("update_signature")));
+    }
+
+    #[test]
+    fn silent_failures_retry_soon_then_return_to_the_hourly_check() {
+        let updates = Updates::new(true);
+        let before = updates.snapshot();
+        assert_eq!(updates.next_check_delay(), Duration::from_secs(3600));
+        let mut delays = Vec::new();
+        for _ in 0..4 {
+            let _ = updates.settle_check(&before, Err("update_unavailable"), Trigger::Scheduled);
+            delays.push(updates.next_check_delay().as_secs());
+        }
+        assert_eq!(delays, [120, 600, 3600, 3600]);
+        let _ = updates.settle_check(&before, Ok(None), Trigger::Scheduled);
+        assert_eq!(updates.next_check_delay(), Duration::from_secs(3600));
+        assert_eq!(settled(&updates), ("current", None));
     }
 }
