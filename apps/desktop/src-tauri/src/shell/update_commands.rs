@@ -248,11 +248,40 @@ pub(super) async fn install_shell_update(
     *shell.voice_target.write().map_err(|_| "window_failed")? = None;
     inner.active = None;
     inner.active_chosen_locally = false;
+    let version = updates.snapshot().version.unwrap_or_default();
     // No await between teardown and install: no new Installation can open under this lease.
-    if prepared.launch().is_err() {
+    if prepared
+        .launch(inner.preferences.language, &version)
+        .is_err()
+    {
         updates.install_failed(&app);
         return Err("update_install_failed");
     }
     app.exit(0);
     Ok(())
+}
+
+/// At launch no Installation, call or capture exists yet, so the UAC prompt is
+/// the consent. A cancelled prompt keeps the verified download ready in Home.
+pub(super) async fn install_at_launch(app: &tauri::AppHandle) -> bool {
+    let updates = app.state::<updates::Updates>();
+    let Ok(_lease) = updates.operation.try_lock() else {
+        return false;
+    };
+    let language = app.state::<Shell>().inner.lock().await.preferences.language;
+    let Ok(root) = app.path().app_cache_dir() else {
+        return false;
+    };
+    let version = updates.snapshot().version.unwrap_or_default();
+    let Ok(bytes) = updates.installer() else {
+        return false;
+    };
+    let launched = update_installer::Prepared::new(&root.join("updates"), &bytes)
+        .and_then(|prepared| prepared.launch(language, &version))
+        .is_ok();
+    if !launched {
+        updates.reinstate(bytes);
+        publish_update_state(app);
+    }
+    launched
 }

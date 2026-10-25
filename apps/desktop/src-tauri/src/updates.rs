@@ -329,6 +329,17 @@ impl Updates {
         Ok(bytes)
     }
 
+    /// An install that never started (UAC cancelled at launch) stays ready to retry.
+    pub fn reinstate(&self, bytes: Vec<u8>) {
+        let mut inner = self.inner.lock().unwrap();
+        // Only `installer()` enters "installing", and it requires a candidate.
+        if inner.snapshot.phase == "installing" {
+            inner.bytes = Some(bytes);
+            inner.snapshot.phase = "ready";
+            inner.snapshot.error = None;
+        }
+    }
+
     pub fn install_failed(&self, app: &tauri::AppHandle) {
         self.phase("available", Some("update_install_failed"));
         crate::shell::publish_update_state(app);
@@ -532,6 +543,20 @@ mod tests {
         assert!(updates.background_download_allowed());
         updates.phase("available", Some("update_signature"));
         assert!(!updates.background_download_allowed());
+    }
+
+    #[test]
+    fn a_launch_install_that_never_started_stays_ready() {
+        let updates = Updates::new(true);
+        updates.phase("installing", None);
+        updates.reinstate(b"MZ".to_vec());
+        assert_eq!(settled(&updates), ("ready", None));
+        assert!(updates.inner.lock().unwrap().bytes.is_some());
+        let updates = Updates::new(true);
+        updates.phase("available", Some("update_unavailable"));
+        updates.reinstate(b"MZ".to_vec());
+        assert_eq!(settled(&updates), ("available", Some("update_unavailable")));
+        assert!(updates.inner.lock().unwrap().bytes.is_none());
     }
 
     fn settled(updates: &Updates) -> (&'static str, Option<&'static str>) {

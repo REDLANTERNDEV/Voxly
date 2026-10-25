@@ -80,6 +80,8 @@ pub(super) fn run() {
         ])
         .setup(|app| {
             crate::platform::configure_taskbar_identity(app.handle());
+            // A relaunch after a silent update closes the card that waited for it.
+            crate::update_card::dismiss();
             if let Ok(cache) = app.path().app_cache_dir() {
                 update_installer::cleanup(&cache.join("updates"));
             }
@@ -97,7 +99,8 @@ pub(super) fn run() {
                 installations::save(&data.join("installations.json"), &preferences)
                     .map_err(std::io::Error::other)?;
             }
-            let tray_menu = tray::create(app, preferences.language)?;
+            let language = preferences.language;
+            let tray_menu = tray::create(app, language)?;
             let mut registrations = std::array::from_fn(|_| shortcuts::Registration::default());
             let latches = std::array::from_fn(|_| shortcuts::ShortcutLatch::default());
             for action in shortcuts::Action::ALL {
@@ -141,9 +144,21 @@ pub(super) fn run() {
                 push_to_talk_release_delay_ms: AtomicU16::new(release_delay_ms),
                 remote_shortcuts: Default::default(),
             });
+            // Like Discord, a plain start shows the card while it checks, and Home
+            // opens after it. A launch with arguments (a `voxly://` link, or the
+            // reopening after a failed update) opens Home at once.
+            let launch_card = (updates_enabled && std::env::args_os().len() == 1)
+                .then(|| crate::update_card::LaunchCard::open(language))
+                .flatten();
+            let home_waits = launch_card.is_some();
             if updates_enabled {
                 let update_app = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
+                    if let Some(card) = launch_card {
+                        super::launch::run(&update_app, card).await;
+                        let updates = update_app.state::<updates::Updates>();
+                        tokio::time::sleep(updates.next_check_delay()).await;
+                    }
                     loop {
                         let updates = update_app.state::<updates::Updates>();
                         let scheduled = updates::Trigger::Scheduled;
@@ -158,38 +173,45 @@ pub(super) fn run() {
                 });
             }
             start_delivery(app.handle(), events);
-            let window =
-                tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
-                    .background_color(tauri::window::Color(15, 19, 25, 255))
-                    .on_navigation(shell_navigation)
-                    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-                    .on_download(|_, _| false)
-                    .build()?;
-            let _ = appearance::apply(&window, appearance::WindowTheme::Welcome);
-            let close_window = window.clone();
-            window.on_window_event(move |event| {
-                if matches!(event, tauri::WindowEvent::Focused(true)) {
-                    let _ = appearance::apply(&close_window, appearance::WindowTheme::Welcome);
-                }
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    super::close_requested(&close_window);
-                }
-            });
-            super::update_commands::initialize_tray_check(app.handle());
-            // Validate the original, bounded URI rather than a plugin-normalized
-            // URL. The same parser handles single-instance forwarded arguments.
-            if cfg!(windows) {
-                let args: Option<Vec<String>> = std::env::args_os()
-                    .take(3)
-                    .map(|arg| arg.into_string().ok())
-                    .collect();
-                if let Some(target) = args.as_deref().and_then(deep_links::from_args) {
-                    offer_desktop_link(app.handle(), target);
-                }
+            if !home_waits {
+                open_shell(app.handle())?;
             }
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("could not start Voxly desktop");
+}
+
+/// Home opens at setup, or once the launch card has finished with it.
+pub(super) fn open_shell(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let window = tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+        .background_color(tauri::window::Color(15, 19, 25, 255))
+        .on_navigation(shell_navigation)
+        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+        .on_download(|_, _| false)
+        .build()?;
+    let _ = appearance::apply(&window, appearance::WindowTheme::Welcome);
+    let close_window = window.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Focused(true)) {
+            let _ = appearance::apply(&close_window, appearance::WindowTheme::Welcome);
+        }
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            super::close_requested(&close_window);
+        }
+    });
+    super::update_commands::initialize_tray_check(app);
+    // Validate the original, bounded URI rather than a plugin-normalized
+    // URL. The same parser handles single-instance forwarded arguments.
+    if cfg!(windows) {
+        let args: Option<Vec<String>> = std::env::args_os()
+            .take(3)
+            .map(|arg| arg.into_string().ok())
+            .collect();
+        if let Some(target) = args.as_deref().and_then(deep_links::from_args) {
+            offer_desktop_link(app, target);
+        }
+    }
+    Ok(())
 }

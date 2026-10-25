@@ -62,7 +62,8 @@ test("updater authority and trust remain bundled, with explicit native consent b
   const main = readFileSync("src-tauri/src/shell/update_commands.rs", "utf8");
   const install = main.slice(main.indexOf("async fn install_shell_update"));
   assert.ok(install.indexOf("if !confirmed") < install.indexOf("remote.destroy()"));
-  assert.ok(install.indexOf("remote.destroy()") < install.indexOf("prepared.launch()"));
+  const launch = install.search(/prepared\s*\.launch\(/);
+  assert.ok(launch > 0 && install.indexOf("remote.destroy()") < launch);
   const config = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
   assert.equal(config.plugins.updater, undefined);
   assert.equal(config.bundle.createUpdaterArtifacts, undefined);
