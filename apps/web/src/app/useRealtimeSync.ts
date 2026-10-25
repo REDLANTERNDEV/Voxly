@@ -1,5 +1,6 @@
 import type {
   AfkTimeoutMinutes,
+  ServerWelcomeSettings,
   MessageReactionsEvent,
   ChatMessage,
   PresenceStatus,
@@ -21,6 +22,7 @@ interface RealtimeHandlers {
   memberDeleted(serverId: string, userId: string): void;
   serverUpdated(serverId: string, name: string): void;
   afkUpdated(serverId: string, afkTimeoutMinutes: AfkTimeoutMinutes): void;
+  welcomeUpdated(serverId: string, settings: ServerWelcomeSettings): void;
   roomsChanged(serverId: string, deletedRoomId: string | undefined): void;
   serverDeleted(serverId: string): void;
   notificationsChanged(serverId: string): void;
@@ -100,6 +102,9 @@ export function useRealtimeSync({
     next.on("server:updated", ({ serverId, name }) => handlersRef.current.serverUpdated(serverId, name));
     next.on("server:afkUpdated", ({ serverId, afkTimeoutMinutes }) =>
       handlersRef.current.afkUpdated(serverId, afkTimeoutMinutes)
+    );
+    next.on("server:welcomeUpdated", ({ serverId, welcomeNotices, welcomeRoomId }) =>
+      handlersRef.current.welcomeUpdated(serverId, { welcomeNotices, welcomeRoomId })
     );
     next.on("server:roomsChanged", ({ serverId, deletedRoomId }) =>
       handlersRef.current.roomsChanged(serverId, deletedRoomId)

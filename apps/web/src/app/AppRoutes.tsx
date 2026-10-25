@@ -286,6 +286,7 @@ export function AppRoutes({
         onCreateServer={shellProps.onCreateServer}
         onUpdateServerName={shellProps.onUpdateServerName}
         onSetAfkTimeout={shellProps.onSetAfkTimeout}
+        onSetWelcome={shellProps.onSetWelcome}
         onDeleteServer={shellProps.onDeleteServer}
         onModerateMember={shellProps.onModerateMember}
         onVoiceModeration={shellProps.onVoiceModeration}
@@ -350,6 +351,7 @@ export function AppRoutes({
         onPin={textRoomActions.pin}
         onReact={textRoomActions.react}
         onClearReactions={textRoomActions.clearReactions}
+        onWave={textRoomActions.wave}
         user={shellProps.user}
         language={shellProps.language}
         timeFormat={shellProps.timeFormat}

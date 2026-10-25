@@ -52,7 +52,8 @@ web serving, and owner recovery CLIs.
   routes that take a member's outstanding links with them.
 - `src/messages.ts` owns a message in a text room: the history, posting,
   editing, preview suppression, deletion, and the lookup and outward shape all
-  five answer with. A route group with private helpers rather than a leaf —
+  five answer with. It also writes and publishes the Welcome notice that invite
+  acceptance asks for, so `message:new` still has one owner. A route group with private helpers rather than a leaf —
   nothing outside message code reads a message row or emits `message:*`. The
   five routes deliberately do not share one preamble: reading, editing,
   suppressing and deleting answer a voice room with the same 404 as a missing
@@ -425,6 +426,18 @@ before changing it.
   plus up to 50 live messages on either side, without a read watermark. Delete
   dependent reactions and pins with their message and invalidate open pin lists.
 
+- A Welcome notice is written inside the invite acceptance transaction, after
+  the Membership is active, so it sits past the joiner's read baseline and is
+  unread only for others. It goes to the owner's chosen text channel while that
+  is still one of the server's, otherwise to the top text channel in sidebar
+  order, and to none when notices are off or no text channel exists. A rejoin
+  after a kick is welcomed again; the Music bot never joins through an invite.
+  `servers.welcome_notices` (default on) and `servers.welcome_room_id` and
+  `messages.kind` are additive. Notices cannot be edited; deletion, reactions,
+  pins and replies follow the ordinary rules.
+- Waving is its own route, checked once per member per notice in the same
+  transaction that writes the wave. The member it welcomes cannot wave, and only
+  a notice can be waved at.
 - Persist messages only in text rooms and enforce server membership before
   history, create, edit, or delete operations.
 - Message bodies remain trimmed, non-empty, and capped at 2,000 characters.

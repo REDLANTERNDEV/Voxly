@@ -155,6 +155,7 @@ describe("servers and the rooms inside them", () => {
         "PATCH /api/servers/:serverId/categories/:categoryId",
         "PATCH /api/servers/:serverId/layout",
         "PATCH /api/servers/:serverId/rooms/:roomId",
+        "PATCH /api/servers/:serverId/welcome",
         "POST /api/servers",
         "POST /api/servers/:serverId/categories",
         "POST /api/servers/:serverId/rooms"

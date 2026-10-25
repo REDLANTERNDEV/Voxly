@@ -53,6 +53,7 @@ type OwnerPanelProps = Pick<
     | "onCreateServer"
     | "onUpdateServerName"
     | "onSetAfkTimeout"
+    | "onSetWelcome"
     | "onDeleteServer"
     | "onModerateMember"
     | "onVoiceModeration"
@@ -626,6 +627,8 @@ export function OwnerPanel(props: OwnerPanelProps) {
             onCreate={props.onCreateServer}
             onRename={props.onUpdateServerName}
             onSetAfkTimeout={props.onSetAfkTimeout}
+            textRooms={props.rooms.text}
+            onSetWelcome={props.onSetWelcome}
             onRequestDelete={() => setDeletingServer(true)}
           />
         ) : null}

@@ -1,5 +1,6 @@
 import type {
   AfkTimeoutMinutes,
+  ServerWelcomeSettings,
   CategorySummary,
   MusicCommand,
   MusicControlAck,
@@ -127,6 +128,7 @@ export interface ShellActions {
   onCreateServer: (name: string) => Promise<void>;
   onUpdateServerName: (name: string) => Promise<ServerSummary>;
   onSetAfkTimeout: (minutes: AfkTimeoutMinutes) => Promise<void>;
+  onSetWelcome: (settings: ServerWelcomeSettings) => Promise<void>;
   onCreateRoom: (name: string, kind: "text" | "voice", categoryId?: string | null) => Promise<void>;
   onCreateCategory: (name: string) => Promise<void>;
   onRenameCategory: (categoryId: string, name: string) => Promise<void>;

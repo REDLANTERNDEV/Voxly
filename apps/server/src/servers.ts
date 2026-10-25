@@ -87,11 +87,14 @@ export function registerServerRoutes(context: RouteContext) {
       role: "owner" | "member";
       canInvite: number;
       afkTimeoutMinutes: number | null;
+      welcomeNotices: number;
+      welcomeRoomId: string | null;
     }>(
       database.sqlite,
       `select servers.id, servers.name, server_members.role,
         server_members.can_invite as canInvite,
-        servers.afk_timeout_minutes as afkTimeoutMinutes
+        servers.afk_timeout_minutes as afkTimeoutMinutes,
+        servers.welcome_notices as welcomeNotices, servers.welcome_room_id as welcomeRoomId
        from server_members
        join servers on servers.id = server_members.server_id
        where server_members.user_id = ?
@@ -104,7 +107,10 @@ export function registerServerRoutes(context: RouteContext) {
       servers: memberships.map((membership) => ({
         ...membership,
         canInvite: mayCreateInvites(membership.role, membership.canInvite),
-        afkTimeoutMinutes: afkTimeoutOf(membership.afkTimeoutMinutes)
+        afkTimeoutMinutes: afkTimeoutOf(membership.afkTimeoutMinutes),
+        welcomeNotices: Boolean(membership.welcomeNotices),
+        // A deleted or converted choice reads as the top-channel default it now behaves as.
+        welcomeRoomId: chosenWelcomeRoom(database, membership.id, membership.welcomeRoomId)
       }))
     };
   });
@@ -406,6 +412,28 @@ export function registerServerRoutes(context: RouteContext) {
     return { afkTimeoutMinutes };
   });
 
+  fastify.patch("/api/servers/:serverId/welcome", async (request, reply) => {
+    const scope = requireOwnedServer(context, request, reply);
+    if (!scope) return;
+    const { owner, serverId } = scope;
+    const { welcomeNotices, welcomeRoomId } = z
+      .object({ welcomeNotices: z.boolean(), welcomeRoomId: z.string().min(1).max(128).nullable() })
+      .parse(request.body);
+    if (welcomeRoomId !== null && chosenWelcomeRoom(database, serverId, welcomeRoomId) === null) {
+      return reply.code(400).send({ error: "welcome_room_invalid" });
+    }
+    run(database.sqlite, "update servers set welcome_notices = ?, welcome_room_id = ? where id = ?", [
+      welcomeNotices ? 1 : 0,
+      welcomeRoomId,
+      serverId
+    ]);
+    audit(database, owner.id, "server.welcomeChanged", null, serverId);
+    database.save();
+    // Owners elsewhere in the server keep the setting on screen too.
+    io.to(`server:${serverId}`).emit("server:welcomeUpdated", { serverId, welcomeNotices, welcomeRoomId });
+    return { welcomeNotices, welcomeRoomId };
+  });
+
   fastify.patch("/api/servers/:serverId", async (request, reply) => {
     // Spelled out rather than using `requireOwnedServer`: this route answers a
     // malformed body before it answers a caller who does not own the server,
@@ -572,4 +600,10 @@ export function createServerRoom(
     [room.id, room.serverId, room.name, room.kind, room.position, room.isAfk ? 1 : 0, room.categoryId]
   );
   return room;
+}
+
+/** The owner's Welcome notice channel while it is still a text channel of this server. */
+function chosenWelcomeRoom(database: VoxlyDatabase, serverId: string, roomId: string | null) {
+  const room = roomId ? roomById(database.sqlite, roomId) : null;
+  return room && room.serverId === serverId && room.kind === "text" ? room.id : null;
 }

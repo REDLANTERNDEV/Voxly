@@ -2,7 +2,9 @@ import {
   afkTimeoutOptions,
   DEFAULT_AFK_TIMEOUT_MINUTES,
   isAfkTimeoutMinutes,
-  type AfkTimeoutMinutes
+  type AfkTimeoutMinutes,
+  type RoomSummary,
+  type ServerWelcomeSettings
 } from "@voxly/shared";
 import { useEffect, useState } from "react";
 import type { Translate } from "../../app/types.js";
@@ -36,6 +38,8 @@ export function OwnerServerContext({
   onCreate,
   onRename,
   onSetAfkTimeout,
+  textRooms,
+  onSetWelcome,
   onRequestDelete
 }: {
   activeServerId: string;
@@ -44,9 +48,13 @@ export function OwnerServerContext({
   onCreate: (name: string) => Promise<void>;
   onRename: (name: string) => Promise<ServerSummary>;
   onSetAfkTimeout: (minutes: AfkTimeoutMinutes) => Promise<void>;
+  /** The active server's text channels, in sidebar order. */
+  textRooms: RoomSummary[];
+  onSetWelcome: (settings: ServerWelcomeSettings) => Promise<void>;
   onRequestDelete: () => void;
 }) {
   const [afkStatus, setAfkStatus] = useState("");
+  const [welcomeStatus, setWelcomeStatus] = useState("");
   const [name, setName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
@@ -137,6 +145,51 @@ export function OwnerServerContext({
             {afkStatus}
           </span>
         </label>
+        {activeServer ? (
+          <fieldset className="form-field owner-server-welcome">
+            <legend>{t("owner.welcomeNotices")}</legend>
+            <label className="owner-server-welcome-toggle">
+              <input
+                type="checkbox"
+                checked={activeServer.welcomeNotices}
+                onChange={(event) => {
+                  setWelcomeStatus("");
+                  void onSetWelcome({
+                    welcomeNotices: event.currentTarget.checked,
+                    welcomeRoomId: activeServer.welcomeRoomId
+                  }).catch(() => setWelcomeStatus(t("owner.welcomeFailed")));
+                }}
+              />
+              <span>{t("owner.welcomeNoticesHint")}</span>
+            </label>
+            <label className="owner-server-welcome-room" htmlFor="ownerServerWelcomeRoom">
+              <span>{t("owner.welcomeRoom")}</span>
+              <select
+                className="input"
+                id="ownerServerWelcomeRoom"
+                disabled={!activeServer.welcomeNotices}
+                value={activeServer.welcomeRoomId ?? ""}
+                onChange={(event) => {
+                  setWelcomeStatus("");
+                  void onSetWelcome({
+                    welcomeNotices: activeServer.welcomeNotices,
+                    welcomeRoomId: event.currentTarget.value || null
+                  }).catch(() => setWelcomeStatus(t("owner.welcomeFailed")));
+                }}
+              >
+                <option value="">{t("owner.welcomeRoomTop")}</option>
+                {textRooms.map((room) => (
+                  <option key={room.id} value={room.id}>
+                    # {room.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className="small" aria-live="polite">
+              {welcomeStatus}
+            </span>
+          </fieldset>
+        ) : null}
         <div className="owner-server-danger">
           <div>
             <h3>{t("server.delete")}</h3>

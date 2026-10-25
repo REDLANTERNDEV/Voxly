@@ -34,21 +34,26 @@ export function ReplyQuote({
 
   const nickname = reply.authorDeleted ? t("common.deletedMember") : reply.nickname;
   const author = hideAuthor ? null : <span className="reply-quote-author">{nickname}</span>;
+  // A Welcome notice has no body; quote what it says happened instead.
+  const excerpt =
+    reply.kind === "memberJoined" ? (
+      t("chat.welcomeQuote")
+    ) : (
+      <MessageBody
+        body={reply.body}
+        mentions={reply.mentions}
+        t={t}
+        members={members}
+        onlineUsers={onlineUsers}
+        links={false}
+        cards={false}
+      />
+    );
   if (!onJump) {
     return (
       <p className="reply-quote">
         {author}
-        <span className="reply-quote-body">
-          <MessageBody
-            body={reply.body}
-            mentions={reply.mentions}
-            t={t}
-            members={members}
-            onlineUsers={onlineUsers}
-            links={false}
-            cards={false}
-          />
-        </span>
+        <span className="reply-quote-body">{excerpt}</span>
       </p>
     );
   }
@@ -63,17 +68,7 @@ export function ReplyQuote({
       onClick={() => onJump(reply.messageId)}
     >
       {author}
-      <span className="reply-quote-body">
-        <MessageBody
-          body={reply.body}
-          mentions={reply.mentions}
-          t={t}
-          members={members}
-          onlineUsers={onlineUsers}
-          links={false}
-          cards={false}
-        />
-      </span>
+      <span className="reply-quote-body">{excerpt}</span>
     </button>
   );
 }

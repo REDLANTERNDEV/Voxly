@@ -633,7 +633,11 @@ describe("the owner panel", () => {
         url: "/api/rooms/general/messages",
         cookies: owner.cookies
       });
-      const message = history.json().messages[0] as { nickname: string; authorDeleted: boolean; body: string };
+      const message = history.json().messages.filter((message: { kind: string }) => message.kind === "message")[0] as {
+        nickname: string;
+        authorDeleted: boolean;
+        body: string;
+      };
 
       assert.deepEqual(message, { ...message, nickname: "", authorDeleted: true });
       assert.equal(message.body, "still part of history");

@@ -135,7 +135,10 @@ describe("Voxly realtime MVP", () => {
       url: "/api/rooms/general/messages",
       cookies: member.cookies
     });
-    assert.equal(history.json().messages[0]?.id, message.json().message.id);
+    assert.equal(
+      history.json().messages.filter((message: { kind: string }) => message.kind === "message")[0]?.id,
+      message.json().message.id
+    );
   });
 
   it("emits presence and voice room membership for authenticated sessions", async () => {

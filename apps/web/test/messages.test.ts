@@ -2,14 +2,19 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { clampContextMenuPosition } from "../src/lib/contextMenu.js";
 import { timeFormatOptions } from "../src/lib/timeFormat.js";
+import { welcomeWaveBody, type ChatMessage } from "@voxly/shared";
+import { translate } from "../src/lib/i18n.js";
 import {
+  aroundNickname,
+  canWaveAt,
   formatMessageDateTime,
   formatMessageTimestamp,
   isMessageListNearBottom,
   messageListUpdateAction,
   messageDeleteFailureCopy,
   messagePermissions,
-  shouldSubmitComposer
+  shouldSubmitComposer,
+  wavedNotices
 } from "../src/lib/messages.js";
 
 describe("message permissions", () => {
@@ -143,3 +148,70 @@ describe("message timestamp", () => {
     );
   });
 });
+
+describe("Welcome notices", () => {
+  const notice = welcomeMessage({ id: "notice", kind: "memberJoined", userId: "deniz", body: "" });
+
+  it("can be deleted like any message but never edited, even by the member it welcomes", () => {
+    assert.deepEqual(
+      messagePermissions({
+        currentUserId: "deniz",
+        currentUserRole: "member",
+        messageUserId: "deniz",
+        messageKind: "memberJoined"
+      }),
+      { canEdit: false, canDelete: true }
+    );
+  });
+
+  it("offers a wave to everyone but the new member, once, while they are still a member", () => {
+    assert.equal(canWaveAt(notice, "ece", false), true);
+    assert.equal(canWaveAt(notice, "deniz", false), false);
+    assert.equal(canWaveAt(notice, "ece", true), false);
+    assert.equal(canWaveAt({ ...notice, authorDeleted: true }, "ece", false), false);
+    assert.equal(canWaveAt({ ...notice, kind: "message" }, "ece", false), false);
+  });
+
+  it("knows which notices this member already waved at from the loaded history", () => {
+    const history = [
+      notice,
+      welcomeMessage({ id: "wave", userId: "ece", body: welcomeWaveBody, replyToMessageId: "notice" }),
+      welcomeMessage({ id: "other", userId: "owner", body: welcomeWaveBody, replyToMessageId: "elsewhere" }),
+      welcomeMessage({ id: "text", userId: "ece", body: "hi", replyToMessageId: "later" })
+    ];
+    assert.deepEqual([...wavedNotices(history, "ece")], ["notice"]);
+    assert.deepEqual([...wavedNotices(history, "owner")], ["elsewhere"]);
+  });
+
+  it("sets the nickname apart wherever each language puts it", () => {
+    for (const language of ["en", "tr"] as const) {
+      const sentence = translate(language, "chat.welcomeNotice", { nickname: "Deniz" });
+      const { before, after } = aroundNickname((nickname) => translate(language, "chat.welcomeNotice", { nickname }));
+      assert.equal(`${before}Deniz${after}`, sentence);
+    }
+    assert.notEqual(translate("en", "chat.welcomeWave"), translate("tr", "chat.welcomeWave"));
+  });
+});
+
+function welcomeMessage(overrides: Partial<ChatMessage>): ChatMessage {
+  return {
+    kind: "message",
+    mentions: [],
+    reactionState: { version: 0, reactions: [] },
+    pinnedAt: null,
+    serverId: "server",
+    sequence: 1,
+    id: "message",
+    roomId: "general",
+    userId: "user",
+    nickname: "Deniz",
+    authorDeleted: false,
+    body: "",
+    createdAt: "2026-10-26T12:00:00.000Z",
+    editedAt: null,
+    suppressedEmbedKeys: [],
+    replyToMessageId: null,
+    replyTo: null,
+    ...overrides
+  };
+}

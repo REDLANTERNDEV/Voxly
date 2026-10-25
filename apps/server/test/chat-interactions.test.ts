@@ -34,6 +34,8 @@ describe("chat interactions", () => {
       payload: { bootstrapToken: "test", nickname: "Owner" }
     });
     owner = identity(response);
+    // These tests count and number a room's messages; Welcome notices have their own tests.
+    app.sqlite.prepare("update servers set welcome_notices = 0").run();
     member = await invite("Ahmet");
   });
   afterEach(async () => {
