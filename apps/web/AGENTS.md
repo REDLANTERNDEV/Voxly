@@ -293,6 +293,12 @@ requirement.
   rich-preview affordance.
 - Reply is available to every reader, from the hover control beside the ellipsis
   and from the same permission-filtered menu. Edit and delete stay gated.
+- A Welcome notice renders as one line in place of an author and body: an arrow
+  where the avatar would be, the viewer's own sentence with the nickname set
+  apart, and its time. Everyone but the member it welcomes gets one wave button,
+  hidden once their wave is in the loaded history or the server answers 409. It
+  offers no edit. A reply to a notice quotes what happened, not an empty body.
+  The owner's switch and channel live in the selected owner-server context.
 - A reply renders its quote from `replyToMessageId`, not from `replyTo`. A
   target that has been deleted keeps the strip and says so; silently demoting
   the message to an ordinary one loses the fact that it was an answer.

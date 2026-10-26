@@ -123,6 +123,8 @@ export function useServerNotifications(user: PublicUser | null, serverIds: strin
     (message: import("@voxly/shared").ChatMessage) => {
       if (message.sequence <= (seenMessagesRef.current.get(message.roomId) ?? 0)) return false;
       seenMessagesRef.current.set(message.roomId, message.sequence);
+      // A Welcome notice counts as unread but never sounds or alerts: a join pings nobody.
+      if (message.kind !== "message") return false;
       const current = stateRef.current;
       if (!current || current.userId !== userId) return false;
       const server = current.snapshot.servers.find((server) => server.serverId === message.serverId);

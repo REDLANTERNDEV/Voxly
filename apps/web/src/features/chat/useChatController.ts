@@ -18,7 +18,8 @@ import {
   fetchMessages,
   sendMessage,
   suppressMessageEmbed,
-  updateMessage
+  updateMessage,
+  waveAtWelcomeNotice
 } from "../../api.js";
 import { mergeReactionState } from "../../lib/chatInteractions.js";
 import { upsertMessage } from "../../app/presentation.js";
@@ -462,6 +463,12 @@ export function useChatController({
         suppressEmbed: async (messageId: string, embedKey: string) => {
           const response = await suppressMessageEmbed(roomId, messageId, embedKey);
           if (currentAccountRef.current === user?.id) applyMessage(response.message, false, true);
+        },
+        // The broadcast carries the same message id, so applying the response
+        // first shows the wave at once without duplicating it.
+        wave: async (messageId: string) => {
+          const response = await waveAtWelcomeNotice(roomId, messageId);
+          if (currentAccountRef.current === user?.id) applyMessage(response.message, true);
         }
       };
     }

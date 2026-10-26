@@ -123,8 +123,7 @@ export function App() {
         chat.applyMemberRename(serverId, user);
       },
       memberDeleted: (serverId, userId) => chat.applyMemberDeletion(serverId, userId),
-      serverUpdated: workspace.applyServerName,
-      afkUpdated: workspace.applyAfkTimeout,
+      ...workspace.serverSummaryUpdates,
       roomsChanged: (serverId, roomId) => {
         serverNotifications.refresh();
         void workspace.refreshRooms(serverId, roomId).catch(() => undefined);
@@ -304,6 +303,7 @@ export function App() {
         onCreateServer: workspace.actions.createServer,
         onUpdateServerName: workspace.actions.updateServerName,
         onSetAfkTimeout: workspace.actions.setAfkTimeout,
+        onSetWelcome: workspace.actions.setWelcome,
         onCreateRoom: workspace.actions.createRoom,
         onCreateCategory: workspace.actions.createCategory,
         onRenameCategory: workspace.actions.renameCategory,

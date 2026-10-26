@@ -41,6 +41,7 @@ import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import { rejectBotTarget } from "./bots.js";
 import { all, defaultServerId, one, run, type VoxlyDatabase } from "./db/database.js";
 import { activateServerMembership, requireServerInviter, serverMembership } from "./members.js";
+import { publishWelcomeNotice, writeWelcomeNotice } from "./messages.js";
 import { createUser, nicknameSchema, publicUser, type UserRow } from "./users.js";
 import { verifyTurnstile } from "./turnstile.js";
 import {
@@ -96,7 +97,7 @@ export const inviteBodySchema = z
 const accessLinkLifetimeMinutes = 15;
 
 export function registerInviteRoutes(context: RouteContext) {
-  const { fastify, database, realtime, secureCookies, turnstile } = context;
+  const { fastify, database, io, realtime, secureCookies, turnstile } = context;
 
   fastify.post("/api/invites/accept", { config: unauthenticatedWriteLimit }, async (request, reply) => {
     const body = z
@@ -126,6 +127,7 @@ export function registerInviteRoutes(context: RouteContext) {
 
     let user: { id: string; nickname: string; role: "owner" | "member"; bannedAt: string | null };
     let serverId: string;
+    let welcome: ReturnType<typeof writeWelcomeNotice>;
     database.sqlite.exec("begin immediate");
     try {
       const invite = one<{
@@ -192,6 +194,9 @@ export function registerInviteRoutes(context: RouteContext) {
         [user.id, now, invite.id]
       );
       serverId = invite.server_id;
+      // A rejoin after a kick is a new arrival and is welcomed again. The Music
+      // bot never joins through an invite, so it never is.
+      welcome = writeWelcomeNotice(database.sqlite, serverId, user.id, now);
       database.sqlite.exec("commit");
     } catch (cause) {
       database.sqlite.exec("rollback");
@@ -200,6 +205,7 @@ export function registerInviteRoutes(context: RouteContext) {
     if (!user) throw new Error("invite acceptance completed without a user");
     database.save();
     await realtime.grantServerAccess(serverId, user.id);
+    if (welcome) publishWelcomeNotice(io, welcome);
     // No Recovery code is minted here.
     //
     // Joining is not the moment to hand somebody a secret to look after: they

@@ -168,7 +168,9 @@ export const servers = sqliteTable("servers", {
   name: text("name").notNull(),
   createdByUserId: text("created_by_user_id"),
   createdAt: text("created_at").notNull(),
-  uncategorizedPosition: integer("uncategorized_position").notNull().default(0)
+  uncategorizedPosition: integer("uncategorized_position").notNull().default(0),
+  welcomeNotices: integer("welcome_notices", { mode: "boolean" }).notNull().default(true),
+  welcomeRoomId: text("welcome_room_id")
 });
 
 export const serverMembers = sqliteTable("server_members", {
@@ -211,6 +213,9 @@ export const messages = sqliteTable("messages", {
   createdAt: text("created_at").notNull(),
   editedAt: text("edited_at"),
   suppressedEmbedKeys: text("suppressed_embed_keys").notNull().default("[]"),
+  kind: text("kind", { enum: ["message", "member_joined"] })
+    .notNull()
+    .default("message"),
   deletedAt: text("deleted_at"),
   deletedByUserId: text("deleted_by_user_id")
 });

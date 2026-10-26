@@ -54,6 +54,9 @@ describe("Voxly HTTP MVP", () => {
     legacy.prepare("insert into users values (?, ?, ?, ?)").run("owner", "Red Lantern", "owner", null);
     legacy.prepare("insert into rooms values (?, ?, ?, ?)").run("history", "history", "text", 50);
     legacy
+      .prepare("insert into messages values (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run("before", "history", "owner", "from before notices", "2026-01-01T00:00:00.000Z", null, null, null);
+    legacy
       .prepare("insert into invites values (?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .run(
         "invite",
@@ -101,6 +104,12 @@ describe("Voxly HTTP MVP", () => {
       assert.ok(memberColumns.includes("moderator_muted"));
       assert.ok(memberColumns.includes("moderator_deafened"));
       assert.equal(tables.prepare("select nickname from server_members where user_id = 'owner'").get()?.nickname, null);
+      // Every existing message stays an ordinary one, and Welcome notices start on.
+      assert.equal(tables.prepare("select kind from messages where id = 'before'").get()?.kind, "message");
+      assert.deepEqual(
+        { ...tables.prepare("select welcome_notices, welcome_room_id from servers where id = ?").get(defaultServerId) },
+        { welcome_notices: 1, welcome_room_id: null }
+      );
       const indexNames = [...tables.prepare("select name from sqlite_master where type = 'index'").all()].map(
         (index) => (index as { name: string }).name
       );
@@ -976,7 +985,8 @@ describe("Voxly HTTP MVP", () => {
       url: `/api/rooms/${textRoom?.id}/messages`,
       cookies: member.cookies
     });
-    const messages = historyResponse.json().messages;
+    // Deniz's Welcome notice is in this history too; it has its own tests.
+    const messages = historyResponse.json().messages.filter((message: { kind: string }) => message.kind === "message");
     assert.equal(messages.length, 1);
     assert.equal(messages[0].body, "oyuna giriyorum");
     assert.equal(messages[0].nickname, "Deniz");
@@ -1518,7 +1528,10 @@ describe("Voxly HTTP MVP", () => {
       url: "/api/rooms/general/messages",
       cookies: author.cookies
     });
-    assert.deepEqual(history.json().messages[0].suppressedEmbedKeys, ["youtube:dQw4w9WgXcQ", "x:123"]);
+    assert.deepEqual(
+      history.json().messages.filter((message: { kind: string }) => message.kind === "message")[0].suppressedEmbedKeys,
+      ["youtube:dQw4w9WgXcQ", "x:123"]
+    );
   });
 
   it("lets members delete their own messages", async () => {

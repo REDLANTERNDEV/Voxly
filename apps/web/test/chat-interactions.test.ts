@@ -120,6 +120,7 @@ describe("person identity and mention presentation", () => {
   });
   it("clears deleted reply authors and canonicalizes late message snapshots without reviving names", () => {
     const reply = {
+      kind: "message" as const,
       messageId: "target",
       userId: "person",
       nickname: "Ahmet",
@@ -142,6 +143,7 @@ describe("person identity and mention presentation", () => {
       pinnedAt: null,
       createdAt: "now",
       editedAt: null,
+      kind: "message" as const,
       suppressedEmbedKeys: [],
       replyToMessageId: "target",
       replyTo: reply
@@ -198,9 +200,11 @@ describe("person identity and mention presentation", () => {
       pinnedAt: null,
       createdAt: "now",
       editedAt: null,
+      kind: "message" as const,
       suppressedEmbedKeys: [],
       replyToMessageId: "target",
       replyTo: {
+        kind: "message" as const,
         messageId: "target",
         userId: "author",
         nickname: "Author",

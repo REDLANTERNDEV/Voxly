@@ -155,7 +155,8 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
   transition. While deafened, every cue stays silent except the two that report
   the deafen state itself. Owner-enforced deafen silences cues the same way.
 - Message cues follow the unread rule: never the listener's own message, and
-  never the room already on screen in a focused window.
+  never the room already on screen in a focused window. A Welcome notice counts
+  as unread but plays no cue and raises no desktop alert: a join pings nobody.
 - Preferences are per account in local storage: a master switch, a level
   clamped to 0–100%, and one switch per category. The level is independent of
   the general output level, which governs voice playback.

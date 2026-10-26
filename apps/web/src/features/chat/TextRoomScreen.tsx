@@ -6,7 +6,7 @@ import type { ShellActions, ShellModel } from "../../app/types.js";
 import { ArrowIcon, CloseIcon, ReplyIcon, PushPinIcon } from "../../components/ui/Icons.js";
 import { EmptyState, RoomHeader } from "../../components/ui/Primitives.js";
 import { resolveRememberedRoom } from "../../lib/channelState.js";
-import { isMessageListNearBottom, messageListUpdateAction } from "../../lib/messages.js";
+import { isMessageListNearBottom, messageListUpdateAction, wavedNotices } from "../../lib/messages.js";
 import { messageListIds, type OutboxEntry } from "../../lib/messageOutbox.js";
 import { requestSettingsSection } from "../../lib/settingsNavigation.js";
 import { MessageItem } from "./MessageItem.js";
@@ -45,6 +45,7 @@ type TextRoomProps = Pick<
     onPin(messageId: string, pinned: boolean): Promise<void>;
     onReact(messageId: string, emoji: string, add: boolean): Promise<void>;
     onClearReactions(messageId: string, emoji?: string): Promise<void>;
+    onWave(messageId: string): Promise<void>;
     outbox: OutboxEntry[];
     onSendMessage: (body: string, replyTo: ChatMessageReply | null, mentions: MessageMention[]) => void;
     onRetrySend: (localId: string) => void;
@@ -61,6 +62,7 @@ export function TextRoomScreen(props: TextRoomProps) {
   const [jumpTarget, setJumpTarget] = useState<string | null>(null);
   const [contextBusy, setContextBusy] = useState(false);
   const displayedMessages = props.contextMessages ?? props.messages;
+  const wavedNoticeIds = wavedNotices(displayedMessages, props.user.id);
   const [replyTarget, setReplyTarget] = useState<ChatMessageReply | null>(null);
   const resolvedDraft = reconcileMentionContent({ body: draft, mentions: draftMentions }, props.identityChanges);
   if (resolvedDraft.body !== draft || resolvedDraft.mentions !== draftMentions) {
@@ -165,6 +167,7 @@ export function TextRoomScreen(props: TextRoomProps) {
 
   function startReply(message: ChatMessage) {
     setReplyTarget({
+      kind: message.kind,
       messageId: message.id,
       userId: message.userId,
       nickname: message.nickname,
@@ -282,6 +285,8 @@ export function TextRoomScreen(props: TextRoomProps) {
                 onPin={props.onPin}
                 onReact={props.onReact}
                 onClearReactions={props.onClearReactions}
+                waved={wavedNoticeIds.has(message.id)}
+                onWave={props.onWave}
                 language={props.language}
                 timeFormat={props.timeFormat}
                 externalPreviews={props.externalPreviews}

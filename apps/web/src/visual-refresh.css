@@ -4011,3 +4011,93 @@ select {
 .confirm-actions {
   flex-wrap: wrap;
 }
+
+/* Welcome notice: one quiet line in place of an author and a body, with the
+   arrow standing where an avatar would. */
+.message-notice-mark {
+  align-items: center;
+  color: var(--success);
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+.message-notice-mark .ui-icon {
+  height: 18px;
+  width: 18px;
+}
+/* The sentence is the row's first line, where the reply and menu triggers sit;
+   keep it clear of their strip, which a touchscreen always shows. */
+.message-notice-line {
+  padding-inline-end: 64px;
+  align-items: baseline;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 14px;
+  gap: 4px 8px;
+  line-height: 30px;
+  margin: 0;
+}
+.message-notice-name {
+  color: var(--fg);
+  font-weight: 700;
+}
+.message-notice-wave {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  gap: 8px;
+  margin: 2px 0 4px;
+  min-height: 36px;
+  padding: 0 14px;
+}
+.message-notice-wave:hover {
+  border-color: var(--border-strong);
+}
+.message-notice-wave:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.message-notice-wave:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+.message-notice-wave > span {
+  font-size: 18px;
+}
+@media (pointer: coarse) {
+  .message-notice-wave {
+    min-height: 44px;
+  }
+}
+.owner-server-welcome {
+  border: 0;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  max-width: 420px;
+  padding: 0;
+}
+.owner-server-welcome > legend {
+  padding: 0;
+}
+.owner-server-welcome-toggle {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+.owner-server-welcome-room {
+  display: grid;
+  gap: 6px;
+}
+.owner-server-welcome > span:last-child:empty {
+  display: none;
+}

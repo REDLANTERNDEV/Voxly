@@ -302,6 +302,8 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "messages", "mentions", "text not null default '[]'");
   addColumnIfMissing(sqlite, "messages", "reaction_version", "integer not null default 0");
   addColumnIfMissing(sqlite, "messages", "pinned_at", "text");
+  // Every existing row is an ordinary message; a Welcome notice is 'member_joined'.
+  addColumnIfMissing(sqlite, "messages", "kind", "text not null default 'message'");
   addColumnIfMissing(sqlite, "server_members", "mention_code", "text");
   sqlite.exec(`
     create unique index if not exists idx_members_mention_code on server_members(server_id, mention_code) where mention_code is not null;
@@ -317,6 +319,9 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "rooms", "category_id", "text references categories(id) on delete set null");
   addColumnIfMissing(sqlite, "servers", "afk_timeout_minutes", "integer");
   addColumnIfMissing(sqlite, "servers", "uncategorized_position", "integer not null default 0");
+  // Welcome notices are on by default, existing servers included; no room means the top text channel.
+  addColumnIfMissing(sqlite, "servers", "welcome_notices", "integer not null default 1");
+  addColumnIfMissing(sqlite, "servers", "welcome_room_id", "text");
   addColumnIfMissing(sqlite, "invites", "server_id", "text");
   addColumnIfMissing(sqlite, "device_links", "approved_session_id", "text");
   addColumnIfMissing(sqlite, "invites", "max_uses", "integer default 1");

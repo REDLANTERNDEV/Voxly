@@ -225,6 +225,12 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   Resolved Mentions include frozen recipient IDs and live identity/tombstone data.
   Names and codes never authorize a target. Keep range rewriting in shared pure
   helpers so nickname changes and deletion cannot corrupt following labels.
+- `ChatMessage.kind` and `ChatMessageReply.kind` are `message` or
+  `memberJoined`. A `memberJoined` row is a Welcome notice: authored by the
+  member who joined, with an empty body and no Mentions, worded by each client.
+  Legacy rows read as `message`. Waving posts `welcomeWaveBody` as an ordinary
+  reply to the notice; `ServerWelcomeSettings` is the owner's switch and
+  channel, where a null channel means the top text channel.
 - `PresenceUser.mentionCode` is absent only for session-derived identities with
   no Server context; the Server directory and scoped presence provide it.
 - The local emoji catalogue and `maxMessageReactionKinds` own reaction admission.

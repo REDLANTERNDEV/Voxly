@@ -23,7 +23,7 @@ import type {
   OwnerAccountMembership,
   OwnerDeletionRequest
 } from "./types.js";
-import type { DeviceSummary, ServerRoomLayout, VoiceModerationState } from "@voxly/shared";
+import type { DeviceSummary, ServerRoomLayout, ServerWelcomeSettings, VoiceModerationState } from "@voxly/shared";
 
 type JsonBody = Record<string, unknown>;
 type AccessClaimResponse = CurrentUserResponse & { serverId: string };
@@ -253,6 +253,13 @@ export async function updateServerAfkTimeout(serverId: string, afkTimeoutMinutes
   });
 }
 
+export async function updateServerWelcome(serverId: string, settings: ServerWelcomeSettings) {
+  return request<ServerWelcomeSettings>(`/api/servers/${encodeURIComponent(serverId)}/welcome`, {
+    method: "PATCH",
+    body: JSON.stringify(settings)
+  });
+}
+
 export async function updateServer(serverId: string, name: string) {
   return request<{ server: ServerSummary }>(`/api/servers/${encodeURIComponent(serverId)}`, {
     method: "PATCH",
@@ -364,6 +371,14 @@ export async function deleteMessage(roomId: string, messageId: string) {
   await request<void>(`/api/rooms/${roomId}/messages/${messageId}`, {
     method: "DELETE"
   });
+}
+
+/** Posts the wave as a reply to a Welcome notice; a second wave is refused with 409. */
+export async function waveAtWelcomeNotice(roomId: string, messageId: string) {
+  return apiPost<MessageResponse>(
+    `/api/rooms/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}/wave`,
+    {}
+  );
 }
 
 export async function suppressMessageEmbed(roomId: string, messageId: string, embedKey: string) {

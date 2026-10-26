@@ -78,6 +78,16 @@ export function isAfkTimeoutMinutes(value: unknown): value is AfkTimeoutMinutes 
 export const afkRoomName = "AFK";
 
 /**
+ * Whether a member joining through an invite gets a Welcome notice, and where.
+ * On by default. A null room means the server's top text channel, which is
+ * also where a notice goes once the chosen channel is deleted.
+ */
+export interface ServerWelcomeSettings {
+  welcomeNotices: boolean;
+  welcomeRoomId: string | null;
+}
+
+/**
  * Name every server's Music bot account is seeded with. Owners may rename it
  * the same way they rename any other member.
  */
@@ -96,6 +106,7 @@ export type PresenceStatus = "online" | "idle";
  * message.
  */
 export interface ChatMessageReply {
+  kind: ChatMessageKind;
   messageId: string;
   userId: string;
   nickname: string;
@@ -107,7 +118,18 @@ export interface ChatMessageReply {
 /** Longest quoted excerpt the server will send for a reply. */
 export const replyExcerptMaxLength = 160;
 
+/**
+ * A `memberJoined` row is a Welcome notice: the server posts it, in the name of
+ * the member who joined, with an empty body. Each client words it in its own
+ * language, so nothing translated is stored.
+ */
+export type ChatMessageKind = "message" | "memberJoined";
+
+/** What waving at a Welcome notice posts, as a reply to it. */
+export const welcomeWaveBody = "👋";
+
 export interface ChatMessage {
+  kind: ChatMessageKind;
   mentions: MessageMention[];
   reactionState: MessageReactionState;
   pinnedAt: string | null;
@@ -747,6 +769,7 @@ export interface ServerToClientEvents {
   "server:memberDeleted": (payload: { serverId: string; userId: string }) => void;
   "server:updated": (payload: { serverId: string; name: string }) => void;
   "server:afkUpdated": (payload: { serverId: string; afkTimeoutMinutes: AfkTimeoutMinutes }) => void;
+  "server:welcomeUpdated": (payload: ServerWelcomeSettings & { serverId: string }) => void;
   /**
    * A server's room list changed. `deletedRoomId` is present only for a
    * deletion so viewers can move off a room that no longer exists; creation and

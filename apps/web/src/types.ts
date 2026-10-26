@@ -29,6 +29,9 @@ export interface ServerSummary {
   canInvite: boolean;
   /** Owner-set idle window before a member is parked in the AFK room. */
   afkTimeoutMinutes: AfkTimeoutMinutes;
+  /** Whether invite joins post a Welcome notice, and the owner's channel for it. */
+  welcomeNotices: boolean;
+  welcomeRoomId: string | null;
 }
 
 export interface ServersResponse {

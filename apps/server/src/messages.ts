@@ -13,7 +13,9 @@
  * Nothing outside message code reads any of this: no other module emits
  * `message:new`, `message:updated` or `message:deleted`, and none of them needs
  * a message row. So unlike `rooms.ts` and `users.ts` this is a route group with
- * its private helpers, not a leaf everyone may import.
+ * its private helpers, not a leaf everyone may import. The one exception is the
+ * Welcome notice: invite acceptance asks this module to write one inside its
+ * transaction and to publish it afterwards, so `message:new` keeps one owner.
  *
  * This module registers its own routes; `app.ts` composes it and hands it a
  * `RouteContext`. See
@@ -29,7 +31,9 @@ import {
   validMentionRanges,
   rewriteMentionLabels,
   replyExcerptMaxLength,
+  welcomeWaveBody,
   type ChatMessage,
+  type ChatMessageKind,
   type MessageMention,
   type MessageMentionInput,
   type MessageReactionState,
@@ -43,6 +47,9 @@ import { messageLimit, roomIdParam, type RouteContext } from "./http.js";
 
 /** The message row as it is read back, in the spelling the two queries select. */
 export type MessageRow = {
+  /** The stored spelling; `publicMessage` turns it into a `ChatMessageKind`. */
+  kind?: string;
+  replyToKind?: string | null;
   mentionsJson?: string;
   reactionVersion?: number;
   pinnedAt?: string | null;
@@ -74,6 +81,9 @@ export type MessageRow = {
  * still reads back bounded.
  */
 const maxSuppressedEmbedKeys = 16;
+
+/** How a Welcome notice is spelled in `messages.kind`. */
+const welcomeNoticeKind = "member_joined";
 
 /**
  * How far one message's Mentions may multiply. Each collective label freezes a
@@ -350,6 +360,7 @@ export function registerMessageRoutes(context: RouteContext) {
     const mentions = prepareMentions(database.sqlite, io, room.serverId, body.body, body.mentions);
     if (!mentions) return reply.code(400).send({ error: "invalid_mentions" });
     const message: ChatMessage = {
+      kind: "message",
       ...rewriteMentionLabels(body.body, mentions),
       reactionState: { version: 0, reactions: [] },
       pinnedAt: null,
@@ -366,6 +377,7 @@ export function registerMessageRoutes(context: RouteContext) {
       replyToMessageId: replyTarget?.id ?? null,
       replyTo: replyTarget
         ? {
+            kind: replyTarget.kind,
             messageId: replyTarget.id,
             userId: replyTarget.userId,
             nickname: replyTarget.nickname,
@@ -377,26 +389,7 @@ export function registerMessageRoutes(context: RouteContext) {
 
     database.sqlite.exec("BEGIN IMMEDIATE");
     try {
-      run(database.sqlite, "update rooms set message_sequence = message_sequence + 1 where id = ?", [roomId]);
-      message.sequence = one<{ sequence: number }>(
-        database.sqlite,
-        "select message_sequence as sequence from rooms where id = ?",
-        [roomId]
-      )!.sequence;
-      run(
-        database.sqlite,
-        "insert into messages (id, room_id, user_id, body, created_at, reply_to_message_id, sequence, mentions) values (?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-          message.id,
-          message.roomId,
-          message.userId,
-          message.body,
-          message.createdAt,
-          message.replyToMessageId,
-          message.sequence,
-          JSON.stringify(mentions)
-        ]
-      );
+      writeMessageRow(database.sqlite, message, mentions);
       database.sqlite.exec("COMMIT");
     } catch (error) {
       database.sqlite.exec("ROLLBACK");
@@ -407,6 +400,87 @@ export function registerMessageRoutes(context: RouteContext) {
     // can maintain unread counts for text rooms they have not opened yet.
     io.to(`server:${room.serverId}`).emit("message:new", message);
 
+    return reply.code(201).send({ message });
+  });
+
+  // Waving posts the shared wave as a reply to a Welcome notice. It is its own
+  // route rather than a body the client sends to the ordinary post, so the
+  // once-per-member rule is checked in the same transaction that writes it.
+  fastify.post("/api/rooms/:roomId/messages/:messageId/wave", { config: messageLimit }, async (request, reply) => {
+    const user = requireUser(database, request, reply, secureCookies);
+    if (!user) {
+      return;
+    }
+    const { roomId, messageId } = messageParamsSchema.parse(request.params);
+    // The same order as posting, for the same reason: membership first, then a
+    // real room refused for its kind.
+    const room = roomById(database.sqlite, roomId);
+    if (!room) {
+      return reply.code(404).send({ error: "room_not_found" });
+    }
+    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
+    if (room.kind !== "text") {
+      return reply.code(400).send({ error: "messages_require_text_room" });
+    }
+    const notice = messageById(database.sqlite, roomId, messageId);
+    if (!notice) {
+      return reply.code(404).send({ error: "message_not_found" });
+    }
+    if (notice.kind !== "memberJoined") {
+      return reply.code(400).send({ error: "not_a_welcome_notice" });
+    }
+    if (notice.userId === user.id) {
+      return reply.code(400).send({ error: "cannot_wave_at_self" });
+    }
+    const sender = serverPresenceUser(database.sqlite, room.serverId, user.id);
+    if (!sender) return reply.code(403).send({ error: "server_forbidden" });
+    const message: ChatMessage = {
+      kind: "message",
+      body: welcomeWaveBody,
+      mentions: [],
+      reactionState: { version: 0, reactions: [] },
+      pinnedAt: null,
+      id: crypto.randomUUID(),
+      serverId: room.serverId,
+      sequence: 0,
+      roomId,
+      userId: user.id,
+      nickname: sender.nickname,
+      authorDeleted: false,
+      createdAt: new Date().toISOString(),
+      editedAt: null,
+      suppressedEmbedKeys: [],
+      replyToMessageId: notice.id,
+      replyTo: {
+        kind: notice.kind,
+        messageId: notice.id,
+        userId: notice.userId,
+        nickname: notice.nickname,
+        authorDeleted: notice.authorDeleted,
+        ...quotedContent(notice.body, notice.mentions)
+      }
+    };
+    database.sqlite.exec("BEGIN IMMEDIATE");
+    try {
+      const waved = one<{ id: string }>(
+        database.sqlite,
+        `select id from messages
+         where reply_to_message_id = ? and user_id = ? and body = ? and deleted_at is null
+         limit 1`,
+        [notice.id, user.id, welcomeWaveBody]
+      );
+      if (waved) {
+        database.sqlite.exec("ROLLBACK");
+        return reply.code(409).send({ error: "already_waved" });
+      }
+      writeMessageRow(database.sqlite, message, []);
+      database.sqlite.exec("COMMIT");
+    } catch (error) {
+      database.sqlite.exec("ROLLBACK");
+      throw error;
+    }
+    database.save();
+    io.to(`server:${room.serverId}`).emit("message:new", message);
     return reply.code(201).send({ message });
   });
 
@@ -428,6 +502,10 @@ export function registerMessageRoutes(context: RouteContext) {
     // else's message but never rewrite it.
     if (current.userId !== user.id) {
       return reply.code(403).send({ error: "forbidden" });
+    }
+    // A Welcome notice has no body of its author's to rewrite.
+    if (current.kind !== "message") {
+      return reply.code(400).send({ error: "message_not_editable" });
     }
 
     const room = roomById(database.sqlite, roomId)!;
@@ -549,6 +627,104 @@ function requireTextRoom(database: VoxlyDatabase, roomId: string, userId: string
   return room;
 }
 
+/**
+ * The insert every message takes, inside its caller's transaction: posting
+ * opens its own, while a Welcome notice joins the invite acceptance that
+ * activated the Membership. Assigns the room's next sequence.
+ */
+function writeMessageRow(sqlite: DatabaseSync, message: ChatMessage, mentions: MessageMention[]) {
+  run(sqlite, "update rooms set message_sequence = message_sequence + 1 where id = ?", [message.roomId]);
+  message.sequence = one<{ sequence: number }>(sqlite, "select message_sequence as sequence from rooms where id = ?", [
+    message.roomId
+  ])!.sequence;
+  run(
+    sqlite,
+    "insert into messages (id, room_id, user_id, body, created_at, reply_to_message_id, sequence, mentions, kind) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [
+      message.id,
+      message.roomId,
+      message.userId,
+      message.body,
+      message.createdAt,
+      message.replyToMessageId,
+      message.sequence,
+      JSON.stringify(mentions),
+      message.kind === "memberJoined" ? welcomeNoticeKind : "message"
+    ]
+  );
+}
+
+/**
+ * Where a Welcome notice goes: the owner's chosen text channel while it is one
+ * of this server's, otherwise the top text channel in sidebar order. Null when
+ * the server has no text channel at all.
+ */
+export function welcomeRoomId(sqlite: DatabaseSync, serverId: string, chosen: string | null) {
+  const room = chosen ? roomById(sqlite, chosen) : null;
+  if (room && room.serverId === serverId && room.kind === "text") return room.id;
+  // Mirrors the client's channel groups: the uncategorized group sits at
+  // `servers.uncategorized_position` and wins a tie with a category.
+  return (
+    one<{ id: string }>(
+      sqlite,
+      `select rooms.id
+       from rooms
+       join servers on servers.id = rooms.server_id
+       left join categories on categories.id = rooms.category_id
+       where rooms.server_id = ? and rooms.kind = 'text'
+       order by coalesce(categories.position, servers.uncategorized_position) asc,
+         rooms.category_id is not null asc, rooms.position asc, rooms.id asc
+       limit 1`,
+      [serverId]
+    )?.id ?? null
+  );
+}
+
+/**
+ * Writes the Welcome notice for a member who has just joined, inside the invite
+ * acceptance transaction and after their Membership is active, so the notice
+ * lands past their read baseline and is unread only for everyone else. Returns
+ * the notice to publish once that transaction commits, or null when the server
+ * has notices switched off or no text channel.
+ */
+export function writeWelcomeNotice(sqlite: DatabaseSync, serverId: string, userId: string, createdAt: string) {
+  const settings = one<{ welcomeNotices: number; welcomeRoomId: string | null }>(
+    sqlite,
+    "select welcome_notices as welcomeNotices, welcome_room_id as welcomeRoomId from servers where id = ?",
+    [serverId]
+  );
+  if (!settings?.welcomeNotices) return null;
+  const roomId = welcomeRoomId(sqlite, serverId, settings.welcomeRoomId);
+  const member = serverPresenceUser(sqlite, serverId, userId);
+  if (!roomId || !member) return null;
+  const notice: ChatMessage = {
+    kind: "memberJoined",
+    body: "",
+    mentions: [],
+    reactionState: { version: 0, reactions: [] },
+    pinnedAt: null,
+    id: crypto.randomUUID(),
+    serverId,
+    sequence: 0,
+    roomId,
+    userId,
+    nickname: member.nickname,
+    authorDeleted: false,
+    createdAt,
+    editedAt: null,
+    suppressedEmbedKeys: [],
+    replyToMessageId: null,
+    replyTo: null
+  };
+  writeMessageRow(sqlite, notice, []);
+  return notice;
+}
+
+/** Announced like any new message, so unread counts include it. */
+export function publishWelcomeNotice(io: RouteContext["io"], notice: ChatMessage) {
+  io.to(`server:${notice.serverId}`).emit("message:new", notice);
+}
+
 export function messageById(sqlite: DatabaseSync, roomId: string, messageId: string) {
   const row = one<MessageRow>(
     sqlite,
@@ -583,6 +759,7 @@ export function publicMessage(row: MessageRow, sqlite?: DatabaseSync): ChatMessa
     suppressedEmbedKeys = [];
   }
   return {
+    kind: messageKind(row.kind),
     ...rewriteMentionLabels(row.body, resolveMentions(sqlite, row.serverId, row.mentionsJson)),
     reactionState: sqlite ? reactionState(sqlite, row.id) : { version: row.reactionVersion ?? 0, reactions: [] },
     pinnedAt: row.pinnedAt ?? null,
@@ -602,6 +779,7 @@ export function publicMessage(row: MessageRow, sqlite?: DatabaseSync): ChatMessa
     replyTo:
       row.replyToMessageId !== null && row.replyToUserId !== null
         ? {
+            kind: messageKind(row.replyToKind),
             messageId: row.replyToMessageId,
             userId: row.replyToUserId,
             nickname: row.replyToNickname ?? "",
@@ -619,6 +797,11 @@ export function publicMessage(row: MessageRow, sqlite?: DatabaseSync): ChatMessa
  * `replyExcerptMaxLength` comes from `@voxly/shared` because the web client
  * lays the same strip out and has to agree on where it ends.
  */
+/** Anything unrecognised reads as an ordinary message rather than failing history. */
+function messageKind(stored: string | null | undefined): ChatMessageKind {
+  return stored === welcomeNoticeKind ? "memberJoined" : "message";
+}
+
 export function replyExcerpt(body: string) {
   const collapsed = body.replace(/\s+/g, " ").trim();
   return collapsed.length > replyExcerptMaxLength ? `${collapsed.slice(0, replyExcerptMaxLength)}…` : collapsed;
@@ -629,7 +812,7 @@ export function replyExcerpt(body: string) {
  * to the room rather than trusting the stored id. A quote that escaped its room
  * would disclose another room's content to someone who cannot read it.
  */
-const replyJoinColumns = `quoted.user_id as replyToUserId,
+const replyJoinColumns = `quoted.user_id as replyToUserId, quoted.kind as replyToKind,
       case when quoted_users.deleted_at is null then coalesce(quoted_members.nickname, quoted_users.nickname) else '' end as replyToNickname,
       quoted_users.deleted_at is not null as replyToAuthorDeleted,
       quoted.body as replyToBody, quoted.mentions as replyToMentionsJson`;
@@ -648,7 +831,7 @@ const replyJoinClause = `left join messages quoted
  * the single-row lookup cannot come to disagree about what a message is. Only
  * the where clause and the ordering differ between the two.
  */
-const messageColumns = `rooms.server_id as serverId, messages.sequence, messages.id, messages.room_id as roomId, messages.user_id as userId,
+const messageColumns = `rooms.server_id as serverId, messages.sequence, messages.id, messages.kind, messages.room_id as roomId, messages.user_id as userId,
       case when users.deleted_at is null then coalesce(server_members.nickname, users.nickname) else '' end as nickname,
       users.deleted_at is not null as authorDeleted,
       messages.mentions as mentionsJson, messages.reaction_version as reactionVersion, messages.pinned_at as pinnedAt,

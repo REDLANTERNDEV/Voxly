@@ -76,6 +76,7 @@ describe("messages", () => {
         })
       );
       assert.deepEqual(quoted.replyTo, {
+        kind: "message",
         messageId: "message-0",
         userId: "user-0",
         nickname: "Ada",
@@ -163,6 +164,7 @@ describe("messages", () => {
         "PATCH /api/rooms/:roomId/messages/:messageId",
         "PATCH /api/rooms/:roomId/messages/:messageId/embeds",
         "POST /api/rooms/:roomId/messages",
+        "POST /api/rooms/:roomId/messages/:messageId/wave",
         "PUT /api/rooms/:roomId/messages/:messageId/pin",
         "PUT /api/rooms/:roomId/messages/:messageId/reactions/:emoji"
       ]);

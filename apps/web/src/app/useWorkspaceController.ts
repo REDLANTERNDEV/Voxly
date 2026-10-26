@@ -1,5 +1,6 @@
 import type {
   AfkTimeoutMinutes,
+  ServerWelcomeSettings,
   CategorySummary,
   PresenceStatus,
   PresenceUser,
@@ -26,6 +27,7 @@ import {
   renameServerRoom,
   updateServer,
   updateServerAfkTimeout,
+  updateServerWelcome,
   updateServerMemberNickname,
   updateServerMemberPermissions,
   updateServerRoomLayout,
@@ -384,6 +386,12 @@ export function useWorkspaceController({
         current.map((server) => (server.id === activeServerId ? { ...server, afkTimeoutMinutes: minutes } : server))
       );
     },
+    setWelcome: async (settings: ServerWelcomeSettings) => {
+      const saved = await updateServerWelcome(activeServerId, settings);
+      setServers((current) =>
+        current.map((server) => (server.id === activeServerId ? { ...server, ...saved } : server))
+      );
+    },
     deleteRoom: async (roomId: string) => {
       await deleteServerRoom(activeServerId, roomId);
       await refreshRooms(activeServerId, roomId);
@@ -473,12 +481,23 @@ export function useWorkspaceController({
         if (!present?.some((item) => item.userId === userId)) return current;
         return { ...current, [serverId]: present.map((item) => (item.userId === userId ? { ...item, status } : item)) };
       }),
-    applyServerName: (serverId: string, name: string) =>
-      setServers((current) => current.map((server) => (server.id === serverId ? { ...server, name } : server))),
-    applyAfkTimeout: (serverId: string, afkTimeoutMinutes: AfkTimeoutMinutes) =>
-      setServers((current) =>
-        current.map((server) => (server.id === serverId ? { ...server, afkTimeoutMinutes } : server))
-      ),
+    /** The server summary fields an owner changes, as they arrive over realtime, keyed by event handler. */
+    serverSummaryUpdates: {
+      serverUpdated: (serverId: string, name: string) =>
+        setServers((current) => current.map((server) => (server.id === serverId ? { ...server, name } : server))),
+      afkUpdated: (serverId: string, afkTimeoutMinutes: AfkTimeoutMinutes) =>
+        setServers((current) =>
+          current.map((server) => (server.id === serverId ? { ...server, afkTimeoutMinutes } : server))
+        ),
+      welcomeUpdated: (serverId: string, settings: ServerWelcomeSettings) =>
+        setServers((current) =>
+          current.map((server) =>
+            server.id === serverId
+              ? { ...server, welcomeNotices: settings.welcomeNotices, welcomeRoomId: settings.welcomeRoomId }
+              : server
+          )
+        )
+    },
     revokeAccess: (serverId: string) => {
       setOnlineUsersByServer((current) => {
         const next = { ...current };

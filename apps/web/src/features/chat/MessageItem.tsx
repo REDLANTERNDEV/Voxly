@@ -5,11 +5,13 @@ import { ApiError } from "../../api.js";
 import { initial } from "../../app/presentation.js";
 import type { Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
-import { CloseIcon, MoreIcon, ReplyIcon } from "../../components/ui/Icons.js";
+import { ArrowIcon, CloseIcon, MoreIcon, ReplyIcon } from "../../components/ui/Icons.js";
 import { clampContextMenuPosition } from "../../lib/contextMenu.js";
 import { type LanguageCode } from "../../lib/i18n.js";
 import { messageEmbeds, type MessageEmbed } from "../../lib/messageEmbeds.js";
 import {
+  aroundNickname,
+  canWaveAt,
   formatMessageDateTime,
   formatMessageTimestamp,
   messageDeleteFailureCopy,
@@ -48,6 +50,8 @@ export function MessageItem({
   onPin,
   onReact,
   onClearReactions,
+  waved = false,
+  onWave,
   identityChanges = noMemberIdentityChanges
 }: {
   message: ChatMessage;
@@ -70,6 +74,9 @@ export function MessageItem({
   onPin(messageId: string, pinned: boolean): Promise<void>;
   onReact(messageId: string, emoji: string, add: boolean): Promise<void>;
   onClearReactions(messageId: string, emoji?: string): Promise<void>;
+  /** Whether this member already waved at this Welcome notice. */
+  waved?: boolean;
+  onWave?(messageId: string): Promise<void>;
   identityChanges?: MemberIdentityChanges;
 }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -85,13 +92,16 @@ export function MessageItem({
   const [actionError, setActionError] = useState("");
   const [pendingEmbed, setPendingEmbed] = useState<MessageEmbed | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [wavedNow, setWavedNow] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const permissions = messagePermissions({
     currentUserId: user.id,
     currentUserRole: canPin ? "owner" : "member",
-    messageUserId: message.userId
+    messageUserId: message.userId,
+    messageKind: message.kind
   });
+  const isNotice = message.kind === "memberJoined";
   const isOwn = message.userId === user.id;
   const displayNickname = message.authorDeleted ? t("common.deletedMember") : message.nickname;
   // Anyone who can read a message can answer it, so every row has a menu.
@@ -162,6 +172,22 @@ export function MessageItem({
     }
   }
 
+  async function waveAtNotice() {
+    if (!onWave) return;
+    setIsBusy(true);
+    setActionError("");
+    try {
+      await onWave(message.id);
+      setWavedNow(true);
+    } catch (error) {
+      // Already waved from another Device: the button simply has nothing left to do.
+      if (error instanceof ApiError && error.status === 409) setWavedNow(true);
+      else setActionError(t("chat.welcomeWaveFailed"));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function suppressCurrentEmbed(embed: MessageEmbed) {
     setIsBusy(true);
     setActionError("");
@@ -177,7 +203,7 @@ export function MessageItem({
   return (
     <article
       data-message-id={message.id}
-      className={`message ${isOwn ? "message-own" : ""} ${isMentioned(message, user.id) ? "message-mentioned" : ""}`}
+      className={`message ${isNotice ? "message-notice" : ""} ${isOwn && !isNotice ? "message-own" : ""} ${isMentioned(message, user.id) ? "message-mentioned" : ""}`}
       onContextMenu={
         hasActions
           ? (event) => {
@@ -191,28 +217,48 @@ export function MessageItem({
           : undefined
       }
     >
-      <span className={`avatar ${isOwn ? "owner" : ""}`}>
-        {message.authorDeleted ? "—" : initial(message.nickname)}
-      </span>
+      {isNotice ? (
+        <span className="message-notice-mark" aria-hidden="true">
+          <ArrowIcon />
+        </span>
+      ) : (
+        <span className={`avatar ${isOwn ? "owner" : ""}`}>
+          {message.authorDeleted ? "—" : initial(message.nickname)}
+        </span>
+      )}
       <div className="message-content">
-        <div className="message-meta">
-          <span className="message-author">{displayNickname}</span>
-          {message.pinnedAt ? <span className="message-pin-label">{t("chat.pinned")}</span> : null}
-          {isMentioned(message, user.id) ? <span className="sr-only">{t("chat.mentioned")}</span> : null}
-          <span className="message-time mono">
-            <time dateTime={message.createdAt}>
-              {formatMessageTimestamp(message.createdAt, language, new Date(), timeFormat)}
-            </time>
-            {message.editedAt ? (
-              <span
-                className="message-edited"
-                title={t("room.editedAt", { time: formatMessageDateTime(message.editedAt, language, timeFormat) })}
-              >
-                ({t("status.edited")})
-              </span>
-            ) : null}
-          </span>
-        </div>
+        {isNotice ? (
+          <WelcomeNoticeLine
+            nickname={displayNickname}
+            createdAt={message.createdAt}
+            language={language}
+            timeFormat={timeFormat}
+            t={t}
+            canWave={canWaveAt(message, user.id, waved || wavedNow) && Boolean(onWave)}
+            busy={isBusy}
+            onWave={() => void waveAtNotice()}
+          />
+        ) : null}
+        {isNotice ? null : (
+          <div className="message-meta">
+            <span className="message-author">{displayNickname}</span>
+            {message.pinnedAt ? <span className="message-pin-label">{t("chat.pinned")}</span> : null}
+            {isMentioned(message, user.id) ? <span className="sr-only">{t("chat.mentioned")}</span> : null}
+            <span className="message-time mono">
+              <time dateTime={message.createdAt}>
+                {formatMessageTimestamp(message.createdAt, language, new Date(), timeFormat)}
+              </time>
+              {message.editedAt ? (
+                <span
+                  className="message-edited"
+                  title={t("room.editedAt", { time: formatMessageDateTime(message.editedAt, language, timeFormat) })}
+                >
+                  ({t("status.edited")})
+                </span>
+              ) : null}
+            </span>
+          </div>
+        )}
         {message.replyToMessageId ? (
           <ReplyQuote
             reply={message.replyTo}
@@ -258,7 +304,7 @@ export function MessageItem({
               </button>
             </div>
           </div>
-        ) : (
+        ) : isNotice ? null : (
           <>
             <div className="message-body">
               <MessageBody
@@ -487,6 +533,54 @@ export function MessageItem({
         />
       ) : null}
     </article>
+  );
+}
+
+/**
+ * A Welcome notice in place of a message's author line and body. The sentence
+ * is the viewer's own translation, with the member's nickname set apart.
+ */
+function WelcomeNoticeLine(props: {
+  nickname: string;
+  createdAt: string;
+  language: LanguageCode;
+  timeFormat: TimeFormatPreference;
+  t: Translate;
+  canWave: boolean;
+  busy: boolean;
+  onWave(): void;
+}) {
+  const { before, after } = aroundNickname((nickname) => props.t("chat.welcomeNotice", { nickname }));
+  return (
+    <>
+      <p className="message-notice-line">
+        <span className="message-notice-text">
+          {before}
+          <strong className="message-notice-name">{props.nickname}</strong>
+          {after}
+        </span>
+        <span className="message-time mono">
+          <time
+            dateTime={props.createdAt}
+            title={formatMessageDateTime(props.createdAt, props.language, props.timeFormat)}
+          >
+            {formatMessageTimestamp(props.createdAt, props.language, new Date(), props.timeFormat)}
+          </time>
+        </span>
+      </p>
+      {props.canWave ? (
+        <button
+          className="message-notice-wave"
+          type="button"
+          disabled={props.busy}
+          aria-label={props.t("chat.welcomeWaveLabel", { nickname: props.nickname })}
+          onClick={props.onWave}
+        >
+          <span aria-hidden="true">👋</span>
+          {props.t("chat.welcomeWave")}
+        </button>
+      ) : null}
+    </>
   );
 }
 

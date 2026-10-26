@@ -52,6 +52,7 @@ describe("server member identity updates", () => {
           body: "A",
           createdAt: "now",
           editedAt: null,
+          kind: "message" as const,
           suppressedEmbedKeys: [],
           mentions: [],
           reactionState: { version: 0, reactions: [] },
@@ -72,6 +73,7 @@ describe("server member identity updates", () => {
           body: "B",
           createdAt: "now",
           editedAt: null,
+          kind: "message" as const,
           suppressedEmbedKeys: [],
           mentions: [],
           reactionState: { version: 0, reactions: [] },
@@ -105,12 +107,21 @@ describe("server member identity updates", () => {
           body: "A",
           createdAt: "now",
           editedAt: null,
+          kind: "message" as const,
           suppressedEmbedKeys: [],
           mentions: [],
           reactionState: { version: 0, reactions: [] },
           pinnedAt: null,
           replyToMessageId: "b",
-          replyTo: { messageId: "b", userId: "u1", nickname: "Old", authorDeleted: false, body: "B", mentions: [] }
+          replyTo: {
+            kind: "message" as const,
+            messageId: "b",
+            userId: "u1",
+            nickname: "Old",
+            authorDeleted: false,
+            body: "B",
+            mentions: []
+          }
         }
       ],
       roomB: [
@@ -125,6 +136,7 @@ describe("server member identity updates", () => {
           body: "B",
           createdAt: "now",
           editedAt: null,
+          kind: "message" as const,
           suppressedEmbedKeys: [],
           mentions: [],
           reactionState: { version: 0, reactions: [] },

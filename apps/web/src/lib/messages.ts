@@ -1,4 +1,4 @@
-import type { UserRole } from "@voxly/shared";
+import { welcomeWaveBody, type ChatMessage, type ChatMessageKind, type UserRole } from "@voxly/shared";
 import { timeFormatOptions, type TimeFormatPreference } from "./timeFormat.js";
 
 export function formatMessageDateTime(value: string, language: string, timeFormat: TimeFormatPreference = "auto") {
@@ -26,12 +26,49 @@ export function formatMessageTimestamp(
   ).format(date);
 }
 
-export function messagePermissions(input: { currentUserId: string; currentUserRole: UserRole; messageUserId: string }) {
+export function messagePermissions(input: {
+  currentUserId: string;
+  currentUserRole: UserRole;
+  messageUserId: string;
+  messageKind?: ChatMessageKind;
+}) {
   const isOwn = input.currentUserId === input.messageUserId;
   return {
-    canEdit: isOwn,
+    // A Welcome notice is in its member's name but has no body of theirs to edit.
+    canEdit: isOwn && input.messageKind !== "memberJoined",
     canDelete: isOwn || input.currentUserRole === "owner"
   };
+}
+
+/**
+ * The Welcome notices this member has already waved at, from the loaded
+ * history. The server refuses a second wave either way; this only keeps the
+ * button from offering one.
+ */
+export function wavedNotices(messages: readonly ChatMessage[], userId: string) {
+  return new Set(
+    messages.flatMap((message) =>
+      message.userId === userId && message.replyToMessageId && message.body === welcomeWaveBody
+        ? [message.replyToMessageId]
+        : []
+    )
+  );
+}
+
+/** Everyone but the member it welcomes may wave, once, while they are still a member. */
+export function canWaveAt(message: ChatMessage, userId: string, waved: boolean) {
+  return message.kind === "memberJoined" && message.userId !== userId && !message.authorDeleted && !waved;
+}
+
+/**
+ * Splits a translated sentence around the nickname so it can be set apart
+ * without assembling the sentence from fragments: Turkish and English put it
+ * in different places.
+ */
+export function aroundNickname(translate: (nickname: string) => string) {
+  const marker = "\u0000";
+  const [before = "", after = ""] = translate(marker).split(marker);
+  return { before, after };
 }
 
 export function messageDeleteFailureCopy<T extends string>(status: number | undefined, t: (key: T) => string) {
