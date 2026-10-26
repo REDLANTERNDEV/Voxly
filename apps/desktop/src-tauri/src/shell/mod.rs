@@ -1,6 +1,7 @@
 //! Desktop shell orchestration. Platform adapters remain at the crate root.
 mod diagnostics;
 mod installation;
+mod launch;
 mod notification_commands;
 mod remote_shortcuts;
 mod runtime;

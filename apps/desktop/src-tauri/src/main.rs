@@ -11,9 +11,14 @@ mod native_notifications;
 mod platform;
 mod shell;
 mod shortcuts;
+mod update_card;
 mod update_installer;
 mod updates;
 
 fn main() {
+    // The staged update card never starts the shell, its plugins or single-instance.
+    if let Some(request) = update_card::request(std::env::args_os()) {
+        std::process::exit(update_card::run(request));
+    }
     shell::run();
 }

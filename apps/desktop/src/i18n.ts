@@ -45,7 +45,7 @@ export const english = {
   updateAvailable: "A desktop update is available:",
   updateDownloading: "Downloading desktop update…",
   updateReady: "Update verified and ready to install:",
-  updateInstalling: "Starting the installer…",
+  updateInstalling: "Starting the update…",
   updateConfirmation:
     "Install this desktop update and restart Voxly? This ends all calls, captures and pending media operations. Your saved Installation addresses and signed-in sessions are retained.",
   update_unavailable: "The update service is unavailable. You can keep using Voxly and try again later.",
@@ -235,7 +235,7 @@ export const turkish: Record<TranslationKey, string> = {
   updateAvailable: "Masaüstü güncellemesi mevcut:",
   updateDownloading: "Masaüstü güncellemesi indiriliyor…",
   updateReady: "Güncelleme doğrulandı ve kurulmaya hazır:",
-  updateInstalling: "Yükleyici başlatılıyor…",
+  updateInstalling: "Güncelleme başlatılıyor…",
   updateConfirmation:
     "Bu masaüstü güncellemesi yüklensin ve Voxly yeniden başlatılsın mı? Tüm görüşmeler, yakalamalar ve bekleyen medya işlemleri sona erer. Kayıtlı Kurulum adresleriniz ve açık oturumlarınız korunur.",
   update_unavailable:

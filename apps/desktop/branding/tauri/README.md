@@ -14,6 +14,11 @@ is transparent so Windows, macOS, and Linux can apply their own icon shape;
 `app-icon-background.png` and `app-icon-foreground.png` remain separate for
 adaptive icon composition.
 
+`icons/icon.ico` is the installed application's icon and the mark drawn on the
+update card. It carries 16, 24, 32, 48, 64, 96, 128 and 256 pixel images so
+neither the card nor large Explorer views upscale a small one; the 32 pixel
+image is the hand-tuned original, the rest are resized from `icons/icon-1024.png`.
+
 Windows Explorer uses `icons/setup-package.ico`: the exact dark vector mark
 on a silver rounded plate from `source/setup-package.svg`, exported at 16, 24,
 32, 48, 64, 128 and 256 pixels. The NSIS GUI initialization hook restores

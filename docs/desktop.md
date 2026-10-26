@@ -106,8 +106,11 @@ Application data is not moved into Program Files. Signed update installers use
 an app-cache staging directory and request elevation to replace application
 binaries. If UAC is cancelled or the installer cannot start, Home remains
 available for reopening an Installation and retrying. Explicit update consent
-ends calls before launching the installer. Installed migration, UAC and restart
-results remain pending in the Windows acceptance record.
+ends calls before launching the installer. Starting Voxly shows a small update
+card while it checks; when an update is found, the card shows its download,
+asks for UAC once and installs before Home opens. Updates install silently,
+without setup pages. Installed migration, UAC and restart results remain
+pending in the Windows acceptance record.
 
 ## Connect and sign in
 
