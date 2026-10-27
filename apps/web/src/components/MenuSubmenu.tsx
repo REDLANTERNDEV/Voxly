@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   autoUpdate,
@@ -24,17 +24,29 @@ export interface SubmenuItem {
 export function MenuSubmenu({
   label,
   items,
-  onSelect
+  onSelect,
+  icon,
+  description,
+  panelLabel,
+  className
 }: {
   label: string;
   items: readonly SubmenuItem[];
   onSelect(id: string): void;
+  /** Leading glyph on the trigger, decorative: the label names it. */
+  icon?: ReactNode;
+  /** A second line under the trigger's label, read as its description. */
+  description?: string;
+  /** The panel's accessible name, when the trigger's label alone would not say what is being chosen. */
+  panelLabel?: string;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const keyboardOpenRef = useRef(false);
   const listRef = useRef<Array<HTMLElement | null>>([]);
   const overlays = useMenuOverlays();
+  const descriptionId = useId();
   const { refs, floatingStyles, context, placement, isPositioned } = useFloating({
     open,
     onOpenChange: (next, event) => {
@@ -92,8 +104,22 @@ export function MenuSubmenu({
   };
   return (
     <div className="menu-submenu" onKeyDown={closeOnKey}>
-      <button ref={refs.setReference} type="button" className="menu-submenu-trigger" {...getReferenceProps()}>
-        <span>{label}</span>
+      <button
+        ref={refs.setReference}
+        type="button"
+        className={`menu-submenu-trigger${className ? ` ${className}` : ""}`}
+        aria-describedby={description ? descriptionId : undefined}
+        {...getReferenceProps()}
+      >
+        {icon}
+        {description ? (
+          <span className="menu-submenu-copy">
+            <span>{label}</span>
+            <small id={descriptionId}>{description}</small>
+          </span>
+        ) : (
+          <span>{label}</span>
+        )}
         <span className="menu-submenu-caret" aria-hidden="true">
           {open && placement.startsWith("left") ? "‹" : "›"}
         </span>
@@ -104,7 +130,7 @@ export function MenuSubmenu({
               ref={refs.setFloating}
               className="context-menu menu-submenu-panel"
               style={{ ...floatingStyles, visibility: isPositioned ? undefined : "hidden" }}
-              aria-label={label}
+              aria-label={panelLabel ?? label}
               {...getFloatingProps({ onKeyDown: closeOnKey })}
             >
               {items.map((item, index) => (

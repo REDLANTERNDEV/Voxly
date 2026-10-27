@@ -178,6 +178,37 @@ owners see it: a Server's owners for that Server, the Installation owner
 across all of them (ADR-0034).
 _Avoid_: Referral tree, invite log, audit log (that is the operator's)
 
+### Presence
+
+**Presence**:
+What other members see of whether someone is here right now: online, Idle, Do
+Not Disturb, or offline. It is derived by the server from the member's Status
+and their connections, and it is only ever shown inside a Server they share.
+_Avoid_: Status (that is what the member picked), activity, availability
+
+**Status**:
+What a member picks for themselves from the account menu — Online, Idle, Do Not
+Disturb or Invisible — for a set time or until they change it. It belongs to
+the Account, so every Device agrees, and it outranks what their connections
+measured (ADR-0035).
+_Avoid_: Presence, mood, custom status, availability
+
+**Idle**:
+Present but not at the keyboard, either because the member picked it or because
+no input reached any of their Devices for the Server's AFK timeout. Idle marks a
+member; it never moves them.
+_Avoid_: Away, AFK (that is the room), inactive
+
+**Do Not Disturb**:
+A Status that keeps message sounds and alerts quiet on the member's own Devices.
+A call they are in keeps its own cues.
+_Avoid_: Busy, DND in copy, quiet mode, mute (that is a Server's notifications)
+
+**Invisible**:
+A Status under which other members see the member as offline everywhere except
+a voice room they are actually in.
+_Avoid_: Hidden, offline mode, ghost
+
 ### Where a source's own words are allowed
 
 **Track** is what _Voxly_ calls a piece of audio, and nothing in Voxly should

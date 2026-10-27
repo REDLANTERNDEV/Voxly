@@ -292,6 +292,8 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "users", "is_bot", "integer not null default 0");
   addColumnIfMissing(sqlite, "users", "deleted_at", "text");
   addColumnIfMissing(sqlite, "users", "deletion_source", "text");
+  addColumnIfMissing(sqlite, "users", "presence_choice", "text not null default 'online'");
+  addColumnIfMissing(sqlite, "users", "presence_choice_until", "text");
   addColumnIfMissing(sqlite, "invites", "revoked_at", "text");
   addColumnIfMissing(sqlite, "invites", "label", "text");
   addColumnIfMissing(sqlite, "messages", "edited_at", "text");

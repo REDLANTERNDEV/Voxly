@@ -13,6 +13,7 @@ describe("member presence state", () => {
     assert.equal(memberPresenceState({ status: "online" }, true), "online");
     assert.equal(memberPresenceState({ status: "idle" }, true), "idle");
     assert.equal(memberPresenceState({}, true), "online", "an absent status is not away");
+    assert.equal(memberPresenceState({ status: "dnd" }, true), "dnd");
   });
 
   it("reports offline for anyone outside the online list, whatever they last said", () => {
@@ -25,10 +26,10 @@ describe("member presence state", () => {
 
 describe("presence dots", () => {
   it("renders one dot per member row, labelled for screen readers", () => {
-    assert.match(memberPanel, /className=\{`presence-dot\s+is-\$\{memberPresenceState\(user,\s+online\)\}`\}/);
+    assert.match(memberPanel, /isSelf && selfPresence \? selfPresence : memberPresenceState\(user, online\)/);
     assert.match(
       memberPanel,
-      /aria-label=\{t\(`presence\.\$\{memberPresenceState\(user,\s+online\)\}`\s+as\s+const\)\}/
+      /<PresenceDot\s+state=\{presenceState\}\s+label=\{t\(`presence\.\$\{presenceState\}`\s+as\s+const\)\}/
     );
   });
 
@@ -36,6 +37,10 @@ describe("presence dots", () => {
     assert.match(styles, /\.presence-dot\.is-online\s+\{\s+background:\s+var\(--speaking\);\s+\}/);
     assert.match(styles, /\.presence-dot\.is-idle\s+\{\s+background:\s+#e0a326;\s+\}/);
     assert.match(styles, /\.presence-dot\.is-offline\s+\{[^}]*var\(--muted\)/);
+    // Do Not Disturb and Invisible differ in shape too, not only in colour.
+    assert.match(styles, /\.presence-dot\.is-dnd\s+\{\s+background:\s+var\(--danger\);\s+\}/);
+    assert.match(styles, /\.presence-dot\.is-dnd::after\s+\{/);
+    assert.match(styles, /\.presence-dot\.is-invisible\s+\{[^}]*inset 0 0 0 2\.5px var\(--muted\)/);
   });
 
   it("rings the dot in the panel background so it cannot merge into the avatar", () => {

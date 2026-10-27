@@ -1,6 +1,6 @@
 ((origin, mode = "openMic") => {
   if (window !== window.top || window.location.origin !== origin) return;
-  const receivers = { mute: null, deafen: null, microphone: null };
+  const receivers = { mute: null, deafen: null, microphone: null, systemActivity: null };
   const microphone = { mode, talkHeld: false, muteHeld: false, talkReleasing: false };
   const microphoneState = () => ({ ...microphone });
   const notifyMicrophone = () => dispatch("microphone", microphoneState());
@@ -56,6 +56,15 @@
         if (window !== window.top || window.location.origin !== origin) return;
         microphone.talkReleasing = false;
         notifyMicrophone();
+      },
+      subscribeSystemActivity(handler) {
+        return subscribe("systemActivity", handler);
+      },
+      // Native supplies one of two fixed words: input happened somewhere on the
+      // machine, or it was locked. Nothing else about the machine comes with it.
+      dispatchSystemActivity(signal) {
+        if (signal !== "active" && signal !== "away") return;
+        dispatch("systemActivity", signal);
       },
       dispatchPushToMute(pressed) {
         if (window !== window.top || window.location.origin !== origin) return;

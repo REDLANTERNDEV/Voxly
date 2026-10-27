@@ -166,6 +166,19 @@ describe("notification sound wiring", () => {
     assert.match(app, /notifyMessageRef\.current\s+=\s+audio\.notifyMessage/);
   });
 
+  it("lets Do Not Disturb silence message cues and alerts but not a call's own cues", () => {
+    const hook = readFileSync("src/app/useNotificationSounds.ts", "utf8");
+    const listener = readFileSync("src/app/useListenerAudio.ts", "utf8");
+
+    assert.match(listener, /messagesSilenced,\s+onNotificationActivate/);
+    // Ahead of the sound and the desktop alert alike, in the message path only.
+    assert.match(
+      hook,
+      /if \(!accountId \|\| messagesSilencedRef\.current\) return false;\s+const allowed = shouldPlayMessageSound/
+    );
+    assert.equal(hook.match(/messagesSilencedRef\.current\)/g)?.length, 1);
+  });
+
   it("mutes cues for owner-enforced deafen as well as self deafen", () => {
     const listener = readFileSync("src/app/useListenerAudio.ts", "utf8");
 

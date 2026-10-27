@@ -3,13 +3,15 @@ import { useState } from "react";
 import { initial, memberRoleLabel } from "../../app/presentation.js";
 import type { MemberAction, Translate } from "../../app/types.js";
 import { UserPlusIcon } from "../ui/Icons.js";
+import { PresenceDot } from "./AccountStatusMenu.js";
 import {
   canOwnerModeratePerson,
   canOwnerVoiceModerate,
   countPeople,
   currentServerPresence,
   groupDirectoryMembers,
-  memberPresenceState
+  memberPresenceState,
+  type MemberPresenceState
 } from "../../lib/memberDirectory.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
 import {
@@ -21,6 +23,7 @@ import {
 export function MemberPanel({
   members,
   onlineUsers,
+  selfPresence,
   voiceRooms,
   voiceSnapshots,
   currentUser,
@@ -38,6 +41,8 @@ export function MemberPanel({
 }: {
   members: PresenceUser[];
   onlineUsers: PresenceUser[];
+  /** Your own dot, from the Status you picked rather than what others are told. */
+  selfPresence?: MemberPresenceState;
   voiceRooms: RoomSummary[];
   voiceSnapshots: Record<string, VoiceSnapshot>;
   currentUser: PublicUser;
@@ -90,6 +95,9 @@ export function MemberPanel({
       const roleLabel = memberRoleLabel(user, t);
       const detail = voiceRoom ? `${roleLabel} · ${voiceRoom.name}` : roleLabel;
       const isSelf = user.userId === currentUser.id;
+      // Your own row shows the Status you picked, Invisible included, where
+      // everyone else sees what the server told them.
+      const presenceState = isSelf && selfPresence ? selfPresence : memberPresenceState(user, online);
       // Your own name is yours; somebody else's is the owner's.
       const canRename = isSelf || (canModerate && user.role === "member");
       // The two self-silences belong on your own row here as much as in the rail.
@@ -120,11 +128,7 @@ export function MemberPanel({
         >
           <span className={`avatar ${user.role === "owner" ? "owner" : ""}`}>
             {initial(user.nickname)}
-            <span
-              className={`presence-dot is-${memberPresenceState(user, online)}`}
-              aria-label={t(`presence.${memberPresenceState(user, online)}` as const)}
-              role="img"
-            />
+            <PresenceDot state={presenceState} label={t(`presence.${presenceState}` as const)} />
           </span>
           <span className="member-copy">
             <strong>{user.nickname}</strong>

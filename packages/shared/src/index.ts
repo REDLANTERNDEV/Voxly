@@ -94,10 +94,45 @@ export interface ServerWelcomeSettings {
 export const musicBotNickname = "Music";
 
 /**
- * Presence beyond connected/disconnected. Offline is the absence of an entry,
- * so only the two present states are named.
+ * Presence beyond connected/disconnected, as other members see it. Offline is
+ * the absence of an entry, so only the present states are named. Invisible is
+ * not among them: an invisible member is absent from the list exactly like an
+ * offline one, so the wire never says who is hiding.
  */
-export type PresenceStatus = "online" | "idle";
+export type PresenceStatus = "online" | "idle" | "dnd";
+
+/**
+ * The Status a member picked for themselves. Unlike Presence it is held per
+ * account, so every tab and Device agrees, and it is only ever sent back to
+ * that member.
+ */
+export type PresenceChoice = "online" | "idle" | "dnd" | "invisible";
+export const presenceDurationOptions = [15, 60, 480, 1440, 4320] as const;
+export type PresenceDurationMinutes = (typeof presenceDurationOptions)[number];
+export type PresenceChoiceRequest =
+  | { status: "online" }
+  | {
+      status: Exclude<PresenceChoice, "online">;
+      duration: { mode: "timed"; durationMinutes: PresenceDurationMinutes } | { mode: "indefinite" };
+    };
+/** A null `until` means the Status lasts until the member changes it. */
+export interface PresenceChoiceState {
+  status: PresenceChoice;
+  until: string | null;
+}
+
+export function isPresenceChoiceRequest(value: unknown): value is PresenceChoiceRequest {
+  if (typeof value !== "object" || value === null) return false;
+  const request = value as { status?: unknown; duration?: unknown };
+  if (request.status === "online") return true;
+  if (request.status !== "idle" && request.status !== "dnd" && request.status !== "invisible") return false;
+  if (typeof request.duration !== "object" || request.duration === null) return false;
+  const duration = request.duration as { mode?: unknown; durationMinutes?: unknown };
+  if (duration.mode === "indefinite") return true;
+  return (
+    duration.mode === "timed" && presenceDurationOptions.includes(duration.durationMinutes as PresenceDurationMinutes)
+  );
+}
 
 /**
  * The quoted excerpt shown above a reply. Resolved by the server at read time
@@ -735,9 +770,8 @@ export type MusicCommandAck =
 export interface ServerToClientEvents {
   "account:deleted": (payload: { reason: "request_approved" | "owner_initiated" }) => void;
   "account:deletionRequestCreated": (payload: { requestId: string }) => void;
-  "presence:snapshot": (users: PresenceUser[]) => void;
-  "presence:online": (user: PresenceUser) => void;
-  "presence:offline": (userId: string) => void;
+  /** The member's own Status. Sent only to that member's sockets. */
+  "presence:choice": (state: PresenceChoiceState) => void;
   "presence:serverSnapshot": (snapshot: ServerPresenceSnapshot) => void;
   "presence:serverOnline": (payload: { serverId: string; user: PresenceUser }) => void;
   "presence:serverOffline": (payload: { serverId: string; userId: string }) => void;
@@ -811,7 +845,12 @@ export interface ServerToClientEvents {
 
 export interface ClientToServerEvents {
   "connection:probe": (ack: () => void) => void;
+  /** What this connection measured; only online and idle are accepted. */
   "presence:setStatus": (status: PresenceStatus) => void;
+  "presence:setChoice": (
+    request: PresenceChoiceRequest,
+    ack: (response: { ok: true; state: PresenceChoiceState } | { ok: false }) => void
+  ) => void;
   "room:join": (roomId: string) => void;
   "room:leave": (roomId: string) => void;
   "voice:join": (payload: VoiceJoinRequest, ack: (response: VoiceJoinAck) => void) => void;

@@ -1,5 +1,5 @@
 import { downloadVoiceDiagnostics } from "../../lib/voiceDiagnostics.js";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { activeServerRole, initial, voiceSignalPresentation } from "../../app/presentation.js";
 import type { ShellActions, ShellModel, Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
@@ -19,6 +19,8 @@ import { ApplicationUpdateStatus } from "../ApplicationUpdateStatus.js";
 import type { ConnectionHealth } from "../../lib/useConnectionHealth.js";
 import type { VoiceQuality } from "../../lib/useVoiceQuality.js";
 import { controlPresentation } from "../../lib/voiceControls.js";
+import { selfPresenceState } from "../../lib/presenceChoice.js";
+import { AccountStatusMenu, PresenceDot } from "./AccountStatusMenu.js";
 type VoiceDockProps = Pick<
   ShellModel,
   | "activeServerId"
@@ -39,8 +41,15 @@ type VoiceDockProps = Pick<
   | "voiceQuality"
   | "voiceSnapshots"
   | "microphoneHealthWarning"
+  | "onlineUsers"
+  | "presenceChoice"
+  | "language"
+  | "timeFormat"
 > &
-  Pick<ShellActions, "onJoinVoice" | "onLeaveVoice" | "onLogout" | "onNavigate" | "onToggleControl"> & {
+  Pick<
+    ShellActions,
+    "onJoinVoice" | "onLeaveVoice" | "onLogout" | "onNavigate" | "onToggleControl" | "onPresenceChoiceChange"
+  > & {
     connectedCount: number;
     onOpenSettings: () => void;
     onOpenAudioSettings?: () => void;
@@ -51,6 +60,11 @@ type VoiceDockProps = Pick<
 export function VoiceDock(props: VoiceDockProps) {
   const canManageServer = activeServerRole(props) === "owner";
   const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const accountMenuRef = useRef<HTMLDetailsElement>(null);
+  const selfState = selfPresenceState(
+    props.presenceChoice.status,
+    props.onlineUsers.find((member) => member.userId === props.user.id)?.status
+  );
   const roomName = props.activeVoiceRoomId
     ? (props.rooms.voice.find((room) => room.id === props.activeVoiceRoomId)?.name ?? props.t("room.lobbyVoice"))
     : props.t("common.offline");
@@ -194,14 +208,24 @@ export function VoiceDock(props: VoiceDockProps) {
         ) : null}
       </div>
       <div className="dock-self">
-        <details className="account-menu">
+        <details className="account-menu" ref={accountMenuRef}>
           <summary aria-label={props.t("shell.accountMenu", { nickname: props.currentNickname })}>
             <span className={`avatar ${props.user.role === "owner" ? "owner" : ""}`} title={props.currentNickname}>
               {initial(props.currentNickname)}
+              <PresenceDot state={selfState} />
             </span>
           </summary>
           <div className="account-menu-panel">
             <strong>{props.currentNickname}</strong>
+            <AccountStatusMenu
+              choice={props.presenceChoice}
+              selfState={selfState}
+              language={props.language}
+              timeFormat={props.timeFormat}
+              t={props.t}
+              onChange={props.onPresenceChoiceChange}
+              onDone={() => accountMenuRef.current?.removeAttribute("open")}
+            />
             <ApplicationUpdateStatus
               t={props.t}
               surface="account"

@@ -89,6 +89,9 @@ original is fine, a copied file is not.
 - Cues follow the selected audio output device.
 - While deafened — by yourself or by an owner — every cue is silent except the
   deafen and undeafen cues themselves.
+- While your Status is Do Not Disturb, the message cue and its desktop alert are
+  silent, mentions included. Voice and connection cues still play, so a call you
+  are in sounds the same as before.
 - Joining a room that already has participants does not announce the people
   already there; only later arrivals and departures play.
 - Reconnecting to a voice room after a network interruption is silent, because

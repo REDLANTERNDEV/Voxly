@@ -258,7 +258,8 @@ Windows' toast API under the installed `app.voxly.desktop` identity. In this
 section, **Delivery → Compatibility (WebView2)** keeps the previous WebView2
 notification UI. The choice is saved separately per Account. Native send/API
 failures fall back to WebView2, while Windows-disabled notifications remain
-suppressed. Do Not Disturb remains Windows-controlled. Use an installed NSIS
+suppressed. Windows' own Do Not Disturb still applies on top of Voxly's Do Not
+Disturb Status, which silences message alerts before they reach Windows. Use an installed NSIS
 build with its Start-menu shortcut; development builds do not establish the
 installed notification identity.
 
@@ -342,6 +343,17 @@ directory. Preferences contain addresses, language, and first-use acknowledgemen
 not session tokens. Browser cookies remain in their own profiles. Forget address
 only removes the chooser entry; revoke the Device in Account & devices to sign
 it out. Do not share or commit browser data directories.
+
+### Presence and Idle
+
+On Windows the desktop app tells the open installation when there has been
+keyboard or mouse input anywhere on the PC, and when the session is locked. A
+member working in another program therefore stays online, and locking the screen
+makes them Idle within about 15 seconds instead of after the Server's AFK
+timeout. Only those two fixed signals cross into the installation's page: no
+idle time, timestamp or application name. Sleep needs no signal, because a
+sleeping PC drops its connection and shows as offline. Other platforms, and
+every browser, measure input inside the Voxly window only. See ADR-0035.
 
 ## Verify and package
 

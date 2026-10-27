@@ -1,4 +1,4 @@
-import type { PresenceUser, PublicUser, UserRole } from "@voxly/shared";
+import type { PresenceStatus, PresenceUser, PublicUser, UserRole } from "@voxly/shared";
 
 export function canOwnerVoiceModerate(currentRole: UserRole | null, currentUserId: string, target: PresenceUser) {
   return currentRole === "owner" && target.role === "member" && target.userId !== currentUserId;
@@ -64,13 +64,14 @@ export function groupDirectoryMembers(
 }
 
 /**
- * Three states, one rule: an entry absent from the online list is offline, an
- * entry present is online unless it reports otherwise. Derived rather than
- * stored so the dot can never disagree with which list the member is in.
+ * One rule: an entry absent from the online list is offline, an entry present
+ * is online unless it reports otherwise. Derived rather than stored so the dot
+ * can never disagree with which list the member is in. Invisible is only ever
+ * the member's own view of themselves; everyone else sees them as offline.
  */
-export type MemberPresenceState = "online" | "idle" | "offline";
+export type MemberPresenceState = "online" | "idle" | "dnd" | "invisible" | "offline";
 
-export function memberPresenceState(user: { status?: "online" | "idle" }, online: boolean): MemberPresenceState {
+export function memberPresenceState(user: { status?: PresenceStatus }, online: boolean): MemberPresenceState {
   if (!online) return "offline";
-  return user.status === "idle" ? "idle" : "online";
+  return user.status === "idle" || user.status === "dnd" ? user.status : "online";
 }

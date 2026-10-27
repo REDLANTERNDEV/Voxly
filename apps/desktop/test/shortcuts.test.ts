@@ -24,6 +24,8 @@ interface Bridge {
   dispatchPushToTalk(pressed: boolean, delayMs?: number): void;
   dispatchPushToMute(pressed: boolean): void;
   dispatchPushToTalkRelease(): void;
+  subscribeSystemActivity(handler: (signal: string) => void): () => void;
+  dispatchSystemActivity(signal: unknown): void;
 }
 function boot(origin = "https://chat.example", topFrame = true) {
   const window: { top?: unknown; location: { origin: string }; __VOXLY_DESKTOP_V1__?: Bridge } = {
@@ -35,6 +37,26 @@ function boot(origin = "https://chat.example", topFrame = true) {
 }
 
 describe("desktop shortcut registration and bridge", () => {
+  it("passes machine activity on as one of two fixed words, only in the chosen top frame", () => {
+    const window = boot();
+    const seen: string[] = [];
+    const unsubscribe = window.__VOXLY_DESKTOP_V1__!.subscribeSystemActivity((signal) => seen.push(signal));
+    for (const signal of ["active", "away", "busy", 42, { signal: "active" }]) {
+      window.__VOXLY_DESKTOP_V1__!.dispatchSystemActivity(signal);
+    }
+    assert.deepEqual(seen, ["active", "away"]);
+    unsubscribe();
+    window.__VOXLY_DESKTOP_V1__!.dispatchSystemActivity("active");
+    assert.deepEqual(seen, ["active", "away"]);
+
+    const wrongOrigin = boot("https://other.example");
+    assert.equal(wrongOrigin.__VOXLY_DESKTOP_V1__, undefined);
+    const framed = boot("https://chat.example", false);
+    assert.equal(framed.__VOXLY_DESKTOP_V1__, undefined);
+
+    const native = readFileSync("src-tauri/src/system_activity.rs", "utf8");
+    assert.doesNotMatch(native, /invoke|serde|format!/);
+  });
   it("observes native side-button shortcuts without consuming browser Back/Forward", () => {
     const hook = readFileSync("src-tauri/src/mouse_hook.rs", "utf8");
     const callback = hook.slice(hook.indexOf('unsafe extern "system" fn mouse_proc'), hook.indexOf("fn update("));
@@ -301,10 +323,12 @@ describe("desktop shortcut registration and bridge", () => {
       "dispatchPushToMute",
       "dispatchPushToTalk",
       "dispatchPushToTalkRelease",
+      "dispatchSystemActivity",
       "getMicrophoneState",
       "subscribeDeafen",
       "subscribeMicrophone",
       "subscribeMute",
+      "subscribeSystemActivity",
       "version"
     ]);
   });

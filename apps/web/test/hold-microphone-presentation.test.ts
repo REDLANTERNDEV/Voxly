@@ -12,6 +12,10 @@ function fixture(mic: boolean, manualMic = true) {
   return {
     user: { id: "self", nickname: "Me", role: "member" },
     currentNickname: "Me",
+    presenceChoice: { status: "online", until: null },
+    onlineUsers: [],
+    language: "en",
+    timeFormat: "auto",
     activeServerId: "server",
     servers: [],
     activeVoiceRoomId: "room",

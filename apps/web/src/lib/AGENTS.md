@@ -157,6 +157,10 @@ detail to `apps/web/AGENTS.md` and the repository root instructions.
 - Message cues follow the unread rule: never the listener's own message, and
   never the room already on screen in a focused window. A Welcome notice counts
   as unread but plays no cue and raises no desktop alert: a join pings nobody.
+- Do Not Disturb silences the message cue and its desktop alert together,
+  mentions included, at the top of the message path. It never reaches voice,
+  screen-share or connection cues: a member in a call keeps hearing it. Unread
+  state is unaffected (ADR-0035).
 - Preferences are per account in local storage: a master switch, a level
   clamped to 0–100%, and one switch per category. The level is independent of
   the general output level, which governs voice playback.

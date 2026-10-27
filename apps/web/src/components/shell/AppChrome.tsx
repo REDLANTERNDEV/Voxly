@@ -18,6 +18,7 @@ import { MemberPanel } from "./MemberPanel.js";
 import { SettingsDialog, type SettingsSection } from "./SettingsDialog.js";
 import type { SidebarActionMenuController } from "./SidebarMenus.js";
 import { VoiceDock } from "./VoiceDock.js";
+import { selfPresenceState } from "../../lib/presenceChoice.js";
 import { StageActionsContext } from "./StageMemberActions.js";
 import { WorkspaceRail } from "./WorkspaceRail.js";
 export function AppChrome(props: ShellModel & ShellActions & { children: ReactNode; mobileTitle: string }) {
@@ -319,6 +320,10 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           }
           members={props.serverMembers}
           onlineUsers={props.onlineUsers}
+          selfPresence={selfPresenceState(
+            props.presenceChoice.status,
+            props.onlineUsers.find((member) => member.userId === props.user.id)?.status
+          )}
           voiceRooms={props.rooms.voice}
           voiceSnapshots={props.voiceSnapshots}
           currentUser={props.user}
@@ -349,6 +354,11 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         controls={props.controls}
         currentNickname={props.currentNickname}
         currentRoom={props.currentRoom}
+        onlineUsers={props.onlineUsers}
+        presenceChoice={props.presenceChoice}
+        language={props.language}
+        timeFormat={props.timeFormat}
+        onPresenceChoiceChange={props.onPresenceChoiceChange}
         microphoneTestActive={props.microphoneTestActive}
         route={props.route}
         rooms={props.rooms}

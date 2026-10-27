@@ -7,7 +7,11 @@ export const users = sqliteTable("users", {
   bannedAt: text("banned_at"),
   isBot: integer("is_bot", { mode: "boolean" }).notNull().default(false),
   deletedAt: text("deleted_at"),
-  deletionSource: text("deletion_source", { enum: ["request_approved", "owner_initiated"] })
+  deletionSource: text("deletion_source", { enum: ["request_approved", "owner_initiated"] }),
+  presenceChoice: text("presence_choice", { enum: ["online", "idle", "dnd", "invisible"] })
+    .notNull()
+    .default("online"),
+  presenceChoiceUntil: text("presence_choice_until")
 });
 
 export const accountDeletionRequests = sqliteTable("account_deletion_requests", {

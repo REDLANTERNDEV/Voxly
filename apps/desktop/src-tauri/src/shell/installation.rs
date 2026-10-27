@@ -3,7 +3,9 @@ use super::tray::{show_current, show_shell, update_tray_language};
 use super::trust::{report_caller_matches, trusted_shell};
 use super::{persist, snapshot, Inner, Shell, ShellSnapshot};
 use crate::installations::Language;
-use crate::{call_state, deep_links, installations, native_notifications, platform};
+use crate::{
+    call_state, deep_links, installations, native_notifications, platform, system_activity,
+};
 use std::sync::atomic::Ordering;
 use tauri::{Emitter, Manager, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
@@ -13,6 +15,32 @@ pub(super) fn remote_window(app: &tauri::AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(&platform::installation_label(
         shell.voice_generation.load(Ordering::Acquire),
     ))
+}
+
+/// Hands machine-wide activity to the installation that is showing, and only
+/// while its window is still on the origin the member chose.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub(super) fn deliver_system_activity(app: &tauri::AppHandle, signal: system_activity::Signal) {
+    let Some(shell) = app.try_state::<Shell>() else {
+        return;
+    };
+    let Some(remote) = remote_window(app) else {
+        return;
+    };
+    let Some(target) = shell
+        .voice_target
+        .read()
+        .ok()
+        .and_then(|target| target.clone())
+    else {
+        return;
+    };
+    if remote
+        .url()
+        .is_ok_and(|url| installations::same_origin(&target.origin, &url))
+    {
+        let _ = remote.eval(system_activity::script(signal));
+    }
 }
 
 pub(super) async fn query_call_state(

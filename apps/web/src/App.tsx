@@ -13,7 +13,8 @@ import { useSessionController } from "./app/useSessionController.js";
 import { useWorkspaceController } from "./app/useWorkspaceController.js";
 import { usePresentationPreferences } from "./app/usePresentationPreferences.js";
 import { useChatController } from "./features/chat/useChatController.js";
-import { useIdlePresence } from "./app/useIdlePresence.js";
+import { selfSpeaking, useIdlePresence } from "./app/useIdlePresence.js";
+import { usePresenceChoice } from "./app/usePresenceChoice.js";
 import { AudioPlaybackRecovery, GlobalVoiceAudio, RemoteAudio } from "./features/voice/VoicePresentation.js";
 import { joinVoiceWithAudioUnlock } from "./features/voice/voiceActions.js";
 import { combineOutputVolume } from "./lib/audioLevels.js";
@@ -150,8 +151,10 @@ export function App() {
       deletionRequestCreated: () => setDeletionRequestRevision((current) => current + 1)
     }
   });
+  const presenceChoice = usePresenceChoice(realtime.socket);
   const audio = useListenerAudio({
     socket: realtime.socket,
+    messagesSilenced: presenceChoice.messagesSilenced,
     user: session.user,
     iceServers: session.rtcConfig.iceServers,
     voiceRoomIds: workspace.voiceRoomIds,
@@ -165,18 +168,12 @@ export function App() {
   const { stopMicrophoneTest } = audio;
   const microphoneTestActive = audio.microphoneTest.active;
   const musicQueues = useMusicQueue(realtime.socket);
-  const localVoiceSpeaking = Boolean(
-    audio.voice.activeRoomId &&
-    audio.voice.voiceSnapshots[audio.voice.activeRoomId]?.members.find(
-      (member) => member.user.userId === session.user?.id
-    )?.media.speaking
-  );
   useIdlePresence({
     roomServerIdsRef,
     afkTimeoutsByServerRef: workspace.afkTimeoutsByServerRef,
     activeVoiceRoomId: audio.voice.activeRoomId,
-    speaking: localVoiceSpeaking,
-    reportStatus: (status) => realtime.socket?.emit("presence:setStatus", status)
+    speaking: selfSpeaking(audio.voice, session.user?.id),
+    socket: realtime.socket
   });
   // The move arrives as an instruction, not a state change, so it runs through
   // the same join, keeping the member's own mute and deafen.
@@ -254,6 +251,7 @@ export function App() {
         categories: workspace.categories,
         uncategorizedPosition: workspace.uncategorizedPosition,
         onlineUsers: workspace.onlineUsers,
+        ...presenceChoice.presentation,
         serverMembers: workspace.serverMembers,
         socketState: realtime.socketState,
         connectionHealth: audio.connectionHealth,

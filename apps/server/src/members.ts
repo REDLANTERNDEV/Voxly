@@ -10,7 +10,7 @@
 
 import type { FastifyReply } from "fastify";
 import type { DatabaseSync } from "node:sqlite";
-import type { PresenceStatus, PresenceUser, UserRole } from "@voxly/shared";
+import type { PresenceChoiceRequest, PresenceChoiceState, PresenceStatus, PresenceUser, UserRole } from "@voxly/shared";
 import { baselineMembershipReadState } from "./readState.js";
 import { all, one, run, assignMentionCode, type VoxlyDatabase } from "./db/database.js";
 
@@ -215,21 +215,77 @@ function activePresenceUsers(sqlite: DatabaseSync, serverId: string, userIds: It
 /**
  * Every connected user and the sockets they hold. `idleSockets` is a subset of
  * `sockets`: a member is away only when every one of their connections says so,
- * so a second, active tab keeps them online.
+ * so a second, active tab keeps them online. `choice` is the Status the member
+ * picked, which outranks what their connections measured.
  */
-export type OnlineRegistry = Map<string, { user: PresenceUser; sockets: Set<string>; idleSockets: Set<string> }>;
+export type OnlineRegistry = Map<
+  string,
+  { user: PresenceUser; sockets: Set<string>; idleSockets: Set<string>; choice: PresenceChoiceState }
+>;
 
-export function presenceStatusOf(online: OnlineRegistry, userId: string): PresenceStatus {
+const onlineChoice: PresenceChoiceState = { status: "online", until: null };
+
+/** A Status whose time has run out reads as Online, whether or not anyone has stored that yet. */
+export function currentChoice(choice: PresenceChoiceState, now = Date.now()): PresenceChoiceState {
+  return choice.until !== null && Date.parse(choice.until) <= now ? onlineChoice : choice;
+}
+
+export function presenceStatusOf(online: OnlineRegistry, userId: string, now = Date.now()): PresenceStatus {
   const entry = online.get(userId);
   if (!entry || entry.sockets.size === 0) return "online";
+  const choice = currentChoice(entry.choice, now).status;
+  if (choice === "dnd" || choice === "idle") return choice;
   return entry.idleSockets.size >= entry.sockets.size ? "idle" : "online";
 }
 
-export function serverPresenceUsers(sqlite: DatabaseSync, online: OnlineRegistry, serverId: string) {
-  return activePresenceUsers(sqlite, serverId, online.keys()).map((presence) => ({
+/**
+ * Whether other members may see this user in the online list at all. An
+ * invisible member is connected but reported exactly like an offline one.
+ */
+export function isVisiblyOnline(online: OnlineRegistry, userId: string, now = Date.now()) {
+  const entry = online.get(userId);
+  return Boolean(entry && entry.sockets.size > 0 && currentChoice(entry.choice, now).status !== "invisible");
+}
+
+/**
+ * The connected members of a server as `viewerUserId` may see them. The viewer
+ * always sees themselves, so their own row can show the Status they picked.
+ */
+export function serverPresenceUsers(
+  sqlite: DatabaseSync,
+  online: OnlineRegistry,
+  serverId: string,
+  viewerUserId: string
+) {
+  const visible = [...online.keys()].filter((userId) => userId === viewerUserId || isVisiblyOnline(online, userId));
+  return activePresenceUsers(sqlite, serverId, visible).map((presence) => ({
     ...presence,
     status: presenceStatusOf(online, presence.userId)
   }));
+}
+
+export function readPresenceChoice(sqlite: DatabaseSync, userId: string, now = Date.now()): PresenceChoiceState {
+  const row = one<{ status: PresenceChoiceState["status"]; until: string | null }>(
+    sqlite,
+    "select presence_choice as status, presence_choice_until as until from users where id = ?",
+    [userId]
+  );
+  return row ? currentChoice({ status: row.status, until: row.until }, now) : onlineChoice;
+}
+
+export function presenceChoiceFor(request: PresenceChoiceRequest, now = Date.now()): PresenceChoiceState {
+  if (request.status === "online") return onlineChoice;
+  const until =
+    request.duration.mode === "timed" ? new Date(now + request.duration.durationMinutes * 60_000).toISOString() : null;
+  return { status: request.status, until };
+}
+
+export function writePresenceChoice(sqlite: DatabaseSync, userId: string, choice: PresenceChoiceState) {
+  run(sqlite, "update users set presence_choice = ?, presence_choice_until = ? where id = ?", [
+    choice.status,
+    choice.until,
+    userId
+  ]);
 }
 
 /**

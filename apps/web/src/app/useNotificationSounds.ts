@@ -47,6 +47,7 @@ export function useNotificationSounds({
   deafened,
   connectionInterrupted,
   activeTextRoomIdRef,
+  messagesSilenced,
   onNotificationActivate
 }: {
   user: PublicUser | null;
@@ -56,6 +57,7 @@ export function useNotificationSounds({
   deafened: boolean;
   connectionInterrupted: boolean;
   activeTextRoomIdRef: React.RefObject<string | null>;
+  messagesSilenced: boolean;
   onNotificationActivate(target: DesktopNotificationTarget): void;
 }) {
   const accountId = user?.id;
@@ -73,6 +75,8 @@ export function useNotificationSounds({
   activationRef.current = { userId: user?.id, activate: onNotificationActivate };
   preferencesRef.current = preferences;
   deafenedRef.current = deafened;
+  const messagesSilencedRef = useRef(messagesSilenced);
+  messagesSilencedRef.current = messagesSilenced;
 
   useEffect(() => {
     setPreferences(accountId ? readNotificationSounds(accountId) : { ...DEFAULT_NOTIFICATION_SOUNDS });
@@ -187,7 +191,9 @@ export function useNotificationSounds({
 
   const notifyMessage = useCallback(
     (message: ChatMessage) => {
-      if (!accountId) return false;
+      // Do Not Disturb stops the message's sound and its desktop alert
+      // together, before either is decided; a call's own cues never pass here.
+      if (!accountId || messagesSilencedRef.current) return false;
       const allowed = shouldPlayMessageSound(message, {
         currentUserId: accountId,
         activeTextRoomId: activeTextRoomIdRef.current,

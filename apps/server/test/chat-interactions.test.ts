@@ -339,6 +339,29 @@ describe("chat interactions", () => {
       .messages[0];
     assert.deepEqual(current.mentions[0].recipientIds, [member.id]);
   });
+  it("passes an invisible member by when freezing here recipients", async () => {
+    await app.server.listen({ host: "127.0.0.1", port: 0 });
+    const url = `http://127.0.0.1:${(app.server.server.address() as { port: number }).port}`;
+    const socket = createClient(url, {
+      transports: ["websocket"],
+      extraHeaders: {
+        Cookie: Object.entries(member.cookies)
+          .map(([key, value]) => `${key}=${value}`)
+          .join("; ")
+      }
+    });
+    sockets.push(socket);
+    await new Promise<void>((resolve, reject) => {
+      socket.once("connect", resolve);
+      socket.once("connect_error", reject);
+    });
+    const ack = await new Promise<{ ok: boolean }>((resolve) =>
+      socket.emit("presence:setChoice", { status: "invisible", duration: { mode: "indefinite" } }, resolve)
+    );
+    assert.equal(ack.ok, true);
+    const message = await post("@here", [{ kind: "here", start: 0, end: 5 }]);
+    assert.deepEqual(message.mentions[0].recipientIds, []);
+  });
   it("loads old pins with 50 neighbors each side without a read watermark, and clears dependencies on delete", async () => {
     const insert = app.sqlite.prepare(
       "insert into messages (id, room_id, user_id, body, created_at, sequence) values (?, 'general', ?, ?, ?, ?)"

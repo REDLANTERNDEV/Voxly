@@ -180,6 +180,8 @@ pub(super) fn run() {
                 });
             }
             start_delivery(app.handle(), events);
+            #[cfg(target_os = "windows")]
+            start_system_activity(app.handle().clone());
             if !home_waits {
                 open_shell(app.handle())?;
             }
@@ -187,6 +189,27 @@ pub(super) fn run() {
         })
         .run(tauri::generate_context!())
         .expect("could not start Voxly desktop");
+}
+
+/// Polls Windows for machine-wide input and a locked session for as long as the
+/// app runs. Delivery checks the remote window each time, so nothing here has to
+/// follow installations being opened, switched or closed.
+#[cfg(target_os = "windows")]
+fn start_system_activity(app: tauri::AppHandle) {
+    use crate::system_activity::{sample, Tracker, POLL_INTERVAL};
+    let _ = std::thread::Builder::new()
+        .name("system-activity".into())
+        .spawn(move || {
+            let mut tracker = Tracker::default();
+            loop {
+                if let Some(signal) =
+                    sample().and_then(|(input, locked)| tracker.observe(input, locked))
+                {
+                    super::installation::deliver_system_activity(&app, signal);
+                }
+                std::thread::sleep(POLL_INTERVAL);
+            }
+        });
 }
 
 /// Home opens at setup, or once the launch card has finished with it.

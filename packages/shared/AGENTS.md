@@ -32,6 +32,10 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
 - Keep sensitive server-only fields out of public DTOs. Directory and presence
   users expose identity, nickname, and role—not token, session, moderation, or
   database internals.
+- `PresenceStatus` names only what other members may see: online, idle and dnd.
+  Invisible is a `PresenceChoice`, sent back only to its owner; on the wire to
+  everyone else it is absence, exactly like offline (ADR-0035). Never add it to
+  `PresenceStatus`.
 - Server nickname changes reuse `PresenceUser` and a typed event carrying both
   `serverId` and the updated user. Producers must scope the event to that server;
   consumers must apply it only to server-indexed presence, voice, directory,

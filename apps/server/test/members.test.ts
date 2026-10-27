@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import type { FastifyReply } from "fastify";
 import { defaultServerId, openDatabase, run, type VoxlyDatabase } from "../src/db/database.js";
-import type { PresenceUser } from "@voxly/shared";
+import type { PresenceChoiceState, PresenceUser } from "@voxly/shared";
 import {
   activeServerIds,
   activeServerMembership,
@@ -13,8 +13,12 @@ import {
   requireServerMember,
   requireServerOwner,
   publicPresence,
+  isVisiblyOnline,
+  presenceChoiceFor,
   presenceStatusOf,
+  readPresenceChoice,
   serverPresenceUsers,
+  writePresenceChoice,
   type OnlineRegistry
 } from "../src/members.js";
 
@@ -213,13 +217,16 @@ describe("server membership", () => {
   });
 
   describe("presence", () => {
-    function registry(entries: Record<string, { sockets: string[]; idleSockets?: string[] }>): OnlineRegistry {
+    function registry(
+      entries: Record<string, { sockets: string[]; idleSockets?: string[]; choice?: PresenceChoiceState }>
+    ): OnlineRegistry {
       const online: OnlineRegistry = new Map();
       for (const [userId, entry] of Object.entries(entries)) {
         online.set(userId, {
           user: { userId, nickname: userId, role: "member" },
           sockets: new Set(entry.sockets),
-          idleSockets: new Set(entry.idleSockets ?? [])
+          idleSockets: new Set(entry.idleSockets ?? []),
+          choice: entry.choice ?? { status: "online", until: null }
         });
       }
       return online;
@@ -253,7 +260,7 @@ describe("server membership", () => {
         kicked: { sockets: ["c"] }
       });
 
-      const users = serverPresenceUsers(sqlite, online, defaultServerId);
+      const users = serverPresenceUsers(sqlite, online, defaultServerId, "owner");
 
       assert.deepEqual(
         users.map((user) => ({ userId: user.userId, role: user.role, status: user.status })),
@@ -262,6 +269,61 @@ describe("server membership", () => {
           { userId: "owner", role: "owner", status: "online" }
         ]
       );
+    });
+
+    it("lets a picked Status outrank what the connections measured", () => {
+      const online = registry({
+        busy: { sockets: ["a"], choice: { status: "dnd", until: null } },
+        resting: { sockets: ["b"], choice: { status: "idle", until: null } },
+        busyButIdle: { sockets: ["c"], idleSockets: ["c"], choice: { status: "dnd", until: null } },
+        hiding: { sockets: ["d"], choice: { status: "invisible", until: null } },
+        lapsed: { sockets: ["e"], choice: { status: "dnd", until: "2026-01-01T00:00:00.000Z" } }
+      });
+      const now = Date.parse("2026-06-01T00:00:00.000Z");
+
+      assert.equal(presenceStatusOf(online, "busy", now), "dnd");
+      assert.equal(presenceStatusOf(online, "resting", now), "idle");
+      assert.equal(presenceStatusOf(online, "busyButIdle", now), "dnd");
+      assert.equal(presenceStatusOf(online, "lapsed", now), "online");
+      assert.equal(isVisiblyOnline(online, "hiding", now), false);
+      assert.equal(isVisiblyOnline(online, "busy", now), true);
+      assert.equal(isVisiblyOnline(online, "nobody", now), false);
+    });
+
+    it("lists an invisible member only to themselves", async () => {
+      const { sqlite } = await seed({ owner: { role: "owner" }, hider: {} });
+      const online = registry({
+        owner: { sockets: ["a"] },
+        hider: { sockets: ["b"], choice: { status: "invisible", until: null } }
+      });
+
+      assert.deepEqual(
+        serverPresenceUsers(sqlite, online, defaultServerId, "owner").map((user) => user.userId),
+        ["owner"]
+      );
+      assert.deepEqual(
+        serverPresenceUsers(sqlite, online, defaultServerId, "hider").map((user) => user.userId),
+        ["hider", "owner"]
+      );
+    });
+
+    it("stores a picked Status with its expiry and reads a lapsed one as Online", async () => {
+      const { sqlite } = await seed({ owner: { role: "owner" } });
+      const now = Date.parse("2026-06-01T00:00:00.000Z");
+
+      const timed = presenceChoiceFor({ status: "dnd", duration: { mode: "timed", durationMinutes: 60 } }, now);
+      assert.deepEqual(timed, { status: "dnd", until: "2026-06-01T01:00:00.000Z" });
+      writePresenceChoice(sqlite, "owner", timed);
+      assert.deepEqual(readPresenceChoice(sqlite, "owner", now), timed);
+      assert.deepEqual(readPresenceChoice(sqlite, "owner", now + 60 * 60_000), { status: "online", until: null });
+
+      const forever = presenceChoiceFor({ status: "invisible", duration: { mode: "indefinite" } }, now);
+      writePresenceChoice(sqlite, "owner", forever);
+      assert.deepEqual(readPresenceChoice(sqlite, "owner", now + 365 * 24 * 60 * 60_000), {
+        status: "invisible",
+        until: null
+      });
+      assert.deepEqual(readPresenceChoice(sqlite, "nobody", now), { status: "online", until: null });
     });
 
     it("builds the socket identity from the authenticated session", () => {

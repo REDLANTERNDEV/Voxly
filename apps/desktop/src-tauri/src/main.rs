@@ -11,6 +11,7 @@ mod native_notifications;
 mod platform;
 mod shell;
 mod shortcuts;
+mod system_activity;
 mod update_card;
 mod update_installer;
 mod updates;

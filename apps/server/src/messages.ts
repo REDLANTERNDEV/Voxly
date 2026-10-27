@@ -41,7 +41,7 @@ import {
 } from "@voxly/shared";
 import { requireUser } from "./auth/sessions.js";
 import { all, one, run, type VoxlyDatabase } from "./db/database.js";
-import { isServerOwner, requireServerMember, serverPresenceUser } from "./members.js";
+import { isServerOwner, readPresenceChoice, requireServerMember, serverPresenceUser } from "./members.js";
 import { roomById } from "./rooms.js";
 import { messageLimit, roomIdParam, type RouteContext } from "./http.js";
 
@@ -922,8 +922,12 @@ function prepareMentions(
   if (inputs.filter((input) => input.kind !== "person").length > maxCollectiveMentionsPerMessage) return null;
   const occurrenceIds = inputs.flatMap((input) => (input.id ? [input.id] : []));
   if (new Set(occurrenceIds).size !== occurrenceIds.length) return null;
+  // An invisible member is reported to everyone else as offline, so @here
+  // passes them by exactly as it passes by someone who is.
   const onlineIds = new Set(
-    [...io.sockets.sockets.values()].map((socket) => (socket.data.user as PresenceUser | undefined)?.userId)
+    [...io.sockets.sockets.values()]
+      .map((socket) => (socket.data.user as PresenceUser | undefined)?.userId)
+      .filter((userId) => userId !== undefined && readPresenceChoice(sqlite, userId).status !== "invisible")
   );
   const people = all<{ userId: string; nickname: string; mentionCode: string }>(
     sqlite,

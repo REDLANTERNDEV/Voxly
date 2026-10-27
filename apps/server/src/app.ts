@@ -5,7 +5,12 @@ import staticPlugin from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { Server } from "socket.io";
 import { z } from "zod";
-import type { ClientToServerEvents, PresenceUser, ServerToClientEvents } from "@voxly/shared";
+import {
+  isPresenceChoiceRequest,
+  type ClientToServerEvents,
+  type PresenceUser,
+  type ServerToClientEvents
+} from "@voxly/shared";
 import type { DatabaseSync } from "node:sqlite";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -38,8 +43,11 @@ import { all, defaultServerId, dumpTables, one, openDatabase, run, type VoxlyDat
 import {
   activateServerMembership,
   activeServerIds,
+  currentChoice,
   hasActiveServerMembership,
+  isVisiblyOnline,
   mayCreateInvites,
+  presenceChoiceFor,
   presenceStatusOf,
   publicPresence,
   requireServerOwner,
@@ -47,6 +55,8 @@ import {
   serverPresenceUser,
   serverPresenceUserIncludingBanned,
   serverPresenceUsers,
+  readPresenceChoice,
+  writePresenceChoice,
   type OnlineRegistry
 } from "./members.js";
 import { roomById } from "./rooms.js";
@@ -738,7 +748,58 @@ function registerRealtime(
   secureCookies: boolean
 ): RealtimeModeration {
   const online: OnlineRegistry = new Map();
+  const choiceExpiries = new Map<string, ReturnType<typeof setTimeout>>();
   const voice = createVoiceRealtime(io, database);
+
+  const presenceView = (userId: string) => ({
+    visible: isVisiblyOnline(online, userId),
+    status: presenceStatusOf(online, userId)
+  });
+
+  // One path for every change in what others see: a measured idle, a picked
+  // Status, a Status running out, and a connection dropping. Memberships are
+  // read at emit time: a kick or ban leaves the socket connected, and a list
+  // captured earlier would keep reporting to that server.
+  function publishPresenceChange(userId: string, before: ReturnType<typeof presenceView>) {
+    const after = presenceView(userId);
+    if (before.visible === after.visible && (!after.visible || before.status === after.status)) return;
+    for (const serverId of activeServerIds(database.sqlite, userId)) {
+      const room = io.to(`server:${serverId}`);
+      if (!after.visible) {
+        room.emit("presence:serverOffline", { serverId, userId });
+      } else if (!before.visible) {
+        const serverUser = serverPresenceUser(database.sqlite, serverId, userId);
+        if (serverUser) room.emit("presence:serverOnline", { serverId, user: { ...serverUser, status: after.status } });
+      } else {
+        room.emit("presence:serverStatus", { serverId, userId, status: after.status });
+      }
+    }
+  }
+
+  // The server holds the expiry rather than the client, so a Status still runs
+  // out while every one of the member's Devices is asleep or closed.
+  function scheduleChoiceExpiry(userId: string) {
+    clearTimeout(choiceExpiries.get(userId));
+    choiceExpiries.delete(userId);
+    const until = online.get(userId)?.choice.until;
+    if (!until) return;
+    const timer = setTimeout(
+      () => {
+        choiceExpiries.delete(userId);
+        const entry = online.get(userId);
+        if (!entry) return;
+        const before = presenceView(userId);
+        entry.choice = { status: "online", until: null };
+        writePresenceChoice(database.sqlite, userId, entry.choice);
+        database.save();
+        for (const socket of socketsForUser(io, userId)) socket.emit("presence:choice", entry.choice);
+        publishPresenceChange(userId, before);
+      },
+      Math.max(0, Date.parse(until) - Date.now())
+    );
+    timer.unref?.();
+    choiceExpiries.set(userId, timer);
+  }
   const music = createMusicRealtime(io, database, voice);
 
   io.use((socket, next) => {
@@ -782,16 +843,30 @@ function registerRealtime(
         if (status !== "online" && status !== "idle") return;
         const presence = online.get(user.userId);
         if (!presence) return;
-        const before = presenceStatusOf(online, user.userId);
+        const before = presenceView(user.userId);
         if (status === "idle") presence.idleSockets.add(socket.id);
         else presence.idleSockets.delete(socket.id);
-        const after = presenceStatusOf(online, user.userId);
-        if (before === after) return;
-        // Read at emit time: a kick or ban leaves this socket connected, and
-        // the list captured at connection would keep reporting to that server.
-        for (const serverId of activeServerIds(database.sqlite, user.userId)) {
-          io.to(`server:${serverId}`).emit("presence:serverStatus", { serverId, userId: user.userId, status: after });
+        publishPresenceChange(user.userId, before);
+      })
+    );
+
+    socket.on(
+      "presence:setChoice",
+      safeSocketHandler("presence:setChoice", (request, ack) => {
+        if (typeof ack !== "function") return;
+        const presence = online.get(user.userId);
+        if (!presence || !isPresenceChoiceRequest(request)) {
+          ack({ ok: false });
+          return;
         }
+        const before = presenceView(user.userId);
+        presence.choice = presenceChoiceFor(request);
+        writePresenceChoice(database.sqlite, user.userId, presence.choice);
+        database.save();
+        scheduleChoiceExpiry(user.userId);
+        for (const userSocket of socketsForUser(io, user.userId)) userSocket.emit("presence:choice", presence.choice);
+        publishPresenceChange(user.userId, before);
+        ack({ ok: true, state: presence.choice });
       })
     );
     const entry = online.get(user.userId);
@@ -799,16 +874,28 @@ function registerRealtime(
     if (entry) {
       entry.sockets.add(socket.id);
     } else {
-      online.set(user.userId, { user, sockets: new Set([socket.id]), idleSockets: new Set() });
+      online.set(user.userId, {
+        user,
+        sockets: new Set([socket.id]),
+        idleSockets: new Set(),
+        choice: readPresenceChoice(database.sqlite, user.userId)
+      });
+      scheduleChoiceExpiry(user.userId);
     }
+    const presence = online.get(user.userId)!;
+    socket.emit("presence:choice", currentChoice(presence.choice));
+    const announce = isNewPresence && isVisiblyOnline(online, user.userId);
     for (const serverId of serverIds) {
       const serverUser = serverPresenceUser(database.sqlite, serverId, user.userId);
       socket.emit("presence:serverSnapshot", {
         serverId,
-        users: serverPresenceUsers(database.sqlite, online, serverId)
+        users: serverPresenceUsers(database.sqlite, online, serverId, user.userId)
       });
-      if (isNewPresence && serverUser) {
-        socket.to(`server:${serverId}`).emit("presence:serverOnline", { serverId, user: serverUser });
+      if (announce && serverUser) {
+        socket.to(`server:${serverId}`).emit("presence:serverOnline", {
+          serverId,
+          user: { ...serverUser, status: presenceStatusOf(online, user.userId) }
+        });
       }
     }
 
@@ -848,30 +935,24 @@ function registerRealtime(
       if (!current) {
         return;
       }
+      const before = presenceView(user.userId);
       current.sockets.delete(socket.id);
       // Dropping an idle connection can make the remaining ones the majority,
       // so the derived status has to be re-published rather than left stale.
-      const wasIdle = current.idleSockets.delete(socket.id);
-      if (wasIdle && current.sockets.size > 0 && presenceStatusOf(online, user.userId) === "online") {
-        for (const serverId of activeServerIds(database.sqlite, user.userId)) {
-          io.to(`server:${serverId}`).emit("presence:serverStatus", {
-            serverId,
-            userId: user.userId,
-            status: "online"
-          });
-        }
-      }
+      current.idleSockets.delete(socket.id);
       if (current.sockets.size === 0) {
         online.delete(user.userId);
-        for (const serverId of activeServerIds(database.sqlite, user.userId)) {
-          socket.to(`server:${serverId}`).emit("presence:serverOffline", { serverId, userId: user.userId });
-        }
+        clearTimeout(choiceExpiries.get(user.userId));
+        choiceExpiries.delete(user.userId);
       }
+      publishPresenceChange(user.userId, before);
     });
   });
 
   return {
     close() {
+      for (const timer of choiceExpiries.values()) clearTimeout(timer);
+      choiceExpiries.clear();
       voice.dispose();
     },
     // Routes speak the moderation vocabulary; voice.ts owns the implementation.
@@ -925,15 +1006,18 @@ function registerRealtime(
         })
       );
 
-      const users = serverPresenceUsers(database.sqlite, online, serverId);
-      const serverUser = serverPresenceUser(database.sqlite, serverId, userId);
+      const users = serverPresenceUsers(database.sqlite, online, serverId, userId);
+      const serverUser = isVisiblyOnline(online, userId) ? serverPresenceUser(database.sqlite, serverId, userId) : null;
       for (const socket of userSockets) {
         socket.emit("presence:serverSnapshot", { serverId, users });
       }
       for (const socket of io.sockets.sockets.values()) {
         const socketUser = socket.data.user as PresenceUser | undefined;
         if (serverUser && socketUser?.userId !== userId && socket.rooms.has(`server:${serverId}`)) {
-          socket.emit("presence:serverOnline", { serverId, user: serverUser });
+          socket.emit("presence:serverOnline", {
+            serverId,
+            user: { ...serverUser, status: presenceStatusOf(online, userId) }
+          });
         }
       }
     },

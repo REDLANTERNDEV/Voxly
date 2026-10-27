@@ -480,10 +480,21 @@ before changing it.
 - The AFK timeout is per server, owner-only, and restricted to the shared option
   list; legacy rows with no value read as the default. Changing it emits to the
   whole server room, because every member runs their own idle clock.
-- Presence status is per connection. A member is away only when every one of
+- Measured idle is per connection. A member is Idle only when every one of
   their sockets says so, and dropping an idle socket has to re-publish the
-  derived status rather than leave it stale. Status never adds or removes a
-  member from the online list — that is what online and offline mean.
+  derived status rather than leave it stale. A measured status never adds or
+  removes a member from the online list — that is what online and offline mean.
+- A picked Status belongs to the Account and is stored on `users` with its
+  expiry. It outranks the measurement: picked Idle or Do Not Disturb wins, and
+  the measurement applies only while Online is picked. The server ends a timed
+  Status itself and re-reads a lapsed one as Online. `presence:choice` goes only
+  to that member's own sockets (ADR-0035).
+- Invisible is absence. An invisible member is left out of every other member's
+  snapshot, announced with `presence:serverOffline`, never announced on a new
+  connection, and passed by when `@here` recipients are frozen; only their own
+  snapshot includes them. Every change in what others see — measured idle, a
+  picked Status, an expiry, a dropped connection — goes through one transition
+  that re-reads memberships at emit time.
 - Every server carries exactly one AFK voice room, flagged by `rooms.is_afk`.
   Seeding runs for existing servers too, additively, so a deployment upgrading
   into the feature is not left with nowhere to park idle members. It skips

@@ -1216,6 +1216,113 @@ describe("Voxly realtime MVP", () => {
     assert.deepEqual(await changed, { serverId: "the-basement" });
   });
 
+  it("publishes a picked Do Not Disturb and returns the Status to every one of the member's tabs", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const firstTab = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
+    const secondTab = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
+    sockets.push(ownerSocket, firstTab, secondTab);
+    await waitForSocketRoom(app, ownerSocket, "server:the-basement");
+
+    const published = onceEvent<{ userId: string; status: string }>(ownerSocket, "presence:serverStatus");
+    const echoed = onceEvent<{ status: string; until: string | null }>(secondTab, "presence:choice");
+    const ack = await emitWithAck<{ ok: boolean; state?: { status: string; until: string | null } }>(
+      firstTab,
+      "presence:setChoice",
+      { status: "dnd", duration: { mode: "timed", durationMinutes: 60 } }
+    );
+
+    assert.equal(ack.ok, true);
+    assert.equal(ack.state?.status, "dnd");
+    assert.ok(ack.state?.until && Date.parse(ack.state.until) > Date.now());
+    assert.deepEqual(await published, { serverId: "the-basement", userId: member.user.id, status: "dnd" });
+    assert.equal((await echoed).status, "dnd");
+
+    // A measured idle does not override a picked Status.
+    const quiet = expectNoEvent(ownerSocket, "presence:serverStatus");
+    firstTab.emit("presence:setStatus", "idle");
+    secondTab.emit("presence:setStatus", "idle");
+    await quiet;
+  });
+
+  it("reports an invisible member as offline and announces them again when they reappear", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
+    sockets.push(ownerSocket, memberSocket);
+    await waitForSocketRoom(app, ownerSocket, "server:the-basement");
+
+    const offline = onceEvent<{ userId: string }>(ownerSocket, "presence:serverOffline");
+    await emitWithAck(memberSocket, "presence:setChoice", { status: "invisible", duration: { mode: "indefinite" } });
+    assert.equal((await offline).userId, member.user.id);
+
+    // Another tab, or disconnecting entirely, says nothing to anyone else.
+    const silentOnline = expectNoEvent(ownerSocket, "presence:serverOnline");
+    const anotherTab = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
+    sockets.push(anotherTab);
+    await silentOnline;
+    const silentOffline = expectNoEvent(ownerSocket, "presence:serverOffline");
+    anotherTab.disconnect();
+    await silentOffline;
+
+    const online = onceEvent<{ user: { userId: string; status?: string } }>(ownerSocket, "presence:serverOnline");
+    await emitWithAck(memberSocket, "presence:setChoice", { status: "idle", duration: { mode: "indefinite" } });
+    const announced = await online;
+    assert.equal(announced.user.userId, member.user.id);
+    assert.equal(announced.user.status, "idle");
+  });
+
+  it("keeps an invisible member out of other members' snapshots across reconnects", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Deniz");
+    const first = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
+    await emitWithAck(first, "presence:setChoice", { status: "invisible", duration: { mode: "indefinite" } });
+    first.disconnect();
+
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    sockets.push(ownerSocket);
+    await waitForSocketRoom(app, ownerSocket, "server:the-basement");
+    const silent = expectNoEvent(ownerSocket, "presence:serverOnline");
+    const choice = new Promise<{ status: string }>((resolve) => {
+      const socket = createClient(baseUrl, {
+        transports: ["websocket"],
+        extraHeaders: { cookie: `voxly_session=${tokenFromCookies(member.cookies)}` },
+        reconnection: false
+      });
+      sockets.push(socket);
+      socket.once("presence:choice", resolve);
+    });
+    assert.equal((await choice).status, "invisible", "the Status survives every connection closing");
+    await silent;
+
+    const ownerView = await new Promise<{ users: Array<{ userId: string }> }>((resolve) => {
+      const late = createClient(baseUrl, {
+        transports: ["websocket"],
+        extraHeaders: { cookie: `voxly_session=${tokenFromCookies(owner.cookies)}` },
+        reconnection: false
+      });
+      sockets.push(late);
+      late.once("presence:serverSnapshot", resolve);
+    });
+    assert.ok(!ownerView.users.some((user) => user.userId === member.user.id));
+  });
+
+  it("refuses a Status it does not offer", async () => {
+    const owner = await bootstrapOwner(app);
+    const socket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    sockets.push(socket);
+
+    for (const request of [
+      { status: "busy" },
+      { status: "dnd" },
+      { status: "dnd", duration: { mode: "timed", durationMinutes: 7 } }
+    ]) {
+      assert.deepEqual(await emitWithAck(socket, "presence:setChoice", request), { ok: false });
+    }
+  });
+
   it("tells existing members about a new channel instead of waiting for their next reload", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");

@@ -5,6 +5,8 @@ import type {
   MusicCommand,
   MusicControlAck,
   MusicQueueState,
+  PresenceChoiceRequest,
+  PresenceChoiceState,
   PresenceUser,
   PublicUser,
   RoomSummary,
@@ -60,6 +62,8 @@ export interface ShellModel {
   categories: CategorySummary[];
   uncategorizedPosition: number;
   onlineUsers: PresenceUser[];
+  /** The Status this member picked; others see its effect through `onlineUsers`. */
+  presenceChoice: PresenceChoiceState;
   serverMembers: PresenceUser[];
   socketState: "connecting" | "live" | "reconnecting" | "offline";
   connectionHealth: ConnectionHealth;
@@ -124,6 +128,7 @@ export interface ShellActions {
     setting: import("@voxly/shared").NotificationMuteRequest
   ): Promise<void>;
   onNavigate: (path: string) => void;
+  onPresenceChoiceChange: (request: PresenceChoiceRequest) => void;
   onSelectServer: (serverId: string) => Promise<void>;
   onCreateServer: (name: string) => Promise<void>;
   onUpdateServerName: (name: string) => Promise<ServerSummary>;

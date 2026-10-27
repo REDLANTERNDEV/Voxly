@@ -29,6 +29,7 @@ import type { DesktopNotificationTarget } from "../lib/desktopNotifications.js";
 
 export function useListenerAudio({
   socket,
+  messagesSilenced,
   user,
   iceServers,
   voiceRoomIds,
@@ -39,6 +40,8 @@ export function useListenerAudio({
   onNotificationActivate
 }: {
   socket: VoxlySocket | null;
+  /** Do Not Disturb: message cues and alerts stay quiet, call cues do not. */
+  messagesSilenced: boolean;
   user: PublicUser | null;
   iceServers: RTCIceServer[];
   voiceRoomIds: string[];
@@ -93,6 +96,7 @@ export function useListenerAudio({
     deafened: voice.controls.deafen.on || voice.voiceModeration.deafened,
     connectionInterrupted: connectionHealth.overlayVisible,
     activeTextRoomIdRef,
+    messagesSilenced,
     onNotificationActivate
   });
   const microphoneTest = useMicrophoneTest(

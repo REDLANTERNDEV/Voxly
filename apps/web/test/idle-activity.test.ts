@@ -1,6 +1,7 @@
 import { DEFAULT_AFK_TIMEOUT_MINUTES } from "@voxly/shared";
 import { translate } from "../src/lib/i18n.js";
-import type { RoomSummary } from "@voxly/shared";
+import type { RoomSummary, VoiceSnapshot } from "@voxly/shared";
+import { selfSpeaking } from "../src/app/useIdlePresence.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
@@ -57,7 +58,7 @@ describe("idle presence", () => {
     // showing it costs a dot. Only the dot is justified.
     const hook = readFileSync("src/app/useIdlePresence.ts", "utf8");
 
-    assert.match(hook, /reportStatusRef\.current\(status\)/);
+    assert.match(hook, /socketRef\.current\?\.emit\("presence:setStatus", status\)/);
     assert.doesNotMatch(hook, /joinVoice|shouldMoveToAfk|afkRoomId/);
   });
 
@@ -75,6 +76,35 @@ describe("idle presence", () => {
     // look absent.
     assert.match(hook, /\{ capture: true, passive: true \}/);
     assert.match(hook, /if \(!speaking\) return;[\s\S]*?publishStatus\("online"\)/);
+  });
+
+  it("takes the desktop's machine-wide activity, and a locked machine as away at once", () => {
+    const hook = readFileSync("src/app/useIdlePresence.ts", "utf8");
+
+    assert.match(hook, /subscribeDesktopSystemActivity\(window,/);
+    assert.match(hook, /lastActivityAtRef\.current = 0;\s+publishStatus\("idle"\);/);
+  });
+
+  it("says a still-true idle again on a new connection, which starts out online", () => {
+    const hook = readFileSync("src/app/useIdlePresence.ts", "utf8");
+
+    assert.match(hook, /socket\.on\("connect", restate\)/);
+    assert.match(hook, /if \(reportedStatusRef\.current === "idle"\) socket\.emit\("presence:setStatus", "idle"\)/);
+  });
+
+  it("finds this member's own speaking only in the room they are connected to", () => {
+    const speakingIn = (roomId: string | null, speaking: boolean) => ({
+      activeRoomId: roomId,
+      voiceSnapshots: {
+        room: {
+          members: [{ user: { userId: "self" }, media: { speaking } }]
+        }
+      } as unknown as Record<string, VoiceSnapshot>
+    });
+    assert.equal(selfSpeaking(speakingIn("room", true), "self"), true);
+    assert.equal(selfSpeaking(speakingIn("room", false), "self"), false);
+    assert.equal(selfSpeaking(speakingIn(null, true), "self"), false);
+    assert.equal(selfSpeaking(speakingIn("room", true), undefined), false);
   });
 });
 

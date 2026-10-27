@@ -7,6 +7,25 @@ export interface DesktopVoiceBridge {
   subscribeDeafen?(handler: () => void): () => void;
   getMicrophoneState?(): DesktopMicrophoneState;
   subscribeMicrophone?(handler: (state: DesktopMicrophoneState) => void): () => void;
+  subscribeSystemActivity?(handler: (signal: DesktopSystemActivity) => void): () => void;
+}
+
+/**
+ * What the operating system saw, with nothing attached: input happened
+ * somewhere on the machine, or the machine was locked or put to sleep. No
+ * duration, timestamp or application crosses the bridge.
+ */
+export type DesktopSystemActivity = "active" | "away";
+
+export function subscribeDesktopSystemActivity(
+  target: { __VOXLY_DESKTOP_V1__?: DesktopVoiceBridge },
+  handler: (signal: DesktopSystemActivity) => void
+): () => void {
+  const bridge = target.__VOXLY_DESKTOP_V1__;
+  if (bridge?.version !== 1 || typeof bridge.subscribeSystemActivity !== "function") return () => {};
+  return bridge.subscribeSystemActivity((signal) => {
+    if (signal === "active" || signal === "away") handler(signal);
+  });
 }
 
 export function readDesktopMicrophoneState(target: {
