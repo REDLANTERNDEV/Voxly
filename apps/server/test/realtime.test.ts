@@ -1204,6 +1204,18 @@ describe("Voxly realtime MVP", () => {
     assert.equal((await idle).status, "idle", "every connection idle means the member is away");
   });
 
+  it("tells existing members their directory changed when someone joins through an invite", async () => {
+    const owner = await bootstrapOwner(app);
+    const ownerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    sockets.push(ownerSocket);
+    await waitForSocketRoom(app, ownerSocket, "server:the-basement");
+
+    // The newcomer never connects, so presence alone would never mention them.
+    const changed = onceEvent<{ serverId: string }>(ownerSocket, "server:directoryChanged");
+    await acceptInvite(app, owner.cookies, "Deniz");
+    assert.deepEqual(await changed, { serverId: "the-basement" });
+  });
+
   it("tells existing members about a new channel instead of waiting for their next reload", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");

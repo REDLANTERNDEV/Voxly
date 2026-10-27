@@ -205,6 +205,10 @@ export function registerInviteRoutes(context: RouteContext) {
     if (!user) throw new Error("invite acceptance completed without a user");
     database.save();
     await realtime.grantServerAccess(serverId, user.id);
+    // Presence only covers who is connected, and a newcomer usually is not yet.
+    // Without this, everyone already here lists them nowhere — not even as
+    // offline — until they reload.
+    io.to(`server:${serverId}`).emit("server:directoryChanged", { serverId });
     if (welcome) publishWelcomeNotice(io, welcome);
     // No Recovery code is minted here.
     //
