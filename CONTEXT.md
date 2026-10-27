@@ -159,10 +159,24 @@ from _Recovery_, which is the path taken when no Device is left to link from.
 _Avoid_: Pair, connect, transfer, add
 
 **Invite**:
-Unchanged, and deliberately not either of the above: an Invite admits a new
-_person_, and only the owner may issue one. Linking a Device and recovering
-access are a member's own business and never route through the owner.
+Deliberately not either of the above: an Invite admits a new _person_ to one
+Server, and only that Server's owner or a member holding its invite grant may
+issue one. Linking a Device and recovering access are a member's own business
+and never route through an owner. An Invite stops being _active_ when it
+expires, is used up or is revoked; it then becomes a _past invite_.
 _Avoid_: using "invite" for anything a member does to their own account
+
+**Inviter**:
+The Account that created the Invite a Membership was activated through. Every
+Membership has at most one; one created another way — by founding the Server,
+by an owner's access link, or as the Music bot — has none.
+_Avoid_: Referrer, sponsor, parent
+
+**Invite trail**:
+Who created each Invite of a Server, and who joined through it and when. Only
+owners see it: a Server's owners for that Server, the Installation owner
+across all of them (ADR-0034).
+_Avoid_: Referral tree, invite log, audit log (that is the operator's)
 
 ### Where a source's own words are allowed
 
