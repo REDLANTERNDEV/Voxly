@@ -3549,14 +3549,22 @@ select {
 .desktop-launch-origin {
   color: var(--muted);
 }
+/* Dressed like a server avatar so it offers the app without shouting over the rail. */
 .workspace-rail-link.workspace-download {
-  background: var(--success-soft);
-  color: var(--success);
-  border: 1px solid color-mix(in srgb, var(--success) 35%, transparent);
+  background: var(--surface-2);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  transition:
+    background 140ms ease,
+    border-radius 140ms ease,
+    color 140ms ease;
 }
 .workspace-rail-link.workspace-download:hover {
-  background: var(--success);
-  color: white;
+  background: var(--selected-fill);
+  border-color: var(--selected-border);
+  border-radius: 12px;
+  color: var(--fg);
 }
 
 .mobile-server-menu,
