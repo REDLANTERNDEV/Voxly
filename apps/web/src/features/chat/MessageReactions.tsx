@@ -5,6 +5,7 @@ import type { Translate } from "../../app/types.js";
 import { EmojiIcon, MoreIcon, PlusIcon } from "../../components/ui/Icons.js";
 import { ChatDialog } from "./ChatDialog.js";
 import { EmojiPicker } from "./EmojiPicker.js";
+import { rememberEmoji } from "../../lib/recentReactions.js";
 
 export function MessageReactions({
   state,
@@ -13,7 +14,9 @@ export function MessageReactions({
   members,
   t,
   onReact,
-  onClear
+  onClear,
+  pickerOpen,
+  onPickerChange
 }: {
   state: MessageReactionState;
   userId: string;
@@ -22,8 +25,10 @@ export function MessageReactions({
   t: Translate;
   onReact(emoji: string, add: boolean): Promise<void>;
   onClear(emoji: string): Promise<void>;
+  /** The picker is the row's, so the message toolbar can open the same one. */
+  pickerOpen: boolean;
+  onPickerChange(open: boolean): void;
 }) {
-  const [picker, setPicker] = useState(false);
   const [details, setDetails] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -57,6 +62,7 @@ export function MessageReactions({
                   count: reaction.userIds.length
                 })}
                 onClick={() => {
+                  if (!own) rememberEmoji(reaction.emoji);
                   void perform(() => onReact(reaction.emoji, !own));
                 }}
               >
@@ -76,17 +82,21 @@ export function MessageReactions({
             </div>
           );
         })}
-        <button
-          className="reaction-add"
-          type="button"
-          disabled={busy}
-          aria-label={t("chat.addReactionPicker")}
-          title={t("chat.addReactionPicker")}
-          onClick={() => setPicker(true)}
-        >
-          <EmojiIcon />
-          <PlusIcon />
-        </button>
+        {/* Beside reactions that already exist, as in Discord. A message with none
+            reacts from its toolbar or menu and keeps no empty row for it. */}
+        {state.reactions.length > 0 ? (
+          <button
+            className="reaction-add"
+            type="button"
+            disabled={busy}
+            aria-label={t("chat.addReactionPicker")}
+            title={t("chat.addReactionPicker")}
+            onClick={() => onPickerChange(true)}
+          >
+            <EmojiIcon />
+            <PlusIcon />
+          </button>
+        ) : null}
       </div>
       {busy ? (
         <p className="chat-help" role="status">
@@ -98,13 +108,13 @@ export function MessageReactions({
           {error}
         </p>
       ) : null}
-      {picker ? (
+      {pickerOpen ? (
         <EmojiPicker
           t={t}
           reactions={state.reactions}
-          onClose={() => setPicker(false)}
+          onClose={() => onPickerChange(false)}
           onSelect={(emoji) => {
-            setPicker(false);
+            onPickerChange(false);
             void perform(() =>
               onReact(
                 emoji,

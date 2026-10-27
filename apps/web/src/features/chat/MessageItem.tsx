@@ -1,11 +1,17 @@
-import type { ChatMessage, MessageMention, PresenceUser, PublicUser } from "@voxly/shared";
+import {
+  maxMessageReactionKinds,
+  type ChatMessage,
+  type MessageMention,
+  type PresenceUser,
+  type PublicUser
+} from "@voxly/shared";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ApiError } from "../../api.js";
 import { initial } from "../../app/presentation.js";
 import type { Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
-import { ArrowIcon, CloseIcon, MoreIcon, ReplyIcon } from "../../components/ui/Icons.js";
+import { ArrowIcon, CloseIcon } from "../../components/ui/Icons.js";
 import { clampContextMenuPosition } from "../../lib/contextMenu.js";
 import { copyText } from "../../lib/copyText.js";
 import { type LanguageCode } from "../../lib/i18n.js";
@@ -13,6 +19,7 @@ import { messageEmbeds, type MessageEmbed } from "../../lib/messageEmbeds.js";
 import {
   aroundNickname,
   canWaveAt,
+  formatMessageClock,
   formatMessageDateTime,
   formatMessageTimestamp,
   messageDeleteFailureCopy,
@@ -25,6 +32,8 @@ import { MessageReactions } from "./MessageReactions.js";
 import { ChatComposerInput } from "./ChatComposerInput.js";
 import { isMentioned, selectedTextIn, trimMentionDraft, usesNativeMessageMenu } from "../../lib/chatInteractions.js";
 import { ReplyQuote } from "./ReplyQuote.js";
+import { MessageToolbar } from "./MessageToolbar.js";
+import { quickReactions, rememberEmoji, useRecentEmoji } from "../../lib/recentReactions.js";
 import {
   reconcileMentionContent,
   noMemberIdentityChanges,
@@ -53,7 +62,8 @@ export function MessageItem({
   onClearReactions,
   waved = false,
   onWave,
-  identityChanges = noMemberIdentityChanges
+  identityChanges = noMemberIdentityChanges,
+  grouped = false
 }: {
   message: ChatMessage;
   user: PublicUser;
@@ -79,6 +89,8 @@ export function MessageItem({
   waved?: boolean;
   onWave?(messageId: string): Promise<void>;
   identityChanges?: MemberIdentityChanges;
+  /** Continues the previous message's group: no avatar or author line of its own. */
+  grouped?: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -94,6 +106,14 @@ export function MessageItem({
   const [pendingEmbed, setPendingEmbed] = useState<MessageEmbed | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [wavedNow, setWavedNow] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const quick = quickReactions(useRecentEmoji());
+  const ownEmoji = new Set(
+    message.reactionState.reactions
+      .filter((reaction) => reaction.userIds.includes(user.id))
+      .map((reaction) => reaction.emoji)
+  );
+  const existingEmoji = new Set(message.reactionState.reactions.map((reaction) => reaction.emoji));
   // Read when the menu opens: by the time an item is chosen the selection may be gone.
   const [menuSelection, setMenuSelection] = useState("");
   const articleRef = useRef<HTMLElement | null>(null);
@@ -145,11 +165,31 @@ export function MessageItem({
           (permissions.canEdit ? 42 : 0) +
           (permissions.canDelete ? 42 : 0) +
           (canPin ? 84 : 0) +
-          (isNotice ? 0 : 42),
+          (isNotice ? 0 : 42) +
+          42,
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight
       })
     );
+  }
+
+  function startEditing() {
+    setDraft(message.body);
+    setDraftMentions(message.mentions);
+    setIsEditing(true);
+  }
+
+  async function reactQuickly(emoji: string, add: boolean) {
+    if (add) rememberEmoji(emoji);
+    setIsBusy(true);
+    setActionError("");
+    try {
+      await onReact(message.id, emoji, add);
+    } catch (error) {
+      setActionError(t(error instanceof ApiError && error.status === 409 ? "chat.reactionLimit" : "chat.actionFailed"));
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   /** The selection when there is one, otherwise the message as it reads on screen. */
@@ -221,7 +261,7 @@ export function MessageItem({
     <article
       ref={articleRef}
       data-message-id={message.id}
-      className={`message ${isNotice ? "message-notice" : ""} ${isOwn && !isNotice ? "message-own" : ""} ${isMentioned(message, user.id) ? "message-mentioned" : ""}`}
+      className={`message ${grouped ? "is-grouped" : ""} ${isNotice ? "message-notice" : ""} ${isOwn && !isNotice ? "message-own" : ""} ${isMentioned(message, user.id) ? "message-mentioned" : ""}`}
       onContextMenu={
         hasActions
           ? (event) => {
@@ -238,6 +278,14 @@ export function MessageItem({
       {isNotice ? (
         <span className="message-notice-mark" aria-hidden="true">
           <ArrowIcon />
+        </span>
+      ) : grouped ? (
+        <span
+          className="message-gutter-time mono"
+          aria-hidden="true"
+          title={formatMessageDateTime(message.createdAt, language, timeFormat)}
+        >
+          {formatMessageClock(message.createdAt, language, timeFormat)}
         </span>
       ) : (
         <span className={`avatar ${isOwn ? "owner" : ""}`}>
@@ -258,7 +306,9 @@ export function MessageItem({
           />
         ) : null}
         {isNotice ? null : (
-          <div className="message-meta">
+          // A grouped row keeps its author and time for screen readers; sighted
+          // readers have the name above and the time in the gutter on hover.
+          <div className={`message-meta${grouped ? " sr-only" : ""}`}>
             <span className="message-author">{displayNickname}</span>
             {message.pinnedAt ? <span className="message-pin-label">{t("chat.pinned")}</span> : null}
             {isMentioned(message, user.id) ? <span className="sr-only">{t("chat.mentioned")}</span> : null}
@@ -332,6 +382,12 @@ export function MessageItem({
                 onlineUsers={onlineUsers}
                 t={t}
               />
+              {grouped && (message.editedAt || message.pinnedAt) ? (
+                <span className="message-inline-meta" aria-hidden="true">
+                  {message.pinnedAt ? <span className="message-pin-label">{t("chat.pinned")}</span> : null}
+                  {message.editedAt ? <span className="message-edited">({t("status.edited")})</span> : null}
+                </span>
+              ) : null}
             </div>
             {embeds.length > 0 ? (
               <div className="message-rich-embeds">
@@ -396,6 +452,8 @@ export function MessageItem({
             t={t}
             onReact={(emoji, add) => onReact(message.id, emoji, add)}
             onClear={(emoji) => onClearReactions(message.id, emoji)}
+            pickerOpen={pickerOpen}
+            onPickerChange={setPickerOpen}
           />
         ) : null}
         {isBusy ? (
@@ -409,35 +467,27 @@ export function MessageItem({
           </p>
         ) : null}
       </div>
-      {!isEditing && hasActions ? (
-        <button
-          className="message-reply-trigger"
-          type="button"
-          aria-label={t("room.replyTo", { nickname: displayNickname })}
-          title={t("room.reply")}
-          disabled={isBusy}
-          onClick={() => onReply(message)}
-        >
-          <ReplyIcon />
-        </button>
-      ) : null}
-      {hasActions ? (
-        <button
-          ref={menuTriggerRef}
-          className="message-menu-trigger"
-          type="button"
-          aria-label={t("room.messageActions")}
-          aria-haspopup="menu"
-          aria-expanded={menuPosition ? "true" : "false"}
-          aria-busy={isBusy}
-          disabled={isBusy}
-          onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect();
+      {hasActions && !isEditing ? (
+        <MessageToolbar
+          t={t}
+          nickname={displayNickname}
+          quick={quick}
+          own={ownEmoji}
+          existing={existingEmoji}
+          full={message.reactionState.reactions.length >= maxMessageReactionKinds}
+          canEdit={permissions.canEdit}
+          busy={isBusy}
+          menuOpen={Boolean(menuPosition)}
+          menuTriggerRef={menuTriggerRef}
+          onQuickReact={(emoji, add) => void reactQuickly(emoji, add)}
+          onOpenPicker={() => setPickerOpen(true)}
+          onEdit={startEditing}
+          onReply={() => onReply(message)}
+          onOpenMenu={(trigger) => {
+            const rect = trigger.getBoundingClientRect();
             openMenu(rect.right - 160, rect.bottom + 4);
           }}
-        >
-          <MoreIcon />
-        </button>
+        />
       ) : null}
       {menuPosition
         ? createPortal(
@@ -466,6 +516,16 @@ export function MessageItem({
                 type="button"
                 onClick={() => {
                   setMenuPosition(null);
+                  setPickerOpen(true);
+                }}
+              >
+                {t("chat.addReactionPicker")}
+              </button>
+              <button
+                role="menuitem"
+                type="button"
+                onClick={() => {
+                  setMenuPosition(null);
                   onReply(message);
                 }}
               >
@@ -477,9 +537,7 @@ export function MessageItem({
                   type="button"
                   onClick={() => {
                     setMenuPosition(null);
-                    setDraft(message.body);
-                    setDraftMentions(message.mentions);
-                    setIsEditing(true);
+                    startEditing();
                   }}
                 >
                   {t("common.edit")}

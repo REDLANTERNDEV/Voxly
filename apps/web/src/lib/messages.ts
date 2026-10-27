@@ -26,6 +26,48 @@ export function formatMessageTimestamp(
   ).format(date);
 }
 
+/**
+ * The time alone, for the gutter of a message that continues its author's
+ * group. The gutter is an avatar wide, so a 12-hour clock drops its AM/PM
+ * there; the row's full time is still in its tooltip and accessible text.
+ */
+export function formatMessageClock(value: string, language: string, timeFormat: TimeFormatPreference = "auto") {
+  return new Intl.DateTimeFormat(language, { hour: "2-digit", minute: "2-digit", ...timeFormatOptions(timeFormat) })
+    .formatToParts(new Date(value))
+    .filter((part) => part.type !== "dayPeriod")
+    .map((part) => part.value)
+    .join("")
+    .trim();
+}
+
+/** How long a pause still reads as the same breath of conversation. */
+export const messageGroupWindowMs = 7 * 60 * 1000;
+
+export interface MessageGroupRow {
+  userId: string;
+  createdAt: string;
+  kind?: ChatMessageKind;
+  authorDeleted?: boolean;
+  replyToMessageId?: string | null;
+}
+
+/**
+ * Whether a message sits under the previous one's name rather than repeating
+ * it, as consecutive lines from one person do in Discord. A reply always shows
+ * its author, because its quote already separates it from what came before; a
+ * Welcome notice is never a line anyone wrote; a deleted author has no
+ * identity to share; and a new day or a long pause starts over.
+ */
+export function continuesGroup(previous: MessageGroupRow | undefined, message: MessageGroupRow) {
+  if (!previous || previous.userId !== message.userId) return false;
+  if (previous.kind === "memberJoined" || message.kind === "memberJoined") return false;
+  if (previous.authorDeleted || message.authorDeleted || message.replyToMessageId) return false;
+  const before = new Date(previous.createdAt);
+  const after = new Date(message.createdAt);
+  const gap = after.getTime() - before.getTime();
+  return gap >= 0 && gap <= messageGroupWindowMs && before.toDateString() === after.toDateString();
+}
+
 export function messagePermissions(input: {
   currentUserId: string;
   currentUserRole: UserRole;

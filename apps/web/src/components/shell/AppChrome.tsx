@@ -355,6 +355,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         currentNickname={props.currentNickname}
         currentRoom={props.currentRoom}
         onlineUsers={props.onlineUsers}
+        serverMembers={props.serverMembers}
         presenceChoice={props.presenceChoice}
         language={props.language}
         timeFormat={props.timeFormat}

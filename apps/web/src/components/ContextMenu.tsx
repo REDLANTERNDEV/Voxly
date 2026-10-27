@@ -17,6 +17,14 @@ export function useMenuOverlays() {
   return useContext(MenuOverlays);
 }
 
+/**
+ * Lets a popover that is not a ContextMenu — the dock's account card — treat
+ * the submenu panels it portals out as part of itself for outside clicks.
+ */
+export function MenuOverlayScope({ overlays, children }: { overlays: Set<HTMLElement>; children: ReactNode }) {
+  return <MenuOverlays.Provider value={overlays}>{children}</MenuOverlays.Provider>;
+}
+
 export function ContextMenu({
   descriptor,
   label,

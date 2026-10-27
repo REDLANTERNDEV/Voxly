@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { isPresenceChoiceRequest, type PresenceChoiceState } from "@voxly/shared";
-import { AccountStatusMenu } from "../src/components/shell/AccountStatusMenu.js";
+import { AccountStatusMenu, AccountStatusOptions } from "../src/components/shell/AccountStatusMenu.js";
 import { translate, type TranslationKey } from "../src/lib/i18n.js";
 import {
   presenceChoiceRequest,
@@ -69,24 +69,29 @@ describe("picked Status", () => {
 });
 
 describe("account Status menu", () => {
-  const render = (choice: PresenceChoiceState) =>
-    renderToStaticMarkup(
-      createElement(AccountStatusMenu, {
-        choice,
-        selfState: selfPresenceState(choice.status, "online"),
-        language: "en",
-        timeFormat: "24",
-        t: (key: TranslationKey, values?: Record<string, string | number>) => translate("en", key, values),
-        onChange: () => undefined,
-        onDone: () => undefined
-      })
-    );
+  const props = (choice: PresenceChoiceState) => ({
+    choice,
+    selfState: selfPresenceState(choice.status, "online"),
+    language: "en" as const,
+    timeFormat: "24" as const,
+    t: (key: TranslationKey, values?: Record<string, string | number>) => translate("en", key, values),
+    onChange: () => undefined,
+    onDone: () => undefined
+  });
+
+  it("is one row naming the current Status, which opens the four", () => {
+    const markup = renderToStaticMarkup(createElement(AccountStatusMenu, props({ status: "online", until: null })));
+
+    assert.equal(markup.match(/menu-submenu-trigger/g)?.length, 1);
+    assert.match(markup, /account-card-row account-status-row/);
+    assert.match(markup, /presence-dot is-online[\s\S]*?Online/);
+    assert.doesNotMatch(markup, /Until /);
+  });
 
   it("offers Online directly and the other three through a duration submenu", () => {
-    const markup = render({ status: "online", until: null });
+    const markup = renderToStaticMarkup(createElement(AccountStatusOptions, props({ status: "online", until: null })));
 
-    assert.match(markup, /role="group" aria-label="Set your status"/);
-    assert.match(markup, /aria-pressed="true"[^>]*>[\s\S]*?Online/);
+    assert.match(markup, /role="menuitemradio" aria-checked="true"[^>]*>[\s\S]*?Online/);
     assert.equal(markup.match(/menu-submenu-trigger/g)?.length, 3);
     assert.match(markup, /You won&#x27;t get message sounds or alerts/);
     assert.match(markup, /You&#x27;ll appear offline/);
@@ -95,11 +100,12 @@ describe("account Status menu", () => {
   });
 
   it("shows the current Status and when it ends", () => {
-    const markup = render({ status: "dnd", until: "2026-10-30T14:00:00.000Z" });
+    const choice = { status: "dnd", until: "2026-10-30T14:00:00.000Z" } as const;
+    const row = renderToStaticMarkup(createElement(AccountStatusMenu, props(choice)));
+    const options = renderToStaticMarkup(createElement(AccountStatusOptions, props(choice)));
 
-    assert.match(markup, /Status: Do Not Disturb/);
-    assert.match(markup, /Until /);
-    assert.match(markup, /account-status-option is-current/);
-    assert.match(markup, /presence-dot is-dnd/);
+    assert.match(row, /presence-dot is-dnd[\s\S]*?Do Not Disturb/);
+    assert.match(row, /Until /);
+    assert.match(options, /account-status-option is-current/);
   });
 });

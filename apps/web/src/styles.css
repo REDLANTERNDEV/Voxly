@@ -1313,47 +1313,96 @@ h3 {
   display: grid;
   gap: 8px;
   grid-template-columns: 34px minmax(0, 1fr);
-  padding: 3px 36px 3px 6px;
+  padding: 3px 6px;
   position: relative;
 }
 
-.message-menu-trigger {
+/*
+ * The message toolbar floats over the row's top edge, Discord-style, so no
+ * row keeps a strip of its own for controls and text runs the full width.
+ * It is revealed on hover and focus, and stays while its menu is open.
+ */
+.message-toolbar {
   align-items: center;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 9px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.22);
+  display: flex;
+  gap: 1px;
+  opacity: 0;
+  padding: 2px;
+  pointer-events: none;
+  position: absolute;
+  right: 12px;
+  top: -16px;
+  transition: opacity 120ms ease;
+  z-index: 1;
+}
+.message:hover .message-toolbar,
+.message:focus-within .message-toolbar,
+.message-toolbar:has([aria-expanded="true"]) {
+  opacity: 1;
+  pointer-events: auto;
+}
+.message-toolbar button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
   color: var(--muted);
   cursor: pointer;
   display: inline-flex;
+  font: inherit;
   height: 28px;
   justify-content: center;
-  opacity: 0;
   padding: 0;
-  position: absolute;
-  right: 5px;
-  top: 3px;
-  transition:
-    opacity 120ms ease,
-    color 120ms ease,
-    border-color 120ms ease;
-  width: 28px;
+  width: 30px;
 }
-
-.message:hover .message-menu-trigger,
-.message:focus-within .message-menu-trigger,
-.message-menu-trigger:focus-visible,
-.message-menu-trigger[aria-expanded="true"] {
-  opacity: 1;
-}
-
-.message-menu-trigger:hover {
-  border-color: var(--accent);
+.message-toolbar button:hover:not(:disabled),
+.message-toolbar button[aria-expanded="true"] {
+  background: var(--surface-2);
   color: var(--fg);
 }
-
-.message-menu-trigger:focus-visible {
+.message-toolbar button:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: -2px;
+}
+.message-toolbar button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.message-toolbar-emoji {
+  font-size: 17px;
+  line-height: 1;
+}
+.message-toolbar-emoji[aria-pressed="true"] {
+  background: color-mix(in oklab, var(--accent), transparent 82%);
+}
+.message-toolbar-divider {
+  align-self: stretch;
+  background: var(--border);
+  margin: 4px 3px;
+  width: 1px;
+}
+/* The first message has no row above it to overlap. */
+.message:first-of-type .message-toolbar {
+  top: 2px;
+}
+.message-reactions:empty {
+  display: none;
+}
+/* Beside existing reactions the add chip appears with the toolbar; a finger
+   cannot hover, so a coarse pointer keeps it shown. */
+@media (pointer: fine) {
+  .message .reaction-add {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+  .message:hover .reaction-add,
+  .message:focus-within .reaction-add {
+    opacity: 1;
+  }
 }
 
 .context-menu,
@@ -1429,10 +1478,43 @@ h3 {
   background: color-mix(in oklch, var(--surface), transparent 48%);
 }
 
+/* Text runs the full width of the row, as in Discord; the controls float over
+   the row's top edge instead of keeping a strip of their own. */
 .message-content {
-  max-width: min(72ch, 100%);
+  max-width: 100%;
   min-width: 0;
-  width: fit-content;
+}
+
+/* A message that continues its author's group: the gutter holds its time,
+   shown only while the row is pointed at or focused. */
+.message.is-grouped {
+  padding-bottom: 1px;
+  padding-top: 1px;
+}
+.message:not(.is-grouped):not(:first-of-type) {
+  margin-top: 8px;
+}
+.message-gutter-time {
+  color: var(--muted);
+  font-size: 10px;
+  justify-self: center;
+  line-height: 22px;
+  opacity: 0;
+  white-space: nowrap;
+}
+.message:hover .message-gutter-time,
+.message:focus-within .message-gutter-time {
+  opacity: 1;
+}
+.message-inline-meta {
+  display: inline-flex;
+  gap: 6px;
+  margin-inline-start: 6px;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+.message-meta.is-grouped {
+  margin-bottom: 0;
 }
 
 .avatar {
@@ -1629,45 +1711,128 @@ button.message-mention {
   font-size: 12px;
   color: var(--muted);
 }
+/* The picker: search and group tabs on top, one scrolling list of groups under
+   sticky headings, and a preview line underneath. The list scrolls by itself so
+   the dialog around it never does. */
+.chat-dialog:has(.emoji-picker) {
+  overflow: hidden;
+  width: min(408px, 100%);
+}
+.emoji-picker {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+}
+.emoji-picker-top {
+  display: grid;
+  gap: 8px;
+}
 .emoji-categories {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .emoji-categories button {
-  border: 1px solid var(--border-soft);
-  border-radius: 6px;
-  padding: 6px 8px;
-  font: inherit;
-  font-size: 12px;
-  color: var(--muted);
+  align-items: center;
   background: transparent;
+  border: 0;
+  border-radius: 6px;
   cursor: pointer;
+  display: inline-flex;
+  flex: none;
+  font-size: 18px;
+  height: 34px;
+  justify-content: center;
+  opacity: 0.6;
+  width: 38px;
 }
-.emoji-categories button[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-  color: var(--accent);
+.emoji-categories button:hover,
+.emoji-categories button[aria-current="true"] {
+  background: var(--surface-2);
+  opacity: 1;
+}
+.emoji-categories button[aria-current="true"] {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.emoji-categories button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.emoji-scroll {
+  height: min(320px, calc(100dvh - 260px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  position: relative;
+}
+.emoji-section-heading {
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  margin: 0;
+  padding: 6px 2px 4px;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 1;
 }
 .emoji-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
-  gap: 3px;
+  gap: 2px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  margin-bottom: 6px;
 }
 .emoji-grid button {
+  aspect-ratio: 1;
+  background: transparent;
   border: 0;
   border-radius: 6px;
-  min-height: 44px;
+  cursor: pointer;
   font-size: 24px;
   line-height: 1;
-  background: transparent;
-  cursor: pointer;
+  min-height: 40px;
+  padding: 0;
 }
-.emoji-grid button:hover:not(:disabled) {
+.emoji-grid button:hover:not(:disabled),
+.emoji-grid button:focus-visible {
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  outline: none;
+}
+.emoji-grid button:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 .emoji-grid button:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+.emoji-empty {
+  color: var(--muted);
+  margin: 16px 0;
+  text-align: center;
+}
+.emoji-preview {
+  align-items: center;
+  border-top: 1px solid var(--border-soft);
+  color: var(--muted);
+  display: flex;
+  font-size: 13px;
+  gap: 10px;
+  min-height: 40px;
+  padding-top: 8px;
+}
+.emoji-preview-glyph {
+  font-size: 26px;
+  line-height: 1;
+}
+@media (max-width: 560px), (pointer: coarse) {
+  .emoji-grid {
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  }
+  .emoji-grid button {
+    min-height: 44px;
+  }
 }
 .chat-composer-input {
   position: relative;
@@ -2229,46 +2394,6 @@ button.reply-quote:focus-visible .reply-quote-body {
   }
 }
 
-/* Sits beside the existing ellipsis and shares its reveal rules, so the pair
-   reads as one hover affordance rather than two competing ones. */
-.message-reply-trigger {
-  align-items: center;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--muted);
-  cursor: pointer;
-  display: inline-flex;
-  height: 28px;
-  justify-content: center;
-  opacity: 0;
-  padding: 0;
-  position: absolute;
-  right: 38px;
-  top: 3px;
-  transition:
-    opacity 120ms ease,
-    color 120ms ease,
-    border-color 120ms ease;
-  width: 28px;
-}
-
-.message:hover .message-reply-trigger,
-.message:focus-within .message-reply-trigger,
-.message-reply-trigger:focus-visible {
-  opacity: 1;
-}
-
-.message-reply-trigger:hover {
-  border-color: var(--accent);
-  color: var(--fg);
-}
-
-.message-reply-trigger:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 /* A jump lands the reader somewhere they did not choose, so the destination
    identifies itself briefly instead of leaving them to find the line. */
 .message.is-jump-target {
@@ -2365,47 +2490,33 @@ button.reply-quote:focus-visible .reply-quote-body {
   position: relative;
 }
 
-.account-status {
-  border-bottom: 1px solid var(--border);
-  display: grid;
-  gap: 2px;
-  padding-bottom: 8px;
-}
-.account-status-current {
-  align-items: center;
-  color: var(--muted);
-  display: flex;
-  flex-wrap: wrap;
-  font-size: 12px;
-  gap: 4px 8px;
-  margin: 0 0 4px;
-}
-.account-status-current small {
-  flex-basis: 100%;
-  padding-left: 18px;
-}
-.account-status .presence-dot,
-.menu-submenu-trigger .presence-dot {
+/* A status row and the Status flyout draw the dot inline, beside the words,
+   rather than riding an avatar's corner. */
+.account-status-row .presence-dot,
+.menu-submenu-trigger .presence-dot,
+.account-status-option .presence-dot {
   border-color: transparent;
   flex: none;
-  position: relative;
   inset: auto;
+  position: relative;
 }
 .account-status-option {
-  gap: 10px;
-  justify-content: flex-start;
   min-width: 0;
-  text-align: start;
-  /* A description wraps inside the panel's width rather than widening it past
-     the drawer edge on a phone. */
+  /* A description wraps inside the flyout rather than widening it past the
+     drawer edge on a phone. */
   white-space: normal;
+  width: 100%;
 }
-.account-status-option[aria-pressed="true"],
+.account-status-option[aria-checked="true"],
 .account-status-option.is-current {
   background: var(--surface-2);
 }
-.account-status-option .menu-submenu-caret {
+.account-status-option .menu-submenu-caret,
+.account-status-row .menu-submenu-caret {
   margin-inline-start: auto;
+}
+.menu-submenu-panel.is-panel {
+  width: 248px;
 }
 .menu-submenu-copy {
   display: grid;
@@ -3726,16 +3837,135 @@ button.reply-quote:focus-visible .reply-quote-body {
 .account-menu-panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   bottom: calc(100% + 8px);
   box-shadow: var(--shadow);
-  display: grid;
-  gap: 8px;
-  min-width: 180px;
-  padding: 10px;
+  padding: 12px;
   position: absolute;
   right: 0;
+  width: min(288px, calc(100vw - 24px));
   z-index: var(--layer-popover);
+}
+
+/* The account card: who you are, then what you can change, then the account's
+   own actions. Sections are inset blocks with hairlines between their rows, so
+   the card reads as a profile rather than as a list of buttons. */
+.account-card {
+  display: grid;
+  gap: 10px;
+}
+.account-card-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  padding: 2px 2px 4px;
+}
+/* Doubled to outrank the small-phone `.avatar` size: the card's avatar is
+   its header, not a list row. */
+.account-card-avatar.account-card-avatar {
+  flex: none;
+  font-size: 19px;
+  height: 52px;
+  position: relative;
+  width: 52px;
+}
+.account-card-avatar .presence-dot {
+  border-width: 3px;
+  height: 16px;
+  width: 16px;
+}
+.account-card-identity {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.account-card-identity > strong {
+  font-size: 16px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-card-meta {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 6px;
+}
+.account-card-badge {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg-2, var(--fg));
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+}
+.account-card-section {
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  display: grid;
+  overflow: hidden;
+}
+.account-card-section > * + * {
+  border-top: 1px solid var(--border-soft, var(--border));
+}
+.account-card-section > .menu-submenu {
+  display: grid;
+}
+.account-card-row {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--fg);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-size: 14px;
+  gap: 10px;
+  min-height: 42px;
+  min-width: 0;
+  padding: 8px 12px;
+  text-align: start;
+  text-decoration: none;
+  width: 100%;
+}
+.account-card-row:hover,
+.account-card-row:focus-visible,
+.account-card-row[aria-expanded="true"] {
+  background: color-mix(in oklab, var(--fg), transparent 93%);
+  outline: none;
+}
+.account-card-row:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.account-card-row .ui-icon {
+  color: var(--muted);
+  flex: none;
+}
+.account-card-row.is-danger,
+.account-card-row.is-danger .ui-icon {
+  color: var(--danger);
+}
+.account-card-note {
+  color: var(--muted);
+  font-size: 12px;
+  margin-inline-start: auto;
+}
+.account-card-note:empty {
+  display: none;
+}
+/* The update notice keeps its own button classes for the settings page; in the
+   card it is one more row. */
+.account-card-section > .account-update-link {
+  border-radius: 0;
+  justify-content: flex-start;
+  min-height: 42px;
+  padding: 8px 12px;
+  white-space: normal;
 }
 
 .confirm-backdrop {
@@ -6138,17 +6368,36 @@ button.reply-quote:focus-visible .reply-quote-body {
 }
 
 @media (pointer: coarse) {
-  .message-menu-trigger,
-  .message-reply-trigger,
   .sidebar-menu-trigger {
     opacity: 1;
   }
 
-  /* A finger is not a cursor. 28 pixels is a comfortable target to click and a
-     miss to tap, and on a touchscreen this is the only way into the actions on
-     its row — there is no secondary click to fall back on. The two message
-     triggers keep their size: they are placed against each other in a reserved
-     strip, and widening them there costs the message its text column. */
+  /* A finger is not a cursor: there is no hover to reveal the toolbar and no
+     secondary click to fall back on. The menu's ellipsis alone stays, always
+     visible, and its menu carries everything the toolbar did — copy, react,
+     reply and edit. It sits where the toolbar would, inside the row. */
+  .message-toolbar {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    opacity: 1;
+    pointer-events: auto;
+    right: 4px;
+    top: 2px;
+  }
+  .message-toolbar > :not(.message-menu-trigger) {
+    display: none;
+  }
+  .message-toolbar .message-menu-trigger {
+    height: 36px;
+    width: 36px;
+  }
+  .message-content {
+    padding-right: 36px;
+  }
+
+  /* 28 pixels is a comfortable target to click and a miss to tap, and on a
+     touchscreen this is the only way into the actions on its row. */
   .sidebar-menu-trigger {
     height: 36px;
     width: 36px;

@@ -103,6 +103,14 @@ describe("chat interactions", () => {
     assert.equal((await react(message.id, emojis[8], member)).statusCode, 200);
     assert.equal((await react(message.id, "not-an-emoji")).statusCode, 400);
   });
+  it("admits the grown catalogue and still refuses what it leaves out", async () => {
+    const message = await post();
+    assert.equal((await react(message.id, "🦩")).statusCode, 200);
+    assert.equal((await react(message.id, "🛕")).statusCode, 200);
+    // Flags are left out on purpose: Windows draws them as two letters.
+    assert.equal((await react(message.id, "🇹🇷")).statusCode, 400);
+    assert.equal((await react(message.id, "👍🏽")).statusCode, 400);
+  });
   it("admits only one of two simultaneous new kinds when one slot remains", async () => {
     const message = await post();
     for (const [emoji] of chatEmojiCatalog.slice(0, 7)) await react(message.id, emoji);

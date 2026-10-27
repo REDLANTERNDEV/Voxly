@@ -138,9 +138,10 @@ requirement.
   update may only modify a member already listed. Invisible is never one of
   them: the server reports an invisible member as offline, and only their own
   row and dock avatar show Invisible.
-- The Status picker lives in the dock's account menu: Online directly, and Idle,
-  Do Not Disturb and Invisible each through a duration submenu (15 minutes, 1,
-  8 and 24 hours, 3 days, Forever). The client holds no copy of its own: it
+- The Status picker lives in the dock's account card as one row naming the
+  current Status, which opens a flyout: Online directly, and Idle, Do Not
+  Disturb and Invisible each through a duration submenu (15 minutes, 1, 8 and
+  24 hours, 3 days, Forever). The client holds no copy of its own: it
   shows what the server last sent in `presence:choice`, and the server ends a
   timed Status. With Online picked, your own dot follows what the server
   measured, so you see the Idle everyone else sees.
@@ -245,6 +246,11 @@ requirement.
   member action menu and confirmation flow. Remote volume remains available to
   listeners; disconnect, kick, ban, and nickname actions appear only when the
   current server role and target member permit them.
+- The dock's account card reads like a profile card: avatar with its presence
+  dot, nickname, and this Server's Mention code with an Owner badge; then a
+  section with the Status row, Settings and (for owners) Owner panel; then Copy
+  mention code and Log out, last. It closes on outside input and Escape, and
+  counts its portalled Status flyouts as part of itself.
 - Kicked members disappear from the owner member list; banned members remain
   visible so owners can unban them.
 - Nicknames are server-scoped presentation. The selected server owner may
@@ -288,6 +294,11 @@ requirement.
   retained in suggestions and the person card. Include offline active people;
   derive online status only from authoritative presence. Collective labels use
   frozen server recipients for highlighting and preserve normal notification gates.
+- The emoji picker opens on Recently used, then every catalogue group under a
+  sticky heading, with a tab per group that jumps to it and follows the scroll.
+  A search folds the groups into one list matching English and Turkish words.
+  Recently used is Device-local (`lib/recentReactions.ts`), holds catalogue
+  glyphs only, and also feeds the message toolbar's three quick reactions.
 - Message reactions use the shared catalogue and kind ceiling. At the ceiling,
   existing groups remain joinable and removable. Render reaction glyphs at 20px,
   counters at 12px, and controls at least 32px tall (44px on phones/touch).
@@ -329,8 +340,18 @@ requirement.
   discard actions rather than disappearing or blocking the composer.
 - An unsent message has no server id, so it offers no edit, delete, link, or
   rich-preview affordance.
-- Reply is available to every reader, from the hover control beside the ellipsis
-  and from the same permission-filtered menu. Edit and delete stay gated.
+- Message rows run the full width of the list. Their actions float over the
+  row's top edge in a toolbar revealed on hover and focus: three quick
+  reactions, Add reaction, Edit (when permitted), Reply and the ellipsis. It
+  is one Tab stop with arrow keys along it, and it never reserves a strip of
+  the row. The add-reaction chip appears only beside existing reactions.
+- Reply is available to every reader, from the toolbar and from the same
+  permission-filtered menu, which also offers Add reaction so reacting never
+  depends on hover. Edit and delete stay gated.
+- Consecutive messages from one author within seven minutes on the same local
+  day share one avatar and name (`continuesGroup`); the gutter shows the time on
+  hover and the row keeps its author and time for screen readers. A reply,
+  Welcome notice or deleted author always starts a new group.
 - A Welcome notice renders as one line in place of an author and body: an arrow
   where the avatar would be, the viewer's own sentence with the nickname set
   apart, and its time. Everyone but the member it welcomes gets one wave button,
@@ -390,9 +411,9 @@ requirement.
   has none of the three ways in above, and the row carries a member's own two
   silences, a listener's volume and an owner's moderation — so it gets the
   ellipsis back and the symmetry gives way. On a coarse pointer, sidebar
-  triggers are 36 pixels; the two message triggers stay at 28, because they sit
-  against each other in a reserved strip and widening them there costs the
-  message its text column.
+  triggers are 36 pixels, and the message toolbar shrinks to its ellipsis alone,
+  always visible at 36 pixels: there is no hover to reveal the rest, and its
+  menu carries every toolbar action.
 - Compute row action availability from target-specific permissions after all
   filters are applied. Do not render an ellipsis or custom context menu when the
   resulting menu would contain no action.
@@ -759,7 +780,7 @@ tests complement that check; they do not replace it for geometry-sensitive UI.
   use neutral CSS blur and Watch; watched boxes show clear live video without
   a central share icon. Participant captions show mute/deafen only; the screen
   tile owns the share indicator.
-- The dock avatar menu owns Settings and Owner panel navigation. Do not duplicate
+- The dock avatar's account card owns Settings and Owner panel navigation. Do not duplicate
   those actions beside the avatar; the workspace rail keeps its Settings shortcut.
 
 ## Server Message Notifications

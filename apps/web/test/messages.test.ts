@@ -7,6 +7,8 @@ import { translate } from "../src/lib/i18n.js";
 import {
   aroundNickname,
   canWaveAt,
+  continuesGroup,
+  formatMessageClock,
   formatMessageDateTime,
   formatMessageTimestamp,
   isMessageListNearBottom,
@@ -215,3 +217,38 @@ function welcomeMessage(overrides: Partial<ChatMessage>): ChatMessage {
     ...overrides
   };
 }
+
+describe("message groups", () => {
+  const at = (minutes: number, extra: Record<string, unknown> = {}) => ({
+    userId: "ada",
+    createdAt: new Date(2026, 9, 28, 12, minutes).toISOString(),
+    ...extra
+  });
+
+  it("continues one person's lines within seven minutes", () => {
+    assert.equal(continuesGroup(at(0), at(1)), true);
+    assert.equal(continuesGroup(at(0), at(7)), true);
+    assert.equal(continuesGroup(at(0), at(8)), false);
+    assert.equal(continuesGroup(undefined, at(0)), false);
+  });
+
+  it("starts over for another author, a reply, a Welcome notice or a deleted author", () => {
+    assert.equal(continuesGroup(at(0), at(1, { userId: "deniz" })), false);
+    assert.equal(continuesGroup(at(0), at(1, { replyToMessageId: "m1" })), false);
+    assert.equal(continuesGroup(at(0, { kind: "memberJoined" }), at(1)), false);
+    assert.equal(continuesGroup(at(0), at(1, { kind: "memberJoined" })), false);
+    assert.equal(continuesGroup(at(0, { authorDeleted: true }), at(1, { authorDeleted: true })), false);
+  });
+
+  it("starts over on a new local day even inside the window", () => {
+    const late = { userId: "ada", createdAt: new Date(2026, 9, 28, 23, 58).toISOString() };
+    const early = { userId: "ada", createdAt: new Date(2026, 9, 29, 0, 1).toISOString() };
+    assert.equal(continuesGroup(late, early), false);
+  });
+
+  it("fits the gutter by dropping a 12-hour clock's AM/PM", () => {
+    const value = new Date(2026, 9, 28, 22, 58).toISOString();
+    assert.equal(formatMessageClock(value, "en", "24"), "22:58");
+    assert.equal(formatMessageClock(value, "en", "12"), "10:58");
+  });
+});

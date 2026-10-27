@@ -4,19 +4,21 @@ import { describe, it } from "node:test";
 import { translate } from "../src/lib/i18n.js";
 
 const messageItem = readFileSync("src/features/chat/MessageItem.tsx", "utf8");
+const toolbar = readFileSync("src/features/chat/MessageToolbar.tsx", "utf8");
 const textRoom = readFileSync("src/features/chat/TextRoomScreen.tsx", "utf8");
 const replyQuote = readFileSync("src/features/chat/ReplyQuote.tsx", "utf8");
 const styles = readFileSync("src/styles.css", "utf8");
 
 describe("message reply affordances", () => {
-  it("offers reply from the hover control and the context menu alike", () => {
+  it("offers reply from the toolbar and the context menu alike", () => {
     assert.match(
-      messageItem,
-      /className="message-reply-trigger"[\s\S]*?onClick=\{\s*\(\s*\s*\)\s+=>\s*\s+onReply\(\s*message\s*\)\s*\}/
+      toolbar,
+      /className="message-reply-trigger"[\s\S]*?aria-label=\{t\("room\.replyTo",\s*\{\s*nickname:\s*props\.nickname\s*\}\)\}[\s\S]*?onClick=\{props\.onReply\}/
     );
+    assert.match(messageItem, /onReply=\{\(\)\s*=>\s*onReply\(message\)\}/);
     assert.match(
       messageItem,
-      /<button\s+role="menuitem"\s+type="button"\s+onClick=\{\s*\(\s*\s*\)\s+=>\s*\s+\{\s*\s*\n\s*setMenuPosition\(\s*null\s*\);\s*\n\s*onReply\(\s*message\s*\);/
+      /<button\s+role="menuitem"\s+type="button"\s+onClick=\{\s*\(\s*\)\s+=>\s*\{\s*setMenuPosition\(\s*null\s*\);\s*onReply\(\s*message\s*\);/
     );
   });
 
@@ -44,12 +46,29 @@ describe("message reply affordances", () => {
     );
   });
 
-  it("reveals the reply control on the same hover and touch rules as the ellipsis", () => {
-    assert.match(styles, /\.message:hover\s+\.message-reply-trigger,[\s\S]*?opacity:\s+1;/);
+  it("reacts from the toolbar and the menu, so touch and keyboard can react too", () => {
+    assert.match(messageItem, /onOpenPicker=\{\(\)\s*=>\s*setPickerOpen\(true\)\}/);
+    assert.match(
+      messageItem,
+      /"chat\.copyText"\)\}[\s\S]*?setPickerOpen\(true\);\s*\}\}\s*>\s*\{t\("chat\.addReactionPicker"\)\}/
+    );
+    assert.match(toolbar, /props\.quick\.map\(/);
+    for (const key of ["chat.quickReact", "chat.quickUnreact", "chat.messageToolbar"] as const) {
+      assert.notEqual(
+        translate("en", key, { emoji: "🔥", nickname: "Ada" }),
+        translate("tr", key, { emoji: "🔥", nickname: "Ada" })
+      );
+    }
+  });
+
+  it("floats the toolbar over the row on hover and focus, leaving the text its full width", () => {
+    assert.match(styles, /\.message-toolbar\s+\{[^}]*opacity:\s+0;[^}]*position:\s+absolute;[^}]*top:\s+-16px;/);
     assert.match(
       styles,
-      /@media\s+\(\s*pointer:\s+coarse\s*\)\s+\{\s*[\s\S]*?\.message-reply-trigger,[\s\S]*?opacity:\s+1;/
+      /\.message:hover\s+\.message-toolbar,\s*\.message:focus-within\s+\.message-toolbar,\s*\.message-toolbar:has\(\[aria-expanded="true"\]\)\s+\{\s*opacity:\s+1;/
     );
+    assert.match(styles, /\.message-content\s+\{\s*max-width:\s+100%;/);
+    assert.match(toolbar, /role="toolbar"/);
   });
 });
 

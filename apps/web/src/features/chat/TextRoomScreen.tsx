@@ -6,7 +6,7 @@ import type { ShellActions, ShellModel } from "../../app/types.js";
 import { ArrowIcon, CloseIcon, ReplyIcon, PushPinIcon } from "../../components/ui/Icons.js";
 import { EmptyState, RoomHeader } from "../../components/ui/Primitives.js";
 import { resolveRememberedRoom } from "../../lib/channelState.js";
-import { isMessageListNearBottom, messageListUpdateAction, wavedNotices } from "../../lib/messages.js";
+import { continuesGroup, isMessageListNearBottom, messageListUpdateAction, wavedNotices } from "../../lib/messages.js";
 import { composerDrafts } from "../../lib/composerDrafts.js";
 import { messageListIds, type OutboxEntry } from "../../lib/messageOutbox.js";
 import { requestSettingsSection } from "../../lib/settingsNavigation.js";
@@ -280,10 +280,11 @@ export function TextRoomScreen(props: TextRoomProps) {
           {displayedMessages.length === 0 && props.outbox.length === 0 ? (
             <EmptyState title={props.t("room.noMessages")} copy={props.t("room.noMessagesCopy")} />
           ) : (
-            displayedMessages.map((message) => (
+            displayedMessages.map((message, index) => (
               <MessageItem
                 key={message.id}
                 message={message}
+                grouped={continuesGroup(displayedMessages[index - 1], message)}
                 user={props.user}
                 members={props.serverMembers}
                 onlineUsers={props.onlineUsers}
@@ -309,10 +310,18 @@ export function TextRoomScreen(props: TextRoomProps) {
               />
             ))
           )}
-          {props.outbox.map((entry) => (
+          {props.outbox.map((entry, index) => (
             <PendingMessageItem
               key={entry.localId}
               entry={entry}
+              grouped={continuesGroup(
+                index === 0 ? displayedMessages.at(-1) : { userId: props.user.id, ...props.outbox[index - 1]! },
+                {
+                  userId: props.user.id,
+                  createdAt: entry.createdAt,
+                  replyToMessageId: entry.replyTo?.messageId ?? null
+                }
+              )}
               nickname={props.user.nickname}
               language={props.language}
               timeFormat={props.timeFormat}

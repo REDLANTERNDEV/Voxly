@@ -74,9 +74,10 @@ describe("narrow layout", () => {
       declaration("VoiceDock", "ConnectionSignal"),
       /className="btn\s+btn-danger\s+dock-leave"[^>]*aria-label=/
     );
+    // The Owner panel row moved into the account card and keeps its name there.
     assert.match(
-      declaration("VoiceDock", "ConnectionSignal"),
-      /className="btn\s+btn-ghost\s+account-owner-link"[^>]*label=/
+      readFileSync("src/components/shell/AccountCard.tsx", "utf8"),
+      /<NavLink\s+className="account-card-row"\s+href=\{props\.ownerPanelHref\}\s+label=\{t\("owner\.panel"\)\}/
     );
 
     assert.match(narrow, /\.mobile-topbar\s+\.icon-btn\s+span\s+\{\s*display:\s+none;/);
@@ -124,9 +125,12 @@ describe("phone layout", () => {
 });
 
 describe("touch affordances", () => {
-  it("gives sidebar menu triggers a target a finger can hit", () => {
-    const coarse = mediaBlock("(pointer: coarse)", ".message-reply-trigger,");
+  it("gives sidebar and message menu triggers a target a finger can hit", () => {
+    const coarse = mediaBlock("(pointer: coarse)", ".message-toolbar > :not(.message-menu-trigger)");
 
     assert.match(coarse, /\.sidebar-menu-trigger\s+\{\s*height:\s+36px;\s*width:\s+36px;/);
+    // No hover on a touchscreen: the toolbar shrinks to its always-visible ellipsis.
+    assert.match(coarse, /\.message-toolbar\s+>\s+:not\(\.message-menu-trigger\)\s+\{\s*display:\s+none;/);
+    assert.match(coarse, /\.message-toolbar\s+\.message-menu-trigger\s+\{\s*height:\s+36px;\s*width:\s+36px;/);
   });
 });

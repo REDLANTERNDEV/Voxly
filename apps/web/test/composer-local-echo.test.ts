@@ -23,7 +23,7 @@ describe("composer local echo", () => {
   });
 
   it("renders unacknowledged messages in the same list as delivered ones", () => {
-    assert.match(textRoom, /props\.outbox\.map\(\s*\(\s*entry\s*\)\s+=>\s*\s+\(\s*\s*<PendingMessageItem/);
+    assert.match(textRoom, /props\.outbox\.map\(\s*\(\s*entry,\s*index\s*\)\s+=>\s*\(\s*<PendingMessageItem/);
     assert.match(
       textRoom,
       /messageListIds\(\s*displayedMessages\.map\(\s*\(\s*message\s*\)\s+=>\s*\s+message\.id\s*\),\s+props\.outbox\s*\)/

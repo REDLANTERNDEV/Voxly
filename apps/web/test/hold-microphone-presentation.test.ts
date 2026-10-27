@@ -14,6 +14,7 @@ function fixture(mic: boolean, manualMic = true) {
     currentNickname: "Me",
     presenceChoice: { status: "online", until: null },
     onlineUsers: [],
+    serverMembers: [],
     language: "en",
     timeFormat: "auto",
     activeServerId: "server",

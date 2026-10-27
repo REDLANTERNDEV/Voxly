@@ -835,7 +835,12 @@ select {
 }
 
 .message-content {
-  max-width: min(76ch, 100%);
+  max-width: 100%;
+}
+
+.message.is-grouped {
+  padding-bottom: 1px;
+  padding-top: 1px;
 }
 
 .message-rich-embeds,
@@ -1391,7 +1396,7 @@ select {
 .account-menu-panel {
   background: var(--surface);
   border-color: var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   box-shadow: 0 20px 56px rgba(0, 0, 0, 0.36);
 }
 
@@ -1494,6 +1499,11 @@ select {
 
   .message {
     padding: 10px 8px;
+  }
+
+  .message.is-grouped {
+    padding-bottom: 2px;
+    padding-top: 2px;
   }
 
   .message-body {
@@ -3690,7 +3700,7 @@ select {
     position: absolute;
     right: 0;
     bottom: calc(100% + 8px);
-    max-width: min(240px, calc(100vw - 88px));
+    width: min(288px, calc(100vw - 32px));
     z-index: var(--layer-menu);
   }
   .drawer-download {

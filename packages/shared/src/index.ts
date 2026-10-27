@@ -916,93 +916,1058 @@ export interface NotificationStateResponse {
   servers: ServerNotificationState[];
 }
 
-/** Local Unicode catalogue shared by the picker and server reaction allowlist. */
-export const chatEmojiCatalog = [
-  ["😀", "faces", "grin smile happy", "gülümse mutlu"],
-  ["😃", "faces", "happy smile", "mutlu gülümse"],
-  ["😄", "faces", "laugh happy", "gül mutlu"],
-  ["😁", "faces", "grin", "gülümse"],
-  ["😆", "faces", "laugh", "kahkaha"],
-  ["😂", "faces", "laugh tears", "kahkaha gözyaşı"],
-  ["🤣", "faces", "laugh rolling", "kahkaha"],
-  ["😊", "faces", "smile blush", "gülümse utan"],
-  ["😉", "faces", "wink", "göz kırp"],
-  ["😍", "faces", "love heart eyes", "aşk sevgi"],
-  ["🥰", "faces", "love hearts", "sevgi kalpler"],
-  ["😘", "faces", "kiss", "öpücük"],
-  ["😎", "faces", "cool sunglasses", "havalı gözlük"],
-  ["🤔", "faces", "think", "düşün"],
-  ["🤨", "faces", "skeptical", "şüpheli"],
-  ["😐", "faces", "neutral", "ifadesiz"],
-  ["🙄", "faces", "eye roll", "göz devir"],
-  ["😏", "faces", "smirk", "sırıt"],
-  ["😴", "faces", "sleep", "uyku"],
-  ["😭", "faces", "cry sad", "ağla üzgün"],
-  ["😢", "faces", "sad tear", "üzgün gözyaşı"],
-  ["😡", "faces", "angry", "kızgın"],
-  ["😱", "faces", "shock scream", "şaşkın çığlık"],
-  ["🤯", "faces", "mind blown", "şaşkın"],
-  ["🥳", "faces", "party celebrate", "parti kutla"],
-  ["🤩", "faces", "star excited", "heyecan yıldız"],
-  ["🥺", "faces", "please pleading", "lütfen yalvar"],
-  ["🤗", "faces", "hug", "sarıl"],
-  ["🤭", "faces", "giggle", "kıkırda"],
-  ["🫡", "faces", "salute", "selam"],
-  ["👍", "gestures", "thumb up like yes", "beğen evet onay"],
-  ["👎", "gestures", "thumb down dislike", "beğenme hayır"],
-  ["👏", "gestures", "clap", "alkış"],
-  ["🙌", "gestures", "hooray", "yaşasın"],
-  ["🙏", "gestures", "thanks please", "teşekkür lütfen"],
-  ["👋", "gestures", "wave hello", "selam merhaba"],
-  ["🤝", "gestures", "handshake", "tokalaş"],
-  ["💪", "gestures", "strong muscle", "güç kas"],
-  ["👌", "gestures", "okay", "tamam"],
-  ["✌️", "gestures", "peace victory", "barış zafer"],
-  ["🤞", "gestures", "luck", "şans"],
-  ["🤘", "gestures", "rock", "rock"],
-  ["❤️", "symbols", "red heart love", "kırmızı kalp sevgi"],
-  ["🧡", "symbols", "orange heart", "turuncu kalp"],
-  ["💛", "symbols", "yellow heart", "sarı kalp"],
-  ["💚", "symbols", "green heart", "yeşil kalp"],
-  ["💙", "symbols", "blue heart", "mavi kalp"],
-  ["💜", "symbols", "purple heart", "mor kalp"],
-  ["🖤", "symbols", "black heart", "siyah kalp"],
-  ["🤍", "symbols", "white heart", "beyaz kalp"],
-  ["💔", "symbols", "broken heart", "kırık kalp"],
-  ["💯", "symbols", "hundred perfect", "yüz mükemmel"],
-  ["✅", "symbols", "check done", "onay tamam"],
-  ["❌", "symbols", "cross no", "çarpı hayır"],
-  ["❓", "symbols", "question", "soru"],
-  ["🎉", "activities", "party celebration", "parti kutlama"],
-  ["🎊", "activities", "confetti", "konfeti"],
-  ["🎮", "activities", "game controller", "oyun kontrol"],
-  ["🏆", "activities", "trophy winner", "kupa kazanan"],
-  ["⚽", "activities", "football", "futbol"],
-  ["🎵", "activities", "music note", "müzik nota"],
-  ["🎸", "activities", "guitar", "gitar"],
-  ["🔥", "nature", "fire hot", "ateş sıcak"],
-  ["✨", "nature", "sparkles", "parıltı"],
-  ["⭐", "nature", "star", "yıldız"],
-  ["🌈", "nature", "rainbow", "gökkuşağı"],
-  ["☀️", "nature", "sun", "güneş"],
-  ["🌙", "nature", "moon", "ay"],
-  ["🐱", "nature", "cat", "kedi"],
-  ["🐶", "nature", "dog", "köpek"],
-  ["🌸", "nature", "flower", "çiçek"],
-  ["☕", "food", "coffee", "kahve"],
-  ["🍕", "food", "pizza", "pizza"],
-  ["🍔", "food", "burger", "hamburger"],
-  ["🍿", "food", "popcorn", "patlamış mısır"],
-  ["🎂", "food", "cake birthday", "pasta doğum günü"],
-  ["🍻", "food", "cheers beer", "şerefe bira"],
-  ["🚀", "objects", "rocket", "roket"],
-  ["💡", "objects", "idea light", "fikir ışık"],
-  ["💻", "objects", "computer", "bilgisayar"],
-  ["📌", "objects", "pin", "sabitle"],
-  ["🎁", "objects", "gift", "hediye"],
-  ["👀", "objects", "eyes look", "göz bak"],
-  ["💤", "objects", "sleep", "uyku"]
+/**
+ * Local Unicode catalogue shared by the picker and server reaction allowlist.
+ *
+ * Every entry is a fully-qualified RGI emoji that Windows 10 and macOS both
+ * draw, which leaves out two things on purpose: flags, which Windows renders as
+ * two letters (and the desktop app runs on Windows), and skin-tone variants,
+ * which would multiply the allowlist. Each line is `emoji|English|Turkish`, the
+ * words the picker's search matches in either language.
+ */
+export const chatEmojiGroups = [
+  "faces",
+  "gestures",
+  "nature",
+  "food",
+  "activities",
+  "travel",
+  "objects",
+  "symbols"
 ] as const;
+export type ChatEmojiGroup = (typeof chatEmojiGroups)[number];
+export type ChatEmojiEntry = readonly [emoji: string, group: ChatEmojiGroup, en: string, tr: string];
+
+const chatEmojiSource: Record<ChatEmojiGroup, string> = {
+  faces: `
+😀|grin smile happy|gülümse mutlu
+😃|happy smile|mutlu gülümse
+😄|laugh happy|gül mutlu
+😁|grin|gülümse
+😆|laugh|kahkaha
+😂|laugh tears|kahkaha gözyaşı
+🤣|laugh rolling|kahkaha
+😊|smile blush|gülümse utan
+😉|wink|göz kırp
+😍|love heart eyes|aşk sevgi
+🥰|love hearts|sevgi kalpler
+😘|kiss|öpücük
+😎|cool sunglasses|havalı gözlük
+🤔|think|düşün
+🤨|skeptical|şüpheli
+😐|neutral|ifadesiz
+🙄|eye roll|göz devir
+😏|smirk|sırıt
+😴|sleep|uyku
+😭|cry sad|ağla üzgün
+😢|sad tear|üzgün gözyaşı
+😡|angry|kızgın
+😱|shock scream|şaşkın çığlık
+🤯|mind blown|şaşkın
+🥳|party celebrate|parti kutla
+🤩|star excited|heyecan yıldız
+🥺|please pleading|lütfen yalvar
+🤗|hug|sarıl
+🤭|giggle|kıkırda
+🫡|salute|selam
+🙂|slight smile|hafif gülümse
+🙃|upside down|ters yüz
+😅|sweat smile nervous|terli gülüş gergin
+🤪|zany crazy|çılgın
+😜|wink tongue|dil çıkar göz kırp
+😝|squint tongue|dil çıkar
+😛|tongue|dil
+🤑|money|para
+😋|yum tasty|lezzetli
+😇|angel innocent|melek masum
+☺️|relaxed smile|rahat gülümse
+😚|kiss closed eyes|öpücük
+😙|kiss smile|öpücük gülümse
+😗|kiss|öpücük
+🤤|drool|salya
+😌|relieved|rahatlamış
+😔|pensive|düşünceli
+😪|sleepy|uykulu
+🥱|yawn bored|esne sıkıldım
+😷|mask sick|maske hasta
+🤒|fever sick|ateş hasta
+🤕|hurt bandage|yaralı
+🤢|nauseated|mide bulantısı
+🤮|vomit|kus
+🤧|sneeze|hapşır
+🥵|hot|sıcak
+🥶|cold freezing|soğuk donmuş
+🥴|woozy dizzy|sersem
+😵|dizzy|baş dönmesi
+🤠|cowboy|kovboy
+🤓|nerd|inek
+🧐|monocle curious|meraklı
+😕|confused|kafası karışık
+😟|worried|endişeli
+🙁|slight frown|hafif somurt
+☹️|frown|somurt
+😮|open mouth wow|ağzı açık vay
+😯|hushed|şaşırmış
+😲|astonished|hayret
+😳|flushed embarrassed|utanmış kızarık
+😦|frowning|somurtkan
+😧|anguished|kederli
+😨|fearful scared|korkmuş
+😰|anxious sweat|kaygılı
+😥|sad relieved|üzgün rahat
+😓|downcast sweat|terli üzgün
+😖|confounded|perişan
+😣|persevere|sebat
+😞|disappointed|hayal kırıklığı
+😩|weary|bitkin
+😫|tired|yorgun
+😤|triumph steam|zafer burun
+😠|mad angry|öfkeli
+🤬|swear cursing|küfür
+😈|devil smile|şeytan gülüş
+👿|imp devil|şeytan kızgın
+💀|skull dead|kafatası ölü
+☠️|skull crossbones|korsan kafatası
+💩|poop|kaka
+🤡|clown|palyaço
+👹|ogre|dev
+👺|goblin|gulyabani
+👻|ghost|hayalet
+👽|alien|uzaylı
+👾|space invader game|uzay istilacısı oyun
+🤖|robot|robot
+😺|cat smile|kedi gülüş
+😸|cat grin|kedi sırıt
+😹|cat joy tears|kedi kahkaha
+😻|cat love|kedi aşk
+😼|cat smirk|kedi sırıtma
+😽|cat kiss|kedi öpücük
+🙀|cat weary|kedi şaşkın
+😿|cat cry|kedi ağla
+😾|cat pout|kedi küs
+🙈|see no evil monkey|görmedim maymun
+🙉|hear no evil monkey|duymadım maymun
+🙊|speak no evil monkey|söylemedim maymun
+🤫|shush quiet|sus sessiz
+🤥|lie liar|yalan
+😶|no mouth silent|ağızsız sessiz
+😑|expressionless|ifadesiz
+😬|grimace awkward|yüz buruştur garip
+🤐|zipper mouth|ağzı fermuarlı
+`,
+  gestures: `
+👍|thumb up like yes|beğen evet onay
+👎|thumb down dislike|beğenme hayır
+👏|clap|alkış
+🙌|hooray|yaşasın
+🙏|thanks please|teşekkür lütfen
+👋|wave hello|selam merhaba
+🤝|handshake|tokalaş
+💪|strong muscle|güç kas
+👌|okay|tamam
+✌️|peace victory|barış zafer
+🤞|luck|şans
+🤘|rock|rock
+✋|raised hand stop|el kaldır dur
+🤚|back of hand|el arkası
+🖐️|hand fingers|el parmaklar
+🖖|vulcan salute|vulkan selamı
+🤙|call me|ara beni
+👈|point left|sola işaret
+👉|point right|sağa işaret
+👆|point up|yukarı işaret
+👇|point down|aşağı işaret
+☝️|index up|işaret parmağı
+🤟|love you|seni seviyorum
+✊|raised fist|yumruk
+👊|fist bump punch|yumruk tokuş
+🤛|left fist|sol yumruk
+🤜|right fist|sağ yumruk
+👐|open hands|açık eller
+🤲|palms up|avuç
+🤏|pinch small|çimdik küçük
+✍️|write|yaz
+💅|nail polish|oje
+🤳|selfie|özçekim
+🦾|mechanical arm|mekanik kol
+🦵|leg|bacak
+🦶|foot|ayak
+👂|ear|kulak
+👃|nose|burun
+🧠|brain|beyin
+🦷|tooth|diş
+🦴|bone|kemik
+👁️|eye|göz
+👅|tongue|dil
+👄|mouth lips|ağız dudak
+💋|kiss mark|öpücük izi
+👶|baby|bebek
+🧒|child|çocuk
+🧑|person|kişi
+🧓|older person|yaşlı
+👮|police|polis
+🕵️|detective|dedektif
+💂|guard|muhafız
+👷|construction worker|inşaat işçisi
+🤴|prince|prens
+👸|princess|prenses
+🧙|mage wizard|büyücü
+🧚|fairy|peri
+🧛|vampire|vampir
+🧜|merperson|denizkızı
+🧝|elf|elf
+🧞|genie|cin
+🧟|zombie|zombi
+🦸|superhero|süper kahraman
+🦹|supervillain|kötü karakter
+🙋|raising hand|el kaldıran
+🙇|bow|eğil
+🤦|facepalm|yüzünü kapat
+🤷|shrug|omuz silk
+🙆|ok gesture|tamam hareketi
+🙅|no gesture|hayır hareketi
+💁|tipping hand info|bilgi
+🏃|run|koş
+🚶|walk|yürü
+💃|dance|dans
+🕺|dance man|dans adam
+👯|bunny dancers|tavşan dansçılar
+🧘|yoga meditate|yoga meditasyon
+🛌|sleep bed|yatak uyku
+👪|family|aile
+👫|couple|çift
+🗣️|speaking head|konuşan baş
+👤|silhouette|siluet
+👥|people|insanlar
+`,
+  nature: `
+🔥|fire hot|ateş sıcak
+✨|sparkles|parıltı
+⭐|star|yıldız
+🌈|rainbow|gökkuşağı
+☀️|sun|güneş
+🌙|moon|ay
+🐱|cat|kedi
+🐶|dog|köpek
+🌸|flower|çiçek
+🐭|mouse|fare
+🐹|hamster|hamster
+🐰|rabbit bunny|tavşan
+🦊|fox|tilki
+🐻|bear|ayı
+🐼|panda|panda
+🐨|koala|koala
+🐯|tiger|kaplan
+🦁|lion|aslan
+🐮|cow|inek
+🐷|pig|domuz
+🐸|frog|kurbağa
+🐵|monkey|maymun
+🐔|chicken|tavuk
+🐧|penguin|penguen
+🐦|bird|kuş
+🐤|chick|civciv
+🦆|duck|ördek
+🦅|eagle|kartal
+🦉|owl|baykuş
+🦇|bat|yarasa
+🐺|wolf|kurt
+🐗|boar|yaban domuzu
+🐴|horse|at
+🦄|unicorn|tek boynuzlu at
+🐝|bee|arı
+🐛|bug caterpillar|tırtıl böcek
+🦋|butterfly|kelebek
+🐌|snail|salyangoz
+🐞|ladybug|uğur böceği
+🐜|ant|karınca
+🕷️|spider|örümcek
+🕸️|spider web|örümcek ağı
+🦂|scorpion|akrep
+🐢|turtle|kaplumbağa
+🐍|snake|yılan
+🦎|lizard|kertenkele
+🦖|t-rex dinosaur|dinozor
+🦕|sauropod dinosaur|uzun boyunlu dinozor
+🐙|octopus|ahtapot
+🦑|squid|kalamar
+🦐|shrimp|karides
+🦀|crab|yengeç
+🐡|blowfish|balon balığı
+🐠|tropical fish|tropik balık
+🐟|fish|balık
+🐬|dolphin|yunus
+🐳|whale|balina
+🦈|shark|köpekbalığı
+🐊|crocodile|timsah
+🐅|tiger walking|kaplan yürüyen
+🐆|leopard|leopar
+🦓|zebra|zebra
+🦍|gorilla|goril
+🐘|elephant|fil
+🦛|hippo|su aygırı
+🦏|rhino|gergedan
+🐪|camel|deve
+🦒|giraffe|zürafa
+🦘|kangaroo|kanguru
+🐄|cow standing|inek ayakta
+🐎|racing horse|yarış atı
+🐖|pig standing|domuz ayakta
+🐑|sheep|koyun
+🐐|goat|keçi
+🦌|deer|geyik
+🐕|dog walking|köpek yürüyen
+🐩|poodle|kaniş
+🐈|cat walking|kedi yürüyen
+🐓|rooster|horoz
+🦃|turkey|hindi
+🦚|peacock|tavuskuşu
+🦜|parrot|papağan
+🦢|swan|kuğu
+🦩|flamingo|flamingo
+🕊️|dove peace|güvercin barış
+🐇|rabbit running|koşan tavşan
+🦝|raccoon|rakun
+🦨|skunk|kokarca
+🦦|otter|su samuru
+🦥|sloth|tembel hayvan
+🐁|mouse running|koşan fare
+🐀|rat|sıçan
+🐿️|chipmunk squirrel|sincap
+🦔|hedgehog|kirpi
+🐾|paw prints|pati izi
+🐉|dragon|ejderha
+🌵|cactus|kaktüs
+🎄|christmas tree|yılbaşı ağacı
+🌲|evergreen tree|çam ağacı
+🌳|tree|ağaç
+🌴|palm tree|palmiye
+🌱|seedling sprout|fide filiz
+🌿|herb|ot bitki
+☘️|shamrock|yonca
+🍀|four leaf clover luck|dört yapraklı yonca şans
+🍁|maple leaf|akçaağaç yaprağı
+🍂|fallen leaves autumn|dökülen yapraklar sonbahar
+🍃|leaves wind|yapraklar rüzgar
+🍄|mushroom|mantar
+🌾|rice sheaf|başak
+💐|bouquet|buket
+🌷|tulip|lale
+🌹|rose|gül
+🥀|wilted flower|solmuş çiçek
+🌺|hibiscus|ebegümeci
+🌻|sunflower|ayçiçeği
+🌼|blossom|çiçek açmış
+🌞|sun face|güneş yüzü
+🌝|full moon face|dolunay yüzü
+🌚|new moon face|yeni ay yüzü
+🌕|full moon|dolunay
+🌑|new moon|yeni ay
+🌍|earth europe africa|dünya avrupa afrika
+🌎|earth americas|dünya amerika
+🌏|earth asia|dünya asya
+🪐|planet saturn|gezegen satürn
+💫|dizzy star|baş dönmesi yıldız
+🌟|glowing star|parlayan yıldız
+⚡|lightning zap|şimşek
+☄️|comet|kuyruklu yıldız
+💥|boom collision|patlama
+🌤️|sun small cloud|az bulutlu
+⛅|sun behind cloud|parçalı bulutlu
+🌥️|cloudy|bulutlu
+☁️|cloud|bulut
+🌦️|sun rain|güneşli yağmur
+🌧️|rain|yağmur
+⛈️|storm thunder|fırtına gök gürültüsü
+🌩️|lightning cloud|şimşekli bulut
+🌨️|snow cloud|karlı bulut
+❄️|snowflake|kar tanesi
+☃️|snowman snow|kardan adam kar
+⛄|snowman|kardan adam
+🌬️|wind face|rüzgar yüzü
+💨|dash wind|rüzgar hız
+🌪️|tornado|hortum
+🌫️|fog|sis
+🌊|wave ocean|dalga okyanus
+💧|droplet|damla
+💦|sweat splash|ter sıçrama
+☔|umbrella rain|şemsiye yağmur
+`,
+  food: `
+☕|coffee|kahve
+🍕|pizza|pizza
+🍔|burger|hamburger
+🍿|popcorn|patlamış mısır
+🎂|cake birthday|pasta doğum günü
+🍻|cheers beer|şerefe bira
+🍏|green apple|yeşil elma
+🍎|red apple|kırmızı elma
+🍐|pear|armut
+🍊|orange tangerine|portakal mandalina
+🍋|lemon|limon
+🍌|banana|muz
+🍉|watermelon|karpuz
+🍇|grapes|üzüm
+🍓|strawberry|çilek
+🍈|melon|kavun
+🍒|cherries|kiraz
+🍑|peach|şeftali
+🥭|mango|mango
+🍍|pineapple|ananas
+🥥|coconut|hindistan cevizi
+🥝|kiwi|kivi
+🍅|tomato|domates
+🍆|eggplant|patlıcan
+🥑|avocado|avokado
+🥦|broccoli|brokoli
+🥬|leafy green lettuce|yeşillik marul
+🥒|cucumber|salatalık
+🌶️|hot pepper|acı biber
+🌽|corn|mısır
+🥕|carrot|havuç
+🧄|garlic|sarımsak
+🧅|onion|soğan
+🥔|potato|patates
+🍠|sweet potato|tatlı patates
+🥐|croissant|kruvasan
+🥯|bagel|simit
+🍞|bread|ekmek
+🥖|baguette|baget
+🥨|pretzel|pretzel
+🧀|cheese|peynir
+🥚|egg|yumurta
+🍳|cooking fried egg|yemek sahanda yumurta
+🧈|butter|tereyağı
+🥞|pancakes|pankek
+🧇|waffle|waffle
+🥓|bacon|pastırma
+🥩|steak meat|biftek et
+🍗|chicken leg|tavuk but
+🍖|meat bone|kemikli et
+🌭|hot dog|sosisli
+🥪|sandwich|sandviç
+🌮|taco|tako
+🌯|burrito wrap|dürüm
+🥙|pita kebab|pide döner
+🧆|falafel|falafel
+🥗|salad|salata
+🥘|paella pan|tava yemeği
+🍝|spaghetti pasta|spagetti makarna
+🍜|ramen noodles|ramen erişte
+🍲|stew pot|güveç
+🍛|curry rice|köri pilav
+🍣|sushi|suşi
+🍱|bento|bento
+🥟|dumpling|mantı
+🍤|fried shrimp|kızarmış karides
+🍙|rice ball|pirinç topu
+🍚|rice|pilav
+🍘|rice cracker|pirinç krakeri
+🍥|fish cake|balık keki
+🥠|fortune cookie|şans kurabiyesi
+🍢|oden skewer|şiş
+🍡|dango|dango
+🍧|shaved ice|kar buzu
+🍨|ice cream|dondurma
+🍦|soft ice cream|külah dondurma
+🥧|pie|turta
+🧁|cupcake|kek
+🍰|cake slice|pasta dilimi
+🍮|custard pudding|puding
+🍭|lollipop|lolipop
+🍬|candy|şeker
+🍫|chocolate|çikolata
+🍩|doughnut donut|donut
+🍪|cookie|kurabiye
+🌰|chestnut|kestane
+🥜|peanuts|fıstık
+🍯|honey|bal
+🥛|milk|süt
+🍼|baby bottle|biberon
+🍵|tea|çay
+🧃|juice box|meyve suyu
+🥤|cup straw soda|pipetli bardak gazoz
+🍶|sake|sake
+🍺|beer|bira
+🥂|clinking glasses toast|kadeh tokuşturma
+🍷|wine|şarap
+🥃|whisky tumbler|viski
+🍸|cocktail|kokteyl
+🍹|tropical drink|tropik içecek
+🍾|champagne bottle|şampanya
+🧊|ice cube|buz
+🥄|spoon|kaşık
+🍴|fork knife|çatal bıçak
+🍽️|plate dinner|tabak akşam yemeği
+🥣|bowl spoon cereal|kase kaşık
+🥡|takeout box|paket yemek
+🥢|chopsticks|yemek çubukları
+🧂|salt|tuz
+🍟|fries|patates kızartması
+🥫|canned food|konserve
+`,
+  activities: `
+🎉|party celebration|parti kutlama
+🎊|confetti|konfeti
+🎮|game controller|oyun kontrol
+🏆|trophy winner|kupa kazanan
+⚽|football|futbol
+🎵|music note|müzik nota
+🎸|guitar|gitar
+🎃|jack o lantern halloween|cadılar bayramı balkabağı
+🎆|fireworks|havai fişek
+🎇|sparkler|maytap
+🧨|firecracker|kestane fişeği
+🎈|balloon|balon
+🎀|ribbon|kurdele
+🎗️|reminder ribbon|anma kurdelesi
+🎟️|admission tickets|giriş biletleri
+🎫|ticket|bilet
+🎖️|military medal|askeri madalya
+🏅|medal|madalya
+🥇|gold first|altın birinci
+🥈|silver second|gümüş ikinci
+🥉|bronze third|bronz üçüncü
+🏀|basketball|basketbol
+🏈|american football|amerikan futbolu
+⚾|baseball|beyzbol
+🥎|softball|softbol
+🎾|tennis|tenis
+🏐|volleyball|voleybol
+🏉|rugby|ragbi
+🥏|frisbee flying disc|frizbi
+🎱|pool 8 ball billiards|bilardo
+🏓|ping pong|masa tenisi
+🏸|badminton|badminton
+🏒|ice hockey|buz hokeyi
+🏑|field hockey|çim hokeyi
+🥍|lacrosse|lakros
+🏏|cricket|kriket
+🥅|goal net|kale ağı
+⛳|golf|golf
+🏹|bow arrow|yay ok
+🎣|fishing|balık tutma
+🤿|diving mask|dalış maskesi
+🥊|boxing glove|boks eldiveni
+🥋|martial arts|dövüş sanatları
+🎽|running shirt|koşu atleti
+🛹|skateboard|kaykay
+🛷|sled|kızak
+⛸️|ice skate|buz pateni
+🥌|curling stone|curling taşı
+🎿|ski|kayak
+⛷️|skier|kayakçı
+🏂|snowboard|snowboard
+🪂|parachute|paraşüt
+🏋️|weight lifting gym|halter spor salonu
+🤸|cartwheel|yan perende
+⛹️|bouncing ball|top sektiren
+🤺|fencing|eskrim
+🤾|handball|hentbol
+🏌️|golfer|golfçü
+🏇|horse racing|at yarışı
+🧗|climbing|tırmanış
+🚴|cycling bike|bisiklet sürmek
+🏊|swimming|yüzme
+🏄|surfing|sörf
+🚣|rowing|kürek
+🤽|water polo|sutopu
+🎯|bullseye target dart|hedef dart
+🪀|yo-yo|yoyo
+🪁|kite|uçurtma
+🔮|crystal ball|kristal küre
+🧿|nazar amulet|nazar boncuğu
+🎲|dice game|zar oyun
+🧩|puzzle|yapboz
+🧸|teddy bear|oyuncak ayı
+♟️|chess pawn|satranç piyon
+🃏|joker card|joker kart
+🀄|mahjong|mahjong
+🎴|flower cards|çiçek kartları
+🎭|theater masks|tiyatro maskeleri
+🎨|art palette|sanat palet
+🎬|clapper film|klaket film
+🎤|microphone sing karaoke|mikrofon şarkı karaoke
+🎧|headphones|kulaklık
+🎼|musical score|nota defteri
+🎶|music notes|müzik notaları
+🎹|piano keyboard|piyano
+🥁|drum|davul
+🎷|saxophone|saksafon
+🎺|trumpet|trompet
+🎻|violin|keman
+🪕|banjo|banjo
+🕹️|joystick|oyun kolu
+🎳|bowling|bovling
+🎰|slot machine|kumar makinesi
+`,
+  travel: `
+🚗|car|araba
+🚕|taxi|taksi
+🚙|suv|arazi aracı
+🚌|bus|otobüs
+🚎|trolleybus|troleybüs
+🏎️|race car|yarış arabası
+🚓|police car|polis arabası
+🚑|ambulance|ambulans
+🚒|fire engine|itfaiye
+🚐|minibus|minibüs
+🚚|delivery truck|teslimat kamyonu
+🚛|lorry|tır
+🚜|tractor|traktör
+🛴|kick scooter|scooter
+🚲|bicycle|bisiklet
+🛵|motor scooter|motorlu scooter
+🏍️|motorcycle|motosiklet
+🛺|auto rickshaw|çekçek
+🚨|siren|siren
+🚔|oncoming police car|gelen polis arabası
+🚍|oncoming bus|gelen otobüs
+🚘|oncoming car|gelen araba
+🚖|oncoming taxi|gelen taksi
+🚡|aerial tramway|hava tramvayı
+🚠|cable car|teleferik
+🚟|suspension railway|asma demiryolu
+🚃|railway car|vagon
+🚋|tram car|tramvay vagonu
+🚞|mountain railway|dağ treni
+🚝|monorail|monoray
+🚄|high speed train|yüksek hızlı tren
+🚅|bullet train|hızlı tren
+🚈|light rail|hafif raylı
+🚂|locomotive|lokomotif
+🚆|train|tren
+🚇|metro subway|metro
+🚊|tram|tramvay
+🚉|station|istasyon
+✈️|airplane|uçak
+🛫|departure|kalkış
+🛬|arrival|varış
+🛩️|small airplane|küçük uçak
+💺|seat|koltuk
+🛰️|satellite|uydu
+🚁|helicopter|helikopter
+🛸|ufo|ufo
+⛵|sailboat|yelkenli
+🚤|speedboat|sürat teknesi
+🛥️|motor boat|motorbot
+🛳️|passenger ship|yolcu gemisi
+⛴️|ferry|feribot
+🚢|ship|gemi
+⚓|anchor|çapa
+⛽|fuel pump|benzin
+🚧|construction|inşaat
+🚦|traffic light|trafik ışığı
+🚥|horizontal traffic light|yatay trafik ışığı
+🗺️|world map|dünya haritası
+🧭|compass|pusula
+🗿|moai|moai
+🗽|statue of liberty|özgürlük heykeli
+🗼|tokyo tower|tokyo kulesi
+🏰|castle|kale
+🏯|japanese castle|japon kalesi
+🏟️|stadium|stadyum
+🎡|ferris wheel|dönme dolap
+🎢|roller coaster|hız treni
+🎠|carousel|atlıkarınca
+⛲|fountain|çeşme
+⛱️|beach umbrella|plaj şemsiyesi
+🏖️|beach|plaj
+🏝️|island|ada
+🏜️|desert|çöl
+🌋|volcano|yanardağ
+⛰️|mountain|dağ
+🏔️|snow mountain|karlı dağ
+🗻|mount fuji|fuji dağı
+🏕️|camping|kamp
+⛺|tent|çadır
+🏠|house home|ev
+🏡|house garden|bahçeli ev
+🏘️|houses|evler
+🏚️|derelict house|harabe ev
+🏗️|building construction|inşaat binası
+🏭|factory|fabrika
+🏢|office building|ofis binası
+🏬|department store|alışveriş merkezi
+🏣|post office|postane
+🏥|hospital|hastane
+🏦|bank|banka
+🏨|hotel|otel
+🏪|convenience store|market
+🏫|school|okul
+💒|wedding|düğün
+🏛️|classical building|tarihi bina
+⛪|church|kilise
+🕌|mosque|cami
+🕍|synagogue|sinagog
+🛕|hindu temple|hindu tapınağı
+⛩️|shinto shrine|şinto tapınağı
+🕋|kaaba|kabe
+🌁|foggy city|sisli şehir
+🌃|night stars|yıldızlı gece
+🏙️|cityscape|şehir
+🌄|sunrise mountains|dağda gün doğumu
+🌅|sunrise|gün doğumu
+🌆|city dusk|şehirde akşam
+🌇|sunset|gün batımı
+🌉|bridge night|gece köprü
+🎑|moon viewing|ay seyri
+🏞️|national park|milli park
+🌌|milky way|samanyolu
+🌠|shooting star|kayan yıldız
+`,
+  objects: `
+🚀|rocket|roket
+💡|idea light|fikir ışık
+💻|computer|bilgisayar
+📌|pin|sabitle
+🎁|gift|hediye
+👀|eyes look|göz bak
+💤|sleep|uyku
+⌚|watch|kol saati
+📱|phone mobile|telefon cep
+📲|phone arrow call|telefon ok arama
+⌨️|keyboard|klavye
+🖥️|desktop computer|masaüstü bilgisayar
+🖨️|printer|yazıcı
+🖱️|computer mouse|bilgisayar faresi
+💽|minidisc|minidisk
+💾|floppy disk save|disket kaydet
+💿|cd|cd
+📀|dvd|dvd
+📷|camera|kamera
+📸|camera flash|flaşlı kamera
+📹|video camera|video kamera
+🎥|movie camera|film kamerası
+📽️|projector|projektör
+📞|telephone receiver|telefon ahizesi
+☎️|telephone|telefon
+📺|tv television|televizyon
+📻|radio|radyo
+🎙️|studio microphone podcast|stüdyo mikrofonu podcast
+⏰|alarm clock|çalar saat
+⏳|hourglass|kum saati
+⌛|hourglass done|kum saati bitti
+⏱️|stopwatch|kronometre
+⏲️|timer|zamanlayıcı
+🕰️|mantel clock|masa saati
+📡|satellite antenna|uydu anteni
+🔋|battery|pil
+🔌|plug|fiş
+🔦|flashlight|el feneri
+🕯️|candle|mum
+🧯|fire extinguisher|yangın söndürücü
+💸|money wings|uçan para
+💵|dollar|dolar
+💶|euro|avro
+💰|money bag|para çantası
+💳|credit card|kredi kartı
+💎|gem diamond|mücevher elmas
+⚖️|scales balance|terazi
+🧰|toolbox|alet çantası
+🔧|wrench|ingiliz anahtarı
+🔨|hammer|çekiç
+⚒️|hammer pick|çekiç kazma
+🛠️|tools|aletler
+⛏️|pick|kazma
+🔩|nut bolt|somun cıvata
+⚙️|gear settings|dişli ayarlar
+🧱|brick|tuğla
+⛓️|chains|zincir
+🧲|magnet|mıknatıs
+🔫|water pistol|su tabancası
+💣|bomb|bomba
+🔪|knife|bıçak
+🗡️|dagger|hançer
+⚔️|swords|kılıçlar
+🛡️|shield|kalkan
+🏺|amphora|amfora
+💈|barber|berber
+🔭|telescope|teleskop
+🔬|microscope|mikroskop
+🩹|bandage|yara bandı
+🩺|stethoscope|steteskop
+💊|pill|hap
+💉|syringe|şırınga
+🧬|dna|dna
+🦠|microbe virus|mikrop virüs
+🧪|test tube|deney tüpü
+🌡️|thermometer|termometre
+🧹|broom|süpürge
+🧺|basket|sepet
+🧻|toilet paper|tuvalet kağıdı
+🚽|toilet|tuvalet
+🚿|shower|duş
+🛁|bathtub|küvet
+🧼|soap|sabun
+🧽|sponge|sünger
+🔑|key|anahtar
+🗝️|old key|eski anahtar
+🚪|door|kapı
+🪑|chair|sandalye
+🛋️|couch|kanepe
+🛏️|bed|yatak
+🧳|luggage|bavul
+🛍️|shopping bags|alışveriş poşetleri
+🛒|shopping cart|alışveriş arabası
+🧧|red envelope|kırmızı zarf
+✉️|envelope mail|zarf posta
+📩|envelope arrow|gelen posta
+📨|incoming envelope|gelen zarf
+📧|email|e-posta
+📦|package box|paket kutu
+📮|postbox|posta kutusu
+🏷️|label tag|etiket
+📜|scroll|parşömen
+📃|page curl|kıvrık sayfa
+📄|document page|belge sayfa
+📑|bookmark tabs|sekmeler
+📊|bar chart|çubuk grafik
+📈|chart up|yükselen grafik
+📉|chart down|düşen grafik
+🗒️|notepad|not defteri
+🗓️|spiral calendar|spiral takvim
+📆|tear off calendar|takvim
+📅|date|tarih
+🗑️|wastebasket trash|çöp kutusu
+📇|card index|kart dizini
+🗃️|card file box|dosya kutusu
+🗳️|ballot box|oy sandığı
+🗄️|file cabinet|dosya dolabı
+📋|clipboard|pano
+📁|folder|klasör
+📂|open folder|açık klasör
+🗂️|dividers|ayırıcılar
+🗞️|rolled newspaper|rulo gazete
+📰|newspaper|gazete
+📓|notebook|defter
+📔|decorated notebook|süslü defter
+📒|ledger|hesap defteri
+📕|closed book|kapalı kitap
+📗|green book|yeşil kitap
+📘|blue book|mavi kitap
+📙|orange book|turuncu kitap
+📚|books|kitaplar
+📖|open book read|açık kitap oku
+🔖|bookmark|yer imi
+🔗|link|bağlantı
+📎|paperclip|ataç
+🖇️|linked paperclips|bağlı ataçlar
+📐|triangle ruler|gönye
+📏|ruler|cetvel
+✂️|scissors|makas
+🖊️|pen|tükenmez kalem
+🖋️|fountain pen|dolma kalem
+✒️|nib|uç
+🖌️|paintbrush|fırça
+🖍️|crayon|pastel boya
+📝|memo note|not
+✏️|pencil|kurşun kalem
+🔍|search magnifier|ara büyüteç
+🔎|magnifier right|sağa büyüteç
+🔏|lock pen|kilit kalem
+🔐|lock key|kilit anahtar
+🔒|locked|kilitli
+🔓|unlocked|kilidi açık
+🔔|bell|zil
+🔕|bell muted|sessiz zil
+📣|megaphone|megafon
+📢|loudspeaker|hoparlör
+💬|speech bubble|konuşma balonu
+💭|thought bubble|düşünce balonu
+🗯️|anger bubble|öfke balonu
+🎓|graduation cap|mezuniyet kepi
+👑|crown|taç
+🎩|top hat|silindir şapka
+🧢|cap|şapka
+👓|glasses|gözlük
+🕶️|sunglasses|güneş gözlüğü
+🥽|goggles|koruyucu gözlük
+👔|necktie|kravat
+👕|t-shirt|tişört
+👖|jeans|kot
+🧣|scarf|atkı
+🧤|gloves|eldiven
+🧥|coat|mont
+🧦|socks|çorap
+👗|dress|elbise
+👘|kimono|kimono
+👙|bikini|bikini
+👛|purse|cüzdan
+👜|handbag|el çantası
+🎒|backpack|sırt çantası
+👞|shoe|ayakkabı
+👟|sneaker|spor ayakkabı
+👠|high heel|topuklu
+👢|boot|çizme
+💄|lipstick|ruj
+💍|ring|yüzük
+🧮|abacus|abaküs
+🎐|wind chime|rüzgar çanı
+🪒|razor|tıraş bıçağı
+🧷|safety pin|çengelli iğne
+🧵|thread|iplik
+🧶|yarn|yün
+`,
+  symbols: `
+❤️|red heart love|kırmızı kalp sevgi
+🧡|orange heart|turuncu kalp
+💛|yellow heart|sarı kalp
+💚|green heart|yeşil kalp
+💙|blue heart|mavi kalp
+💜|purple heart|mor kalp
+🖤|black heart|siyah kalp
+🤍|white heart|beyaz kalp
+💔|broken heart|kırık kalp
+💯|hundred perfect|yüz mükemmel
+✅|check done|onay tamam
+❌|cross no|çarpı hayır
+❓|question|soru
+🤎|brown heart|kahverengi kalp
+💕|two hearts|iki kalp
+💞|revolving hearts|dönen kalpler
+💓|beating heart|atan kalp
+💗|growing heart|büyüyen kalp
+💖|sparkling heart|parlayan kalp
+💘|heart arrow|oklu kalp
+💝|heart ribbon|kurdeleli kalp
+💟|heart decoration|kalp süsü
+❣️|heart exclamation|kalp ünlem
+💌|love letter|aşk mektubu
+💢|anger symbol|öfke simgesi
+💮|white flower|beyaz çiçek
+♻️|recycle|geri dönüşüm
+⚠️|warning|uyarı
+🚫|prohibited|yasak
+⛔|no entry|giriş yok
+🛑|stop sign|dur işareti
+📛|name badge|isim rozeti
+🔞|no under eighteen|on sekiz yaş altı
+📵|no phones|telefon yok
+🔇|muted speaker|sessiz hoparlör
+🔈|speaker low|düşük ses
+🔉|speaker medium|orta ses
+🔊|speaker loud|yüksek ses
+❗|exclamation|ünlem
+❕|white exclamation|beyaz ünlem
+❔|white question|beyaz soru
+‼️|double exclamation|çift ünlem
+⁉️|exclamation question|ünlem soru
+✔️|check mark|onay işareti
+☑️|ballot check|onay kutusu
+✖️|multiply|çarpı işareti
+➕|plus|artı
+➖|minus|eksi
+➗|divide|bölü
+♾️|infinity|sonsuz
+💲|dollar sign|dolar işareti
+💱|currency exchange|döviz
+™️|trademark|ticari marka
+©️|copyright|telif
+®️|registered|tescilli
+〰️|wavy dash|dalgalı çizgi
+➰|curly loop|kıvrım
+🔃|clockwise arrows|saat yönü oklar
+🔄|counterclockwise arrows refresh|yenile oklar
+🔙|back arrow|geri
+🔚|end arrow|son
+🔛|on arrow|açık
+🔜|soon arrow|yakında
+🔝|top arrow|en üst
+⬆️|up arrow|yukarı ok
+⬇️|down arrow|aşağı ok
+⬅️|left arrow|sol ok
+➡️|right arrow|sağ ok
+↗️|up right arrow|sağ üst ok
+↘️|down right arrow|sağ alt ok
+↙️|down left arrow|sol alt ok
+↖️|up left arrow|sol üst ok
+↕️|up down arrow|yukarı aşağı ok
+↔️|left right arrow|sol sağ ok
+↩️|return left|sola dön
+↪️|return right|sağa dön
+⤴️|curve up|yukarı kıvrım
+⤵️|curve down|aşağı kıvrım
+🔀|shuffle|karıştır
+🔁|repeat|tekrarla
+🔂|repeat one|bir kez tekrarla
+▶️|play|oynat
+⏸️|pause|duraklat
+⏹️|stop|durdur
+⏺️|record|kaydet
+⏭️|next track|sonraki parça
+⏮️|previous track|önceki parça
+⏩|fast forward|ileri sar
+⏪|rewind|geri sar
+🔅|dim|loş
+🔆|bright|parlak
+📶|signal bars|sinyal
+📳|vibration|titreşim
+📴|phone off|telefon kapalı
+♀️|female|kadın
+♂️|male|erkek
+⚕️|medical|tıp
+🔱|trident|yaba
+⚜️|fleur de lis|zambak
+🔰|beginner|acemi
+⭕|circle|halka
+❎|cross button|çarpı düğmesi
+✳️|asterisk|yıldız işareti
+✴️|eight point star|sekiz köşeli yıldız
+❇️|sparkle|ışıltı
+🆗|ok button|tamam düğmesi
+🆒|cool button|havalı düğmesi
+🆕|new button|yeni düğmesi
+🆓|free button|ücretsiz düğmesi
+🆙|up button|yukarı düğmesi
+🆘|sos help|imdat yardım
+🆚|vs versus|karşı
+ℹ️|information|bilgi
+🔴|red circle|kırmızı daire
+🟠|orange circle|turuncu daire
+🟡|yellow circle|sarı daire
+🟢|green circle|yeşil daire
+🔵|blue circle|mavi daire
+🟣|purple circle|mor daire
+🟤|brown circle|kahverengi daire
+⚫|black circle|siyah daire
+⚪|white circle|beyaz daire
+🟥|red square|kırmızı kare
+🟧|orange square|turuncu kare
+🟨|yellow square|sarı kare
+🟩|green square|yeşil kare
+🟦|blue square|mavi kare
+🟪|purple square|mor kare
+🟫|brown square|kahverengi kare
+⬛|black square|siyah kare
+⬜|white square|beyaz kare
+🔶|orange diamond|turuncu elmas
+🔷|blue diamond|mavi elmas
+🔺|red triangle up|kırmızı üçgen yukarı
+🔻|red triangle down|kırmızı üçgen aşağı
+💠|diamond dot|noktalı elmas
+🔘|radio button|seçim düğmesi
+🏁|chequered flag finish|damalı bayrak bitiş
+🚩|red flag|kırmızı bayrak
+🏳️|white flag|beyaz bayrak
+🏴|black flag|siyah bayrak
+☮️|peace|barış
+☯️|yin yang|yin yang
+🎦|cinema|sinema
+🔤|abc letters|harfler
+🔢|numbers|sayılar
+`
+};
+
+export const chatEmojiCatalog: readonly ChatEmojiEntry[] = chatEmojiGroups.flatMap((group) =>
+  chatEmojiSource[group]
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line): ChatEmojiEntry => {
+      const [emoji = "", en = "", tr = ""] = line.split("|");
+      return [emoji, group, en, tr];
+    })
+);
 
 export const maxMessageReactionKinds = 8;
 export const chatEmojiSet: ReadonlySet<string> = new Set(chatEmojiCatalog.map(([emoji]) => emoji));

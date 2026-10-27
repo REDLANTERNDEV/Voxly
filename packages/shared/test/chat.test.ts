@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { validMentionRanges, rewriteMentionLabels, type MessageMention } from "../src/index.js";
+import {
+  chatEmojiCatalog,
+  chatEmojiGroups,
+  chatEmojiSet,
+  validMentionRanges,
+  rewriteMentionLabels,
+  type MessageMention
+} from "../src/index.js";
 
 describe("Mention wire rules", () => {
   it("uses UTF-16 ranges after emoji and refuses overlap or out-of-body targets", () => {
@@ -78,4 +85,40 @@ it("canonicalizes legacy labels to nicknames and rebases following UTF-16 ranges
   assert.equal(result.body.slice(result.mentions[1].start, result.mentions[1].end), "@here");
   assert.equal(result.mentions[0].id, mentions[0].id);
   assert.deepEqual(rewriteMentionLabels(result.body, result.mentions), result);
+});
+
+// Built at run time: the `v` flag is newer than the ES2022 the package targets.
+const rgiEmoji = new RegExp("^\\p{RGI_Emoji}$", "v");
+
+describe("emoji catalogue", () => {
+  it("lists every glyph once, in a known group, with words in both languages", () => {
+    assert.equal(chatEmojiSet.size, chatEmojiCatalog.length);
+    for (const [emoji, group, en, tr] of chatEmojiCatalog) {
+      assert.ok(chatEmojiGroups.includes(group), `${emoji} group`);
+      assert.ok(en.trim().length > 0 && tr.trim().length > 0, `${emoji} words`);
+    }
+    assert.ok(chatEmojiCatalog.length > 900);
+    assert.deepEqual(
+      chatEmojiGroups.filter((group) => !chatEmojiCatalog.some((entry) => entry[1] === group)),
+      []
+    );
+  });
+
+  it("holds only fully-qualified RGI emoji, and no flags or skin tones", () => {
+    for (const [emoji] of chatEmojiCatalog) {
+      assert.match(emoji, rgiEmoji, emoji);
+      // Windows draws a regional-indicator flag as two letters.
+      assert.doesNotMatch(emoji, /\p{Regional_Indicator}/u, emoji);
+      assert.doesNotMatch(emoji, /\p{Emoji_Modifier}/u, emoji);
+    }
+  });
+
+  it("keeps every emoji the original catalogue admitted, so existing reactions stay valid", () => {
+    const original =
+      "😀😃😄😁😆😂🤣😊😉😍🥰😘😎🤔🤨😐🙄😏😴😭😢😡😱🤯🥳🤩🥺🤗🤭🫡👍👎👏🙌🙏👋🤝💪👌✌️🤞🤘" +
+      "❤️🧡💛💚💙💜🖤🤍💔💯✅❌❓🎉🎊🎮🏆⚽🎵🎸🔥✨⭐🌈☀️🌙🐱🐶🌸☕🍕🍔🍿🎂🍻🚀💡💻📌🎁👀💤";
+    const glyphs = original.match(new RegExp("\\p{RGI_Emoji}", "gv")) ?? [];
+    assert.equal(glyphs.length, 84);
+    for (const emoji of glyphs) assert.ok(chatEmojiSet.has(emoji), emoji);
+  });
 });

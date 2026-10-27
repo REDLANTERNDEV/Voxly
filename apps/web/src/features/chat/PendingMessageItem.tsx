@@ -4,7 +4,7 @@ import type { Translate } from "../../app/types.js";
 import { type LanguageCode } from "../../lib/i18n.js";
 import { type OutboxEntry } from "../../lib/messageOutbox.js";
 import { ReplyQuote } from "./ReplyQuote.js";
-import { formatMessageTimestamp } from "../../lib/messages.js";
+import { formatMessageClock, formatMessageTimestamp } from "../../lib/messages.js";
 import type { TimeFormatPreference } from "../../lib/timeFormat.js";
 
 /**
@@ -21,7 +21,8 @@ export function PendingMessageItem({
   timeFormat,
   t,
   onRetry,
-  onDiscard
+  onDiscard,
+  grouped = false
 }: {
   entry: OutboxEntry;
   nickname: string;
@@ -30,16 +31,26 @@ export function PendingMessageItem({
   t: Translate;
   onRetry: (localId: string) => void;
   onDiscard: (localId: string) => void;
+  grouped?: boolean;
 }) {
   const hasFailed = entry.status === "failed";
   return (
-    <article className={`message message-own message-pending ${hasFailed ? "is-failed" : ""}`}>
-      <span className="avatar owner">{initial(nickname)}</span>
+    <article
+      className={`message message-own message-pending ${grouped ? "is-grouped" : ""} ${hasFailed ? "is-failed" : ""}`}
+    >
+      {grouped ? (
+        <span className="message-gutter-time mono" aria-hidden="true">
+          {formatMessageClock(entry.createdAt, language, timeFormat)}
+        </span>
+      ) : (
+        <span className="avatar owner">{initial(nickname)}</span>
+      )}
       <div className="message-content">
-        <div className="message-meta">
-          <span className="message-author">{nickname}</span>
+        {/* The sending state stays visible on a grouped row; only the name and time step back. */}
+        <div className={`message-meta${grouped ? " is-grouped" : ""}`}>
+          <span className={`message-author${grouped ? " sr-only" : ""}`}>{nickname}</span>
           <span className="message-time mono">
-            <time dateTime={entry.createdAt}>
+            <time dateTime={entry.createdAt} className={grouped ? "sr-only" : undefined}>
               {formatMessageTimestamp(entry.createdAt, language, new Date(), timeFormat)}
             </time>
             <span className="message-pending-state">{hasFailed ? t("room.messageNotSent") : t("common.sending")}</span>

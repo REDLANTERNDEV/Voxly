@@ -238,6 +238,10 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
 - `PresenceUser.mentionCode` is absent only for session-derived identities with
   no Server context; the Server directory and scoped presence provide it.
 - The local emoji catalogue and `maxMessageReactionKinds` own reaction admission.
+  The catalogue is one `emoji|English|Turkish` line per glyph, grouped by
+  `chatEmojiGroups`, and holds only fully-qualified RGI emoji that Windows 10
+  and macOS both draw: no flags (Windows shows two letters) and no skin-tone
+  variants. It only grows, so an existing reaction never becomes invalid.
   `message:reactions` is a versioned full room-scoped snapshot; pins use the
   room-scoped `message:pinsChanged` invalidation. Neither event is a new message
   or advances a personal read cursor.
