@@ -166,6 +166,9 @@ pub fn open_installation(
             })
             .map_err(|_| "window_failed")?;
     }
+    // Still hidden: maximizing waits for the reveal once the page is ready.
+    crate::window_placement::apply(&window, &saved.id);
+    crate::window_placement::track(&window, saved.id.clone());
     let close_window = window.clone();
     window.on_window_event(move |event| {
         if matches!(event, tauri::WindowEvent::Destroyed) {

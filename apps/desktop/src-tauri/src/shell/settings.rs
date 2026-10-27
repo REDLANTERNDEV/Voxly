@@ -299,6 +299,11 @@ async fn apply(
             );
             inner.loading = false;
             if !shell.home_requested.load(Ordering::Acquire) {
+                if inner.active.as_ref().is_some_and(|active| {
+                    crate::window_placement::opens_maximized(&app, &active.id)
+                }) {
+                    let _ = window.maximize();
+                }
                 window.show().map_err(|_| "window_failed")?;
                 window.set_focus().map_err(|_| "window_failed")?;
                 if let Some(home) = app.get_webview_window("shell") {

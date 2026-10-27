@@ -14,6 +14,7 @@ mod shortcuts;
 mod update_card;
 mod update_installer;
 mod updates;
+mod window_placement;
 
 fn main() {
     // The staged update card never starts the shell, its plugins or single-instance.

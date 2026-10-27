@@ -6,7 +6,7 @@ use super::voice::{handle_shortcut, start_delivery, VoiceEvent};
 use super::{Inner, Shell};
 use crate::{
     appearance, call_state, deep_links, installations, native_notifications, shortcuts,
-    update_installer, updates,
+    update_installer, updates, window_placement,
 };
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64};
 use tauri::Manager;
@@ -118,6 +118,9 @@ pub(super) fn run() {
             let release_delay_ms = preferences.push_to_talk_release_delay_ms;
             let quit_on_close = preferences.quit_on_close;
             app.manage(native_notifications::Notifications::default());
+            app.manage(window_placement::Placements::load(
+                data.join("window-placements.json"),
+            ));
             app.manage(Shell {
                 reports: call_state::Reports::default(),
                 recording_shortcut: AtomicBool::new(false),
@@ -189,12 +192,25 @@ pub(super) fn run() {
 /// Home opens at setup, or once the launch card has finished with it.
 pub(super) fn open_shell(app: &tauri::AppHandle) -> tauri::Result<()> {
     let window = tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+        // Shown once it is where the member left it.
+        .visible(false)
         .background_color(tauri::window::Color(15, 19, 25, 255))
         .on_navigation(shell_navigation)
         .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
         .on_download(|_, _| false)
         .build()?;
     let _ = appearance::apply(&window, appearance::WindowTheme::Welcome);
+    match window_placement::apply(&window, window_placement::HOME) {
+        Some(true) => {
+            let _ = window.maximize();
+        }
+        Some(false) => {}
+        None => {
+            let _ = window.center();
+        }
+    }
+    window.show()?;
+    window_placement::track(&window, window_placement::HOME.to_owned());
     let close_window = window.clone();
     window.on_window_event(move |event| {
         if matches!(event, tauri::WindowEvent::Focused(true)) {
