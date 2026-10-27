@@ -4612,6 +4612,26 @@ button.reply-quote:focus-visible .reply-quote-body {
   outline-offset: 2px;
 }
 
+.dash-nav-group {
+  display: grid;
+  gap: 2px;
+}
+
+.dash-nav-group + .dash-nav-group {
+  margin-top: 14px;
+}
+
+.dash-nav-heading {
+  color: var(--muted);
+  padding: 4px 11px;
+}
+
+.dash-server-scope {
+  align-self: center;
+  margin: 0;
+  max-width: 260px;
+}
+
 .dash-sidebar-foot {
   border-top: 1px solid var(--border);
   display: grid;
@@ -4819,6 +4839,138 @@ button.reply-quote:focus-visible .reply-quote-body {
 
 .dash-cell.is-actions {
   justify-items: end;
+}
+
+.invite-creator {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.invite-trail-toggle,
+.trail-person-link {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: start;
+}
+
+.invite-trail-toggle {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  justify-self: start;
+  min-height: 24px;
+}
+
+.trail-person-link {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.trail-person-link:hover {
+  text-decoration-style: solid;
+}
+
+.invite-trail-toggle:focus-visible,
+.trail-person-link:focus-visible,
+.past-invites > summary:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .invite-trail-toggle,
+  .trail-person-link {
+    min-height: 36px;
+  }
+}
+
+.dash-table-row.invite-trail-row {
+  background: var(--surface-2);
+  border-top-style: dashed;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.invite-trail > ul,
+.account-invited ul {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.invite-trail li,
+.account-invited li {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.invite-trail p {
+  margin: 0;
+}
+
+.invite-trail-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.invite-trail-state {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+}
+
+.invite-trail-state.is-kicked {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.invite-trail-state.is-banned {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.invite-trail-state.is-deleted {
+  color: var(--muted);
+}
+
+.past-invites {
+  margin-top: 16px;
+}
+
+.past-invites > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 8px 0;
+}
+
+.past-invites > p {
+  margin: 0 0 10px;
+}
+
+.account-joined-with {
+  display: grid;
+  gap: 2px;
+}
+
+.account-invited {
+  display: grid;
+  gap: 14px;
+}
+
+.account-invited h4 {
+  font-size: 13px;
+  margin: 0 0 6px;
 }
 
 .dash-table .sidebar-menu-trigger {
@@ -5640,6 +5792,28 @@ button.reply-quote:focus-visible .reply-quote-body {
 
   .dash-nav::-webkit-scrollbar {
     display: none;
+  }
+
+  /* The groups dissolve into the strip; the heading stays in it as a marker. */
+  .dash-nav-group {
+    display: contents;
+  }
+
+  .dash-nav-heading {
+    align-self: center;
+    border-left: 1px solid var(--border);
+    flex: 0 0 auto;
+    margin-left: 6px;
+    padding: 0 4px 0 12px;
+    white-space: nowrap;
+  }
+
+  .dash-server-scope {
+    max-width: none;
+  }
+
+  .dash-table-row.invite-trail-row > .invite-trail {
+    grid-column: 1 / -1;
   }
 
   .dash-nav-item {

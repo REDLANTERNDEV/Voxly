@@ -211,6 +211,11 @@ requirement.
   server summary without disturbing other memberships.
 - Owner invites, access links, membership actions, and history operate on that
   selected owner context; do not reintroduce a second invite target selector.
+- Each Invite row names its Inviter by nickname in that Server and Mention
+  code, and opens its Invite trail in place: who joined, when, and their state
+  (Active, Kicked, Banned, Deleted), each its own. Past invites (expired, used
+  up, revoked) sit in a collapsed group with a count; an unused one shows how
+  many days remain before the server removes it (ADR-0034).
 - Invite expiry and maximum uses are independent selects. Show used/limit and
   remaining capacity from server counts; a partially used active invite remains
   revocable, while expired, exhausted, or revoked links are inactive.
@@ -262,6 +267,13 @@ requirement.
   pending-count badge; reloads may refresh the badge but must not replay the
   notification. Direct deletion requires the exact global nickname plus a
   second permanent-action confirmation.
+- Those two sections sit under their own `Installation` heading in the owner
+  navigation, and while either is open the `Target server` picker gives way to
+  a label saying it covers every Server: under the picker they read as a filter
+  that does not work. An Account's details show the Invite each Membership
+  joined through and the people its Invites brought in, grouped by Server;
+  every name but a Deleted account's opens that Account, and the heading takes
+  focus again.
 - A Deleted message or reply author renders from the explicit shared deletion
   flag as localized `Deleted member` / `Silinmiş üye`, with a neutral avatar.
   Never retain or infer the former nickname in browser state after the scoped

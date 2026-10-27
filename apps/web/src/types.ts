@@ -91,6 +91,18 @@ export interface InviteResponse {
   };
 }
 
+/** A person in the Invite trail; a Deleted account has neither name nor code (ADR-0034). */
+export interface InviteTrailPerson {
+  userId: string;
+  nickname: string | null;
+  mentionCode: string | null;
+  state: "active" | "kicked" | "banned" | "deleted";
+}
+
+export interface InviteUse extends InviteTrailPerson {
+  joinedAt: string;
+}
+
 export interface OwnerInvite {
   id: string;
   serverId: string;
@@ -103,6 +115,11 @@ export interface OwnerInvite {
   maxUses: InviteMaxUses;
   usedCount: number;
   createdAt: string;
+  createdBy: InviteTrailPerson;
+  /** Everyone who joined through it, newest first. */
+  uses: InviteUse[];
+  /** When it stopped admitting anyone; null while it still does. */
+  inactiveSince: string | null;
 }
 
 export interface OwnerSession {
@@ -127,6 +144,15 @@ export interface OwnerAccountMembership {
   nickname: string;
   role: "owner" | "member";
   state: "active" | "banned" | "removed";
+  /** Only in an Account's details: the Invite this Membership joined through, or null for none on record. */
+  invite?: { inviteId: string; label: string; joinedAt: string; inviter: InviteTrailPerson } | null;
+}
+
+/** People one Account's Invites brought into one Server, newest first. */
+export interface OwnerInvitedGroup {
+  serverId: string;
+  serverName: string;
+  people: Array<InviteUse & { inviteId: string; inviteLabel: string }>;
 }
 
 export interface OwnerDeletionRequest {

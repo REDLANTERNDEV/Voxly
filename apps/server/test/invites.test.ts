@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import Fastify from "fastify";
 import {
+  accountInviteTrail,
   activeInviteCount,
   createInviteForServer,
+  deleteUnusedPastInvites,
   inviteBodySchema,
   inviteUseCount,
   isExpired,
@@ -14,6 +16,8 @@ import {
 import type { RealtimeModeration, RouteContext } from "../src/http.js";
 import { all, defaultServerId, one, openDatabase, run, type VoxlyDatabase } from "../src/db/database.js";
 import { hashToken } from "../src/auth/tokens.js";
+import { activateServerMembership } from "../src/members.js";
+import { createUser } from "../src/users.js";
 import type { VoxlyIoServer } from "../src/socket.js";
 
 type InviteRow = {
@@ -206,6 +210,197 @@ describe("invites and access links", () => {
       assert.ok(listed);
       assert.equal(Object.values(listed).includes(invite.token), false);
       assert.equal("tokenHash" in listed, false);
+    });
+  });
+
+  describe("the Invite trail", () => {
+    const day = 24 * 60 * 60 * 1000;
+
+    async function server() {
+      const db = await open();
+      const owner = createUser(db, "Owner", "owner");
+      activateServerMembership(db, defaultServerId, owner.id, "owner", new Date().toISOString());
+      return { db, owner };
+    }
+
+    function join(db: VoxlyDatabase, inviteId: string, nickname: string, at = new Date().toISOString()) {
+      const person = createUser(db, nickname, "member");
+      activateServerMembership(db, defaultServerId, person.id, "member", at);
+      run(db.sqlite, "insert into invite_uses (invite_id, user_id, used_at) values (?, ?, ?)", [
+        inviteId,
+        person.id,
+        at
+      ]);
+      return person;
+    }
+
+    type Listed = {
+      id: string;
+      createdBy: { userId: string; nickname: string | null; mentionCode: string | null; state: string };
+      uses: Array<{
+        userId: string;
+        nickname: string | null;
+        mentionCode: string | null;
+        state: string;
+        joinedAt: string;
+      }>;
+      inactiveSince: string | null;
+    };
+    const listed = (db: VoxlyDatabase) => serverInvites(db.sqlite, defaultServerId) as Listed[];
+
+    it("names each invite's creator by their nickname here and Mention code, and a deleted one by neither", async () => {
+      const { db, owner } = await server();
+      const ownInvite = createInviteForServer(db, defaultServerId, owner.id, { label: "Owner's" });
+      const ada = join(db, ownInvite.id, "Ada");
+      run(db.sqlite, "update server_members set nickname = 'Ada here', can_invite = 1 where user_id = ?", [ada.id]);
+      const delegated = createInviteForServer(db, defaultServerId, ada.id, { label: "Ada's" });
+      const gone = join(db, ownInvite.id, "Gone");
+      const fromGone = createInviteForServer(db, defaultServerId, gone.id, { label: "Gone's" });
+      run(db.sqlite, "update users set nickname = '', deleted_at = ? where id = ?", [
+        new Date().toISOString(),
+        gone.id
+      ]);
+
+      const byId = new Map(listed(db).map((invite) => [invite.id, invite.createdBy]));
+      const code = (userId: string) =>
+        one<{ mention_code: string }>(db.sqlite, "select mention_code from server_members where user_id = ?", [userId])
+          ?.mention_code;
+
+      assert.deepEqual(byId.get(ownInvite.id), {
+        userId: owner.id,
+        nickname: "Owner",
+        mentionCode: code(owner.id),
+        state: "active"
+      });
+      assert.deepEqual(byId.get(delegated.id), {
+        userId: ada.id,
+        nickname: "Ada here",
+        mentionCode: code(ada.id),
+        state: "active"
+      });
+      assert.deepEqual(byId.get(fromGone.id), { userId: gone.id, nickname: null, mentionCode: null, state: "deleted" });
+    });
+
+    it("lists who joined through an invite, newest first, each with their own state", async () => {
+      const { db, owner } = await server();
+      const invite = createInviteForServer(db, defaultServerId, owner.id, { label: "Many", maxUses: 10 });
+      const at = (offset: number) => new Date(Date.now() - offset * 60_000).toISOString();
+      const active = join(db, invite.id, "Active", at(4));
+      const kicked = join(db, invite.id, "Kicked", at(3));
+      const banned = join(db, invite.id, "Banned", at(2));
+      const deleted = join(db, invite.id, "Deleted", at(1));
+      run(db.sqlite, "update server_members set removed_at = ? where user_id = ?", [at(0), kicked.id]);
+      run(db.sqlite, "update server_members set banned_at = ? where user_id = ?", [at(0), banned.id]);
+      run(db.sqlite, "update users set nickname = '', deleted_at = ? where id = ?", [at(0), deleted.id]);
+      run(db.sqlite, "update server_members set nickname = null, removed_at = ? where user_id = ?", [
+        at(0),
+        deleted.id
+      ]);
+
+      const [trail] = listed(db);
+
+      assert.deepEqual(
+        trail?.uses.map((use) => [use.userId, use.nickname, use.state]),
+        [
+          [deleted.id, null, "deleted"],
+          [banned.id, "Banned", "banned"],
+          [kicked.id, "Kicked", "kicked"],
+          [active.id, "Active", "active"]
+        ]
+      );
+      assert.equal(trail?.uses[0]?.mentionCode, null);
+    });
+
+    it("says when an invite stopped being active: revoked, expired, or its last use filled it", async () => {
+      const { db, owner } = await server();
+      const live = createInviteForServer(db, defaultServerId, owner.id, { label: "Live" });
+      const usedUp = createInviteForServer(db, defaultServerId, owner.id, { label: "Used up" });
+      const filledAt = new Date(Date.now() - 5000).toISOString();
+      join(db, usedUp.id, "Ada", filledAt);
+      const revoked = createInviteForServer(db, defaultServerId, owner.id, { label: "Revoked" });
+      const revokedAt = new Date(Date.now() - 3000).toISOString();
+      run(db.sqlite, "update invites set revoked_at = ? where id = ?", [revokedAt, revoked.id]);
+
+      const since = new Map(listed(db).map((invite) => [invite.id, invite.inactiveSince]));
+
+      assert.equal(since.get(live.id), null);
+      assert.equal(since.get(usedUp.id), filledAt);
+      assert.equal(since.get(revoked.id), revokedAt);
+    });
+
+    it("deletes an unused past invite 30 days after it stopped being active, and never one anybody used", async () => {
+      const { db, owner } = await server();
+      const now = Date.now();
+      const ago = (days: number) => new Date(now - days * day).toISOString();
+      const invite = (label: string, change: string, value: string, maxUses: 1 | 5 = 1) => {
+        const created = createInviteForServer(db, defaultServerId, owner.id, { label, maxUses });
+        run(db.sqlite, `update invites set ${change} = ? where id = ?`, [value, created.id]);
+        return created.id;
+      };
+      const expiredLongAgo = invite("expired 30", "expires_at", ago(30));
+      const expiredRecently = invite("expired 29", "expires_at", ago(29));
+      const revokedLongAgo = invite("revoked 30", "revoked_at", ago(30));
+      const revokedRecently = invite("revoked 29", "revoked_at", ago(29));
+      const expiredUsed = invite("expired used", "expires_at", ago(90), 5);
+      join(db, expiredUsed, "Ada", ago(100));
+      const revokedUsed = invite("revoked used", "revoked_at", ago(90), 5);
+      join(db, revokedUsed, "Bea", ago(100));
+      const usedUp = invite("used up", "created_at", ago(120));
+      join(db, usedUp, "Cem", ago(100));
+      const live = createInviteForServer(db, defaultServerId, owner.id, { label: "Live" }).id;
+
+      assert.equal(deleteUnusedPastInvites(db.sqlite, defaultServerId, now), 2);
+
+      const remaining = new Set(all<{ id: string }>(db.sqlite, "select id from invites").map((row) => row.id));
+      assert.equal(remaining.has(expiredLongAgo), false);
+      assert.equal(remaining.has(revokedLongAgo), false);
+      for (const kept of [expiredRecently, revokedRecently, expiredUsed, revokedUsed, usedUp, live]) {
+        assert.equal(remaining.has(kept), true);
+      }
+    });
+
+    it("cleans up only the Server whose list is read", async () => {
+      const { db, owner } = await server();
+      const elsewhere = createInviteForServer(db, "server-2", owner.id, { label: "Elsewhere" });
+      run(db.sqlite, "update invites set revoked_at = ? where id = ?", [
+        new Date(Date.now() - 60 * day).toISOString(),
+        elsewhere.id
+      ]);
+
+      assert.equal(deleteUnusedPastInvites(db.sqlite, defaultServerId), 0);
+      assert.equal(storedInvite(db, elsewhere.id)?.id, elsewhere.id);
+    });
+
+    it("shows one Account how it joined each Server and whom its own invites brought in", async () => {
+      const { db, owner } = await server();
+      const first = createInviteForServer(db, defaultServerId, owner.id, { label: "For Ada" });
+      const ada = join(db, first.id, "Ada", new Date(Date.now() - 60_000).toISOString());
+      const adas = createInviteForServer(db, defaultServerId, ada.id, { label: "Ada's", maxUses: 5 });
+      const bea = join(db, adas.id, "Bea", new Date(Date.now() - 30_000).toISOString());
+      const cem = join(db, adas.id, "Cem");
+
+      const forAda = accountInviteTrail(db.sqlite, ada.id);
+      assert.equal(forAda.joined.get(defaultServerId)?.inviteId, first.id);
+      assert.equal(forAda.joined.get(defaultServerId)?.label, "For Ada");
+      assert.equal(forAda.joined.get(defaultServerId)?.inviter.userId, owner.id);
+      assert.deepEqual(
+        forAda.invited.map((group) => [
+          group.serverId,
+          group.people.map((person) => [person.userId, person.inviteLabel])
+        ]),
+        [
+          [
+            defaultServerId,
+            [
+              [cem.id, "Ada's"],
+              [bea.id, "Ada's"]
+            ]
+          ]
+        ]
+      );
+
+      const forOwner = accountInviteTrail(db.sqlite, owner.id);
+      assert.equal(forOwner.joined.size, 0, "the founder joined through no invite");
     });
   });
 

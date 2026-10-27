@@ -274,6 +274,14 @@ queries across endpoints.
   every permission, so their row stays untouched. Listing and revoking invites
   remain owner-only, so a delegated inviter can add people but cannot audit or
   undo anyone's links.
+- The owner invite list carries each Invite's creator and its Invite trail,
+  resolved per Server, with a Deleted account's nickname and Mention code
+  withheld. Reading the list deletes that Server's past invites nobody joined
+  through 30 days after they stopped being active; an Invite with any use is
+  kept while its Server exists. No scheduled job does this (ADR-0034).
+- An Account's owner details add, per Membership, the Invite it joined through
+  and the people that Account's Invites brought in. `requireOwner` guards it:
+  the installation-wide trail is the Installation owner's alone.
 - Banning or kicking clears `can_invite`, so a member who later returns through
   a new invite cannot resume issuing links without a fresh grant.
 - Accepting a valid invite as an existing active member returns the target

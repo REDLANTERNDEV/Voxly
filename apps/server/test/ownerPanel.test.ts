@@ -355,9 +355,29 @@ describe("the owner panel", () => {
           serverName: "The Basement",
           nickname: "Ada",
           role: "member",
-          state: "active"
+          state: "active",
+          invite: {
+            inviteId: (detail.memberships as Array<{ invite: { inviteId: string } }>)[0]?.invite.inviteId,
+            label: "Ada invite",
+            joinedAt: (detail.memberships as Array<{ invite: { joinedAt: string } }>)[0]?.invite.joinedAt,
+            inviter: {
+              userId: owner.user.id,
+              nickname: "Owner",
+              mentionCode: (detail.memberships as Array<{ invite: { inviter: { mentionCode: string } } }>)[0]?.invite
+                .inviter.mentionCode,
+              state: "active"
+            }
+          }
         }
       ]);
+      assert.deepEqual(detail.invited, []);
+
+      const memberAttempt = await app.server.inject({
+        method: "GET",
+        url: `/api/owner/accounts/${owner.user.id}`,
+        cookies: member.cookies
+      });
+      assert.equal(memberAttempt.statusCode, 403);
     });
 
     it("lets a member request deletion and the installation owner approve it atomically", async () => {

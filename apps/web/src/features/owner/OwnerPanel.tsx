@@ -8,7 +8,7 @@ import {
   revokeServerInvite
 } from "../../api.js";
 import { serverPath } from "../../app/navigation.js";
-import { formatShortDate, inviteLifecycleKey, isInviteRevocable, memberRoleLabel } from "../../app/presentation.js";
+import { formatShortDate, isInviteRevocable, memberRoleLabel } from "../../app/presentation.js";
 import type { ShellActions, ShellModel } from "../../app/types.js";
 import { ContextMenu } from "../../components/ContextMenu.js";
 import { SidebarMenuTrigger, type SidebarActionMenuController } from "../../components/shell/SidebarMenus.js";
@@ -27,11 +27,13 @@ import { BrandLockup, NavLink } from "../../components/ui/Navigation.js";
 import { EmptyState, MemberRow, StatusPill } from "../../components/ui/Primitives.js";
 import { resolveServerTextRoom } from "../../lib/channelState.js";
 import { contextMenuReducer, createContextMenuDescriptor } from "../../lib/contextMenu.js";
-import { inviteReference, resolveInviteOrigin } from "../../lib/invites.js";
+import { resolveInviteOrigin } from "../../lib/invites.js";
+import { partitionInvites } from "../../lib/inviteTrail.js";
 import type { OwnerInvite, ServerMember } from "../../types.js";
 import { InviteComposer } from "../invites/InviteComposer.js";
 import { OwnerServerContext, SecretLinkDisplay } from "./OwnerServerContext.js";
 import { OwnerAccountsSection, OwnerDeletionRequestsSection } from "./OwnerAccountSections.js";
+import { OwnerInviteTable } from "./OwnerInviteTable.js";
 
 type OwnerPanelProps = Pick<
   ShellModel,
@@ -143,6 +145,18 @@ export function OwnerPanel(props: OwnerPanelProps) {
   const visibleOwnerSections = ownerSections.filter(
     (item) => !item.installationOwnerOnly || props.user.role === "owner"
   );
+  // Accounts and Deletion requests cover every Server, so they get their own
+  // heading and no Target server picker: under one they read as a broken filter.
+  const installationSection = ownerSections.some((item) => item.id === section && item.installationOwnerOnly);
+  const navGroups = [
+    { key: "server", heading: null, items: visibleOwnerSections.filter((item) => !item.installationOwnerOnly) },
+    {
+      key: "installation",
+      heading: props.t("owner.installationHeading"),
+      items: visibleOwnerSections.filter((item) => item.installationOwnerOnly)
+    }
+  ].filter((group) => group.items.length > 0);
+  const { active: activeInvites, past: pastInvites } = partitionInvites(invites);
 
   const { activeServerId, t } = props;
   const reload = useCallback(async () => {
@@ -217,6 +231,18 @@ export function OwnerPanel(props: OwnerPanelProps) {
     });
   };
 
+  const requestRevoke = (invite: OwnerInvite) =>
+    setPendingAction({
+      title: props.t("owner.revokeInviteTitle"),
+      copy: props.t("owner.revokeConfirm"),
+      confirmLabel: props.t("common.revoke"),
+      perform: async () => {
+        setStatus("");
+        await revokeServerInvite(props.activeServerId, invite.id);
+        await reload();
+      }
+    });
+
   const createMemberAccessLink = async (member: ServerMember) => {
     try {
       const response = await createAccessLink(props.activeServerId, member.id);
@@ -231,22 +257,36 @@ export function OwnerPanel(props: OwnerPanelProps) {
       <aside className="dash-sidebar">
         <BrandLockup subtitle={props.t("owner.panel")} href={ownerChatPath} onNavigate={props.onNavigate} />
         <nav className="dash-nav" aria-label={props.t("owner.panel")}>
-          {visibleOwnerSections.map((item) => (
-            <button
-              className={`dash-nav-item ${section === item.id ? "is-active" : ""}`}
-              type="button"
-              key={item.id}
-              aria-current={section === item.id ? "page" : undefined}
-              onClick={() => setSection(item.id)}
+          {navGroups.map((group) => (
+            <div
+              className="dash-nav-group"
+              key={group.key}
+              role={group.heading ? "group" : undefined}
+              aria-labelledby={group.heading ? `dashNav-${group.key}` : undefined}
             >
-              <span className="dash-nav-icon" aria-hidden="true">
-                {ownerSectionIcons[item.id]}
-              </span>
-              {props.t(item.titleKey)}
-              {item.id === "deletionRequests" && deletionRequestCount > 0 ? (
-                <span className="owner-alert-badge">{deletionRequestCount}</span>
+              {group.heading ? (
+                <span className="dash-nav-heading label" id={`dashNav-${group.key}`}>
+                  {group.heading}
+                </span>
               ) : null}
-            </button>
+              {group.items.map((item) => (
+                <button
+                  className={`dash-nav-item ${section === item.id ? "is-active" : ""}`}
+                  type="button"
+                  key={item.id}
+                  aria-current={section === item.id ? "page" : undefined}
+                  onClick={() => setSection(item.id)}
+                >
+                  <span className="dash-nav-icon" aria-hidden="true">
+                    {ownerSectionIcons[item.id]}
+                  </span>
+                  {props.t(item.titleKey)}
+                  {item.id === "deletionRequests" && deletionRequestCount > 0 ? (
+                    <span className="owner-alert-badge">{deletionRequestCount}</span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="dash-sidebar-foot">
@@ -257,29 +297,33 @@ export function OwnerPanel(props: OwnerPanelProps) {
       <main className="dash-main" id="main-content">
         <header className="dash-topbar">
           <div className="dash-topbar-copy">
-            <p className="label">{serverName}</p>
+            <p className="label">{installationSection ? props.t("owner.installationHeading") : serverName}</p>
             <h1>{props.t(visibleOwnerSections.find((item) => item.id === section)?.titleKey ?? "owner.title")}</h1>
           </div>
           <div className="dash-topbar-actions">
-            <label className="dash-server-switch" htmlFor="dashServerSelect">
-              <span className="label">{props.t("owner.targetServer")}</span>
-              <select
-                className="input"
-                id="dashServerSelect"
-                value={props.activeServerId}
-                onChange={(event) =>
-                  props.onNavigate(`/app/server/${encodeURIComponent(event.currentTarget.value)}/owner`)
-                }
-              >
-                {props.servers
-                  .filter((server) => server.role === "owner")
-                  .map((server) => (
-                    <option key={server.id} value={server.id}>
-                      {server.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
+            {installationSection ? (
+              <p className="dash-server-scope muted small">{props.t("owner.installationScope")}</p>
+            ) : (
+              <label className="dash-server-switch" htmlFor="dashServerSelect">
+                <span className="label">{props.t("owner.targetServer")}</span>
+                <select
+                  className="input"
+                  id="dashServerSelect"
+                  value={props.activeServerId}
+                  onChange={(event) =>
+                    props.onNavigate(`/app/server/${encodeURIComponent(event.currentTarget.value)}/owner`)
+                  }
+                >
+                  {props.servers
+                    .filter((server) => server.role === "owner")
+                    .map((server) => (
+                      <option key={server.id} value={server.id}>
+                        {server.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
             <NavLink className="btn" href={ownerChatPath} onNavigate={props.onNavigate}>
               <ChatIcon />
               <span>{props.t("common.backToChat")}</span>
@@ -347,57 +391,32 @@ export function OwnerPanel(props: OwnerPanelProps) {
               {invites.length === 0 ? (
                 <EmptyState title={props.t("owner.noInvites")} copy={props.t("owner.noInvitesCopy")} />
               ) : (
-                <div className="dash-table is-invites" role="table">
-                  <div className="dash-table-head" role="row">
-                    <span role="columnheader">{props.t("owner.reference")}</span>
-                    <span role="columnheader">{props.t("owner.uses")}</span>
-                    <span role="columnheader">{props.t("common.expiry")}</span>
-                    <span role="columnheader">{props.t("common.actions")}</span>
-                  </div>
-                  {invites.map((invite) => (
-                    <div className="dash-table-row" role="row" key={invite.id}>
-                      <span className="dash-cell" role="cell">
-                        <strong>{invite.label || props.t("owner.unlabeledInvite")}</strong>
-                        <span className="mono muted small">{inviteReference(invite.id)}</span>
-                      </span>
-                      <span className="dash-cell" role="cell">
-                        <span>
-                          {invite.maxUses === null
-                            ? props.t("invite.usedUnlimited", { used: invite.usedCount })
-                            : props.t("invite.usedOfLimit", { used: invite.usedCount, limit: invite.maxUses })}
-                        </span>
-                        <StatusPill tone={isInviteRevocable(invite) ? "online" : "warn"}>
-                          {props.t(inviteLifecycleKey(invite))}
-                        </StatusPill>
-                      </span>
-                      <span className="dash-cell" role="cell">
-                        {formatShortDate(invite.expiresAt, props.language, props.t, props.timeFormat)}
-                      </span>
-                      <span className="dash-cell is-actions" role="cell">
-                        <button
-                          className="btn btn-ghost"
-                          type="button"
-                          disabled={!isInviteRevocable(invite)}
-                          onClick={() =>
-                            setPendingAction({
-                              title: props.t("owner.revokeInviteTitle"),
-                              copy: props.t("owner.revokeConfirm"),
-                              confirmLabel: props.t("common.revoke"),
-                              perform: async () => {
-                                setStatus("");
-                                await revokeServerInvite(props.activeServerId, invite.id);
-                                await reload();
-                              }
-                            })
-                          }
-                        >
-                          <TrashIcon />
-                          <span>{props.t("common.revoke")}</span>
-                        </button>
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  {activeInvites.length === 0 ? (
+                    <p className="muted small">{props.t("owner.noActiveInvites")}</p>
+                  ) : (
+                    <OwnerInviteTable
+                      invites={activeInvites}
+                      language={props.language}
+                      timeFormat={props.timeFormat}
+                      t={props.t}
+                      onRevoke={requestRevoke}
+                    />
+                  )}
+                  {pastInvites.length > 0 ? (
+                    <details className="past-invites">
+                      <summary>{props.t("owner.pastInvites", { count: pastInvites.length })}</summary>
+                      <p className="muted small">{props.t("owner.pastInvitesCopy")}</p>
+                      <OwnerInviteTable
+                        invites={pastInvites}
+                        language={props.language}
+                        timeFormat={props.timeFormat}
+                        t={props.t}
+                        onRevoke={requestRevoke}
+                      />
+                    </details>
+                  ) : null}
+                </>
               )}
             </section>
           </div>
@@ -643,7 +662,9 @@ export function OwnerPanel(props: OwnerPanelProps) {
           />
         ) : null}
 
-        {section === "accounts" && props.user.role === "owner" ? <OwnerAccountsSection t={props.t} /> : null}
+        {section === "accounts" && props.user.role === "owner" ? (
+          <OwnerAccountsSection language={props.language} timeFormat={props.timeFormat} t={props.t} />
+        ) : null}
 
         {pendingAction ? (
           <ConfirmDialog

@@ -12,9 +12,58 @@ import { ArrowIcon, TrashIcon } from "../../components/ui/Icons.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
 import type { LanguageCode } from "../../lib/i18n.js";
 import type { TimeFormatPreference } from "../../lib/timeFormat.js";
-import type { OwnerAccount, OwnerAccountMembership, OwnerDeletionRequest } from "../../types.js";
+import type {
+  InviteTrailPerson,
+  OwnerAccount,
+  OwnerAccountMembership,
+  OwnerDeletionRequest,
+  OwnerInvitedGroup
+} from "../../types.js";
+import { InviterName } from "./OwnerInviteTable.js";
 
-function Memberships({ memberships, t }: { memberships: OwnerAccountMembership[]; t: Translate }) {
+type AccountDetail = OwnerAccount & { memberships: OwnerAccountMembership[]; invited?: OwnerInvitedGroup[] };
+
+type TrailContext = {
+  language: LanguageCode;
+  timeFormat: TimeFormatPreference;
+  onOpen(userId: string): void;
+};
+
+/**
+ * A name in the Invite trail that opens that Account's details, so an owner
+ * can follow one connection to the next. A Deleted account opens nothing.
+ */
+function TrailPersonLink({
+  person,
+  t,
+  onOpen
+}: {
+  person: InviteTrailPerson;
+  t: Translate;
+  onOpen(userId: string): void;
+}) {
+  if (person.state === "deleted" || person.nickname === null) return <InviterName person={person} t={t} />;
+  return (
+    <button
+      className="trail-person-link"
+      type="button"
+      aria-label={t("ownerAccounts.openAccount", { nickname: person.nickname })}
+      onClick={() => onOpen(person.userId)}
+    >
+      <InviterName person={person} t={t} />
+    </button>
+  );
+}
+
+function Memberships({
+  memberships,
+  t,
+  trail
+}: {
+  memberships: OwnerAccountMembership[];
+  t: Translate;
+  trail?: TrailContext;
+}) {
   return (
     <ul className="dash-notes account-memberships">
       {memberships.map((membership) => (
@@ -24,9 +73,56 @@ function Memberships({ memberships, t }: { memberships: OwnerAccountMembership[]
             {membership.nickname} · {t(membership.role === "owner" ? "common.owner" : "common.member")} ·{" "}
             {t(`accountLifecycle.membership.${membership.state}`)}
           </span>
+          {trail ? (
+            membership.invite ? (
+              <span className="account-joined-with small">
+                {t("ownerAccounts.joinedWith", {
+                  date: formatShortDate(membership.invite.joinedAt, trail.language, t, trail.timeFormat),
+                  invite: membership.invite.label || t("owner.unlabeledInvite")
+                })}
+                <span>
+                  <span className="muted">{t("owner.createdBy")}</span>{" "}
+                  <TrailPersonLink person={membership.invite.inviter} t={t} onOpen={trail.onOpen} />
+                </span>
+              </span>
+            ) : (
+              <span className="muted small">{t("ownerAccounts.noInviteOnRecord")}</span>
+            )
+          ) : null}
         </li>
       ))}
     </ul>
+  );
+}
+
+function PeopleInvited({ groups, t, trail }: { groups: OwnerInvitedGroup[]; t: Translate; trail: TrailContext }) {
+  if (groups.length === 0) return <p className="muted small">{t("ownerAccounts.noPeopleInvited")}</p>;
+  return (
+    <div className="account-invited">
+      {groups.map((group) => (
+        <section key={group.serverId} aria-label={group.serverName}>
+          <h4>{group.serverName}</h4>
+          <ul className="account-memberships">
+            {group.people.map((person) => (
+              <li key={`${person.inviteId}:${person.userId}`}>
+                <span className="invite-trail-name">
+                  <TrailPersonLink person={person} t={t} onOpen={trail.onOpen} />
+                </span>
+                <span className="muted small">
+                  {t("ownerAccounts.invitedThrough", {
+                    invite: person.inviteLabel || t("owner.unlabeledInvite"),
+                    date: formatShortDate(person.joinedAt, trail.language, t, trail.timeFormat)
+                  })}
+                </span>
+                <span className={`invite-trail-state is-${person.state}`}>
+                  {t(`inviteTrail.state.${person.state}`)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
   );
 }
 
@@ -119,7 +215,15 @@ export function OwnerDeletionRequestsSection({
   );
 }
 
-export function OwnerAccountsSection({ t }: { t: Translate }) {
+export function OwnerAccountsSection({
+  language,
+  timeFormat,
+  t
+}: {
+  language: LanguageCode;
+  timeFormat: TimeFormatPreference;
+  t: Translate;
+}) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "people" | "bots">("all");
   const [loading, setLoading] = useState(true);
@@ -130,10 +234,8 @@ export function OwnerAccountsSection({ t }: { t: Translate }) {
   const accountButtons = useRef(new Map<string, HTMLButtonElement>());
   const returnAccountId = useRef<string | null>(null);
   const [accounts, setAccounts] = useState<OwnerAccount[]>([]);
-  const [selected, setSelected] = useState<(OwnerAccount & { memberships: OwnerAccountMembership[] }) | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<(OwnerAccount & { memberships: OwnerAccountMembership[] }) | null>(
-    null
-  );
+  const [selected, setSelected] = useState<AccountDetail | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AccountDetail | null>(null);
   const [confirmation, setConfirmation] = useState("");
   const [permanent, setPermanent] = useState(false);
   const [status, setStatus] = useState("");
@@ -144,7 +246,7 @@ export function OwnerAccountsSection({ t }: { t: Translate }) {
     setPermanent(false);
   }
 
-  function openDeleteDialog(account: OwnerAccount & { memberships: OwnerAccountMembership[] }) {
+  function openDeleteDialog(account: AccountDetail) {
     setConfirmation("");
     setPermanent(false);
     setDeleteTarget(account);
@@ -185,13 +287,15 @@ export function OwnerAccountsSection({ t }: { t: Translate }) {
     else if (returnAccountId.current) accountButtons.current.get(returnAccountId.current)?.focus();
   }, [selected]);
 
-  async function select(account: OwnerAccount) {
+  // Following a name in the trail lands on the same details view, and the
+  // heading takes focus again so the move is announced.
+  async function select(accountId: string) {
     const request = ++detailRequest.current;
-    returnAccountId.current = account.id;
-    setLoadingAccountId(account.id);
+    if (!selected) returnAccountId.current = accountId;
+    setLoadingAccountId(accountId);
     setStatus("");
     try {
-      const response = await fetchOwnerAccount(account.id);
+      const response = await fetchOwnerAccount(accountId);
       if (request === detailRequest.current) setSelected(response.account);
     } catch {
       if (request === detailRequest.current) setStatus(t("ownerAccounts.loadFailed"));
@@ -220,6 +324,8 @@ export function OwnerAccountsSection({ t }: { t: Translate }) {
     !selected.isBot &&
     !selected.deletedAt &&
     selected.memberships.every((membership) => membership.role !== "owner");
+
+  const trail: TrailContext = { language, timeFormat, onOpen: (userId) => void select(userId) };
 
   const visibleAccounts = accounts.filter(
     (account) => filter === "all" || (filter === "bots" ? account.isBot : !account.isBot)
@@ -253,7 +359,11 @@ export function OwnerAccountsSection({ t }: { t: Translate }) {
             <h3 id="accountMembershipTitle">
               {t("ownerAccounts.memberships")} <span className="badge">{selected.memberships.length}</span>
             </h3>
-            <Memberships memberships={selected.memberships} t={t} />
+            <Memberships memberships={selected.memberships} t={t} trail={trail} />
+          </section>
+          <section className="account-membership-section" aria-labelledby="accountInvitedTitle">
+            <h3 id="accountInvitedTitle">{t("ownerAccounts.peopleInvited")}</h3>
+            <PeopleInvited groups={selected.invited ?? []} t={t} trail={trail} />
           </section>
           <footer className="account-management-actions">
             {canDelete ? (
@@ -328,7 +438,7 @@ export function OwnerAccountsSection({ t }: { t: Translate }) {
                     nickname: account.deletedAt ? t("common.deletedMember") : account.nickname
                   })}
                   aria-busy={loadingAccountId === account.id}
-                  onClick={() => void select(account)}
+                  onClick={() => void select(account.id)}
                 >
                   <span className="avatar" aria-hidden="true">
                     {account.deletedAt ? "·" : Array.from(account.nickname)[0]?.toUpperCase()}

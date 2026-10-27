@@ -21,6 +21,7 @@ import type {
   AccountDeletionRequest,
   OwnerAccount,
   OwnerAccountMembership,
+  OwnerInvitedGroup,
   OwnerDeletionRequest
 } from "./types.js";
 import type { DeviceSummary, ServerRoomLayout, ServerWelcomeSettings, VoiceModerationState } from "@voxly/shared";
@@ -90,9 +91,9 @@ export async function fetchOwnerAccounts(query = "") {
 }
 
 export async function fetchOwnerAccount(userId: string) {
-  return apiGet<{ account: OwnerAccount & { memberships: OwnerAccountMembership[] } }>(
-    `/api/owner/accounts/${encodeURIComponent(userId)}`
-  );
+  return apiGet<{
+    account: OwnerAccount & { memberships: OwnerAccountMembership[]; invited: OwnerInvitedGroup[] };
+  }>(`/api/owner/accounts/${encodeURIComponent(userId)}`);
 }
 
 export async function deleteOwnerAccount(userId: string, nickname: string) {

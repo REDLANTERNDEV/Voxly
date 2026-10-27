@@ -99,6 +99,12 @@ const accessLinkLifetimeMinutes = 15;
 export function registerInviteRoutes(context: RouteContext) {
   const { fastify, database, io, realtime, secureCookies, turnstile } = context;
 
+  // Reading the list is when stale unused invites go (ADR-0034).
+  function listInvites(serverId: string) {
+    if (deleteUnusedPastInvites(database.sqlite, serverId) > 0) database.save();
+    return serverInvites(database.sqlite, serverId);
+  }
+
   fastify.post("/api/invites/accept", { config: unauthenticatedWriteLimit }, async (request, reply) => {
     const body = z
       .object({
@@ -290,7 +296,7 @@ export function registerInviteRoutes(context: RouteContext) {
   fastify.get("/api/servers/:serverId/invites", async (request, reply) => {
     const scope = requireOwnedServer(context, request, reply);
     if (!scope) return;
-    return { invites: serverInvites(database.sqlite, scope.serverId) };
+    return { invites: listInvites(scope.serverId) };
   });
 
   fastify.post("/api/servers/:serverId/invites/:inviteId/revoke", async (request, reply) => {
@@ -397,7 +403,7 @@ export function registerInviteRoutes(context: RouteContext) {
     }
 
     return {
-      invites: serverInvites(database.sqlite, defaultServerId)
+      invites: listInvites(defaultServerId)
     };
   });
 
@@ -441,8 +447,109 @@ export function createInviteForServer(
   return { id, token, label: body.label, expiresAt, maxUses, usedCount: 0, serverId };
 }
 
-export function serverInvites(sqlite: DatabaseSync, serverId: string) {
-  return all(
+/**
+ * A past invite nobody joined through records nothing, so it is deleted this
+ * long after it stopped being active; one anybody joined through is the Invite
+ * trail and is kept while its Server exists (ADR-0034).
+ */
+export const unusedPastInviteRetentionDays = 30;
+const retentionMs = unusedPastInviteRetentionDays * 24 * 60 * 60 * 1000;
+
+/** A person in the Invite trail, as the owners of one Server see them there. */
+export type InviteTrailPerson = {
+  userId: string;
+  /** Null for a Deleted account: its former nickname is never shown (ADR-0017). */
+  nickname: string | null;
+  mentionCode: string | null;
+  /** Kicked, banned and deleted stay distinct; no self-leave exists to add a fourth. */
+  state: "active" | "kicked" | "banned" | "deleted";
+};
+
+type TrailPersonRow = {
+  userId: string;
+  deletedAt: string | null;
+  nickname: string | null;
+  mentionCode: string | null;
+  bannedAt: string | null;
+  removedAt: string | null;
+  hasMembership: number;
+};
+
+// Expects `users` and `server_members` joined on the trail's Server.
+const trailPersonColumns = `users.id as userId, users.deleted_at as deletedAt,
+  case when users.deleted_at is null then coalesce(server_members.nickname, users.nickname) end as nickname,
+  case when users.deleted_at is null then server_members.mention_code end as mentionCode,
+  server_members.banned_at as bannedAt, server_members.removed_at as removedAt,
+  server_members.user_id is not null as hasMembership`;
+
+function trailPerson(row: TrailPersonRow): InviteTrailPerson {
+  const deleted = Boolean(row.deletedAt);
+  return {
+    userId: row.userId,
+    nickname: deleted ? null : row.nickname,
+    mentionCode: deleted ? null : row.mentionCode,
+    state: deleted ? "deleted" : row.bannedAt ? "banned" : row.removedAt || !row.hasMembership ? "kicked" : "active"
+  };
+}
+
+function trailPersonById(sqlite: DatabaseSync, serverId: string, userId: string): InviteTrailPerson {
+  const row = one<TrailPersonRow>(
+    sqlite,
+    `select ${trailPersonColumns}
+     from users left join server_members on server_members.user_id = users.id and server_members.server_id = ?
+     where users.id = ?`,
+    [serverId, userId]
+  );
+  // An id that resolves to no account can name nobody, so it reads as deleted.
+  return row ? trailPerson(row) : { userId, nickname: null, mentionCode: null, state: "deleted" };
+}
+
+/** When an invite stopped admitting anyone, or null while it still does. */
+function inactiveSince(
+  invite: { revokedAt: string | null; expiresAt: string | null; maxUses: number | null; usedCount: number },
+  lastUsedAt: string | null,
+  now: number
+) {
+  const ends = [
+    invite.revokedAt,
+    invite.expiresAt && Date.parse(invite.expiresAt) <= now ? invite.expiresAt : null,
+    invite.maxUses !== null && invite.usedCount >= invite.maxUses ? lastUsedAt : null
+  ].filter((value): value is string => value !== null);
+  return ends.length ? ends.reduce((first, value) => (Date.parse(value) < Date.parse(first) ? value : first)) : null;
+}
+
+/**
+ * Deletes a Server's past invites that nobody ever joined through, once they
+ * have been inactive for the retention period. Runs when the list is read, so
+ * no scheduled job exists to keep it honest. Returns how many it deleted.
+ */
+export function deleteUnusedPastInvites(sqlite: DatabaseSync, serverId: string, now = Date.now()) {
+  const cutoff = new Date(now - retentionMs).toISOString();
+  const result = sqlite
+    .prepare(
+      `delete from invites
+       where server_id = ?
+         and not exists (select 1 from invite_uses where invite_uses.invite_id = invites.id)
+         and min(coalesce(revoked_at, expires_at), coalesce(expires_at, revoked_at)) <= ?`
+    )
+    .run(serverId, cutoff);
+  return Number(result.changes);
+}
+
+export function serverInvites(sqlite: DatabaseSync, serverId: string, now = Date.now()) {
+  const rows = all<{
+    id: string;
+    serverId: string;
+    label: string;
+    createdByUserId: string;
+    usedByUserId: string | null;
+    usedAt: string | null;
+    expiresAt: string | null;
+    revokedAt: string | null;
+    maxUses: number | null;
+    usedCount: number;
+    createdAt: string;
+  }>(
     sqlite,
     `select invites.id, invites.server_id as serverId, coalesce(invites.label, '') as label,
       invites.created_by_user_id as createdByUserId,
@@ -457,6 +564,92 @@ export function serverInvites(sqlite: DatabaseSync, serverId: string) {
      order by invites.created_at desc`,
     [serverId]
   );
+  const uses = new Map<string, Array<InviteTrailPerson & { joinedAt: string }>>();
+  for (const use of all<TrailPersonRow & { inviteId: string; joinedAt: string }>(
+    sqlite,
+    `select invite_uses.invite_id as inviteId, invite_uses.used_at as joinedAt, ${trailPersonColumns}
+     from invite_uses
+     join invites on invites.id = invite_uses.invite_id
+     join users on users.id = invite_uses.user_id
+     left join server_members on server_members.user_id = users.id and server_members.server_id = invites.server_id
+     where invites.server_id = ?
+     order by invite_uses.used_at desc`,
+    [serverId]
+  )) {
+    const list = uses.get(use.inviteId) ?? [];
+    list.push({ ...trailPerson(use), joinedAt: use.joinedAt });
+    uses.set(use.inviteId, list);
+  }
+  const creators = new Map<string, InviteTrailPerson>();
+  return rows.map((row) => {
+    const trail = uses.get(row.id) ?? [];
+    let createdBy = creators.get(row.createdByUserId);
+    if (!createdBy) {
+      createdBy = trailPersonById(sqlite, serverId, row.createdByUserId);
+      creators.set(row.createdByUserId, createdBy);
+    }
+    return { ...row, createdBy, uses: trail, inactiveSince: inactiveSince(row, trail[0]?.joinedAt ?? null, now) };
+  });
+}
+
+/**
+ * How one Account is connected through Invites across every Server: the
+ * Invite each Membership joined through, and the people its own Invites
+ * brought in. The Installation owner's view alone (ADR-0034).
+ */
+export function accountInviteTrail(sqlite: DatabaseSync, userId: string) {
+  const joined = new Map<string, { inviteId: string; label: string; joinedAt: string; inviter: InviteTrailPerson }>();
+  for (const use of all<{ serverId: string; inviteId: string; label: string; joinedAt: string; createdBy: string }>(
+    sqlite,
+    `select invites.server_id as serverId, invites.id as inviteId, coalesce(invites.label, '') as label,
+      invite_uses.used_at as joinedAt, invites.created_by_user_id as createdBy
+     from invite_uses join invites on invites.id = invite_uses.invite_id
+     where invite_uses.user_id = ?
+     order by invite_uses.used_at desc`,
+    [userId]
+  )) {
+    // The newest use is the one that let them in as they are now.
+    if (joined.has(use.serverId)) continue;
+    joined.set(use.serverId, {
+      inviteId: use.inviteId,
+      label: use.label,
+      joinedAt: use.joinedAt,
+      inviter: trailPersonById(sqlite, use.serverId, use.createdBy)
+    });
+  }
+  const invited: Array<{
+    serverId: string;
+    serverName: string;
+    people: Array<InviteTrailPerson & { joinedAt: string; inviteId: string; inviteLabel: string }>;
+  }> = [];
+  for (const use of all<
+    TrailPersonRow & { serverId: string; serverName: string; inviteId: string; inviteLabel: string; joinedAt: string }
+  >(
+    sqlite,
+    `select servers.id as serverId, servers.name as serverName, invites.id as inviteId,
+      coalesce(invites.label, '') as inviteLabel, invite_uses.used_at as joinedAt, ${trailPersonColumns}
+     from invites
+     join servers on servers.id = invites.server_id
+     join invite_uses on invite_uses.invite_id = invites.id
+     join users on users.id = invite_uses.user_id
+     left join server_members on server_members.user_id = users.id and server_members.server_id = invites.server_id
+     where invites.created_by_user_id = ?
+     order by servers.name asc, servers.id asc, invite_uses.used_at desc`,
+    [userId]
+  )) {
+    let group = invited.at(-1);
+    if (group?.serverId !== use.serverId) {
+      group = { serverId: use.serverId, serverName: use.serverName, people: [] };
+      invited.push(group);
+    }
+    group.people.push({
+      ...trailPerson(use),
+      joinedAt: use.joinedAt,
+      inviteId: use.inviteId,
+      inviteLabel: use.inviteLabel
+    });
+  }
+  return { joined, invited };
 }
 
 function revokeServerInvite(database: VoxlyDatabase, serverId: string, inviteId: string, ownerId: string) {

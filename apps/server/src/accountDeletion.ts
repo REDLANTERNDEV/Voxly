@@ -3,6 +3,7 @@ import { audit } from "./audit.js";
 import { requireOwner, requireUser, revokeSessionsForUser } from "./auth/sessions.js";
 import { all, one, run, type VoxlyDatabase } from "./db/database.js";
 import { authenticatedWriteLimit, userIdParam, type RouteContext } from "./http.js";
+import { accountInviteTrail } from "./invites.js";
 
 const deletionCooldownMs = 24 * 60 * 60 * 1000;
 
@@ -320,6 +321,7 @@ export function registerAccountDeletionRoutes(context: RouteContext) {
     const account = accountById(database, userId);
     if (!account) return reply.code(404).send({ error: "account_not_found" });
     const memberships = membershipProjection(database, userId);
+    const trail = accountInviteTrail(database.sqlite, userId);
     return {
       account: {
         id: account.id,
@@ -329,7 +331,11 @@ export function registerAccountDeletionRoutes(context: RouteContext) {
         isBot: Boolean(account.is_bot),
         deletedAt: account.deleted_at,
         serverCount: memberships.length,
-        memberships
+        memberships: memberships.map((membership) => ({
+          ...membership,
+          invite: trail.joined.get(membership.serverId) ?? null
+        })),
+        invited: trail.invited
       }
     };
   });
