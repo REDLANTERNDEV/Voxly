@@ -38,8 +38,8 @@ jobs:
       VOXLY_DESKTOP_PUBLISHER: ${{ vars.DESKTOP_PUBLISHER || (inputs.windows_signing == 'none' && github.repository_owner) || '' }}
       VOXLY_DESKTOP_TIMESTAMP_URL: ${{ vars.DESKTOP_TIMESTAMP_URL }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -103,7 +103,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: voxly-windows-candidate-${{ inputs.windows_signing }}-${{ inputs.version }}
           path: ${{ env.VOXLY_DESKTOP_RELEASE_OUTPUT }}/*

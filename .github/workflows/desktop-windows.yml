@@ -18,8 +18,8 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -42,7 +42,7 @@ jobs:
         run: npm run desktop:build
       - name: Check whitespace
         run: git diff --check
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: voxly-windows-feasibility-unsigned
           path: apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe

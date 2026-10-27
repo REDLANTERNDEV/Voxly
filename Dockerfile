@@ -1,4 +1,4 @@
-FROM node:22-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 
 ENV HUSKY=0
@@ -26,7 +26,7 @@ COPY packages packages
 RUN npm run build
 RUN npm prune --omit=dev
 
-FROM node:22-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production \
@@ -60,7 +60,7 @@ CMD ["node", "apps/server/dist/src/main.js"]
 # application should not carry two programs it never runs. Everything before
 # this stage is shared, so the second image costs one `apk add` rather than a
 # second install and a second build. See ADR-0012.
-FROM node:22-alpine AS bot
+FROM node:24-alpine AS bot
 WORKDIR /app
 
 # yt-dlp's stable release, pinned so that an image is reproducible and so that
