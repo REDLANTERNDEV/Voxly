@@ -279,6 +279,14 @@ requirement.
 
 - Enter sends a non-empty draft; Shift+Enter inserts a newline; IME composition
   never sends. The send button uses the same guarded submission path.
+- A Draft lives in `lib/composerDrafts.ts` memory, per account and channel, so
+  it outlives the channel-keyed chat screen. Never move it to `localStorage` or
+  any other storage: an unsent message on disk reads as keystroke logging. Show
+  no reminder or marker; an emptied composer keeps nothing to restore.
+- Mention and emoji insertion go through the browser's own `insertText` so
+  Ctrl+Z still reaches earlier typing; assigning a new value through React wipes
+  the field's undo history. Undo and redo restore the Mentions a recent text
+  had, so an undone deletion brings back a real Mention, not plain text.
 - Submission never waits on the network. The draft clears immediately, the
   composer and send button stay enabled, and an in-flight message must not gate
   the next Enter; a gated composer discards keystrokes instead of queueing them.

@@ -1,12 +1,13 @@
 import type { ChatMessage, ChatMessageReply, MessageMention } from "@voxly/shared";
 import type { FormEvent } from "react";
-import { useCallback, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { serverPath } from "../../app/navigation.js";
 import type { ShellActions, ShellModel } from "../../app/types.js";
 import { ArrowIcon, CloseIcon, ReplyIcon, PushPinIcon } from "../../components/ui/Icons.js";
 import { EmptyState, RoomHeader } from "../../components/ui/Primitives.js";
 import { resolveRememberedRoom } from "../../lib/channelState.js";
 import { isMessageListNearBottom, messageListUpdateAction, wavedNotices } from "../../lib/messages.js";
+import { composerDrafts } from "../../lib/composerDrafts.js";
 import { messageListIds, type OutboxEntry } from "../../lib/messageOutbox.js";
 import { requestSettingsSection } from "../../lib/settingsNavigation.js";
 import { MessageItem } from "./MessageItem.js";
@@ -56,14 +57,16 @@ type TextRoomProps = Pick<
   };
 
 export function TextRoomScreen(props: TextRoomProps) {
-  const [draft, setDraft] = useState("");
-  const [draftMentions, setDraftMentions] = useState<MessageMention[]>([]);
+  // This screen is rebuilt per channel, so a Draft is picked back up from memory.
+  const [kept] = useState(() => (props.currentRoom ? composerDrafts.read(props.user.id, props.currentRoom.id) : null));
+  const [draft, setDraft] = useState(kept?.body ?? "");
+  const [draftMentions, setDraftMentions] = useState<MessageMention[]>(kept?.mentions ?? []);
   const [showPins, setShowPins] = useState(false);
   const [jumpTarget, setJumpTarget] = useState<string | null>(null);
   const [contextBusy, setContextBusy] = useState(false);
   const displayedMessages = props.contextMessages ?? props.messages;
   const wavedNoticeIds = wavedNotices(displayedMessages, props.user.id);
-  const [replyTarget, setReplyTarget] = useState<ChatMessageReply | null>(null);
+  const [replyTarget, setReplyTarget] = useState<ChatMessageReply | null>(kept?.replyTo ?? null);
   const resolvedDraft = reconcileMentionContent({ body: draft, mentions: draftMentions }, props.identityChanges);
   if (resolvedDraft.body !== draft || resolvedDraft.mentions !== draftMentions) {
     setDraft(resolvedDraft.body);
@@ -79,6 +82,10 @@ export function TextRoomScreen(props: TextRoomProps) {
   const wasNearBottomRef = useRef(true);
   const previousMessageIdsRef = useRef<string[]>([]);
   const roomId = props.currentRoom?.id;
+  const userId = props.user.id;
+  useEffect(() => {
+    if (roomId) composerDrafts.write(userId, roomId, { body: draft, mentions: draftMentions, replyTo: replyTarget });
+  }, [userId, roomId, draft, draftMentions, replyTarget]);
   const targetVoiceRoom = resolveRememberedRoom(props.rooms.voice, props.roomHistory[props.activeServerId]?.voice);
 
   const scrollToLatest = useCallback((behavior: ScrollBehavior = "smooth") => {

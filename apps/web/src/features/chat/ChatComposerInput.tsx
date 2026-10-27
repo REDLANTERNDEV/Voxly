@@ -46,6 +46,10 @@ export function ChatComposerInput({
   const selection = useRef({ start: body.length, end: body.length });
   const pendingEdit = useRef<{ start: number; end: number; inputType: string } | null>(null);
   const previousContent = useRef({ body, mentions });
+  const insertedMention = useRef<MessageMention | null>(null);
+  // The browser's undo history restores text but knows nothing of Mentions, so
+  // recent texts remember theirs and Ctrl+Z brings a real Mention back.
+  const recentContent = useRef(new Map<string, MessageMention[]>());
   const match = /(?:^|\s)@([^\s@]*)$/.exec(body.slice(0, caret));
   const query = match?.[1] ?? "";
   const start = match ? caret - query.length - 1 : -1;
@@ -105,8 +109,22 @@ export function ChatComposerInput({
       field?.setSelectionRange(next.start, next.end, field.selectionDirection ?? undefined);
     }
     previousContent.current = { body, mentions };
+    const recent = recentContent.current;
+    recent.delete(body);
+    recent.set(body, mentions);
+    if (recent.size > 100) recent.delete(recent.keys().next().value!);
   }, [body, mentions, fieldRef]);
 
+  // Through the browser's own editing, so Ctrl+Z still reaches what was typed
+  // before; handing React a new value would wipe the field's undo history.
+  // The resulting input event runs onChange like any keystroke.
+  function insertText(from: number, to: number, text: string) {
+    const field = fieldRef.current;
+    if (!field) return false;
+    field.focus();
+    field.setSelectionRange(from, to);
+    return document.execCommand("insertText", false, text);
+  }
   function placeCaret(position: number) {
     setCaret(position);
     selection.current = { start: position, end: position };
@@ -134,10 +152,14 @@ export function ChatComposerInput({
       option.kind === "person"
         ? { ...base, kind: "person", userId: option.member!.userId }
         : { ...base, kind: option.kind };
-    onChange(
-      next,
-      [...ranges, mention].sort((a, b) => a.start - b.start)
-    );
+    insertedMention.current = mention;
+    if (!insertText(start, caret, text + " ")) {
+      insertedMention.current = null;
+      onChange(
+        next,
+        [...ranges, mention].sort((a, b) => a.start - b.start)
+      );
+    }
     setDismissed(true);
     placeCaret(start + text.length + 1);
   }
@@ -174,7 +196,15 @@ export function ChatComposerInput({
               edit.end = edit.start + removed;
             }
           }
-          onChange(field.value, editMentionRanges(body, field.value, mentions, edit ?? undefined));
+          const ranges = editMentionRanges(body, field.value, mentions, edit ?? undefined);
+          const inserted = insertedMention.current;
+          insertedMention.current = null;
+          const undoing = (event.nativeEvent as InputEvent).inputType?.startsWith("history");
+          const restored = undoing ? recentContent.current.get(field.value) : undefined;
+          onChange(
+            field.value,
+            restored ?? (inserted ? [...ranges, inserted].sort((a, b) => a.start - b.start) : ranges)
+          );
           setCaret(event.target.selectionStart);
           selection.current = { start: event.target.selectionStart, end: event.target.selectionEnd };
           setActive(0);
@@ -256,7 +286,8 @@ export function ChatComposerInput({
           onSelect={(emoji) => {
             const { start: from, end: to } = selection.current;
             const next = body.slice(0, from) + emoji + body.slice(to);
-            onChange(next, editMentionRanges(body, next, mentions, { start: from, end: to }));
+            if (!insertText(from, to, emoji))
+              onChange(next, editMentionRanges(body, next, mentions, { start: from, end: to }));
             setPicker(false);
             setDismissed(true);
             placeCaret(from + emoji.length);

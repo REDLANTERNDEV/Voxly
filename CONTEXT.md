@@ -50,6 +50,13 @@ A stable short identifier for one Membership, shown beside its nickname to
 distinguish people with the same or similar names.
 _Avoid_: Username, discriminator, Account identifier
 
+**Draft**:
+What a member left unsent in one channel's composer — its text, Mentions and
+the message it replies to. It waits there while they move between channels
+and is forgotten when the app closes or reloads; it is never written to disk
+and nothing reminds anyone of it. Emptying the composer discards it.
+_Avoid_: Saved message, unsent message (that is an outbox entry)
+
 **Message reaction**:
 An emoji attached to a message by a member. Members sharing an emoji form one
 reaction group; its count is the number of members in that group.
