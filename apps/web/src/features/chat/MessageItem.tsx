@@ -7,6 +7,7 @@ import type { Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
 import { ArrowIcon, CloseIcon, MoreIcon, ReplyIcon } from "../../components/ui/Icons.js";
 import { clampContextMenuPosition } from "../../lib/contextMenu.js";
+import { copyText } from "../../lib/copyText.js";
 import { type LanguageCode } from "../../lib/i18n.js";
 import { messageEmbeds, type MessageEmbed } from "../../lib/messageEmbeds.js";
 import {
@@ -22,7 +23,7 @@ import type { ExternalPreviewPreferences } from "../../lib/externalPreviewPrefer
 import { MessageBody } from "./MessageBody.js";
 import { MessageReactions } from "./MessageReactions.js";
 import { ChatComposerInput } from "./ChatComposerInput.js";
-import { isMentioned, trimMentionDraft, usesNativeMessageMenu } from "../../lib/chatInteractions.js";
+import { isMentioned, selectedTextIn, trimMentionDraft, usesNativeMessageMenu } from "../../lib/chatInteractions.js";
 import { ReplyQuote } from "./ReplyQuote.js";
 import {
   reconcileMentionContent,
@@ -93,6 +94,10 @@ export function MessageItem({
   const [pendingEmbed, setPendingEmbed] = useState<MessageEmbed | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [wavedNow, setWavedNow] = useState(false);
+  // Read when the menu opens: by the time an item is chosen the selection may be gone.
+  const [menuSelection, setMenuSelection] = useState("");
+  const articleRef = useRef<HTMLElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const permissions = messagePermissions({
@@ -129,16 +134,28 @@ export function MessageItem({
   }, [menuPosition]);
 
   function openMenu(x: number, y: number) {
+    setMenuSelection(articleRef.current ? selectedTextIn(articleRef.current, window.getSelection()) : "");
     setMenuPosition(
       clampContextMenuPosition({
         x,
         y,
         menuWidth: 160,
-        menuHeight: 50 + (permissions.canEdit ? 42 : 0) + (permissions.canDelete ? 42 : 0) + (canPin ? 84 : 0),
+        menuHeight:
+          50 +
+          (permissions.canEdit ? 42 : 0) +
+          (permissions.canDelete ? 42 : 0) +
+          (canPin ? 84 : 0) +
+          (isNotice ? 0 : 42),
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight
       })
     );
+  }
+
+  /** The selection when there is one, otherwise the message as it reads on screen. */
+  async function copyMessage() {
+    const text = menuSelection || bodyRef.current?.innerText || message.body;
+    if (!(await copyText(text))) setActionError(t("chat.copyFailed"));
   }
 
   async function saveEdit() {
@@ -202,6 +219,7 @@ export function MessageItem({
 
   return (
     <article
+      ref={articleRef}
       data-message-id={message.id}
       className={`message ${isNotice ? "message-notice" : ""} ${isOwn && !isNotice ? "message-own" : ""} ${isMentioned(message, user.id) ? "message-mentioned" : ""}`}
       onContextMenu={
@@ -306,7 +324,7 @@ export function MessageItem({
           </div>
         ) : isNotice ? null : (
           <>
-            <div className="message-body">
+            <div className="message-body" ref={bodyRef}>
               <MessageBody
                 body={message.body}
                 mentions={message.mentions}
@@ -430,6 +448,19 @@ export function MessageItem({
               aria-label={t("room.messageActions")}
               style={{ left: menuPosition.x, top: menuPosition.y }}
             >
+              {isNotice ? null : (
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => {
+                    setMenuPosition(null);
+                    setActionError("");
+                    void copyMessage();
+                  }}
+                >
+                  {t(menuSelection ? "chat.copySelection" : "chat.copyText")}
+                </button>
+              )}
               <button
                 role="menuitem"
                 type="button"

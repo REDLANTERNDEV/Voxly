@@ -93,6 +93,20 @@ export function mentionCandidates(members: PresenceUser[], onlineIds: Set<string
     );
 }
 
+/**
+ * The text a member selected that touches this message, or "" when nothing is
+ * selected there. A selection running across several messages is copied whole,
+ * as the browser's own Copy would have, since our menu replaces that one.
+ */
+export function selectedTextIn(node: Node, selection: Selection | null) {
+  if (!selection || selection.isCollapsed) return "";
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    if (selection.getRangeAt(index).intersectsNode(node))
+      return selection.toString().trim() ? selection.toString() : "";
+  }
+  return "";
+}
+
 /** Real anchors retain the browser's menu, including their child text/icons. */
 export function usesNativeMessageMenu(target: EventTarget | null) {
   return target instanceof Element && Boolean(target.closest("a[href], textarea, input"));

@@ -289,6 +289,11 @@ requirement.
   Reaction snapshots reject older versions, including late HTTP responses.
 - Preserve native context menus on message and preview-header anchors. Other
   message surfaces retain the permission-filtered custom menu and ellipsis.
+- Because that menu replaces the browser's, its first item is Copy: "Copy
+  selection" when the right-click came with a selection touching the message
+  (read when the menu opens, and copied whole across messages, as the browser
+  would), otherwise "Copy text", the body as it reads on screen. Welcome
+  notices have no body and no Copy.
 
 - Enter sends a non-empty draft; Shift+Enter inserts a newline; IME composition
   never sends. The send button uses the same guarded submission path.

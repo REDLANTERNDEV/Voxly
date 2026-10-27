@@ -29,6 +29,21 @@ describe("message reply affordances", () => {
     );
   });
 
+  it("leads the menu with Copy, which reads the selection when the menu opens", () => {
+    assert.match(
+      messageItem,
+      /function\s+openMenu[\s\S]*?setMenuSelection\(\s*articleRef\.current\s+\?\s+selectedTextIn\(/
+    );
+    assert.match(
+      messageItem,
+      /role="menu"[\s\S]*?\{isNotice\s+\?\s+null\s+:\s+\([\s\S]*?void\s+copyMessage\(\)[\s\S]*?menuSelection\s+\?\s+"chat\.copySelection"\s+:\s+"chat\.copyText"[\s\S]*?"room\.reply"/
+    );
+    assert.match(
+      messageItem,
+      /const\s+text\s+=\s+menuSelection\s+\|\|\s+bodyRef\.current\?\.innerText\s+\|\|\s+message\.body;/
+    );
+  });
+
   it("reveals the reply control on the same hover and touch rules as the ellipsis", () => {
     assert.match(styles, /\.message:hover\s+\.message-reply-trigger,[\s\S]*?opacity:\s+1;/);
     assert.match(

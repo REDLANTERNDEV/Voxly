@@ -6,7 +6,8 @@ import {
   trimMentionDraft,
   mentionCandidates,
   mergeReactionState,
-  isMentioned
+  isMentioned,
+  selectedTextIn
 } from "../src/lib/chatInteractions.js";
 import { rebaseMentionSelection } from "../src/lib/chatInteractions.js";
 import { anonymizeMessagesForServer, renameMessagesForServer } from "../src/lib/memberIdentity.js";
@@ -255,6 +256,37 @@ describe("reaction state and localized recovery", () => {
     ] as const) {
       assert.notEqual(translate("en", key), translate("tr", key));
       assert.ok(translate("en", key).length > 0 && translate("tr", key).length > 0);
+    }
+  });
+});
+
+describe("copying from the message menu", () => {
+  const message = {} as Node;
+  const elsewhere = {} as Node;
+  const selection = (text: string, touches: Node[]) =>
+    ({
+      isCollapsed: text.length === 0,
+      rangeCount: text ? 1 : 0,
+      getRangeAt: () => ({ intersectsNode: (node: Node) => touches.includes(node) }),
+      toString: () => text
+    }) as unknown as Selection;
+
+  it("copies the selection when it touches the message right-clicked", () => {
+    assert.equal(selectedTextIn(message, selection("hello there", [message])), "hello there");
+    // Across several messages, the whole selection, as the browser would.
+    assert.equal(selectedTextIn(message, selection("first\nsecond", [elsewhere, message])), "first\nsecond");
+  });
+
+  it("falls back to the whole message when nothing there is selected", () => {
+    assert.equal(selectedTextIn(message, null), "");
+    assert.equal(selectedTextIn(message, selection("", [])), "");
+    assert.equal(selectedTextIn(message, selection("other message", [elsewhere])), "");
+    assert.equal(selectedTextIn(message, selection("  \n ", [message])), "");
+  });
+
+  it("names both copy actions in English and Turkish", () => {
+    for (const key of ["chat.copySelection", "chat.copyText", "chat.copyFailed"] as const) {
+      assert.notEqual(translate("en", key), translate("tr", key));
     }
   });
 });
