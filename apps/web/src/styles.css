@@ -1498,8 +1498,12 @@ h3 {
   text-underline-offset: 2px;
 }
 
+/* Inline-block for both elements: a button always lays out as one, and a bare
+   inline span's background stops at the font's content box, which some
+   fallback fonts draw "@" through. */
 .message-mention {
-  display: inline;
+  display: inline-block;
+  max-width: 100%;
   border: 0;
   border-radius: 4px;
   padding: 1px 3px;
