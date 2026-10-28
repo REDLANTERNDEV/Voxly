@@ -17,7 +17,7 @@ export const inviteExpiryOptions: Array<{
     | "invite.expiry1d"
     | "invite.expiry7d"
     | "invite.expiry30d"
-    | "common.noExpiry";
+    | "invite.expiryNever";
 }> = [
   { value: 30, key: "invite.expiry30m" },
   { value: 60, key: "invite.expiry1h" },
@@ -26,7 +26,7 @@ export const inviteExpiryOptions: Array<{
   { value: 1440, key: "invite.expiry1d" },
   { value: 10080, key: "invite.expiry7d" },
   { value: 43200, key: "invite.expiry30d" },
-  { value: null, key: "common.noExpiry" }
+  { value: null, key: "invite.expiryNever" }
 ];
 
 export const inviteMaxUseOptions: InviteMaxUses[] = [1, 5, 10, 25, 50, 100, null];
@@ -176,7 +176,11 @@ export function InviteComposer({
               >
                 {inviteMaxUseOptions.map((count) => (
                   <option key={count ?? "unlimited"} value={count ?? "unlimited"}>
-                    {count === null ? t("invite.unlimitedUses") : t("invite.useCount", { count })}
+                    {count === null
+                      ? t("invite.unlimitedUses")
+                      : count === 1
+                        ? t("invite.oneUse")
+                        : t("invite.useCount", { count })}
                   </option>
                 ))}
               </select>

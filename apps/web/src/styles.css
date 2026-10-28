@@ -4787,7 +4787,7 @@ button.reply-quote:focus-visible .reply-quote-body {
 .dash {
   background: var(--bg);
   display: grid;
-  grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-columns: 248px minmax(0, 1fr);
   min-height: 100dvh;
 }
 

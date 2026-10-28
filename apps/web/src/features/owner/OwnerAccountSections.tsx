@@ -65,7 +65,7 @@ function Memberships({
   trail?: TrailContext;
 }) {
   return (
-    <ul className="dash-notes account-memberships">
+    <ul className="account-memberships">
       {memberships.map((membership) => (
         <li key={membership.serverId}>
           <strong>{membership.serverName}</strong>
@@ -139,8 +139,9 @@ export function OwnerDeletionRequestsSection({
   t: Translate;
   onCountChange(count: number): void;
 }) {
-  const [requests, setRequests] = useState<OwnerDeletionRequest[]>([]);
+  const [requests, setRequests] = useState<OwnerDeletionRequest[] | null>(null);
   const [decision, setDecision] = useState<{ request: OwnerDeletionRequest; kind: "approve" | "reject" } | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const load = useCallback(async () => {
     try {
@@ -148,6 +149,7 @@ export function OwnerDeletionRequestsSection({
       setRequests(response.requests);
       onCountChange(response.requests.length);
     } catch {
+      setRequests((current) => current ?? []);
       setStatus(t("ownerAccounts.loadFailed"));
     }
   }, [onCountChange, t]);
@@ -157,38 +159,67 @@ export function OwnerDeletionRequestsSection({
   }, [load, revision]);
 
   return (
-    <section className="dash-panel">
-      <header className="dash-panel-head">
-        <h2>{t("ownerAccounts.deletionRequests")}</h2>
-        <p className="muted small">{t("ownerAccounts.deletionRequestsCopy")}</p>
+    <section className="dash-panel owner-accounts-panel owner-deletion-panel">
+      <header className="accounts-directory-head">
+        <div>
+          <h2>
+            {t("ownerAccounts.pendingRequests")}
+            {requests && requests.length > 0 ? <span className="badge">{requests.length}</span> : null}
+          </h2>
+          <p className="muted small">{t("ownerAccounts.deletionRequestsCopy")}</p>
+        </div>
       </header>
-      {requests.length === 0 ? (
-        <p className="muted">{t("ownerAccounts.noDeletionRequests")}</p>
+      {requests === null ? (
+        <p className="owner-account-empty muted" role="status">
+          {t("common.loading")}
+        </p>
+      ) : requests.length === 0 ? (
+        <p className="owner-account-empty muted">{t("ownerAccounts.noDeletionRequests")}</p>
       ) : (
-        requests.map((request) => (
-          <article className="owner-account-card" key={request.id}>
-            <div>
-              <strong>{request.nickname}</strong>
-              <span className="muted small">
-                {t(request.status === "banned" ? "common.banned" : "common.active")} ·{" "}
-                {formatShortDate(request.requestedAt, language, t, timeFormat)}
-              </span>
-            </div>
-            <Memberships memberships={request.memberships} t={t} />
-            <div className="message-actions">
-              <button
-                className="btn btn-danger"
-                type="button"
-                onClick={() => setDecision({ request, kind: "approve" })}
-              >
-                {t("ownerAccounts.approveDeletion")}
-              </button>
-              <button className="btn btn-ghost" type="button" onClick={() => setDecision({ request, kind: "reject" })}>
-                {t("ownerAccounts.rejectDeletion")}
-              </button>
-            </div>
-          </article>
-        ))
+        <ul className="owner-deletion-list">
+          {requests.map((request) => (
+            <li key={request.id}>
+              <article className="owner-deletion-card" aria-labelledby={`deletionRequest-${request.id}`}>
+                <header className="owner-deletion-head">
+                  <span className="avatar" aria-hidden="true">
+                    {Array.from(request.nickname)[0]?.toUpperCase()}
+                  </span>
+                  <span className="owner-deletion-identity">
+                    <strong id={`deletionRequest-${request.id}`}>{request.nickname}</strong>
+                    <span className="muted small">
+                      {t("ownerAccounts.requestedOn", {
+                        date: formatShortDate(request.requestedAt, language, t, timeFormat)
+                      })}
+                    </span>
+                  </span>
+                  <span className={`account-state ${request.status === "banned" ? "is-banned" : ""}`}>
+                    {t(request.status === "banned" ? "common.banned" : "common.active")}
+                  </span>
+                </header>
+                <Memberships memberships={request.memberships} t={t} />
+                <footer className="owner-deletion-actions">
+                  <button
+                    className="btn btn-ghost"
+                    type="button"
+                    disabled={pendingId === request.id}
+                    onClick={() => setDecision({ request, kind: "reject" })}
+                  >
+                    {t("ownerAccounts.rejectDeletion")}
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    type="button"
+                    disabled={pendingId === request.id}
+                    onClick={() => setDecision({ request, kind: "approve" })}
+                  >
+                    <TrashIcon />
+                    <span>{t("ownerAccounts.approveDeletion")}</span>
+                  </button>
+                </footer>
+              </article>
+            </li>
+          ))}
+        </ul>
       )}
       {status ? <p role="status">{status}</p> : null}
       {decision ? (
@@ -201,13 +232,17 @@ export function OwnerDeletionRequestsSection({
             decision.kind === "approve" ? "ownerAccounts.approveDeletion" : "ownerAccounts.rejectDeletion"
           )}
           cancelLabel={t("common.cancel")}
+          tone={decision.kind === "approve" ? "danger" : "neutral"}
           onCancel={() => setDecision(null)}
           onConfirm={() => {
             const current = decision;
             setDecision(null);
+            setPendingId(current.request.id);
+            setStatus("");
             void decideAccountDeletionRequest(current.request.id, current.kind)
               .then(load)
-              .catch(() => setStatus(t("ownerAccounts.actionFailed")));
+              .catch(() => setStatus(t("ownerAccounts.actionFailed")))
+              .finally(() => setPendingId(null));
           }}
         />
       ) : null}
@@ -453,7 +488,9 @@ export function OwnerAccountsSection({
                     {accountStatus(account)}
                   </span>
                   <span className="account-directory-count muted small">
-                    {t("ownerAccounts.serverCount", { count: account.serverCount })}
+                    {account.serverCount === 1
+                      ? t("ownerAccounts.oneServer")
+                      : t("ownerAccounts.serverCount", { count: account.serverCount })}
                   </span>
                   <span className="account-directory-open" aria-hidden="true">
                     {loadingAccountId === account.id ? "…" : <ArrowIcon />}

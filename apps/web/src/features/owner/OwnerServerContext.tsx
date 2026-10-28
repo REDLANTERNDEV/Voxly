@@ -136,7 +136,9 @@ export function OwnerServerContext({
               <option key={minutes} value={minutes}>
                 {minutes < 60
                   ? t("owner.afkTimeoutMinutes", { count: minutes })
-                  : t("owner.afkTimeoutHours", { count: minutes / 60 })}
+                  : minutes === 60
+                    ? t("owner.afkTimeoutOneHour")
+                    : t("owner.afkTimeoutHours", { count: minutes / 60 })}
               </option>
             ))}
           </select>

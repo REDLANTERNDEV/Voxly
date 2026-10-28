@@ -8,6 +8,7 @@ export function ConfirmDialog({
   cancelLabel,
   confirmationText,
   confirmationLabel,
+  tone = "danger",
   onCancel,
   onConfirm
 }: {
@@ -17,6 +18,8 @@ export function ConfirmDialog({
   cancelLabel: string;
   confirmationText?: string;
   confirmationLabel?: string;
+  /** A decision that destroys nothing confirms with the primary button, not a red one. */
+  tone?: "danger" | "neutral";
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -61,7 +64,12 @@ export function ConfirmDialog({
           <button className="btn btn-ghost" type="button" ref={cancelRef} onClick={onCancel}>
             {cancelLabel}
           </button>
-          <button className="btn btn-danger" type="button" disabled={!isConfirmationValid} onClick={onConfirm}>
+          <button
+            className={`btn ${tone === "danger" ? "btn-danger" : "btn-primary"}`}
+            type="button"
+            disabled={!isConfirmationValid}
+            onClick={onConfirm}
+          >
             {confirmLabel}
           </button>
         </div>
