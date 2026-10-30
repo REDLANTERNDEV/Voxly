@@ -25,6 +25,7 @@ describe("screen share control", () => {
     assert.doesNotMatch(app, /className="screen-share-control"/);
     assert.match(styles, /\.dock-controls\s+\.control-icon\s*\{[^}]*height:\s*44px[^}]*width:\s*44px/s);
     assert.match(styles, /\.dock-controls\s+\.control-icon\s+\.ui-icon\s*\{[^}]*height:\s*24px[^}]*width:\s*24px/s);
+    assert.match(styles, /\.dock-leave\s+\.ui-icon\s*\{[^}]*height:\s*24px[^}]*width:\s*24px/s);
     assert.match(visual, /\.dock-controls\s+\.control-icon\s*\{[^}]*height:\s*44px;[^}]*width:\s*44px;/s);
     assert.match(
       visual,

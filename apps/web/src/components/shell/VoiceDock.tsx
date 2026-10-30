@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { activeServerRole, initial, voiceSignalPresentation } from "../../app/presentation.js";
 import type { ShellActions, ShellModel, Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
-import { CameraIcon, HeadsetIcon, LeaveIcon, MicIcon, ScreenIcon } from "../../components/ui/Icons.js";
+import { CameraIcon, HangUpIcon, HeadsetIcon, MicIcon, ScreenIcon } from "../../components/ui/Icons.js";
 import { ControlButton } from "../../components/ui/Primitives.js";
 import { type TranslationKey } from "../../lib/i18n.js";
 import { ApplicationUpdateStatus } from "../ApplicationUpdateStatus.js";
@@ -193,7 +193,7 @@ export function VoiceDock(props: VoiceDockProps) {
               title={props.t("common.leave")}
               onClick={props.onLeaveVoice}
             >
-              <LeaveIcon />
+              <HangUpIcon />
               <span>{props.t("common.leave")}</span>
             </button>
           </>

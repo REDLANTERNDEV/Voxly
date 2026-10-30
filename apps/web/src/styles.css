@@ -4054,6 +4054,12 @@ button.reply-quote:focus-visible .reply-quote-body {
   width: 24px;
 }
 
+/* Leave sits in the same row, so its icon takes the same box. */
+.dock-leave .ui-icon {
+  height: 24px;
+  width: 24px;
+}
+
 .notification-region {
   display: flex;
   flex-direction: column;
