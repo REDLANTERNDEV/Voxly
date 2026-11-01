@@ -319,9 +319,12 @@ queries across endpoints.
   older link shows the latest name after a rename. Keep every invalid preview
   response generic.
 - Store an optional nickname override on `server_members`; the global user
-  nickname remains the fallback. Only an active owner of that server may set a
-  trimmed 2–32 character override for ordinary members or themselves, never a
-  different owner.
+  nickname remains the fallback. An active member may set a trimmed 2–32
+  character override for themselves, or clear it with `null`; an empty string
+  is still malformed. Only an active owner of that server may set or clear one
+  for an ordinary member, never for a different owner.
+- `GET /api/servers` reports the caller's own override (or `null`) and Mention
+  code on each Membership, and nothing about anyone else's.
 - Every server-scoped directory, owner list, message, presence, and voice shape
   uses the effective membership nickname. After an update, refresh active voice
   snapshots and emit the typed member update only to that server room.

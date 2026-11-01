@@ -16,7 +16,7 @@ describe("notification presentation", () => {
   });
 
   it("keeps modal-open notifications queued and moves them above the dock on phones", () => {
-    assert.match(chrome(), /suspended=\{settingsOpen\}/);
+    assert.match(chrome(), /suspended=\{settingsOpen\s+\|\|\s+profileOpen\}/);
     assert.match(css(), /\.notification-region\.is-suspended/);
     assert.match(
       css(),

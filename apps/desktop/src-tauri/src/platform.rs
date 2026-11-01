@@ -97,7 +97,7 @@ pub fn open_installation(
     .map_err(|_| "window_failed")?;
     let navigation_app = app.clone();
     let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url))
-        .title(format!("Voxly — {}", saved.origin))
+        .title(format!("Voxly | {}", saved.origin))
         .visible(false)
         .background_color(tauri::window::Color(15, 19, 25, 255))
         .inner_size(1280.0, 800.0)

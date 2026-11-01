@@ -224,6 +224,27 @@ describe("Voxly realtime MVP", () => {
     assert.equal(updated.user.nickname, "Basement Ece");
     assert.equal(snapshot.members.find((entry) => entry.user.userId === member.user.id)?.user.nickname, "Basement Ece");
     await expectNoEvent(otherSocket, "server:memberUpdated");
+
+    // Clearing the override travels the same path, carrying the Account's own nickname.
+    const clearedPromise = onceEvent<{
+      serverId: string;
+      user: { userId: string; nickname: string };
+    }>(memberSocket, "server:memberUpdated");
+    const clearedSnapshotPromise = onceEvent<{
+      roomId: string;
+      members: Array<{ user: { userId: string; nickname: string } }>;
+    }>(ownerSocket, "voice:snapshot");
+    const cleared = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/the-basement/members/${member.user.id}/nickname`,
+      cookies: member.cookies,
+      payload: { nickname: null }
+    });
+    assert.equal(cleared.statusCode, 200);
+    const [clearedUpdate, clearedSnapshot] = await Promise.all([clearedPromise, clearedSnapshotPromise]);
+    assert.equal(clearedUpdate.user.nickname, "Ece");
+    assert.equal(clearedSnapshot.members.find((entry) => entry.user.userId === member.user.id)?.user.nickname, "Ece");
+    await expectNoEvent(otherSocket, "server:memberUpdated");
   });
 
   it("publishes server name updates only to members of the renamed server", async () => {

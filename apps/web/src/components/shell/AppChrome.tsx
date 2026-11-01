@@ -15,6 +15,7 @@ import { countPeople } from "../../lib/memberDirectory.js";
 import { settingsRequestEvent, type RequestedSettingsSection } from "../../lib/settingsNavigation.js";
 import { ChannelRail } from "./ChannelRail.js";
 import { MemberPanel } from "./MemberPanel.js";
+import { ProfileDialog } from "./ProfileDialog.js";
 import { SettingsDialog, type SettingsSection } from "./SettingsDialog.js";
 import type { SidebarActionMenuController } from "./SidebarMenus.js";
 import { VoiceDock } from "./VoiceDock.js";
@@ -28,6 +29,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("account");
   const [settingsContextError, setSettingsContextError] = useState<TranslationKey | "">("");
+  const [profileOpen, setProfileOpen] = useState(false);
   const [nicknameTarget, setNicknameTarget] = useState<{
     user: PresenceUser;
     returnFocus: HTMLButtonElement | null;
@@ -70,6 +72,11 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
       open: openActionMenu
     }),
     [activeActionMenu, closeActionMenu, openActionMenu]
+  );
+  const openProfile = useCallback(() => setProfileOpen(true), []);
+  const selfPresence = selfPresenceState(
+    props.presenceChoice.status,
+    props.onlineUsers.find((member) => member.userId === props.user.id)?.status
   );
   const onlineCount = countPeople(props.onlineUsers) || 1;
   const voiceConnectedCount =
@@ -207,6 +214,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
                 onlineCount={onlineCount}
                 onOpenSettings={() => openSettings()}
                 onOpenAudioSettings={() => openSettings("audio")}
+                onOpenProfile={openProfile}
               />
             </div>
           }
@@ -320,10 +328,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           }
           members={props.serverMembers}
           onlineUsers={props.onlineUsers}
-          selfPresence={selfPresenceState(
-            props.presenceChoice.status,
-            props.onlineUsers.find((member) => member.userId === props.user.id)?.status
-          )}
+          selfPresence={selfPresence}
           voiceRooms={props.rooms.voice}
           voiceSnapshots={props.voiceSnapshots}
           currentUser={props.user}
@@ -351,6 +356,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         microphoneHealthWarning={props.microphoneHealthWarning}
         onOpenAudioSettings={() => openSettings("audio")}
         onOpenSettings={() => openSettings()}
+        onOpenProfile={openProfile}
         controls={props.controls}
         currentNickname={props.currentNickname}
         currentRoom={props.currentRoom}
@@ -378,7 +384,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
       />
       <NotificationViewport
         items={notifications.notifications}
-        suspended={settingsOpen}
+        suspended={settingsOpen || profileOpen}
         t={props.t}
         onDismiss={notifications.dismiss}
         onExpire={notifications.expire}
@@ -390,6 +396,20 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           initialSection={settingsSection}
           contextError={settingsContextError}
           onClose={closeSettings}
+          onOpenProfile={openProfile}
+        />
+      ) : null}
+      {/* A sibling of Settings, never a child: React portal events bubble through
+          the component tree, and Settings closes on a mousedown that reaches its
+          backdrop. Closing this dialog leaves Settings open beneath it. */}
+      {profileOpen ? (
+        <ProfileDialog
+          user={props.user}
+          activeServerId={props.activeServerId}
+          selfState={selfPresence}
+          t={props.t}
+          onSave={props.onUpdateOwnNickname}
+          onClose={() => setProfileOpen(false)}
         />
       ) : null}
       {nicknameTarget ? (

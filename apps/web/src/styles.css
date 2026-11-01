@@ -659,7 +659,7 @@ h3 {
   cursor: pointer;
   display: flex;
   flex: 1;
-  gap: 9px;
+  gap: 4px;
   min-height: 32px;
   min-width: 0;
   padding: 3px 5px;
@@ -747,7 +747,36 @@ h3 {
   -webkit-user-select: none;
 }
 
-.category-menu-trigger {
+/* The category's own "+" stays in sight, as a channel row's actions do not:
+   adding a channel to a category is the one thing an owner does from here. */
+.channel-category-create {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  flex: none;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  width: 24px;
+}
+
+.channel-category-create .ui-icon {
+  height: 16px;
+  width: 16px;
+}
+
+.channel-category-create:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The category ellipsis follows the row rule: on a fine pointer it waits for
+   hover or focus; a coarse pointer gets it back, at 36px. */
+.channel-category-head:hover .category-menu-trigger,
+.channel-category-head:focus-within .category-menu-trigger {
   opacity: 1;
 }
 
@@ -3817,17 +3846,28 @@ button.reply-quote:focus-visible .reply-quote-body {
   min-width: 0;
 }
 
+/* The account chip: the avatar, then the name this Server reads with the
+   Status under it. The whole chip is the <summary>, so either half opens the
+   account card, and both lines truncate rather than push the dock apart. */
 .dock-self {
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .account-menu {
+  flex: 1 1 auto;
+  min-width: 0;
   position: relative;
 }
 
 .account-menu > summary {
+  align-items: center;
+  border-radius: var(--radius-md);
   cursor: pointer;
+  display: flex;
+  gap: 8px;
   list-style: none;
+  min-width: 0;
+  padding: 4px 8px 4px 4px;
 }
 
 .account-menu > summary::-webkit-details-marker {
@@ -7415,4 +7455,365 @@ button.reply-quote:focus-visible .reply-quote-body {
   color: #fff;
   font-size: 12px;
   pointer-events: none;
+}
+
+.account-chip-copy {
+  display: grid;
+  line-height: 1.25;
+  min-width: 0;
+  text-align: start;
+}
+.account-chip-name,
+.account-chip-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-chip-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.account-chip-status {
+  font-size: 12px;
+}
+@media (pointer: coarse) {
+  .account-menu > summary {
+    min-height: 44px;
+  }
+}
+@media (max-width: 900px) {
+  /* Beside the room status in the drawer: wide enough for a name, never so
+     wide that the room it reports loses its line. */
+  .drawer-voice-status > .dock-self {
+    max-width: min(200px, 48vw);
+  }
+}
+@media (max-width: 560px) {
+  .account-chip-status {
+    display: none;
+  }
+}
+
+/* Settings' Profile entry opens a dialog over Settings rather than a section,
+   and its trailing mark says so. */
+.settings-nav-profile {
+  margin-bottom: 6px;
+}
+.settings-nav-profile > span:nth-child(2) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.settings-nav-external {
+  display: inline-flex;
+  margin-inline-start: auto;
+}
+.settings-nav-external .ui-icon {
+  height: 13px;
+  width: 13px;
+}
+
+/* The Profile dialog: a preview card beside every Server's nickname, and the
+   Save/Reset bar under both once anything is unsaved. */
+.profile-dialog {
+  border-radius: 12px;
+  height: min(720px, calc(100dvh - 32px));
+  margin: auto;
+  max-height: none;
+  max-width: none;
+  overflow: hidden;
+  padding: 0;
+  width: min(960px, calc(100vw - 32px));
+}
+.profile-dialog-frame {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+}
+.profile-dialog-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 16px 12px 24px;
+}
+.profile-dialog-head h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.profile-dialog-close {
+  min-width: 36px;
+  padding: 7px;
+}
+.profile-dialog-body {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  min-height: 0;
+  padding: 0 24px 16px;
+}
+.profile-preview {
+  align-self: start;
+  border-radius: 12px;
+  display: grid;
+  max-height: 100%;
+  overflow: hidden auto;
+}
+.profile-preview-banner {
+  height: 96px;
+}
+.profile-preview-identity {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  margin-top: -46px;
+  min-width: 0;
+  padding: 0 18px 14px;
+}
+/* Doubled to outrank the small-phone `.avatar` size, as the account card's is. */
+.profile-preview-avatar.profile-preview-avatar {
+  border-width: 6px;
+  font-size: 32px;
+  height: 92px;
+  position: relative;
+  width: 92px;
+}
+.profile-preview-avatar .presence-dot {
+  border-width: 4px;
+  bottom: 2px;
+  height: 24px;
+  right: 2px;
+  width: 24px;
+}
+.profile-preview-name {
+  font-size: 22px;
+  margin-top: 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-preview-meta {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-height: 20px;
+}
+.profile-preview-status {
+  align-items: center;
+  display: inline-flex;
+  font-size: 13px;
+  gap: 6px;
+}
+.profile-preview-status .presence-dot {
+  position: static;
+}
+.profile-preview-facts {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 14px 18px 18px;
+}
+.profile-preview-facts dt {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.profile-preview-facts dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+}
+.profile-servers {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+}
+.profile-servers-head h3 {
+  font-size: 15px;
+  margin: 0;
+}
+.profile-servers-head p {
+  margin: 4px 0 12px;
+}
+.profile-servers-state {
+  align-content: start;
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  margin: 0;
+}
+.profile-server-list {
+  align-content: start;
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 4px 4px 0;
+}
+.profile-server-row {
+  align-items: center;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  display: grid;
+  gap: 4px 12px;
+  grid-template-areas:
+    "avatar copy field"
+    ". . error";
+  grid-template-columns: 40px minmax(0, 1fr) minmax(0, 1.25fr);
+  padding: 10px 12px;
+}
+.profile-server-avatar {
+  border-radius: 12px;
+  display: grid;
+  font-weight: 650;
+  grid-area: avatar;
+  height: 40px;
+  place-items: center;
+  width: 40px;
+}
+.profile-server-copy {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  grid-area: copy;
+  min-width: 0;
+}
+.profile-server-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-server-field {
+  display: block;
+  grid-area: field;
+  min-width: 0;
+  position: relative;
+}
+.profile-server-field .input {
+  padding-right: 40px;
+}
+.profile-server-clear {
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  display: grid;
+  height: 28px;
+  place-items: center;
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+}
+.profile-server-error {
+  font-size: 12px;
+  grid-area: error;
+  margin: 0;
+}
+.profile-unsaved {
+  align-items: center;
+  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  justify-content: space-between;
+  margin: 0 16px 16px;
+  padding: 10px 12px 10px 16px;
+}
+.profile-unsaved[hidden] {
+  display: none;
+}
+.profile-unsaved > p {
+  font-weight: 600;
+  margin: 0;
+}
+.profile-unsaved-actions {
+  display: flex;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+@media (pointer: coarse) {
+  .profile-server-field .input {
+    min-height: 44px;
+    padding-right: 48px;
+  }
+  .profile-server-clear {
+    height: 36px;
+    width: 36px;
+  }
+}
+/* On a phone or tablet the dialog is the screen, the two columns stack, and
+   the whole body scrolls with the Save/Reset bar pinned beneath it. */
+@media (max-width: 900px) {
+  .profile-dialog {
+    border-radius: 0;
+    height: 100dvh;
+    width: 100vw;
+  }
+  .profile-dialog-head {
+    padding: 10px 12px 10px 16px;
+  }
+  /* Rows keep their content's height and the body scrolls; left to size
+     themselves, the clipped preview card shrank under the list when the
+     Save/Reset bar took its share of the screen. */
+  .profile-dialog-body {
+    align-content: start;
+    gap: 16px;
+    grid-auto-rows: max-content;
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 16px 16px;
+  }
+  .profile-preview-banner {
+    height: 64px;
+  }
+  .profile-preview-identity {
+    margin-top: -34px;
+  }
+  .profile-preview-avatar.profile-preview-avatar {
+    border-width: 4px;
+    font-size: 24px;
+    height: 68px;
+    width: 68px;
+  }
+  .profile-server-list {
+    overflow: visible;
+  }
+  .profile-unsaved {
+    border-radius: 0;
+    margin: 0;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+}
+@media (max-width: 560px) {
+  .profile-server-row {
+    grid-template-areas:
+      "avatar copy"
+      "field field"
+      "error error";
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+  .profile-server-avatar {
+    height: 36px;
+    width: 36px;
+  }
+  .profile-unsaved-actions {
+    width: 100%;
+  }
+  .profile-unsaved-actions .btn {
+    flex: 1 1 0;
+  }
+}
+
+@media (pointer: coarse) {
+  .channel-category-create {
+    height: 36px;
+    width: 36px;
+  }
 }

@@ -45,6 +45,7 @@ type VoiceDockProps = Pick<
   > & {
     connectedCount: number;
     onOpenSettings: () => void;
+    onOpenProfile: () => void;
     onOpenAudioSettings?: () => void;
     surface?: "dock" | "drawer";
     onlineCount?: number;
@@ -206,9 +207,15 @@ export function VoiceDock(props: VoiceDockProps) {
           onToggle={(event) => setAccountOpen(event.currentTarget.open)}
         >
           <summary aria-label={props.t("shell.accountMenu", { nickname: props.currentNickname })}>
-            <span className={`avatar ${props.user.role === "owner" ? "owner" : ""}`} title={props.currentNickname}>
+            <span className={`avatar ${props.user.role === "owner" ? "owner" : ""}`} aria-hidden="true">
               {initial(props.currentNickname)}
               <PresenceDot state={selfState} />
+            </span>
+            {/* The name this Server reads, beside the avatar, so the chip says
+                whose it is without opening it. Both lines truncate. */}
+            <span className="account-chip-copy" aria-hidden="true">
+              <strong className="account-chip-name">{props.currentNickname}</strong>
+              <span className="account-chip-status">{props.t(`presence.${selfState}` as const)}</span>
             </span>
           </summary>
           {/* Mounted only while open, so closing the card also closes its Status
@@ -234,6 +241,7 @@ export function VoiceDock(props: VoiceDockProps) {
                 onPresenceChoiceChange={props.onPresenceChoiceChange}
                 onNavigate={props.onNavigate}
                 onOpenSettings={props.onOpenSettings}
+                onEditProfile={props.onOpenProfile}
                 onLogout={() => setConfirmingLogout(true)}
               />
             </div>

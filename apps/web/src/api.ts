@@ -485,7 +485,8 @@ export async function moderateServerMember(serverId: string, userId: string, act
   await apiPost<void>(`/api/servers/${encodeURIComponent(serverId)}/members/${encodeURIComponent(userId)}/${action}`);
 }
 
-export async function updateServerMemberNickname(serverId: string, userId: string, nickname: string) {
+/** `null` clears the server nickname, so the Account's own nickname shows through. */
+export async function updateServerMemberNickname(serverId: string, userId: string, nickname: string | null) {
   return request<{ user: PresenceUser }>(
     `/api/servers/${encodeURIComponent(serverId)}/members/${encodeURIComponent(userId)}/nickname`,
     {

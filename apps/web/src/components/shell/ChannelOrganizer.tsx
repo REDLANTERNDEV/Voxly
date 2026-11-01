@@ -519,8 +519,19 @@ export function ChannelOrganizer({
                   aria-label={t(isCollapsed ? "category.expand" : "category.collapse", { category: label })}
                   onClick={() => toggleCollapsed(collapseId)}
                 >
-                  <ChevronIcon direction={isCollapsed ? "right" : "down"} />
                   <span className="label">{label}</span>
+                  <ChevronIcon direction={isCollapsed ? "right" : "down"} />
+                </button>
+              ) : null}
+              {category && canManage ? (
+                <button
+                  className="channel-category-create"
+                  type="button"
+                  aria-label={t("category.createChannelIn", { category: category.name })}
+                  title={t("category.createChannelIn", { category: category.name })}
+                  onClick={(event) => openEditor("room", category.id, event.currentTarget)}
+                >
+                  <PlusIcon />
                 </button>
               ) : null}
               {category && canManage ? (

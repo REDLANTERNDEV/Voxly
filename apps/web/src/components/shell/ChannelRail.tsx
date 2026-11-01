@@ -5,7 +5,16 @@ import { serverPath } from "../../app/navigation.js";
 import { activeServerRole, canInviteToActiveServer, initial, voiceMembersForRoom } from "../../app/presentation.js";
 import type { MemberAction, ShellActions, ShellModel, Translate } from "../../app/types.js";
 import { ChannelNameDialog, ConfirmDialog } from "../../components/ui/Dialogs.js";
-import { CameraIcon, ChevronIcon, GearIcon, HeadsetIcon, MicIcon, ScreenIcon } from "../../components/ui/Icons.js";
+import {
+  CameraIcon,
+  ChevronIcon,
+  GearIcon,
+  HashIcon,
+  HeadsetIcon,
+  MicIcon,
+  ScreenIcon,
+  SpeakerIcon
+} from "../../components/ui/Icons.js";
 import { NavLink } from "../../components/ui/Navigation.js";
 import { canOwnerModeratePerson, canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
 import { voiceChannelActivation } from "../../lib/voiceChannelActivation.js";
@@ -143,7 +152,7 @@ export function ChannelRail(props: ChannelRailProps) {
     if (room.kind === "text") {
       return (
         <div
-          className="channel-row"
+          className={`channel-row ${props.unreadByRoom[room.id] ? "is-unread" : ""}`}
           key={room.id}
           {...rowData}
           onContextMenu={
@@ -158,8 +167,10 @@ export function ChannelRail(props: ChannelRailProps) {
             href={serverPath(props.activeServerId, "text", room.id)}
             onNavigate={props.onNavigate}
           >
-            <span className="channel-prefix">#</span>
-            <span>{room.name}</span>
+            <span className="channel-prefix" aria-hidden="true">
+              <HashIcon />
+            </span>
+            <span className="channel-name">{room.name}</span>
             {props.unreadByRoom[room.id] ? (
               <span className="badge unread-badge">{props.unreadByRoom[room.id]}</span>
             ) : (
@@ -196,9 +207,9 @@ export function ChannelRail(props: ChannelRailProps) {
             }}
           >
             <span className="channel-prefix" aria-hidden="true">
-              <MicIcon off={false} />
+              <SpeakerIcon />
             </span>
-            <span>{room.name}</span>
+            <span className="channel-name">{room.name}</span>
           </NavLink>
           {actionControl}
         </div>

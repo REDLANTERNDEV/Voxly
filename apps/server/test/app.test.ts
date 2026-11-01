@@ -2128,6 +2128,87 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(removed.statusCode, 404);
   });
 
+  it("clears a server nickname back to the account nickname and lists each caller's own override", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ece");
+    const nicknameUrl = `/api/servers/${defaultServerId}/members/${member.user.id}/nickname`;
+    const ownServer = async (cookies: typeof member.cookies) =>
+      (await app.server.inject({ method: "GET", url: "/api/servers", cookies }))
+        .json()
+        .servers.find((server: { id: string }) => server.id === defaultServerId) as {
+        nickname: string | null;
+        mentionCode: string | null;
+      };
+
+    const unset = await ownServer(member.cookies);
+    assert.equal(unset.nickname, null);
+    assert.match(unset.mentionCode ?? "", /\S/);
+
+    const renamed = await app.server.inject({
+      method: "PATCH",
+      url: nicknameUrl,
+      cookies: member.cookies,
+      payload: { nickname: "Basement Ece" }
+    });
+    assert.equal(renamed.statusCode, 200);
+    assert.equal((await ownServer(member.cookies)).nickname, "Basement Ece");
+    // The list reports the caller's own Membership, never somebody else's.
+    assert.equal((await ownServer(owner.cookies)).nickname, null);
+
+    // Clearing is said with null; an empty string is still malformed.
+    const empty = await app.server.inject({
+      method: "PATCH",
+      url: nicknameUrl,
+      cookies: member.cookies,
+      payload: { nickname: "" }
+    });
+    assert.equal(empty.statusCode, 400);
+
+    const cleared = await app.server.inject({
+      method: "PATCH",
+      url: nicknameUrl,
+      cookies: member.cookies,
+      payload: { nickname: null }
+    });
+    assert.equal(cleared.statusCode, 200);
+    assert.equal(cleared.json().user.nickname, "Ece");
+    assert.equal((await ownServer(member.cookies)).nickname, null);
+    const directory = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${defaultServerId}/directory`,
+      cookies: member.cookies
+    });
+    assert.equal(
+      directory.json().members.find((user: { userId: string }) => user.userId === member.user.id).nickname,
+      "Ece"
+    );
+
+    // An owner may clear an ordinary member's override too, as they may set one.
+    await app.server.inject({
+      method: "PATCH",
+      url: nicknameUrl,
+      cookies: member.cookies,
+      payload: { nickname: "Ece Again" }
+    });
+    const ownerCleared = await app.server.inject({
+      method: "PATCH",
+      url: nicknameUrl,
+      cookies: owner.cookies,
+      payload: { nickname: null }
+    });
+    assert.equal(ownerCleared.statusCode, 200);
+    assert.equal(ownerCleared.json().user.nickname, "Ece");
+
+    // A member still cannot clear somebody else's.
+    const memberClearsOwner = await app.server.inject({
+      method: "PATCH",
+      url: `/api/servers/${defaultServerId}/members/${owner.user.id}/nickname`,
+      cookies: member.cookies,
+      payload: { nickname: null }
+    });
+    assert.equal(memberClearsOwner.statusCode, 403);
+  });
+
   it("keeps the first membership when an existing user accepts a second server invite", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");

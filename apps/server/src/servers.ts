@@ -89,10 +89,13 @@ export function registerServerRoutes(context: RouteContext) {
       afkTimeoutMinutes: number | null;
       welcomeNotices: number;
       welcomeRoomId: string | null;
+      nickname: string | null;
+      mentionCode: string | null;
     }>(
       database.sqlite,
       `select servers.id, servers.name, server_members.role,
         server_members.can_invite as canInvite,
+        server_members.nickname as nickname, server_members.mention_code as mentionCode,
         servers.afk_timeout_minutes as afkTimeoutMinutes,
         servers.welcome_notices as welcomeNotices, servers.welcome_room_id as welcomeRoomId
        from server_members

@@ -577,7 +577,9 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     const caller = requireUser(database, request, reply, options.secureCookies);
     if (!caller) return;
     const { serverId, userId } = z.object({ serverId: serverIdParam, userId: userIdParam }).parse(request.params);
-    const { nickname } = z.object({ nickname: nicknameSchema }).parse(request.body);
+    // `null` clears the override, so the Account's own nickname shows through
+    // again. An empty string is still malformed: clearing is said, not implied.
+    const { nickname } = z.object({ nickname: nicknameSchema.nullable() }).parse(request.body);
 
     // Renaming *somebody else* is moderation and stays the owner's. Renaming
     // yourself is not: what a member is called is theirs, and needing to ask

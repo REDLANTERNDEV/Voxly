@@ -36,7 +36,7 @@ describe("microphone test lifecycle integration", () => {
     );
     assert.match(
       chrome,
-      /<SettingsDialog\s+\{\s*\.\.\.props\s*\}\s+initialSection=\{\s*settingsSection\s*\}\s+contextError=\{\s*settingsContextError\s*\}\s+onClose=\{\s*closeSettings\s*\}\s+\/>\s*/
+      /<SettingsDialog\s+\{\s*\.\.\.props\s*\}\s+initialSection=\{\s*settingsSection\s*\}\s+contextError=\{\s*settingsContextError\s*\}\s+onClose=\{\s*closeSettings\s*\}\s+onOpenProfile=\{\s*openProfile\s*\}\s+\/>\s*/
     );
   });
 });

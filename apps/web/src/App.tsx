@@ -15,6 +15,7 @@ import { usePresentationPreferences } from "./app/usePresentationPreferences.js"
 import { useChatController } from "./features/chat/useChatController.js";
 import { selfSpeaking, useIdlePresence } from "./app/useIdlePresence.js";
 import { usePresenceChoice } from "./app/usePresenceChoice.js";
+import { nicknameActions } from "./app/nicknameActions.js";
 import { AudioPlaybackRecovery, GlobalVoiceAudio, RemoteAudio } from "./features/voice/VoicePresentation.js";
 import { joinVoiceWithAudioUnlock } from "./features/voice/voiceActions.js";
 import { combineOutputVolume } from "./lib/audioLevels.js";
@@ -312,11 +313,7 @@ export function App() {
         onDeleteServer: workspace.actions.deleteServer,
         onModerateMember: workspace.actions.moderateMember,
         onVoiceModeration: workspace.actions.voiceModeration,
-        onUpdateMemberNickname: async (userId: string, nickname: string) => {
-          const updated = await workspace.actions.updateMemberNickname(userId, nickname);
-          chat.applyMemberRename(workspace.activeServerId, updated);
-          return updated;
-        },
+        ...nicknameActions(workspace, chat),
         onUpdateMemberPermissions: workspace.actions.updateMemberPermissions,
         onDisconnectMember: workspace.actions.disconnectMember,
         onMoveMember: workspace.actions.moveMember,

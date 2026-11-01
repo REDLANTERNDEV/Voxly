@@ -12,7 +12,9 @@ import {
   KeyboardIcon,
   BellIcon,
   CloseIcon,
-  InfoCircleIcon
+  ExternalLinkIcon,
+  InfoCircleIcon,
+  ProfileIcon
 } from "../ui/Icons.js";
 import type { TranslationKey } from "../../lib/i18n.js";
 import { ExternalPreviewSettings } from "../ExternalPreviewSettings.js";
@@ -59,7 +61,12 @@ const sectionIcons = {
 
 export function SettingsDialog(
   props: ShellModel &
-    ShellActions & { initialSection?: SettingsSection; contextError?: TranslationKey | ""; onClose: () => void }
+    ShellActions & {
+      initialSection?: SettingsSection;
+      contextError?: TranslationKey | "";
+      onClose: () => void;
+      onOpenProfile: () => void;
+    }
 ) {
   const [section, setSection] = useState<SettingsSection>(props.initialSection ?? "account");
   const desktop = typeof window !== "undefined" && desktopSettingsAvailable(window);
@@ -97,6 +104,22 @@ export function SettingsDialog(
       >
         <nav className="settings-nav" aria-label={props.t("settings.title")}>
           <span className="label settings-nav-label">{props.t("settings.title")}</span>
+          {/* Not a section: the Profile dialog opens over Settings, which stays
+              open underneath it. The trailing mark says it opens elsewhere. */}
+          <button
+            className="settings-nav-item settings-nav-profile"
+            type="button"
+            aria-haspopup="dialog"
+            onClick={props.onOpenProfile}
+          >
+            <span className="settings-nav-icon" aria-hidden="true">
+              <ProfileIcon />
+            </span>
+            <span>{props.t("settings.profile")}</span>
+            <span className="settings-nav-external" aria-hidden="true">
+              <ExternalLinkIcon />
+            </span>
+          </button>
           {visibleSections.map((item) => (
             <button
               className="settings-nav-item"

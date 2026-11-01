@@ -25,11 +25,19 @@ function mediaBlock(condition: string, contains: string) {
 }
 
 describe("server channel organizer", () => {
-  it("keeps one plus button and opens a shared category or channel flow", () => {
+  it("opens the shared create flow from the toolbar plus, and a channel in place from a category's plus", () => {
     assert.match(organizer, /onCreateCategory\(\s*name\s*\)/);
     assert.match(organizer, /onCreateRoom\(\s*name,\s+editorRoomKind,\s+editor\.categoryId\s*\)/);
-    assert.equal((organizer.match(/<PlusIcon\s+\/>\s*/g) ?? []).length, 1, "the organizer has a single plus button");
+    assert.equal(
+      (organizer.match(/<PlusIcon\s+\/>\s*/g) ?? []).length,
+      2,
+      "one toolbar plus for the shared flow, one per category for a channel in it"
+    );
     assert.match(organizer, /openEditor\(\s*"choose",\s+null,\s+event\.currentTarget\s*\)/);
+    assert.match(
+      organizer,
+      /className="channel-category-create"[\s\S]*?category\.createChannelIn[\s\S]*?openEditor\(\s*"room",\s+category\.id,\s+event\.currentTarget\s*\)/
+    );
     assert.match(organizer, /organizer\.chooseCategory/);
     assert.match(organizer, /organizer\.chooseChannel/);
     assert.match(organizer, /openEditor\(\s*"room",\s+category\.id,\s+null\s*\)/);
@@ -95,10 +103,30 @@ describe("server channel organizer", () => {
     );
   });
 
+  it("brightens unread text channels and truncates long names beside their actions", () => {
+    const refresh = readFileSync("src/visual-refresh.css", "utf8");
+    assert.match(rail, /className=\{`channel-row \$\{props\.unreadByRoom\[room\.id\] \? "is-unread" : ""\}`\}/);
+    assert.match(rail, /<span className="channel-name">\{room\.name\}<\/span>/);
+    assert.match(
+      refresh,
+      /\.rail \.channel-row\.is-unread \.channel-item\s*\{[^}]*color:\s+var\(--rail-fg\);[^}]*font-weight:\s+650;/
+    );
+    assert.match(refresh, /\.rail \.channel-row\.is-unread::before\s*\{[^}]*content:\s+"";/);
+    assert.match(
+      refresh,
+      /\.rail \.channel-name\s*\{[^}]*overflow:\s+hidden;[^}]*text-overflow:\s+ellipsis;[^}]*white-space:\s+nowrap;/
+    );
+  });
+
   it("keeps the category chevron in its own fixed-width slot without rotation animation", () => {
     assert.match(organizer, /<ChevronIcon\s+direction=\{\s*isCollapsed\s+\?\s+"right"\s+:\s+"down"\s*\}\s+\/>\s*/);
     assert.doesNotMatch(organizer, /⌄/);
-    assert.match(styles, /\.channel-category-toggle\s*\{\s*[^}]*gap:\s+9px;/);
+    assert.match(styles, /\.channel-category-toggle\s*\{\s*[^}]*gap:\s+4px;/);
+    assert.match(
+      organizer,
+      /<span\s+className="label">\{label\}<\/span>\s*<ChevronIcon/,
+      "the chevron follows the category name"
+    );
     assert.match(styles, /\.channel-category-chevron\s*\{\s*[^}]*flex:\s+0\s+0\s+13px;[^}]*width:\s+13px;/);
     assert.doesNotMatch(styles, /\.channel-category-chevron\.is-collapsed/);
   });
@@ -132,6 +160,11 @@ describe("server channel organizer", () => {
       styles,
       /\.voice-channel-users\s*\{\s*[^}]*padding-left:\s+28px;/,
       "voice members keep their normal-user alignment when owners drag the row"
+    );
+    assert.match(
+      readFileSync("src/visual-refresh.css", "utf8"),
+      /\/\* Participants hang under the channel name[^*]*\*\/\s*\.voice-channel-users\s*\{\s*padding:\s+2px\s+8px\s+4px\s+34px;/,
+      "the presentation layer lines participants up under the channel name"
     );
     assert.match(styles, /\.channel-row\[data-drag-kind="room"\]\s*\{\s*[^}]*touch-action:\s+pan-y;/);
     assert.match(styles, /\.channel-sort-item\.is-drop-before::before,[\s\S]*?background:\s+var\(\s*--accent\s*\)/);

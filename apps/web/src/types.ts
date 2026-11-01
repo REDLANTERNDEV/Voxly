@@ -32,6 +32,13 @@ export interface ServerSummary {
   /** Whether invite joins post a Welcome notice, and the owner's channel for it. */
   welcomeNotices: boolean;
   welcomeRoomId: string | null;
+  /**
+   * Your own nickname override on this server, or null where the Account's
+   * nickname shows through. Only `GET /api/servers` reports it.
+   */
+  nickname?: string | null;
+  /** Your own Mention code on this server. Only `GET /api/servers` reports it. */
+  mentionCode?: string | null;
 }
 
 export interface ServersResponse {

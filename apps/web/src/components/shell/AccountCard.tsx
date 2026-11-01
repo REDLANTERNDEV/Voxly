@@ -8,7 +8,7 @@ import type { MemberPresenceState } from "../../lib/memberDirectory.js";
 import type { TimeFormatPreference } from "../../lib/timeFormat.js";
 import { ApplicationUpdateStatus } from "../ApplicationUpdateStatus.js";
 import { MenuOverlayScope } from "../ContextMenu.js";
-import { CopyIcon, GearIcon, LeaveIcon, ShieldIcon } from "../ui/Icons.js";
+import { CopyIcon, EditIcon, GearIcon, LeaveIcon, ShieldIcon } from "../ui/Icons.js";
 import { NavLink } from "../ui/Navigation.js";
 import { AccountStatusMenu, PresenceDot } from "./AccountStatusMenu.js";
 
@@ -31,6 +31,7 @@ export function AccountCard(props: {
   onPresenceChoiceChange: (request: PresenceChoiceRequest) => void;
   onNavigate: (href: string) => void;
   onOpenSettings: () => void;
+  onEditProfile: () => void;
   onLogout: () => void;
 }) {
   const { menuRef, t } = props;
@@ -94,6 +95,20 @@ export function AccountCard(props: {
             onChange={props.onPresenceChoiceChange}
             onDone={close}
           />
+          <button
+            className="account-card-row"
+            type="button"
+            aria-haspopup="dialog"
+            onClick={() => {
+              close();
+              // The chip is what the Profile dialog hands focus back to.
+              menuRef.current?.querySelector("summary")?.focus();
+              props.onEditProfile();
+            }}
+          >
+            <EditIcon />
+            <span>{t("shell.editProfile")}</span>
+          </button>
           <button
             className="account-card-row"
             type="button"

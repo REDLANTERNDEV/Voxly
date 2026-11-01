@@ -61,13 +61,15 @@ describe("voice rail live controls", () => {
     assert.match(styles, /\.voice-channel-status\.is-enforced\s+\{\s*[^}]*color:\s+var\(\s*--danger\s*\)/);
   });
 
-  it("uses a microphone icon for voice channels", () => {
+  it("marks voice channels with a speaker and text channels with a hash glyph", () => {
     const app = readAppSource();
     const styles = readFileSync("src/styles.css", "utf8");
     const rail = app.match(/function\s+ChannelRail[\s\S]*?\n}\n\nfunction\s+channelActionMenuHeight/)?.[0] ?? "";
 
-    assert.match(rail, /className="channel-prefix"[^>]*>\s*<MicIcon\s+off=\{\s*false\s*\}\s+\/>\s*/);
+    assert.match(rail, /className="channel-prefix"[^>]*>\s*<SpeakerIcon\s+\/>\s*/);
+    assert.match(rail, /className="channel-prefix"[^>]*>\s*<HashIcon\s+\/>\s*/);
     assert.doesNotMatch(rail, /className="channel-prefix">\s*vc</i);
+    assert.doesNotMatch(rail, /className="channel-prefix">#</, "the hash is a glyph, not a character");
     assert.match(
       styles,
       /\.channel-prefix\s*\{\s*[^}]*align-items:\s*center[^}]*display:\s*inline-flex[^}]*line-height:\s*1/s

@@ -148,6 +148,8 @@ export interface ShellActions {
     moderation: Partial<VoiceModerationState>
   ) => Promise<{ moderation: VoiceModerationState }>;
   onUpdateMemberNickname: (userId: string, nickname: string) => Promise<PresenceUser>;
+  /** Sets or, with `null`, clears your own nickname on any server you belong to. */
+  onUpdateOwnNickname: (serverId: string, nickname: string | null) => Promise<PresenceUser>;
   onUpdateMemberPermissions: (userId: string, canInvite: boolean) => Promise<PresenceUser>;
   onDisconnectMember: (roomId: string, userId: string) => Promise<void>;
   onMoveMember: (userId: string, roomId: string) => void;

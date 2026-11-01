@@ -340,3 +340,29 @@ export function InfoCircleIcon() {
     </svg>
   );
 }
+export function ProfileIcon() {
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="9" cy="11" r="2" />
+      <path d="M6 16c.6-1.3 1.6-2 3-2s2.4.7 3 2M15 10h3M15 14h2" />
+    </svg>
+  );
+}
+// Slanted like a typed hash, so a text channel reads as one at a glance.
+export function HashIcon() {
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M10 4 8 20M16 4l-2 16M5 9h15M4 15h15" />
+    </svg>
+  );
+}
+// A solid speaker: a voice channel is somewhere you hear people, not only speak.
+export function SpeakerIcon() {
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+      <path d="M15.5 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" />
+    </svg>
+  );
+}

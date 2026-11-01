@@ -21,6 +21,7 @@ function render(overrides: Partial<Parameters<typeof AccountCard>[0]> = {}) {
       onPresenceChoiceChange: () => undefined,
       onNavigate: () => undefined,
       onOpenSettings: () => undefined,
+      onEditProfile: () => undefined,
       onLogout: () => undefined,
       ...overrides
     })
@@ -35,10 +36,10 @@ describe("account card", () => {
     assert.doesNotMatch(render(), /account-card-badge/);
   });
 
-  it("puts Status and Settings first, and signing out last", () => {
+  it("puts Status, Edit profile and Settings first, and signing out last", () => {
     const markup = render({ ownerPanelHref: "/app/server/s1/owner" });
-    const order = ["account-status-row", "Settings", "Owner panel", "Copy mention code", "Log Out"].map((text) =>
-      markup.indexOf(text)
+    const order = ["account-status-row", "Edit profile", "Settings", "Owner panel", "Copy mention code", "Log Out"].map(
+      (text) => markup.indexOf(text)
     );
     assert.ok(
       order.every((index) => index >= 0),
@@ -49,6 +50,7 @@ describe("account card", () => {
       order
     );
     assert.match(markup, /account-card-row is-danger[\s\S]*?Log Out/);
+    assert.match(markup, /aria-haspopup="dialog"[^>]*>[\s\S]*?Edit profile/);
   });
 
   it("leaves out what a member without them cannot use", () => {
@@ -58,7 +60,12 @@ describe("account card", () => {
   });
 
   it("words the card in both languages", () => {
-    for (const key of ["shell.copyMentionCode", "shell.mentionCodeCopied", "shell.mentionCodeCopyFailed"] as const) {
+    for (const key of [
+      "shell.copyMentionCode",
+      "shell.mentionCodeCopied",
+      "shell.mentionCodeCopyFailed",
+      "shell.editProfile"
+    ] as const) {
       assert.notEqual(translate("en", key), translate("tr", key), key);
     }
   });

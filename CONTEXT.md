@@ -9,12 +9,19 @@ A self-hosted voice and text chat server for small private groups. Voice, camera
 **Account**:
 One person's installation-wide identity in Voxly. An Account may hold a
 Membership in several Servers and may be signed in on several Devices.
-_Avoid_: User, profile
+_Avoid_: User; "profile" for the identity itself (see Profile)
 
 **Membership**:
 An Account's place in one Server, including its server-specific nickname, role,
 and access state.
 _Avoid_: Account, login
+
+**Profile**:
+How an Account reads to the people it shares a Server with: its account
+nickname, and the nickname each Membership puts in its place. A Membership with
+no nickname of its own shows the account nickname. The Profile dialog edits the
+Membership nicknames; nothing in a Profile is a credential.
+_Avoid_: Account (the identity), avatar settings
 
 **Installation owner**:
 The Account with installation-wide authority over Accounts and Devices. This is

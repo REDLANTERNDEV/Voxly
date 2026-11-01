@@ -411,6 +411,14 @@ export function useWorkspaceController({
       applyMemberUpdate(activeServerId, response.user);
       return response.user;
     },
+    // The Profile dialog edits every server at once, so this one names its server
+    // rather than following the one being viewed.
+    updateOwnNickname: async (serverId: string, nickname: string | null) => {
+      if (!accountId) throw new Error("not_signed_in");
+      const response = await updateServerMemberNickname(serverId, accountId, nickname);
+      applyMemberUpdate(serverId, response.user);
+      return response.user;
+    },
     updateMemberPermissions: async (userId: string, canInvite: boolean) => {
       const response = await updateServerMemberPermissions(activeServerId, userId, canInvite);
       applyMemberUpdate(activeServerId, response.user);

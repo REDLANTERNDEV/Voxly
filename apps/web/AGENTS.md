@@ -246,22 +246,43 @@ requirement.
   member action menu and confirmation flow. Remote volume remains available to
   listeners; disconnect, kick, ban, and nickname actions appear only when the
   current server role and target member permit them.
+- The dock's account chip is the avatar with the name this Server reads beside
+  it and the Status under the name; either half opens the card, and both lines
+  truncate. Under 560px the Status line goes and the name stays.
 - The dock's account card reads like a profile card: avatar with its presence
   dot, nickname, and this Server's Mention code with an Owner badge; then a
-  section with the Status row, Settings and (for owners) Owner panel; then Copy
-  mention code and Log out, last. It closes on outside input and Escape, and
-  counts its portalled Status flyouts as part of itself.
+  section with the Status row, Edit profile, Settings and (for owners) Owner
+  panel; then Copy mention code and Log out, last. It closes on outside input
+  and Escape, and counts its portalled Status flyouts as part of itself.
+- The Profile dialog is reached from the card's Edit profile row and from the
+  Profile entry at the top of Settings' navigation, which carries an
+  external-link mark because it opens over Settings rather than switching
+  section. It is a native modal `<dialog>` rendered as Settings' sibling, never
+  inside it: React portal events bubble through the component tree, and Settings
+  closes on a mousedown that reaches its backdrop. It answers Escape with
+  `preventDefault`, so closing it leaves Settings open and the next Escape
+  closes Settings.
+- The dialog previews the Profile on the left and lists every Server the
+  Account belongs to on the right, each with its own nickname field whose
+  placeholder is the account nickname. An emptied field saves as `null` and the
+  account nickname shows through. Any unsaved field raises a Save/Reset bar, and
+  every way out (close button, Escape, backdrop, cancel) is refused until the
+  member saves or resets: the bar blinks red, shakes unless reduced motion is
+  requested, and says why. A failed save keeps that row's edit and marks it.
 - Kicked members disappear from the owner member list; banned members remain
   visible so owners can unban them.
-- Nicknames are server-scoped presentation. The selected server owner may
-  rename ordinary members and their own owner identity, but never another
-  owner. Keep the global account nickname unchanged and update directory,
+- Nicknames are server-scoped presentation. A member may set or clear their own
+  nickname on any Server they belong to; the selected server owner may rename
+  ordinary members and their own owner identity, but never another owner. Keep the global account nickname unchanged and update directory,
   presence, voice, loaded messages, owner surfaces, and the local account chip
   from the effective server nickname.
-- Nickname editing uses the shared accessible dialog, trims input to the
-  server-enforced 2–32 character contract, and applies acknowledged HTTP and
-  scoped realtime updates without duplicating cached users.
-- Focus and select the nickname input once when the dialog mounts. Keep Escape
+- Renaming one member from a member menu uses the shared accessible nickname
+  dialog. It and the Profile dialog both trim input to the server-enforced 2–32
+  character contract and apply acknowledged HTTP and scoped realtime updates
+  without duplicating cached users.
+- The shared nickname dialog focuses and selects its input once when it mounts;
+  the Profile dialog, which holds a field per Server, focuses its close button
+  instead. Keep Escape
   handling in a separate lifecycle so parent or realtime rerenders never reset
   the user's selection, cursor position, or controlled input value.
 - A member requests deletion from `Account & devices` by typing the global
@@ -442,7 +463,7 @@ requirement.
   closes before its existing dialog opens.
 - Owner nickname actions share the same secondary-click/ellipsis menus as
   member volume and moderation actions. Remote volume remains available to all
-  listeners; nickname changes remain owner-gated and restore focus after the
+  listeners; renaming someone else remains owner-gated, and both restore focus after the
   dialog closes when an ellipsis opened the menu.
 - Owner disconnect, kick, and ban actions use this same shared menu from both
   sidebars. Keep one pending confirmation owner in the application chrome so
@@ -513,6 +534,14 @@ requirement.
 - Keep the left channel rail visually quiet: text/voice section headings do not
   show room totals, and voice-channel rows do not show participant totals.
   Actual voice participants and text-room unread badges remain visible.
+- Channel names read at body size in the rail's muted colour beside their
+  prefix glyph, brightening to the rail foreground on hover, selection and
+  unread. Unread also takes a heavier weight and a pill at the rail's edge, in
+  addition to the count. Category labels are small uppercase with the chevron
+  after the name; owners get an always-visible "+" that creates a channel in
+  that category, and the category ellipsis follows the row rule (hover or focus
+  on a fine pointer, always shown on a coarse one). Voice participants hang
+  under the channel name.
 - Activating a voice-channel name is an entry action, not a browse action. Join
   immediately when disconnected, open the already-active room without a new
   join, and require one localized confirmation before moving from another
@@ -676,10 +705,10 @@ requirement.
   probe ACK for the current connection generation.
 - Preserve the screen-share monitor/up-arrow geometry and show its diagonal
   cancellation stroke only when the action stops an active share.
-- Voice-channel prefixes use the inline microphone icon rather than text such
-  as `VC`. The screen-share glyph keeps `currentColor` and an explicit stroke
+- Voice-channel prefixes use the inline speaker icon, and text-channel prefixes
+  the slanted hash glyph, rather than text such as `VC` or a typed `#`. The screen-share glyph keeps `currentColor` and an explicit stroke
   weight appropriate to its 256-unit view box so it matches adjacent icons.
-- Keep the voice-channel microphone prefix vertically centered with the channel
+- Keep the channel prefix vertically centered with the channel
   name by using an inline-flex container, centered alignment, and a block-level
   icon glyph. Do not compensate with fragile per-icon offsets.
 - Add English and Turkish strings together. Test both behavior and accessible
