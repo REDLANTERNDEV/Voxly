@@ -247,6 +247,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           user={props.user}
           voiceModeration={props.voiceModeration}
           voiceSnapshots={props.voiceSnapshots}
+          callStarts={props.callStarts}
           onCloseAudioSettings={props.onCloseAudioSettings}
           onCreateRoom={props.onCreateRoom}
           onCreateCategory={props.onCreateCategory}

@@ -83,6 +83,8 @@ export interface ShellModel {
   voiceNoticeRevision: number;
   visualTargets: VisualTarget[];
   voiceSnapshots: Record<string, VoiceSnapshot>;
+  /** When each room's running Call began, on this browser's monotonic clock. */
+  callStarts: Record<string, number>;
   /**
    * The Queue each voice room's Music bot last published, keyed by room. The
    * bot is the single source of truth for it; nothing in the browser writes

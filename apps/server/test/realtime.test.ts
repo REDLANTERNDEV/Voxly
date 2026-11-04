@@ -612,6 +612,52 @@ describe("Voxly realtime MVP", () => {
     assert.equal(memberSnapshot.members.find((item) => item.user.nickname === "Viewer")?.media.speaking, true);
   });
 
+  it("runs a Call from the first person in to the last one out, for everyone in the server", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Caller");
+    const observerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
+    sockets.push(observerSocket, memberSocket);
+
+    const started = nextSnapshotWhere(
+      observerSocket,
+      (snapshot) => snapshot.roomId === "lobby" && snapshot.members.length === 1
+    );
+    await joinVoice(memberSocket, "lobby");
+    const callLengthMs = (await started).callLengthMs;
+    assert.ok(callLengthMs !== undefined && callLengthMs >= 0 && callLengthMs < 5_000);
+
+    // Somebody opening the app mid-Call asks for the room and is told the same.
+    const asked = await emitWithAck<VoiceSnapshot>(observerSocket, "voice:snapshot", "lobby");
+    assert.equal(typeof asked.callLengthMs, "number");
+
+    const ended = nextSnapshotWhere(
+      observerSocket,
+      (snapshot) => snapshot.roomId === "lobby" && snapshot.members.length === 0
+    );
+    memberSocket.emit("voice:leave", "lobby");
+    assert.equal("callLengthMs" in (await ended), false);
+  });
+
+  it("never runs a Call in the AFK room", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Parked");
+    const observerSocket = await connectSocket(baseUrl, tokenFromCookies(owner.cookies));
+    const memberSocket = await connectSocket(baseUrl, tokenFromCookies(member.cookies));
+    sockets.push(observerSocket, memberSocket);
+    const afkRoom = app.sqlite
+      .prepare("select id from rooms where server_id = ? and is_afk = 1")
+      .all("the-basement")[0] as { id: string } | undefined;
+    assert.ok(afkRoom, "the server has an AFK room");
+
+    const parked = nextSnapshotWhere(
+      observerSocket,
+      (snapshot) => snapshot.roomId === afkRoom.id && snapshot.members.length === 1
+    );
+    await joinVoice(memberSocket, afkRoom.id);
+    assert.equal("callLengthMs" in (await parked), false);
+  });
+
   it("enforces persistent owner mute while keeping owner deafen independent", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Moderated");

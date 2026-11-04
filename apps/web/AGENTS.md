@@ -491,6 +491,18 @@ requirement.
   the mark's accessible name and its tooltip, and let colour carry the only
   distinction a member acts on: danger for an owner's doing, muted for their
   own, and the accent reserved for the LIVE screen share.
+- While a Call is running, the room's own speaker icon and its Call length,
+  right of the room name, take the theme's `--success` green. That green is the
+  rail's fourth colour and means only "a Call is running". Use the token, never
+  a lighter literal: a light green on the white light-mode rail reads at about
+  2:1. Participant rows gain no "mic on" mark; a mark on every row is what the
+  rule above removed.
+- The Call length counts from the server's elapsed time, never the member's
+  own clock, as `m:ss` under an hour and `h:mm:ss` from one, in tabular digits
+  so the label does not shift each second. When the row is tight the room name
+  truncates; the Call length never shrinks or drops, at any breakpoint. It is
+  not announced as it ticks: the room link's accessible name carries it in
+  whole minutes. It shows in the rail only, not the room header or the dock.
 - Fullscreen removes the stage panel border. With no page behind it, that border
   reads as a coloured line drawn around the video.
 - Rail status icons cover both moderation and media. Owner-enforced deafen

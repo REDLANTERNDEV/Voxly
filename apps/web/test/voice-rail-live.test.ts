@@ -66,7 +66,8 @@ describe("voice rail live controls", () => {
     const styles = readFileSync("src/styles.css", "utf8");
     const rail = app.match(/function\s+ChannelRail[\s\S]*?\n}\n\nfunction\s+channelActionMenuHeight/)?.[0] ?? "";
 
-    assert.match(rail, /className="channel-prefix"[^>]*>\s*<SpeakerIcon\s+\/>\s*/);
+    // A voice prefix also carries whether its room's Call is running.
+    assert.match(rail, /className=\{?[`"]channel-prefix\b[^>]*>\s*<SpeakerIcon\s+\/>\s*/);
     assert.match(rail, /className="channel-prefix"[^>]*>\s*<HashIcon\s+\/>\s*/);
     assert.doesNotMatch(rail, /className="channel-prefix">\s*vc</i);
     assert.doesNotMatch(rail, /className="channel-prefix">#</, "the hash is a glyph, not a character");

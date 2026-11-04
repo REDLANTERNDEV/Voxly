@@ -31,6 +31,7 @@ import {
   type SidebarActionMenuController
 } from "./SidebarMenus.js";
 import { ChannelOrganizer, type ChannelRoomActions } from "./ChannelOrganizer.js";
+import { CallLength } from "./CallLength.js";
 type ChannelRailProps = Pick<
   ShellModel,
   | "activeServerId"
@@ -59,6 +60,7 @@ type ChannelRailProps = Pick<
   | "user"
   | "voiceModeration"
   | "voiceSnapshots"
+  | "callStarts"
   | "micLockedByRoom"
 > &
   Pick<
@@ -183,6 +185,7 @@ export function ChannelRail(props: ChannelRailProps) {
     }
 
     const members = voiceMembersForRoom(props, room.id);
+    const callStart = props.callStarts[room.id];
     return (
       <div className="voice-channel-block" key={room.id}>
         <div
@@ -206,10 +209,11 @@ export function ChannelRail(props: ChannelRailProps) {
               activateVoiceRoom(room);
             }}
           >
-            <span className="channel-prefix" aria-hidden="true">
+            <span className={`channel-prefix ${callStart === undefined ? "" : "is-calling"}`} aria-hidden="true">
               <SpeakerIcon />
             </span>
             <span className="channel-name">{room.name}</span>
+            {callStart === undefined ? null : <CallLength startedAt={callStart} t={props.t} />}
           </NavLink>
           {actionControl}
         </div>

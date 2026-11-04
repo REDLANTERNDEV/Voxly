@@ -216,6 +216,20 @@ A Status under which other members see the member as offline everywhere except
 a voice room they are actually in.
 _Avoid_: Hidden, offline mode, ghost
 
+### Voice
+
+**Call**:
+The stretch of time a voice room is occupied: it begins when the first person
+joins the empty room and ends when the last person leaves. The Music bot neither
+starts a Call nor keeps one going, and the AFK room never holds one.
+_Avoid_: Session, meeting, conversation; arama in Turkish copy (that is search)
+
+**Call length**:
+How long the current Call in a voice room has run, visible to everyone in the
+Server. It belongs to the room; a member's own time in voice is a different
+measure.
+_Avoid_: Timer, duration, uptime
+
 ### Where a source's own words are allowed
 
 **Track** is what _Voxly_ calls a piece of audio, and nothing in Voxly should

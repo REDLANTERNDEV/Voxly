@@ -812,6 +812,9 @@ const translations = {
     "voice.liveReady": "{nickname} is live",
     "voice.liveReadyCopy": "Joining the voice channel with your microphone on and opening the stream.",
     "voice.watchStream": "Watch stream",
+    "voice.callUnderMinute": "Call running, under a minute",
+    "voice.callOneMinute": "Call running, 1 minute",
+    "voice.callMinutes": "Call running, {count} minutes",
     "voice.unwatchStream": "Unwatch stream",
     "voice.streamOptions": "Stream options — {nickname}",
     "voice.unwatchFailed":
@@ -1832,6 +1835,9 @@ const translations = {
     "voice.liveReady": "{nickname} canlı yayında",
     "voice.liveReadyCopy": "Mikrofon açık şekilde ses kanalına bağlanılıyor ve yayın açılıyor.",
     "voice.watchStream": "Yayını izle",
+    "voice.callUnderMinute": "Görüşme sürüyor, bir dakikadan az",
+    "voice.callOneMinute": "Görüşme sürüyor, 1 dakika",
+    "voice.callMinutes": "Görüşme sürüyor, {count} dakika",
     "voice.unwatchStream": "Yayını izlemeyi bırak",
     "voice.streamOptions": "Yayın seçenekleri — {nickname}",
     "voice.unwatchFailed":

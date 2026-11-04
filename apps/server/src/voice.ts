@@ -129,6 +129,12 @@ interface VoiceContext {
       timer: NodeJS.Timeout;
     }
   >;
+  /**
+   * When each room's running Call began, on the monotonic clock. Kept in step
+   * with `membership` where every roster change is published, so the two
+   * cannot disagree about whether a room is occupied.
+   */
+  calls: Map<string, number>;
 }
 
 /**
@@ -177,7 +183,8 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
     membership: new Map<string, VoiceRoomMembership>(),
     subscriptions: new Map<string, VisualSubscriptions>(),
     holders: new Map<string, { roomId: string; sessionId: string }>(),
-    pendingDisconnects: new Map()
+    pendingDisconnects: new Map(),
+    calls: new Map<string, number>()
   };
 
   return {
@@ -271,6 +278,7 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
       const memberUserIds = new Set(context.membership.get(roomId)?.keys() ?? []);
       context.membership.delete(roomId);
       context.subscriptions.delete(roomId);
+      context.calls.delete(roomId);
       for (const socket of io.sockets.sockets.values()) {
         const socketUser = socket.data.user as PresenceUser | undefined;
         observeSocketRoomChange(socket.leave(`voice:${roomId}`));
@@ -435,7 +443,13 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
       const viewerInVoiceRoom = isVoiceSocketMember(context, parsed.data, user.userId, socket);
       callAck(
         ack,
-        voiceSnapshot(parsed.data, context.membership.get(parsed.data), viewerInVoiceRoom, viewerInVoiceRoom)
+        voiceSnapshot(
+          parsed.data,
+          context.membership.get(parsed.data),
+          viewerInVoiceRoom,
+          viewerInVoiceRoom,
+          callLength(context, parsed.data)
+        )
       );
     })
   );
@@ -610,14 +624,40 @@ function leaveVoiceMember(context: VoiceContext, roomId: string, userId: string)
 function emitVoiceSnapshot(context: VoiceContext, roomId: string, members: VoiceRoomMembership | undefined) {
   const room = roomById(context.database.sqlite, roomId);
   if (!room) return;
+  // Every roster change is published through here, which makes it the one
+  // place a Call can start and end without a join or leave path missing it.
+  if (!holdsCall(members, room)) {
+    context.calls.delete(roomId);
+  } else if (!context.calls.has(roomId)) {
+    context.calls.set(roomId, performance.now());
+  }
+  const callLengthMs = callLength(context, roomId);
   const voiceRoom = `voice:${roomId}`;
   // Observer snapshots intentionally carry the room roster, but they must not
   // be mistaken for proof that the receiving socket is in that voice room.
-  context.io.to(voiceRoom).emit("voice:snapshot", voiceSnapshot(roomId, members, true, true));
+  context.io.to(voiceRoom).emit("voice:snapshot", voiceSnapshot(roomId, members, true, true, callLengthMs));
   context.io
     .to(`server:${room.serverId}`)
     .except(voiceRoom)
-    .emit("voice:snapshot", voiceSnapshot(roomId, members, false, false));
+    .emit("voice:snapshot", voiceSnapshot(roomId, members, false, false, callLengthMs));
+}
+
+function callLength(context: VoiceContext, roomId: string): number | undefined {
+  const startedAt = context.calls.get(roomId);
+  return startedAt === undefined ? undefined : Math.round(performance.now() - startedAt);
+}
+
+/**
+ * Whether these members hold a Call. People do; the Music bot alone does not,
+ * since it only waits out its grace period in a room everyone has left. The
+ * AFK room never does: the people parked there are not talking.
+ */
+export function holdsCall(members: VoiceRoomMembership | undefined, room: { isAfk: boolean }): boolean {
+  if (room.isAfk || !members) return false;
+  for (const member of members.values()) {
+    if (!member.user.isBot) return true;
+  }
+  return false;
 }
 
 function setVisualSubscriptions(
@@ -803,7 +843,8 @@ export function voiceSnapshot(
   roomId: string,
   members: VoiceRoomMembership | undefined,
   includeSpeaking: boolean,
-  viewerInVoiceRoom: boolean
+  viewerInVoiceRoom: boolean,
+  callLengthMs?: number
 ): VoiceSnapshot {
   return {
     roomId,
@@ -812,7 +853,8 @@ export function voiceSnapshot(
       ? [...members.values()].map((member) =>
           includeSpeaking ? member : { ...member, media: { ...member.media, speaking: false } }
         )
-      : []
+      : [],
+    ...(callLengthMs === undefined ? {} : { callLengthMs })
   };
 }
 

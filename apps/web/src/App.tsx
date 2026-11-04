@@ -270,6 +270,7 @@ export function App() {
         voiceNoticeRevision: forceLeaveNotice?.revision ?? 0,
         visualTargets: audio.voice.visualTargets,
         voiceSnapshots: audio.voice.voiceSnapshots,
+        callStarts: audio.voice.callStarts,
         musicQueues,
         remoteStreams: audio.voice.remoteStreams,
         peerConnectionStates: audio.voice.peerConnectionStates,

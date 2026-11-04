@@ -1,6 +1,7 @@
 import { ScreenQualityOwner } from "./screenQualityController.js";
 import { ScreenRecoveryOwner, type ScreenPlaybackStatus } from "./screenRecovery.js";
 import { VoicePeerOwner } from "./voicePeerOwner.js";
+import { nextCallStart } from "./callLength.js";
 import { MicrophoneOwner } from "./microphoneOwner.js";
 import { stepMicrophoneHealth, type MicrophoneHealthState } from "./microphoneHealth.js";
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
@@ -143,6 +144,10 @@ export function useVoiceMedia({
   const [voiceModeration, setVoiceModeration] = useState<VoiceModerationState>({ muted: false, deafened: false });
   const [voiceSnapshots, setVoiceSnapshots] = useState<Record<string, VoiceSnapshot>>({});
   const voiceSnapshotsRef = useRef<Record<string, VoiceSnapshot>>({});
+  // When each room's Call began on this browser's monotonic clock, anchored as
+  // its snapshots arrive, so the rail counts up without asking the server.
+  const [callStarts, setCallStarts] = useState<Record<string, number>>({});
+  const callStartsRef = useRef<Record<string, number>>({});
   const [visualTargets, setVisualTargets] = useState<VisualTarget[]>([]);
   const [screenPlaybackStates, setScreenPlaybackStates] = useState<Record<string, ScreenPlaybackStatus>>({});
   const screenRecoveryRef = useRef<ScreenRecoveryOwner | null>(null);
@@ -1210,6 +1215,15 @@ export function useVoiceMedia({
     (nextSnapshot: VoiceSnapshot) => {
       voiceSnapshotsRef.current[nextSnapshot.roomId] = nextSnapshot;
       setVoiceSnapshots((current) => ({ ...current, [nextSnapshot.roomId]: nextSnapshot }));
+      const previousCallStart = callStartsRef.current[nextSnapshot.roomId];
+      const callStart = nextCallStart(previousCallStart, nextSnapshot.callLengthMs, performance.now());
+      if (callStart !== previousCallStart) {
+        const nextCallStarts = { ...callStartsRef.current };
+        if (callStart === undefined) delete nextCallStarts[nextSnapshot.roomId];
+        else nextCallStarts[nextSnapshot.roomId] = callStart;
+        callStartsRef.current = nextCallStarts;
+        setCallStarts(nextCallStarts);
+      }
       if (roomRef.current !== nextSnapshot.roomId) return;
 
       const currentUserId = userIdRef.current;
@@ -1615,11 +1629,19 @@ export function useVoiceMedia({
     setActiveRoomId(null);
     setVoiceSnapshots({});
     voiceSnapshotsRef.current = {};
+    setCallStarts({});
+    callStartsRef.current = {};
+    // The rail still shows every room's roster and Call to a member outside
+    // voice, so ask for them again rather than leave the rail empty until each
+    // room next changes. Sent after the leave, so our own room comes back without us.
+    if (socket?.connected) {
+      for (const roomId of voiceRoomIdsRef.current) socket.emit("voice:snapshot", roomId, applyVoiceSnapshot);
+    }
     setLocalPreviews([]);
     setError("");
     setControls(createInitialVoiceControls());
     releaseUnusedSharedAudioOutput();
-  }, [desktopMicrophone, pendingJoin, socket, stopStream, closePeers, setError]);
+  }, [desktopMicrophone, pendingJoin, socket, stopStream, closePeers, setError, applyVoiceSnapshot]);
 
   const toggleMic = useCallback(async () => {
     microphoneRecoveryRef.current = null;
@@ -2510,6 +2532,7 @@ export function useVoiceMedia({
     setVisualSubscriptions,
     visualTargets,
     voiceSnapshots,
+    callStarts,
     voiceModeration,
     toggleControl
   };

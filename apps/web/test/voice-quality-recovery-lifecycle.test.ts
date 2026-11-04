@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import ts from "typescript";
+import { nextCallStart } from "../src/lib/callLength.js";
 import { VoiceQualityController } from "../src/lib/voiceQualityController.js";
 import {
   advancePeerRecovery,
@@ -330,6 +331,9 @@ describe("initial negotiation and media instance lifecycle", () => {
       remoteMediaInstancesRef,
       voiceSnapshotsRef: { current: {} },
       setVoiceSnapshots: () => undefined,
+      callStartsRef: { current: {} },
+      setCallStarts: () => undefined,
+      nextCallStart,
       setRemoteStreams: () => undefined,
       peerRecoveryTimersRef: { current: new Map() },
       activeVoiceMemberUserIdsRef: { current: new Set() },

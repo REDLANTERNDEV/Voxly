@@ -258,6 +258,12 @@ export interface VoiceSnapshot {
   /** Whether the server delivered this snapshot to a socket currently in the room. */
   viewerInVoiceRoom: boolean;
   members: VoiceMemberState[];
+  /**
+   * How long the room's Call had run when the server sent this snapshot, in
+   * milliseconds. Absent exactly when no Call is running. It is an elapsed time
+   * rather than a start time so no member's own clock is ever consulted.
+   */
+  callLengthMs?: number;
 }
 
 /**

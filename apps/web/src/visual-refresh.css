@@ -4357,6 +4357,19 @@ select {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A running Call: the room's glyph and its Call length in the one green the
+   rail keeps for it. The length takes the row's last column and never shrinks,
+   so a long room name gives way to it at every width. */
+.rail .channel-item .channel-prefix.is-calling,
+.rail .channel-call-length {
+  color: var(--success);
+}
+.rail .channel-call-length {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .rail .channel-item:hover,
 .rail .channel-item:focus-visible,
 .rail .channel-item.is-active {

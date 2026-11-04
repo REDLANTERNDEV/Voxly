@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { VoiceMediaState, VoiceMemberState, VoiceModerationState, PresenceUser } from "@voxly/shared";
-import { normalizeVoiceMedia, voiceModeration, voiceSnapshot, type VoiceRoomMembership } from "../src/voice.js";
+import {
+  holdsCall,
+  normalizeVoiceMedia,
+  voiceModeration,
+  voiceSnapshot,
+  type VoiceRoomMembership
+} from "../src/voice.js";
 import type { ServerMemberRow } from "../src/members.js";
 
 /**
@@ -126,5 +132,40 @@ describe("voice snapshots", () => {
       viewerInVoiceRoom: false,
       members: []
     });
+  });
+
+  it("carries the Call length to inside and outside audiences alike", () => {
+    const members = membership(member("ece", media()));
+    assert.equal(voiceSnapshot("stage", members, true, true, 65_000).callLengthMs, 65_000);
+    assert.equal(voiceSnapshot("stage", members, false, false, 65_000).callLengthMs, 65_000);
+  });
+
+  it("leaves the Call length out when no Call is running", () => {
+    assert.equal("callLengthMs" in voiceSnapshot("stage", undefined, false, false), false);
+  });
+});
+
+describe("Calls", () => {
+  function bot(userId: string): VoiceMemberState {
+    const entry = member(userId, media());
+    return { ...entry, user: { ...entry.user, isBot: true } };
+  }
+
+  it("is held by a person in an ordinary room", () => {
+    assert.equal(holdsCall(membership(member("ece", media())), ordinaryRoom), true);
+  });
+
+  it("is not held by the Music bot alone, waiting in an emptied room", () => {
+    assert.equal(holdsCall(membership(bot("music")), ordinaryRoom), false);
+    assert.equal(holdsCall(membership(bot("music"), member("ece", media())), ordinaryRoom), true);
+  });
+
+  it("is never held in the AFK room, where idle members are parked", () => {
+    assert.equal(holdsCall(membership(member("ece", media())), afkRoom), false);
+  });
+
+  it("is not held by an empty room", () => {
+    assert.equal(holdsCall(undefined, ordinaryRoom), false);
+    assert.equal(holdsCall(membership(), ordinaryRoom), false);
   });
 });
