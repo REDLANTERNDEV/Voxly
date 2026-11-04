@@ -24,7 +24,13 @@ import type {
   OwnerInvitedGroup,
   OwnerDeletionRequest
 } from "./types.js";
-import type { DeviceSummary, ServerRoomLayout, ServerWelcomeSettings, VoiceModerationState } from "@voxly/shared";
+import type {
+  DeviceSummary,
+  InvitePreview,
+  ServerRoomLayout,
+  ServerWelcomeSettings,
+  VoiceModerationState
+} from "@voxly/shared";
 
 type JsonBody = Record<string, unknown>;
 type AccessClaimResponse = CurrentUserResponse & { serverId: string };
@@ -43,6 +49,7 @@ export class ApiError extends Error {
 
 const ownerClaimRequests = new Map<string, Promise<CurrentUserResponse>>();
 const accessClaimRequests = new Map<string, Promise<AccessClaimResponse>>();
+const inviteAcceptRequests = new Map<string, Promise<InviteAcceptResponse>>();
 const sessionRotatedHeaderName = "X-Voxly-Session-Rotated";
 /** Just past the server's persistence window (ADR-0033); a sooner echo confirms nothing. */
 const sessionConfirmationDelayMs = 5 * 60 * 1000 + 10_000;
@@ -389,19 +396,46 @@ export async function suppressMessageEmbed(roomId: string, messageId: string, em
   });
 }
 
-export async function acceptInvite(inviteToken: string, nickname: string, turnstileToken?: string) {
-  return apiPost<InviteAcceptResponse>("/api/invites/accept", {
-    inviteToken,
-    nickname: nickname || undefined,
-    turnstileToken
-  });
+/**
+ * An Invite is named by its token or, in the desktop app, by the public id of
+ * the hand-off a browser made (ADR-0036). The app never holds the token.
+ */
+export type InviteReference = { inviteToken: string } | { inviteLaunchId: string };
+
+function inviteReferenceKey(reference: InviteReference) {
+  return "inviteToken" in reference ? `token:${reference.inviteToken}` : `launch:${reference.inviteLaunchId}`;
 }
 
-export async function previewInvite(inviteToken: string) {
-  return apiPost<{ serverName: string; expiresAt: string | null; remainingUses: number | null }>(
-    "/api/invites/preview",
-    { inviteToken }
-  );
+/**
+ * One accept in flight per Invite: a double press, or a card and a reload
+ * racing, shares the request rather than spending a second use. Only the
+ * in-flight request is shared, so a later deliberate retry asks again.
+ */
+export async function acceptInvite(reference: InviteReference, nickname: string, turnstileToken?: string) {
+  const key = inviteReferenceKey(reference);
+  const existingRequest = inviteAcceptRequests.get(key);
+  if (existingRequest) return existingRequest;
+  const requestPromise = apiPost<InviteAcceptResponse>("/api/invites/accept", {
+    ...reference,
+    nickname: nickname || undefined,
+    turnstileToken
+  }).finally(() => inviteAcceptRequests.delete(key));
+  inviteAcceptRequests.set(key, requestPromise);
+  return requestPromise;
+}
+
+export async function previewInvite(reference: InviteReference) {
+  return apiPost<InvitePreview>("/api/invites/preview", { ...reference });
+}
+
+/** Starts handing an Invite to the desktop app; the returned id is all the `voxly://` link carries. */
+export async function createInviteLaunch(inviteToken: string) {
+  return apiPost<{ id: string }>("/api/invite-launches", { inviteToken });
+}
+
+/** Whether the desktop app picked a hand-off up; an unknown or spent id is a 404. */
+export async function fetchInviteLaunch(launchId: string) {
+  return apiGet<{ status: "waiting" | "opened" | "joined" }>(`/api/invite-launches/${encodeURIComponent(launchId)}`);
 }
 
 export function claimAccessLink(token: string) {

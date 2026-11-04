@@ -318,6 +318,17 @@ queries across endpoints.
   unexhausted, unrevoked, unexpired invite by joining its current server row so an
   older link shows the latest name after a rename. Keep every invalid preview
   response generic.
+- A valid preview also carries `memberCount` and `onlineCount` from
+  `serverHeadcount`: active human Memberships only (no Bot, ended or banned
+  Membership, or Deleted account), and online read from live connections with
+  Invisible passed by (ADR-0036). Compute them only after the invite is known
+  to be valid, so an invalid token never learns a count.
+- An Invite hand-off (`invite_launches`, additive) lets a browser give a valid
+  Invite to the desktop app by a public id: ten minutes, one join, spent inside
+  the acceptance transaction. Preview and accept take `inviteToken` or
+  `inviteLaunchId`, exactly one, so acceptance keeps one boundary. Reading the
+  preview by id marks it opened, which the browser polls; every unknown or
+  spent id gets one generic answer (ADR-0036).
 - Store an optional nickname override on `server_members`; the global user
   nickname remains the fallback. An active member may set a trimmed 2–32
   character override for themselves, or clear it with `null`; an empty string

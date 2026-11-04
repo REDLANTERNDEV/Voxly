@@ -17,7 +17,9 @@ import {
   presenceChoiceFor,
   presenceStatusOf,
   readPresenceChoice,
+  serverHeadcount,
   serverPresenceUsers,
+  visiblyOnlineUserIds,
   writePresenceChoice,
   type OnlineRegistry
 } from "../src/members.js";
@@ -213,6 +215,54 @@ describe("server membership", () => {
       assert.equal(requireServerInviter(db, defaultServerId, "member", refused.reply), null);
       assert.equal(refused.sent.statusCode, 403);
       assert.deepEqual(refused.sent.body, { error: "forbidden" });
+    });
+  });
+
+  describe("invite headcount", () => {
+    it("counts people with an active Membership and passes by everyone else", async () => {
+      const { sqlite } = await seed({
+        owner: { role: "owner" },
+        member: {},
+        banned: { bannedAt: joinedAt },
+        kicked: { removedAt: joinedAt },
+        globallyBanned: { globallyBannedAt: joinedAt },
+        deleted: {},
+        bot: {},
+        stranger: { membership: false }
+      });
+      run(sqlite, "update users set deleted_at = ? where id = 'deleted'", [joinedAt]);
+      run(sqlite, "update users set is_bot = 1 where id = 'bot'", []);
+
+      const everyoneOnline = new Set([
+        "owner",
+        "member",
+        "banned",
+        "kicked",
+        "globallyBanned",
+        "deleted",
+        "bot",
+        "stranger"
+      ]);
+      assert.deepEqual(serverHeadcount(sqlite, defaultServerId, everyoneOnline), { memberCount: 2, onlineCount: 2 });
+      assert.deepEqual(serverHeadcount(sqlite, defaultServerId, new Set(["member"])), {
+        memberCount: 2,
+        onlineCount: 1
+      });
+    });
+
+    it("reads an Invisible member as offline and ignores connections with no user", async () => {
+      const { sqlite } = await seed({ seen: {}, hidden: {} });
+      writePresenceChoice(sqlite, "hidden", { status: "invisible", until: null });
+      const connection = (userId?: string) => ({ data: userId ? { user: { userId } } : {} });
+
+      const online = visiblyOnlineUserIds(sqlite, [
+        connection("seen"),
+        connection("seen"),
+        connection("hidden"),
+        connection()
+      ]);
+
+      assert.deepEqual([...online], ["seen"]);
     });
   });
 

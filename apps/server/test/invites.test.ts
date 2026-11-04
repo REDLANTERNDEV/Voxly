@@ -429,11 +429,14 @@ describe("invites and access links", () => {
       // silently. `POST /api/setup/owner/claim` is deliberately absent: it is
       // owner recovery, and `auth/ownerClaims.ts` owns it.
       assert.deepEqual(registered.sort(), [
+        "GET /api/invite-launches/:launchId",
         "GET /api/owner/invites",
         "GET /api/servers/:serverId/invites",
+        "HEAD /api/invite-launches/:launchId",
         "HEAD /api/owner/invites",
         "HEAD /api/servers/:serverId/invites",
         "POST /api/access/claim",
+        "POST /api/invite-launches",
         "POST /api/invites/accept",
         "POST /api/invites/preview",
         "POST /api/owner/invites",

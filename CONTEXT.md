@@ -6,6 +6,12 @@ A self-hosted voice and text chat server for small private groups. Voice, camera
 
 ### Accounts and membership
 
+**Installation**:
+One running Voxly at one address, with its own Accounts and Servers. An Account
+never spans two: a person on two Installations is two Accounts, and an Invite
+belongs to exactly one.
+_Avoid_: Instance, deployment, host (in copy)
+
 **Account**:
 One person's installation-wide identity in Voxly. An Account may hold a
 Membership in several Servers and may be signed in on several Devices.
@@ -169,7 +175,9 @@ _Avoid_: Pair, connect, transfer, add
 Deliberately not either of the above: an Invite admits a new _person_ to one
 Server, and only that Server's owner or a member holding its invite grant may
 issue one. Linking a Device and recovering access are a member's own business
-and never route through an owner. An Invite stops being _active_ when it
+and never route through an owner. Someone who already has an Account on this
+Installation redeems an Invite as that Account, never as a new one (ADR-0036).
+An Invite stops being _active_ when it
 expires, is used up or is revoked; it then becomes a _past invite_.
 _Avoid_: using "invite" for anything a member does to their own account
 

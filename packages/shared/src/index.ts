@@ -88,6 +88,20 @@ export interface ServerWelcomeSettings {
 }
 
 /**
+ * What a valid Invite tells whoever holds it, signed in or not. An invalid one
+ * gets a generic error and none of this. The counts are over people — Bots,
+ * ended Memberships and Deleted accounts are left out — and an Invisible member
+ * counts as offline (ADR-0036). `null` means unlimited.
+ */
+export interface InvitePreview {
+  serverName: string;
+  expiresAt: string | null;
+  remainingUses: number | null;
+  memberCount: number;
+  onlineCount: number;
+}
+
+/**
  * Name every server's Music bot account is seeded with. Owners may rename it
  * the same way they rename any other member.
  */

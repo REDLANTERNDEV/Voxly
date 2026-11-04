@@ -8,6 +8,7 @@ import { getInviteToken, resolveInitialRoute } from "../lib/navigation.js";
 import type { AppConfigResponse, RtcConfigResponse } from "../types.js";
 import { rtcConfigAfterFetchFailure, rtcConfigRetryMs } from "./rtcConfig.js";
 import type { LoadState, Route } from "./types.js";
+import { rememberInstallationPublicUrl } from "../lib/invites.js";
 
 export function useSessionController(route: Route, navigate: (path: string) => void) {
   const [user, setUser] = useState<PublicUser | null>(null);
@@ -88,7 +89,9 @@ export function useSessionController(route: Route, navigate: (path: string) => v
     const gate = authRequestGateRef.current;
     fetchConfig()
       .then((config) => {
-        if (mounted) setAppConfig(config);
+        if (!mounted) return;
+        rememberInstallationPublicUrl(config.publicUrl);
+        setAppConfig(config);
       })
       .catch(() => {
         if (mounted) setAppConfig({ clientVersion: null, publicUrl: null, turnstile: null, analytics: null });

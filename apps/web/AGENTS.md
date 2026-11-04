@@ -73,9 +73,11 @@ requirement.
 - Invite links carry the token in the fragment (`/invite#<token>`), which no
   request or proxy log sees; keep reading the older `/invite/<token>` shape, and
   replace the address with `/invite` once the invite screen holds the token.
-- Treat an authenticated invite route as intent to accept. Share one
-  in-flight request per token, auto-accept a valid new membership, and use the
-  returned `serverId` for both success and `already_server_member` navigation.
+- An invite route shows the invite card: the Server's letter mark and name,
+  member and online counts, expiry and remaining uses, and one Join. A
+  signed-in visitor joins with that one press; nothing is accepted on load.
+  Share one in-flight accept per token, and use the returned `serverId` for
+  both success and `already_server_member` navigation.
 - After an existing user accepts an invite to another server, fetch the complete
   accessible server list and the invited server's rooms before leaving the
   invite surface. Replace the switcher state with that response, preserve the
@@ -87,8 +89,27 @@ requirement.
 - When an authenticated invite is generically invalid, fall back to the first
   usable accessible server; keep the recoverable invite error surface when no
   active server exists. Never infer the invite's server in the browser.
-- Preserve the existing explicit nickname, Turnstile, valid, and invalid invite
-  form behavior for unauthenticated users.
+- A card opened from a link has no token field: the token stays in component
+  memory. Only `/invite` with no token shows a paste field.
+- For a visitor with no session, Join first asks "new to Voxly" or "already
+  have an account", as equals (`lib/inviteJoin.ts`). New asks for the nickname,
+  plus Turnstile when configured, and only then accepts. Already runs the
+  embedded `LinkCodeClaim`, with `RecoveryRedeem` as a quieter fallback whose
+  cost is stated first. On success it accepts as that Account and reloads into
+  the Server, because startup resolved the page as signed out (ADR-0036).
+- Join never tries the desktop app: most members use a browser and have none.
+  On a Windows browser with no session, "yes, I have an account" shows Open in
+  the Voxly app above the Link code, and the card prepares the Invite hand-off
+  as that screen opens, because a browser opens another app only from a press.
+  The button opens `voxly://open?origin=…&launch=<id>`. The browser shows
+  "opened" only when `GET /api/invite-launches/:id` says the app read the card;
+  it never guesses from focus. After five seconds without an answer it points
+  to the code, and a late answer still wins (ADR-0036).
+- Inside the desktop app, a launch id is first asked about as an Invite
+  hand-off. An Invite opens `/invite#launch=<id>` in the Account the app
+  holds; only an unknown id continues as an ADR-0027 sign-in.
+- `LinkCodeClaim` and `RecoveryRedeem` are parts, not screens. The `/link-device`
+  and `/recover` screens frame them and keep their own full-reload behaviour.
 - Concurrent access-claim requests for the same token share one Promise and one
   HTTP request. Remove failed requests from the cache so a real retry is
   possible.
@@ -230,6 +251,12 @@ requirement.
 - Owner and delegated-member invite creation share one composer, so the label,
   expiry, capacity, and masked-link contracts cannot drift between the owner
   dashboard and the rail popover.
+- A dashed "+" after the last server in the workspace rail opens the join
+  dialog for every member. It only joins: one field, read by
+  `parseInviteInput`. This Installation's Invite opens the invite card, so there
+  is one Join path. Another Installation's Invite is named by its host and
+  handed off (a new tab in a browser, the address to add from the Voxly home in
+  the desktop app), never joined here (ADR-0036).
 - The rail invite affordance appears only when the active server summary reports
   `canInvite`, which is true for owners and for members holding the grant. The
   grant is assigned from member action menus, is offered only by an owner acting
@@ -405,6 +432,12 @@ requirement.
 - Linkify only valid `http:` and `https:` URLs. Render them as React text and
   anchors with a new browsing context plus `noopener noreferrer`; never inject
   message HTML or turn other protocols into clickable content.
+- A plain left click on this Installation's invite link (`parseInviteInput`
+  says `here`) opens the invite card in place through history, never a new
+  window: the desktop shell hands every new window to the default browser,
+  where a cookieless join made a second Account (ADR-0036). Modified and
+  middle clicks keep their native meaning; another Installation's invite is an
+  ordinary link.
 - Rich previews are derived from message links for the explicit YouTube,
   X/Twitter, Vimeo, and Spotify provider allowlist. Deduplicate provider items,
   render at most four previews per message, sandbox provider frames, and leave

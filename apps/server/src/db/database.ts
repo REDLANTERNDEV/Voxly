@@ -163,6 +163,18 @@ function migrate(sqlite: DatabaseSync) {
     );
     create index if not exists desktop_launches_expires on desktop_launches(expires_at);
 
+    -- An Invite handed from a browser to the desktop app (ADR-0036): the
+    -- voxly:// link carries only this id, never the Invite token.
+    create table if not exists invite_launches (
+      id text primary key,
+      invite_id text not null,
+      created_at text not null,
+      expires_at text not null,
+      opened_at text,
+      joined_at text
+    );
+    create index if not exists invite_launches_expires on invite_launches(expires_at);
+
     create table if not exists desktop_authorizations (
       id text primary key,
       secret_hash text not null unique,

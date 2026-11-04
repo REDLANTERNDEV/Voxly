@@ -34,7 +34,7 @@ import type { AppConfigResponse, ServerSummary } from "../types.js";
 
 export type Route =
   | { name: "landing" }
-  | { name: "invite"; token: string }
+  | { name: "invite"; token: string; launchId?: string }
   | { name: "owner-claim"; token: string }
   | { name: "link-device" }
   | { name: "desktop-verify"; id: string }

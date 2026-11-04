@@ -58,12 +58,12 @@ describe("owner invite display", () => {
   });
 
   it("loads the current server name when an invite link opens", () => {
-    const source = readAppSource();
-    const inviteScreen = source.match(/function\s+InviteScreen[\s\S]*?\n}\n\nfunction\s+TurnstileWidget/)?.[0] ?? "";
+    const inviteScreen = readFileSync("src/features/auth/InviteScreen.tsx", "utf8");
 
-    assert.match(inviteScreen, /previewInvite\(\s*extractInviteToken\(\s*initialToken\s*\)\s*\)/);
+    assert.match(inviteScreen, /useState\(\(\)\s*=>\s*extractInviteToken\(\s*initialToken\s*\)\)/);
+    assert.match(inviteScreen, /previewInvite\(\s*reference\s*\)/);
     assert.match(inviteScreen, /invite\.joinServerTitle/);
-    assert.match(inviteScreen, /serverName/);
+    assert.match(inviteScreen, /preview\.serverName/);
   });
 
   it("refreshes the switcher and opens the invited server for an existing user", () => {

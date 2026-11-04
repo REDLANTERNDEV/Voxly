@@ -22,6 +22,7 @@ import type { TimeFormatPreference } from "../lib/timeFormat.js";
 import { resolveInitialRoute } from "../lib/navigation.js";
 import { applyDesktopSettings, desktopSettingsAvailable } from "../lib/desktopSettings.js";
 import { desktopLaunchFromSearch, desktopLaunchId } from "../lib/desktopLinks.js";
+import { fetchInviteLaunch } from "../api.js";
 import { desktopSurfaceReady, startupSurface } from "../lib/startupSurface.js";
 import type { LoadState, Route, ShellActions, ShellModel, Translate } from "./types.js";
 
@@ -88,16 +89,41 @@ export function AppRoutes({
   }, []);
   useEffect(() => {
     if (!pendingLaunch || authState !== "ready") return;
+    const id = pendingLaunch;
     setPendingLaunch(null);
-    // An authenticated desktop Account and any ongoing call remain untouched.
-    if (!user) window.location.assign(`/link-device?desktopLaunch=${pendingLaunch}`);
-  }, [pendingLaunch, authState, user]);
-  const arrivingDesktopLaunch = Boolean(
-    route.name === "link-device" &&
-    window.__VOXLY_DESKTOP_V1__?.version === 1 &&
-    desktopLaunchFromSearch(window.location.search)
-  );
-  const existingDesktopSession = arrivingDesktopLaunch && Boolean(user);
+    // A browser may have handed this app an Invite rather than a sign-in
+    // (ADR-0036). The server knows which; an Invite opens its card here, in
+    // the Account this app already holds, and leaves any call running.
+    void fetchInviteLaunch(id).then(
+      () => navigate(`/invite#launch=${id}`),
+      () => {
+        // An authenticated desktop Account and any ongoing call remain untouched.
+        if (!user) window.location.assign(`/link-device?desktopLaunch=${id}`);
+      }
+    );
+  }, [pendingLaunch, authState, user, navigate]);
+  const arrivingLaunchId =
+    route.name === "link-device" && window.__VOXLY_DESKTOP_V1__?.version === 1
+      ? desktopLaunchFromSearch(window.location.search)
+      : undefined;
+  const [arrivingKind, setArrivingKind] = useState<"checking" | "sign-in">("checking");
+  useEffect(() => {
+    if (!arrivingLaunchId) return;
+    let current = true;
+    void fetchInviteLaunch(arrivingLaunchId).then(
+      () => {
+        if (current) navigate(`/invite#launch=${arrivingLaunchId}`);
+      },
+      () => {
+        if (current) setArrivingKind("sign-in");
+      }
+    );
+    return () => {
+      current = false;
+    };
+  }, [arrivingLaunchId, navigate]);
+  const arrivingDesktopLaunch = Boolean(arrivingLaunchId);
+  const existingDesktopSession = arrivingDesktopLaunch && arrivingKind === "sign-in" && Boolean(user);
   useEffect(() => {
     if (existingDesktopSession) navigate("/");
   }, [existingDesktopSession, navigate]);
@@ -128,7 +154,10 @@ export function AppRoutes({
     route.name,
     user
   ]);
-  if (startupSurface(route.name, authState, arrivingDesktopLaunch) === "entry-loading")
+  if (
+    startupSurface(route.name, authState, arrivingDesktopLaunch) === "entry-loading" ||
+    (arrivingDesktopLaunch && arrivingKind === "checking")
+  )
     return (
       <AuthEntryFrame language={language} t={t} onLanguageChange={changeLanguage}>
         <p className="account-entry-loading" role="status">
@@ -245,12 +274,15 @@ export function AppRoutes({
         onLanguageChange={changeLanguage}
       />
     );
-  if (!user && route.name === "invite" && !route.token)
+  if (!user && route.name === "invite" && !route.token && !route.launchId)
     return <InviteRequiredScreen language={language} t={t} onNavigate={navigate} onLanguageChange={changeLanguage} />;
   if (!user || route.name === "invite") {
     return renderSurface(
       <InviteScreen
+        // A second invite opened while the card is showing is a new card, not an edit of this one.
+        key={route.name === "invite" ? (route.launchId ?? route.token) : ""}
         initialToken={route.name === "invite" ? route.token : ""}
+        initialLaunchId={route.name === "invite" ? route.launchId : undefined}
         existingUser={Boolean(user)}
         currentUser={user}
         turnstileSiteKey={turnstileSiteKey}

@@ -2543,6 +2543,21 @@ select {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
+/* The rail's "+" reads as an empty server slot, not as another server. */
+.workspace-rail-link.server-avatar.workspace-join {
+  background: transparent;
+  border-style: dashed;
+  color: var(--muted);
+}
+.workspace-rail-link.server-avatar.workspace-join:hover {
+  color: var(--fg);
+  border-color: var(--selected-border);
+}
+.join-server-elsewhere {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
 .workspace-settings {
   flex-shrink: 0;
   margin-top: 10px;
@@ -3966,6 +3981,101 @@ select {
 .account-entry .invite-status {
   border-radius: 6px;
   padding: 12px;
+}
+/* The invite card (ADR-0036): the Server's letter mark, its name and who is there. */
+.invite-server {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  min-width: 0;
+}
+.invite-server-mark {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--fg);
+  display: inline-flex;
+  flex: 0 0 64px;
+  font-size: 26px;
+  font-weight: 650;
+  height: 64px;
+  justify-content: center;
+  width: 64px;
+}
+.invite-server-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.invite-server-copy h1 {
+  overflow-wrap: anywhere;
+}
+.invite-headcount {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 14px;
+  gap: 4px 14px;
+}
+.invite-online {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+.invite-online-dot {
+  background: var(--success);
+  border-radius: 50%;
+  display: inline-block;
+  height: 8px;
+  width: 8px;
+}
+.invite-fork {
+  display: grid;
+  gap: 12px;
+}
+.invite-fork-option {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  min-height: 44px;
+  padding: 14px 16px;
+  text-align: left;
+}
+.invite-fork-option:hover {
+  border-color: var(--selected-border);
+}
+.invite-fork-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.invite-app-handoff {
+  display: grid;
+  gap: 8px;
+}
+.invite-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+/* Link and Recovery are drawn inside the card here, not as cards of their own. */
+.account-entry .invite-card .link-panel {
+  background: none;
+  border: 0;
+  max-width: none;
+  padding: 0;
+}
+@media (max-width: 560px) {
+  .invite-server-mark {
+    flex-basis: 52px;
+    font-size: 22px;
+    height: 52px;
+    width: 52px;
+  }
 }
 .account-entry .desktop-link-fallback {
   margin-top: 20px;

@@ -95,7 +95,7 @@ describe("typing a recovery code", () => {
   it("wraps rather than scrolling sideways", () => {
     // Twenty-five characters and four dashes do not fit on one line at a size
     // anybody can check, and a field that scrolls hides the half being read.
-    const screen = readFileSync("src/features/auth/RecoverScreen.tsx", "utf8");
+    const screen = readFileSync("src/features/auth/RecoveryRedeem.tsx", "utf8");
     const styles = readFileSync("src/styles.css", "utf8");
 
     assert.match(screen, /<textarea/);

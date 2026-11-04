@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 
 describe("Turnstile widget lifecycle", () => {
   it("does not replace the challenge when its parent rerenders", () => {
-    const source = readFileSync("src/features/auth/InviteScreen.tsx", "utf8");
+    const source = readFileSync("src/features/auth/TurnstileWidget.tsx", "utf8");
 
     // The recovery and link screens update their parent state when Turnstile
     // produces a token. Callback props therefore change as those screens

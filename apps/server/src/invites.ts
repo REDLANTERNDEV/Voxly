@@ -27,6 +27,7 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import type { InvitePreview } from "@voxly/shared";
 import { z } from "zod";
 import { audit } from "./audit.js";
 import {
@@ -40,7 +41,13 @@ import {
 import { createOpaqueToken, hashToken } from "./auth/tokens.js";
 import { rejectBotTarget } from "./bots.js";
 import { all, defaultServerId, one, run, type VoxlyDatabase } from "./db/database.js";
-import { activateServerMembership, requireServerInviter, serverMembership } from "./members.js";
+import {
+  activateServerMembership,
+  requireServerInviter,
+  serverHeadcount,
+  serverMembership,
+  visiblyOnlineUserIds
+} from "./members.js";
 import { publishWelcomeNotice, writeWelcomeNotice } from "./messages.js";
 import { createUser, nicknameSchema, publicUser, type UserRow } from "./users.js";
 import { verifyTurnstile } from "./turnstile.js";
@@ -96,6 +103,40 @@ export const inviteBodySchema = z
 /** Access links are short-lived by design: a named member's way back in, not a standing credential. */
 const accessLinkLifetimeMinutes = 15;
 
+/**
+ * An Invite is named either by its token or, after a browser handed it to the
+ * desktop app, by that hand-off's public id (ADR-0036). Exactly one of the two.
+ */
+const inviteReferenceSchema = {
+  inviteToken: z.string().min(24).optional(),
+  inviteLaunchId: z.string().uuid().optional()
+};
+type InviteReference = { inviteToken?: string; inviteLaunchId?: string };
+
+function hasOneReference(body: InviteReference) {
+  return (body.inviteToken === undefined) !== (body.inviteLaunchId === undefined);
+}
+
+/** A hand-off is good for ten minutes and joins once; then it names nothing. */
+const inviteLaunchLifetimeMs = 10 * 60_000;
+
+/** The invite a reference names, or null. A spent or stale hand-off names nothing. */
+function referencedInviteId(sqlite: DatabaseSync, reference: InviteReference, now = new Date().toISOString()) {
+  if (reference.inviteToken !== undefined) {
+    return (
+      one<{ id: string }>(sqlite, "select id from invites where token_hash = ?", [hashToken(reference.inviteToken)])
+        ?.id ?? null
+    );
+  }
+  return (
+    one<{ invite_id: string }>(
+      sqlite,
+      "select invite_id from invite_launches where id = ? and expires_at > ? and joined_at is null",
+      [reference.inviteLaunchId ?? "", now]
+    )?.invite_id ?? null
+  );
+}
+
 export function registerInviteRoutes(context: RouteContext) {
   const { fastify, database, io, realtime, secureCookies, turnstile } = context;
 
@@ -108,11 +149,12 @@ export function registerInviteRoutes(context: RouteContext) {
   fastify.post("/api/invites/accept", { config: unauthenticatedWriteLimit }, async (request, reply) => {
     const body = z
       .object({
-        inviteToken: z.string().min(24),
+        ...inviteReferenceSchema,
         nickname: nicknameSchema.optional(),
         turnstileToken: z.string().optional()
       })
       .parse(request.body);
+    if (!hasOneReference(body)) return reply.code(400).send({ error: "invalid_request" });
 
     const authentication = authenticateHttp(database, request, reply, secureCookies);
     if (!authentication.ok && authentication.error === "session_reused") {
@@ -145,8 +187,8 @@ export function registerInviteRoutes(context: RouteContext) {
       }>(
         database.sqlite,
         `select id, server_id, max_uses, expires_at, revoked_at
-         from invites where token_hash = ?`,
-        [hashToken(body.inviteToken)]
+         from invites where id = ?`,
+        [referencedInviteId(database.sqlite, body) ?? ""]
       );
       if (!invite || invite.revoked_at || isExpired(invite.expires_at)) {
         database.sqlite.exec("rollback");
@@ -203,6 +245,10 @@ export function registerInviteRoutes(context: RouteContext) {
       // A rejoin after a kick is a new arrival and is welcomed again. The Music
       // bot never joins through an invite, so it never is.
       welcome = writeWelcomeNotice(database.sqlite, serverId, user.id, now);
+      // A hand-off joins once; the same transaction spends it.
+      if (body.inviteLaunchId !== undefined) {
+        run(database.sqlite, "update invite_launches set joined_at = ? where id = ?", [now, body.inviteLaunchId]);
+      }
       database.sqlite.exec("commit");
     } catch (cause) {
       database.sqlite.exec("rollback");
@@ -234,10 +280,12 @@ export function registerInviteRoutes(context: RouteContext) {
   });
 
   fastify.post("/api/invites/preview", { config: unauthenticatedWriteLimit }, async (request, reply) => {
-    const { inviteToken } = z.object({ inviteToken: z.string().min(24) }).parse(request.body);
+    const body = z.object(inviteReferenceSchema).parse(request.body);
+    if (!hasOneReference(body)) return reply.code(400).send({ error: "invalid_request" });
     // Joined to the server row rather than a name stored on the invite, so a
     // link minted before a rename still shows what the server is called now.
     const invite = one<{
+      server_id: string;
       server_name: string;
       invite_id: string;
       max_uses: number | null;
@@ -245,12 +293,12 @@ export function registerInviteRoutes(context: RouteContext) {
       revoked_at: string | null;
     }>(
       database.sqlite,
-      `select servers.name as server_name, invites.id as invite_id, invites.max_uses,
+      `select servers.id as server_id, servers.name as server_name, invites.id as invite_id, invites.max_uses,
         invites.expires_at, invites.revoked_at
        from invites
        join servers on servers.id = invites.server_id
-       where invites.token_hash = ?`,
-      [hashToken(inviteToken)]
+       where invites.id = ?`,
+      [referencedInviteId(database.sqlite, body) ?? ""]
     );
     const usedCount = invite ? inviteUseCount(database.sqlite, invite.invite_id) : 0;
     if (
@@ -261,11 +309,84 @@ export function registerInviteRoutes(context: RouteContext) {
     ) {
       return reply.code(404).send({ error: "invite_invalid" });
     }
-    return {
+    // Counted only once the invite is known to be good: the holder of a valid
+    // link was handed it on purpose, and an invalid one learns nothing (ADR-0036).
+    const preview: InvitePreview = {
       serverName: invite.server_name,
       expiresAt: invite.expires_at,
-      remainingUses: invite.max_uses === null ? null : invite.max_uses - usedCount
+      remainingUses: invite.max_uses === null ? null : invite.max_uses - usedCount,
+      ...serverHeadcount(
+        database.sqlite,
+        invite.server_id,
+        visiblyOnlineUserIds(database.sqlite, io.sockets.sockets.values())
+      )
     };
+    // The desktop app reading a hand-off is what tells the browser it opened.
+    if (body.inviteLaunchId !== undefined) {
+      run(database.sqlite, "update invite_launches set opened_at = coalesce(opened_at, ?) where id = ?", [
+        new Date().toISOString(),
+        body.inviteLaunchId
+      ]);
+      database.save();
+    }
+    return preview;
+  });
+
+  /**
+   * A browser hands a valid Invite to the desktop app (ADR-0036). The app is
+   * opened with `voxly://open?origin=…&launch=<id>`, so this id — never the
+   * token — is all that leaves the browser, and the app joins as the Account it
+   * already holds. Anyone holding the Invite could join with it anyway, so the
+   * hand-off grants nothing the token did not.
+   */
+  fastify.post("/api/invite-launches", { config: unauthenticatedWriteLimit }, async (request, reply) => {
+    const { inviteToken } = z.object({ inviteToken: z.string().min(24) }).parse(request.body);
+    const inviteId = referencedInviteId(database.sqlite, { inviteToken });
+    const invite = inviteId
+      ? one<{ max_uses: number | null; expires_at: string | null; revoked_at: string | null }>(
+          database.sqlite,
+          "select max_uses, expires_at, revoked_at from invites where id = ?",
+          [inviteId]
+        )
+      : null;
+    if (
+      !inviteId ||
+      !invite ||
+      invite.revoked_at ||
+      isExpired(invite.expires_at) ||
+      (invite.max_uses !== null && inviteUseCount(database.sqlite, inviteId) >= invite.max_uses)
+    ) {
+      return reply.code(404).send({ error: "invite_invalid" });
+    }
+    const now = Date.now();
+    const id = crypto.randomUUID();
+    run(database.sqlite, "delete from invite_launches where expires_at < ?", [
+      new Date(now - 60 * 60_000).toISOString()
+    ]);
+    run(database.sqlite, "insert into invite_launches (id, invite_id, created_at, expires_at) values (?, ?, ?, ?)", [
+      id,
+      inviteId,
+      new Date(now).toISOString(),
+      new Date(now + inviteLaunchLifetimeMs).toISOString()
+    ]);
+    database.save();
+    return reply.code(201).send({ id });
+  });
+
+  /**
+   * Whether the desktop app picked a hand-off up. The browser polls this, so it
+   * knows rather than guesses that the app opened. An id that is not a live
+   * hand-off — a sign-in launch included — gets one generic answer.
+   */
+  fastify.get("/api/invite-launches/:launchId", async (request, reply) => {
+    const { launchId } = z.object({ launchId: z.string().uuid() }).parse(request.params);
+    const launch = one<{ opened_at: string | null; joined_at: string | null }>(
+      database.sqlite,
+      "select opened_at, joined_at from invite_launches where id = ? and expires_at > ?",
+      [launchId, new Date().toISOString()]
+    );
+    if (!launch) return reply.code(404).send({ error: "invite_launch_invalid" });
+    return { status: launch.joined_at ? "joined" : launch.opened_at ? "opened" : "waiting" };
   });
 
   fastify.post("/api/servers/:serverId/invites", { config: authenticatedWriteLimit }, async (request, reply) => {

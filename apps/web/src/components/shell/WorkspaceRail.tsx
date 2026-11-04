@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { serverPath } from "../../app/navigation.js";
 import type { ShellActions, ShellModel } from "../../app/types.js";
-import { CloseIcon, GearIcon, DownloadIcon } from "../ui/Icons.js";
+import { CloseIcon, GearIcon, DownloadIcon, PlusIcon } from "../ui/Icons.js";
+import { JoinServerDialog } from "../../features/invites/JoinServerDialog.js";
 import { serverNotificationsMuted, serverUnreadCount, unreadBadge } from "../../lib/serverNotifications.js";
 import { ContextMenu } from "../ContextMenu.js";
 import { MenuSubmenu } from "../MenuSubmenu.js";
 import { openSidebarMenuFromPointer, type SidebarActionMenuController } from "./SidebarMenus.js";
 import { NavLink } from "../ui/Navigation.js";
+import { serverMark } from "../../lib/inviteJoin.js";
 
 type WorkspaceRailProps = Pick<
   ShellModel,
@@ -43,6 +45,8 @@ export function WorkspaceRail({
 }: WorkspaceRailProps) {
   const [switching, setSwitching] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [joining, setJoining] = useState(false);
+  const joinTrigger = useRef<HTMLButtonElement>(null);
   const textRoomId = rooms.text.find((room) => room.id === roomHistory[activeServerId]?.text)?.id ?? rooms.text[0]?.id;
 
   return (
@@ -125,7 +129,7 @@ export function WorkspaceRail({
                       .finally(() => setSwitching(null));
                   }}
                 >
-                  <span aria-hidden="true">{Array.from(server.name.trim())[0]?.toLocaleUpperCase() ?? "V"}</span>
+                  <span aria-hidden="true">{serverMark(server.name)}</span>
                   {count ? (
                     <span className="server-unread-badge" aria-hidden="true">
                       {unreadBadge(count)}
@@ -178,8 +182,31 @@ export function WorkspaceRail({
               </div>
             );
           })}
+          {/* Join-only: pasting an Invite is something every member may do (ADR-0036). */}
+          <button
+            ref={joinTrigger}
+            className="workspace-rail-link server-avatar workspace-join"
+            type="button"
+            title={t("server.joinOpen")}
+            aria-label={t("server.joinOpen")}
+            aria-haspopup="dialog"
+            onClick={() => setJoining(true)}
+          >
+            <PlusIcon />
+          </button>
         </div>
       </div>
+      {joining ? (
+        <JoinServerDialog
+          returnFocus={joinTrigger.current}
+          t={t}
+          onCancel={() => setJoining(false)}
+          onOpenInvite={(token) => {
+            onCloseDrawer();
+            onNavigate(`/invite#${encodeURIComponent(token)}`);
+          }}
+        />
+      ) : null}
       <span className="workspace-switch-error" role="status">
         {error || (serverNotificationError ? t("server.notificationLoadFailed") : "")}
       </span>

@@ -40,7 +40,7 @@ const declarations: Array<[string, string]> = [
   ["src/components/ui/Dialogs.tsx", "ConfirmDialog"],
   ["src/components/ui/Dialogs.tsx", "NicknameDialog"],
   ["src/features/auth/InviteScreen.tsx", "InviteScreen"],
-  ["src/features/auth/InviteScreen.tsx", "TurnstileWidget"],
+  ["src/features/auth/TurnstileWidget.tsx", "TurnstileWidget"],
   ["src/features/auth/ClaimScreens.tsx", "OwnerClaimScreen"],
   ["src/features/auth/ClaimScreens.tsx", "AccessClaimScreen"],
   ["src/features/chat/MessageItem.tsx", "MessageItem"],

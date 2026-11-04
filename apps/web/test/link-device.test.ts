@@ -15,7 +15,7 @@ const translator = (language: LanguageCode) => (key: TranslationKey, values?: Re
  */
 describe("linking a device", () => {
   const dialog = () => readFileSync("src/features/auth/LinkDeviceDialog.tsx", "utf8");
-  const screen = () => readFileSync("src/features/auth/LinkDeviceScreen.tsx", "utf8");
+  const screen = () => readFileSync("src/features/auth/LinkCodeClaim.tsx", "utf8");
   const routes = () => readFileSync("src/app/AppRoutes.tsx", "utf8");
 
   it("routes /link without a session", () => {
@@ -134,7 +134,7 @@ describe("linking a device", () => {
     // "the code this page was opened with" is a fact about the page load rather
     // than about a render. This was a real bug: the input came up empty.
     const guide = readFileSync("src/lib/linkGuide.ts", "utf8");
-    const screen = readFileSync("src/features/auth/LinkDeviceScreen.tsx", "utf8");
+    const screen = readFileSync("src/features/auth/LinkCodeClaim.tsx", "utf8");
 
     assert.match(guide, /const scannedOnLoad = typeof window === "undefined"/);
     assert.match(screen, /scannedLinkCode\(\)/);
@@ -145,7 +145,7 @@ describe("linking a device", () => {
     // A fragment never reaches the server, but it does sit in history, and
     // there is no reason for it to stay there.
     assert.match(
-      readFileSync("src/features/auth/LinkDeviceScreen.tsx", "utf8"),
+      readFileSync("src/features/auth/LinkCodeClaim.tsx", "utf8"),
       /history\.replaceState\(null, "", window\.location\.pathname\)/
     );
   });

@@ -683,8 +683,101 @@ describe("Voxly HTTP MVP", () => {
     assert.deepEqual(preview.json(), {
       serverName: "The Basement",
       expiresAt: created.json().invite.expiresAt,
-      remainingUses: 3
+      remainingUses: 3,
+      // The owner and the two who joined; the server's Music bot is not a person.
+      memberCount: 3,
+      onlineCount: 0
     });
+  });
+
+  it("hands an Invite to the desktop app by a public id and joins it once as the app's Account", async () => {
+    const owner = await bootstrapOwner(app);
+    const member = await acceptInvite(app, owner.cookies, "Ayse");
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/servers",
+      cookies: owner.cookies,
+      payload: { name: "Night Owls" }
+    });
+    const serverId = created.json().server.id as string;
+    const invite = await app.server.inject({
+      method: "POST",
+      url: `/api/servers/${serverId}/invites`,
+      cookies: owner.cookies,
+      payload: { label: "handoff", expiresInMinutes: 1440, maxUses: 5 }
+    });
+    const inviteToken = invite.json().invite.token as string;
+
+    // The browser, with no session, starts the hand-off and holds only its id.
+    const launch = await app.server.inject({ method: "POST", url: "/api/invite-launches", payload: { inviteToken } });
+    assert.equal(launch.statusCode, 201);
+    const launchId = launch.json().id as string;
+    assert.deepEqual(Object.keys(launch.json()), ["id"]);
+    const status = async () =>
+      (await app.server.inject({ method: "GET", url: `/api/invite-launches/${launchId}` })).json();
+    assert.deepEqual(await status(), { status: "waiting" });
+
+    // The app reads the card by the id, which is how the browser learns it opened.
+    const preview = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/preview",
+      payload: { inviteLaunchId: launchId }
+    });
+    assert.equal(preview.json().serverName, "Night Owls");
+    assert.deepEqual(await status(), { status: "opened" });
+
+    const usersBefore = app.sqlite.prepare("select count(*) as count from users").get() as { count: number };
+    const accepted = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: member.cookies,
+      payload: { inviteLaunchId: launchId }
+    });
+    assert.equal(accepted.statusCode, 200);
+    assert.equal(accepted.json().user.id, member.user.id);
+    assert.equal(accepted.json().serverId, serverId);
+    const usersAfter = app.sqlite.prepare("select count(*) as count from users").get() as { count: number };
+    assert.equal(usersAfter.count, usersBefore.count);
+    assert.deepEqual(await status(), { status: "joined" });
+
+    // Spent: the id names nothing any more, for anybody.
+    const again = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/accept",
+      cookies: owner.cookies,
+      payload: { inviteLaunchId: launchId }
+    });
+    assert.equal(again.statusCode, 404);
+    assert.deepEqual(again.json(), { error: "invite_invalid" });
+  });
+
+  it("refuses a hand-off for a bad Invite and answers an unknown id generically", async () => {
+    const owner = await bootstrapOwner(app);
+    const bad = await app.server.inject({
+      method: "POST",
+      url: "/api/invite-launches",
+      payload: { inviteToken: "x".repeat(43) }
+    });
+    assert.equal(bad.statusCode, 404);
+    assert.deepEqual(bad.json(), { error: "invite_invalid" });
+    const unknown = await app.server.inject({
+      method: "GET",
+      url: "/api/invite-launches/6576e4b7-9209-47f9-9d0b-4f5ad3f6e284"
+    });
+    assert.equal(unknown.statusCode, 404);
+    assert.deepEqual(unknown.json(), { error: "invite_launch_invalid" });
+    const invite = await app.server.inject({
+      method: "POST",
+      url: "/api/owner/invites",
+      cookies: owner.cookies,
+      payload: { label: "both" }
+    });
+    const both = await app.server.inject({
+      method: "POST",
+      url: "/api/invites/preview",
+      payload: { inviteToken: invite.json().invite.token, inviteLaunchId: "6576e4b7-9209-47f9-9d0b-4f5ad3f6e284" }
+    });
+    assert.equal(both.statusCode, 400);
   });
 
   it("validates every invite preset and supports unlimited combinations", async () => {

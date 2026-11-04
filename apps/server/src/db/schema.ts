@@ -93,6 +93,16 @@ export const desktopLaunches = sqliteTable("desktop_launches", {
   cancelledAt: text("cancelled_at")
 });
 
+/** An Invite handed from a browser to the desktop app; the link carries this id, never the token (ADR-0036). */
+export const inviteLaunches = sqliteTable("invite_launches", {
+  id: text("id").primaryKey(),
+  inviteId: text("invite_id").notNull(),
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  openedAt: text("opened_at"),
+  joinedAt: text("joined_at")
+});
+
 /** A short browser approval request; only the arriving Device holds the secret. */
 export const desktopAuthorizations = sqliteTable("desktop_authorizations", {
   id: text("id").primaryKey(),

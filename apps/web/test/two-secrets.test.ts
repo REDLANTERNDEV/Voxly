@@ -20,7 +20,7 @@ function readSource(path: string) {
 describe("the two secrets", () => {
   const linkDialog = () => readSource("src/features/auth/LinkDeviceDialog.tsx");
   const recoveryReveal = () => readSource("src/features/auth/RecoveryCode.tsx");
-  const recoverScreen = () => readSource("src/features/auth/RecoverScreen.tsx");
+  const recoverScreen = () => readSource("src/features/auth/RecoveryRedeem.tsx");
   const styles = () => readSource("src/styles.css");
 
   it("shows and receives a code in the same face", () => {
@@ -34,8 +34,8 @@ describe("the two secrets", () => {
 
     for (const [path, count] of [
       ["src/features/auth/LinkDeviceDialog.tsx", 2],
-      ["src/features/auth/LinkDeviceScreen.tsx", 2],
-      ["src/features/auth/RecoverScreen.tsx", 1],
+      ["src/features/auth/LinkCodeClaim.tsx", 2],
+      ["src/features/auth/RecoveryRedeem.tsx", 1],
       ["src/features/auth/RecoveryCode.tsx", 1]
     ] as const) {
       const source = readSource(path);

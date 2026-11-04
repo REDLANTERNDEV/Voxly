@@ -7,7 +7,7 @@ export interface InitialRouteInput {
 
 export type PathRoute =
   | { name: "landing" }
-  | { name: "invite"; token: string }
+  | { name: "invite"; token: string; launchId?: string }
   | { name: "owner-claim" }
   | { name: "link-device" }
   | { name: "desktop-verify"; id: string }
@@ -39,7 +39,12 @@ export function resolveInitialRoute(input: InitialRouteInput) {
 
 export function parsePathRoute(pathname: string, hash = ""): PathRoute {
   if (pathname === "/") return { name: "landing" };
-  if (pathname === "/invite") return { name: "invite", token: getInviteToken(pathname, hash) };
+  if (pathname === "/invite") {
+    // Inside the desktop app a browser's hand-off arrives by its public id, never the token (ADR-0036).
+    const launch = /^#launch=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(hash);
+    if (launch) return { name: "invite", token: "", launchId: launch[1] };
+    return { name: "invite", token: getInviteToken(pathname, hash) };
+  }
   if (pathname.startsWith("/owner")) return { name: "owner", serverId: defaultServerId };
   if (pathname === "/setup/owner") return { name: "owner-claim" };
   // The arriving Device has no session, so this route must resolve before any

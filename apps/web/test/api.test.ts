@@ -113,7 +113,7 @@ describe("frontend api", () => {
       });
 
     await assert.rejects(
-      () => acceptInvite("invite-token", "Mert", "turnstile-token"),
+      () => acceptInvite({ inviteToken: "invite-token" }, "Mert", "turnstile-token"),
       (error: unknown) => error instanceof ApiError && error.code === "turnstile_failed"
     );
   });
@@ -287,7 +287,7 @@ describe("frontend api", () => {
       });
     };
 
-    const preview = await previewInvite("invite token");
+    const preview = await previewInvite({ inviteToken: "invite token" });
     const renamed = await updateServer("server id", "Onyx Lounge");
 
     assert.deepEqual(requests, [

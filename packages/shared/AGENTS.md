@@ -62,8 +62,10 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
 - Invite creation uses independent `expiresInMinutes` and `maxUses` values.
   Finite values come only from the approved preset unions and `null` means the
   corresponding limit is unlimited; do not restore `expiresInHours`.
-- Stored invite DTOs expose `maxUses` and `usedCount`. Public preview exposes
-  `expiresAt` and `remainingUses`, using `null` for an unlimited value.
+- Stored invite DTOs expose `maxUses` and `usedCount`. Public preview
+  (`InvitePreview`) exposes `expiresAt` and `remainingUses`, using `null` for an
+  unlimited value, plus `memberCount` and `onlineCount` over people only, with
+  Invisible counted as offline (ADR-0036).
 - Raw invite tokens remain creation-response-only. Listing, preview, realtime,
   and shared membership shapes must never gain a stored raw token.
 

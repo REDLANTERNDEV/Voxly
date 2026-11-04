@@ -37,3 +37,74 @@ export function maskSecretLink(value: string) {
     return mask;
   }
 }
+
+export type ParsedInviteInput =
+  { kind: "here"; token: string } | { kind: "elsewhere"; origin: string; url: string } | { kind: "invalid" };
+
+/** An invite token is URL-safe base64 from `createOpaqueToken`; anything else is not one. */
+const inviteTokenPattern = /^[A-Za-z0-9_-]{24,128}$/;
+
+/**
+ * What a pasted or clicked string is, relative to this Installation (ADR-0036).
+ *
+ * A bare token always means here. A link is ours only when its origin is one of
+ * this Installation's — the page origin and the configured public URL, which
+ * invite links prefer — and its path is `/invite#<token>` or the older
+ * `/invite/<token>`. A well-formed invite link anywhere else belongs to another
+ * Installation, whose Accounts are not ours, so it is never joined from here.
+ */
+export function parseInviteInput(value: string, installationOrigins: readonly string[]): ParsedInviteInput {
+  const trimmed = value.trim();
+  if (inviteTokenPattern.test(trimmed)) return { kind: "here", token: trimmed };
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return { kind: "invalid" };
+  }
+  if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password || url.search) {
+    return { kind: "invalid" };
+  }
+  let token = "";
+  if (url.pathname === "/invite" && url.hash.length > 1) {
+    try {
+      token = decodeURIComponent(url.hash.slice(1));
+    } catch {
+      return { kind: "invalid" };
+    }
+  } else if (url.pathname.startsWith("/invite/") && !url.hash) {
+    token = url.pathname.slice("/invite/".length);
+  }
+  if (!inviteTokenPattern.test(token)) return { kind: "invalid" };
+  const ours = installationOrigins.some((origin) => {
+    try {
+      return new URL(origin).origin === url.origin;
+    } catch {
+      return false;
+    }
+  });
+  return ours ? { kind: "here", token } : { kind: "elsewhere", origin: url.origin, url: url.href };
+}
+
+let configuredPublicUrl: string | null = null;
+
+/** Recorded once `/api/config` answers, so a link in chat can be recognised as this Installation's. */
+export function rememberInstallationPublicUrl(publicUrl: string | null) {
+  configuredPublicUrl = publicUrl;
+}
+
+export function installationOrigins(): string[] {
+  return [window.location.origin, ...(configuredPublicUrl ? [configuredPublicUrl] : [])];
+}
+
+/**
+ * Opens this Installation's invite card in place. Chat links open a new window,
+ * and the desktop shell hands every new window to the default browser — often
+ * one with no session, where joining made a second Account. A route change
+ * through history keeps the member in this window, signed in, with any call
+ * still connected; `App` follows `popstate` like any other navigation.
+ */
+export function openInviteInPlace(token: string) {
+  window.history.pushState(null, "", `/invite#${encodeURIComponent(token)}`);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}

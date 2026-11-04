@@ -1,6 +1,7 @@
 import type { MessageMention, PresenceUser } from "@voxly/shared";
 import { useState } from "react";
 import type { Translate } from "../../app/types.js";
+import { installationOrigins, openInviteInPlace, parseInviteInput } from "../../lib/invites.js";
 import { messageContentSegments } from "../../lib/messageEmbeds.js";
 import { ChatDialog } from "./ChatDialog.js";
 
@@ -40,7 +41,21 @@ export function MessageBody({
           return links ? (
             messageContentSegments(piece.text).map((segment, segmentIndex) =>
               segment.kind === "link" ? (
-                <a href={segment.href} target="_blank" rel="noopener noreferrer" key={`${index}:${segmentIndex}`}>
+                <a
+                  href={segment.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  key={`${index}:${segmentIndex}`}
+                  onClick={(event) => {
+                    // A plain click on this Installation's invite stays here
+                    // (ADR-0036); a modified or middle click keeps its meaning.
+                    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+                    const invite = parseInviteInput(segment.href, installationOrigins());
+                    if (invite.kind !== "here") return;
+                    event.preventDefault();
+                    openInviteInPlace(invite.token);
+                  }}
+                >
                   {segment.text}
                 </a>
               ) : (

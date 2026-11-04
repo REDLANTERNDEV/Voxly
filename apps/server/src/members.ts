@@ -264,6 +264,45 @@ export function serverPresenceUsers(
   }));
 }
 
+/**
+ * Who other members would see online right now, read from the live
+ * connections rather than the registry, so a route module can ask. An
+ * invisible member is passed by exactly like one who is not connected.
+ */
+export function visiblyOnlineUserIds(
+  sqlite: DatabaseSync,
+  connections: Iterable<{ data: { user?: unknown } }>,
+  now = Date.now()
+): Set<string> {
+  const connected = new Set<string>();
+  for (const connection of connections) {
+    const userId = (connection.data.user as PresenceUser | undefined)?.userId;
+    if (userId !== undefined) connected.add(userId);
+  }
+  return new Set([...connected].filter((userId) => readPresenceChoice(sqlite, userId, now).status !== "invisible"));
+}
+
+/**
+ * How many people a server has, and how many of them are online. The count is
+ * over people: a Bot, an ended or banned Membership and a Deleted account are
+ * all left out, as in every other member count.
+ */
+export function serverHeadcount(sqlite: DatabaseSync, serverId: string, onlineUserIds: ReadonlySet<string>) {
+  const members = all<{ userId: string }>(
+    sqlite,
+    `select users.id as userId
+     from server_members join users on users.id = server_members.user_id
+     where server_members.server_id = ?
+       and server_members.banned_at is null and server_members.removed_at is null
+       and users.banned_at is null and users.deleted_at is null and users.is_bot = 0`,
+    [serverId]
+  );
+  return {
+    memberCount: members.length,
+    onlineCount: members.filter((member) => onlineUserIds.has(member.userId)).length
+  };
+}
+
 export function readPresenceChoice(sqlite: DatabaseSync, userId: string, now = Date.now()): PresenceChoiceState {
   const row = one<{ status: PresenceChoiceState["status"]; until: string | null }>(
     sqlite,
