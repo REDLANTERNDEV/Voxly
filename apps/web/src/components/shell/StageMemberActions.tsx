@@ -2,7 +2,7 @@ import type { PresenceUser, VoiceModerationState } from "@voxly/shared";
 import { createContext, useContext, type ReactNode } from "react";
 import { activeServerRole } from "../../app/presentation.js";
 import type { MemberAction, ShellActions, ShellModel } from "../../app/types.js";
-import { canOwnerModeratePerson, canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
+import { canMemberEnter, canOwnerModeratePerson, canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
 import {
   MemberActionMenu,
@@ -129,7 +129,11 @@ export function StageMemberActions({
               }
             : undefined
         }
-        moveTargets={canModerate ? props.rooms.voice.filter((room) => room.id !== roomId) : undefined}
+        moveTargets={
+          canModerate
+            ? props.rooms.voice.filter((room) => room.id !== roomId && canMemberEnter(room, member))
+            : undefined
+        }
         onMove={canModerate ? (target) => props.onMoveMember(member.userId, target) : undefined}
         selfControls={selfControls}
         onRename={(focus) => props.onRequestNickname(member, focus)}

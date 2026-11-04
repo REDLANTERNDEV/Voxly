@@ -54,6 +54,12 @@ export interface RealtimeModeration {
    */
   disconnectOtherDevices: (userId: string, keepSessionId: string) => void;
   deleteRoom: (serverId: string, roomId: string) => void;
+  /**
+   * Re-apply a channel's access after it changed: sockets that may no longer
+   * read leave it, voice members who may no longer enter are forced out, and
+   * every voice audience is re-sent what it may now see (ADR-0037).
+   */
+  revokeRoomAccess: (serverId: string, roomId: string) => void;
   deleteServer: (serverId: string, roomIds: string[], affectedUserIds: string[]) => void;
   grantServerAccess: (serverId: string, userId: string) => Promise<void>;
   refreshMemberIdentity: (serverId: string, userId: string) => PresenceUser | null;

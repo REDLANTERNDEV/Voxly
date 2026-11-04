@@ -8,7 +8,18 @@ function category(id: string, position: number): CategorySummary {
 }
 
 function room(id: string, kind: "text" | "voice", categoryId: string | null, position: number): RoomSummary {
-  return { id, serverId: "server", name: id, kind, categoryId, position, isAfk: false };
+  return {
+    id,
+    serverId: "server",
+    name: id,
+    kind,
+    categoryId,
+    position,
+    isAfk: false,
+    isPrivate: false,
+    listed: false,
+    canEnter: true
+  };
 }
 
 describe("server channel layout", () => {

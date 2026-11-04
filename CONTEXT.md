@@ -102,15 +102,15 @@ A non-human member of a server, visibly marked as such wherever members are show
 _Avoid_: Integration, app, service account
 
 **Music bot**:
-The Bot that plays audio into a voice room. A server has at most one.
+The Bot that plays audio into a voice channel. A server has at most one.
 _Avoid_: DJ, player, music player
 
 **Summon**:
-The act of bringing the Music bot into a voice room. Only a member already in that voice room can summon, and the first playback request performs it.
+The act of bringing the Music bot into a voice channel. Only a member already in that voice channel can summon, and the first playback request performs it.
 _Avoid_: Invite, add, call
 
 **Listener**:
-A member present in the voice room the Music bot is playing into. The Music bot holds one peer connection per Listener.
+A member present in the voice channel the Music bot is playing into. The Music bot holds one peer connection per Listener.
 _Avoid_: Audience, viewer, subscriber
 
 **Track**:
@@ -118,7 +118,7 @@ One piece of audio the Music bot can play, identified by its source and playable
 _Avoid_: Song, video, item, media
 
 **Queue**:
-The ordered list of Tracks the Music bot will play, belonging to the voice room it was summoned into.
+The ordered list of Tracks the Music bot will play, belonging to the voice channel it was summoned into.
 _Avoid_: Playlist, list, backlog
 
 **Requester**:
@@ -126,11 +126,11 @@ The member who added a particular Track to the Queue. Every Queue entry has exac
 _Avoid_: Owner, adder, submitter
 
 **Grace period**:
-The five minutes the Music bot waits in an emptied voice room before leaving. It exists because a member reloading the page briefly leaves the room, and the Queue should survive that.
+The five minutes the Music bot waits in an emptied voice channel before leaving. It exists because a member reloading the page briefly leaves the channel, and the Queue should survive that.
 _Avoid_: Timeout, idle window, linger
 
 **Set**:
-The stretch from a Summon until the Music bot leaves the voice room. Deliberately not called a session, which Voxly already uses for authentication.
+The stretch from a Summon until the Music bot leaves the voice channel. Deliberately not called a session, which Voxly already uses for authentication.
 _Avoid_: Session, playback session
 
 **Search**:
@@ -221,22 +221,52 @@ _Avoid_: Busy, DND in copy, quiet mode, mute (that is a Server's notifications)
 
 **Invisible**:
 A Status under which other members see the member as offline everywhere except
-a voice room they are actually in.
+a voice channel they are actually in.
 _Avoid_: Hidden, offline mode, ghost
 
 ### Voice
 
 **Call**:
-The stretch of time a voice room is occupied: it begins when the first person
-joins the empty room and ends when the last person leaves. The Music bot neither
+The stretch of time a voice channel is occupied: it begins when the first person
+joins the empty channel and ends when the last person leaves. The Music bot neither
 starts a Call nor keeps one going, and the AFK room never holds one.
 _Avoid_: Session, meeting, conversation; arama in Turkish copy (that is search)
 
 **Call length**:
-How long the current Call in a voice room has run, visible to everyone in the
-Server. It belongs to the room; a member's own time in voice is a different
-measure.
+How long the current Call in a voice channel has run, visible to everyone who
+can enter that channel — for a public channel, everyone in the Server. It
+belongs to the channel; a member's own time in voice is a different measure.
 _Avoid_: Timer, duration, uptime
+
+### Channels
+
+**Channel**:
+One entry in a Server's channel list: a text channel or a voice channel. The
+code says `room` (`RoomSummary`, the `rooms` table) for the same thing; that is
+legacy spelling, not a second concept.
+_Avoid_: Room in copy, glossary and new comments
+
+**Private channel**:
+A Channel only its Channel access and the Server's owners may enter — read and
+write for text, join and talk for voice. Whether it is checked is decided when
+something is read, so it covers the Channel's whole history (ADR-0037).
+_Avoid_: Locked channel, secret channel, restricted channel
+
+**Channel access**:
+The members a Server owner chose for one Private channel. Being on it grants
+everything an ordinary member may do in that Channel; Server owners are always
+on it implicitly, and a Bot is never on it.
+_Avoid_: Whitelist, allowlist (in copy), permissions, role
+
+**Hidden**:
+A Private channel that people without Channel access do not know exists.
+_Avoid_: Invisible (that is a Status), secret
+
+**Listed**:
+A Private channel that people without Channel access can see but not use: they
+read a text channel's history and see who is in a voice channel, but cannot
+write, react, join, or see the Call length.
+_Avoid_: Public, read-only channel (that would be a different feature)
 
 ### Where a source's own words are allowed
 
@@ -246,7 +276,3 @@ It does not extend to naming somebody else's: a YouTube video is a video, and
 telling a member "that is not a link to a YouTube video" is more use to them
 than any word of ours would be. The test is whose object is being named — ours
 takes our word, theirs takes theirs.
-
-### Terms still being resolved
-
-- **Room vs channel** — the codebase types say `RoomSummary`/`RoomKind` while the interface and CSS say channel throughout. Pre-existing and unresolved; Category and channel organization do not settle it.

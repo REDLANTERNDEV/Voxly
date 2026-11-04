@@ -56,10 +56,17 @@ export function NavLink({
   current = false,
   onNavigate,
   onClick,
+  disabledReason,
   children
 }: {
   href: string;
   className: string;
+  /**
+   * Marks a link that leads nowhere for this member, such as a Listed channel
+   * they cannot enter. The link keeps its name; the reason becomes its tooltip
+   * and the click does nothing.
+   */
+  disabledReason?: string;
   /**
    * Names the link when its own text is hidden, which is what a narrow screen
    * does to the dock's labels. Passing it also sets the tooltip, so the two
@@ -78,13 +85,20 @@ export function NavLink({
       href={href}
       aria-label={label}
       aria-current={current ? "page" : undefined}
-      title={label}
+      aria-disabled={disabledReason ? true : undefined}
+      title={label ?? disabledReason}
       onClick={(event) => {
+        if (disabledReason) {
+          event.preventDefault();
+          return;
+        }
         onClick?.(event);
         navigateOnClick(event);
       }}
     >
       {children}
+      {/* A tooltip alone never reaches a screen reader, so the reason is said too. */}
+      {disabledReason ? <span className="sr-only">{disabledReason}</span> : null}
     </a>
   );
 }

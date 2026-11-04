@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { NotificationStateResponse, ServerNotificationMute, RoomUnreadState } from "@voxly/shared";
 import { requireUser } from "./auth/sessions.js";
-import { activeServerMembership, requireServerMember } from "./members.js";
+import { activeServerMembership, requireRoomAccess, roomAccess } from "./members.js";
 import { all, one, run, type VoxlyDatabase } from "./db/database.js";
 import { roomById } from "./rooms.js";
 import { requireJoinedServer, roomIdParam, type RouteContext } from "./http.js";
@@ -29,9 +29,9 @@ export function notificationState(
             : member.until === null
               ? { mode: "indefinite" }
               : { mode: "until", until: member.until };
-        const rooms = all<RoomUnreadState & Record<string, unknown>>(
+        const rows = all<RoomUnreadState & { isPrivateFlag: number; listedFlag: number } & Record<string, unknown>>(
           database.sqlite,
-          `select rooms.id as roomId,
+          `select rooms.id as roomId, coalesce(rooms.is_private, 0) as isPrivateFlag, coalesce(rooms.listed, 0) as listedFlag,
       rooms.message_sequence as latestSequence, coalesce(c.last_read_sequence, 0) as lastReadSequence,
       (select count(*) from messages m where m.room_id = rooms.id and m.sequence > coalesce(c.last_read_sequence, 0)
         and m.user_id != ? and m.deleted_at is null) as unreadCount
@@ -39,6 +39,17 @@ export function notificationState(
       where rooms.server_id = ? and rooms.kind = 'text'`,
           [userId, userId, member.serverId]
         );
+        // Unread state is reading, so it follows the one access rule (ADR-0037).
+        const rooms = rows
+          .filter(
+            ({ roomId, isPrivateFlag, listedFlag }) =>
+              roomAccess(
+                database.sqlite,
+                { id: roomId, serverId: member.serverId, isPrivate: isPrivateFlag === 1, listed: listedFlag === 1 },
+                userId
+              ).canRead
+          )
+          .map(({ isPrivateFlag: _private, listedFlag: _listed, ...room }) => room);
         return { serverId: member.serverId, mute, rooms };
       })
   };
@@ -66,7 +77,7 @@ export function registerNotificationRoutes(context: RouteContext) {
       .parse(request.body);
     const room = roomById(database.sqlite, roomId);
     if (!room || room.kind !== "text") return reply.code(404).send({ error: "room_not_found" });
-    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
+    if (!requireRoomAccess(database, room, user.id, "read", reply)) return;
     const latest = one<{ sequence: number }>(
       database.sqlite,
       "select message_sequence as sequence from rooms where id = ?",

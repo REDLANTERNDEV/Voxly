@@ -100,6 +100,7 @@ function deleteAccount(
       "update server_members set nickname = null, removed_at = ?, can_invite = 0 where user_id = ?",
       [now, userId]
     );
+    run(database.sqlite, "delete from room_access where user_id = ?", [userId]);
     revokeSessionsForUser(database.sqlite, userId, now);
     run(database.sqlite, "delete from session_tokens where session_id in (select id from sessions where user_id = ?)", [
       userId

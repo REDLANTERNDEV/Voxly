@@ -13,7 +13,10 @@ const rooms: RoomSummary[] = ["text", "voice", "voice", "text", "voice"].map((ki
   kind: kind as "text" | "voice",
   categoryId: null,
   position: index * 10,
-  isAfk: false
+  isAfk: false,
+  isPrivate: false,
+  listed: false,
+  canEnter: true
 }));
 const noop = async () => {};
 it("renders one heading per uncategorized channel type after interleaved creation", () => {

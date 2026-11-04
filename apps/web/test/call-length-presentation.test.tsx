@@ -37,10 +37,11 @@ it("draws a running Call in the success green, in fixed-width digits", () => {
   assert.match(css, /\.rail \.channel-call-length \{[^}]*font-variant-numeric: tabular-nums/);
 });
 
-it("marks only a room whose Call is running", () => {
+it("marks only a room whose Call is running, and never a Listed one the viewer cannot enter", () => {
   const rail = readFileSync("src/components/shell/ChannelRail.tsx", "utf8");
   assert.match(rail, /const\s+callStart\s*=\s*props\.callStarts\[room\.id\]/);
-  assert.match(rail, /callStart\s*===\s*undefined\s*\?\s*null\s*:\s*<CallLength\s+startedAt=\{callStart\}/);
+  assert.match(rail, /const\s+showCallLength\s*=\s*callStart\s*!==\s*undefined\s*&&\s*room\.canEnter;/);
+  assert.match(rail, /showCallLength\s*\?\s*<CallLength\s+startedAt=\{callStart\}/);
 });
 
 it("asks for every room again after leaving voice, so the rail keeps other rooms' Calls", () => {

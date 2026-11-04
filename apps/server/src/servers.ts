@@ -31,8 +31,15 @@ import { audit } from "./audit.js";
 import { requireOwner, requireUser } from "./auth/sessions.js";
 import { createMusicBotAccount } from "./bots.js";
 import { all, defaultServerId, one, run, type VoxlyDatabase } from "./db/database.js";
-import { activateServerMembership, mayCreateInvites, requireServerMember, requireServerOwner } from "./members.js";
-import { publicRoom, roomById, roomColumns, type RoomRow } from "./rooms.js";
+import {
+  activateServerMembership,
+  mayCreateInvites,
+  requireServerMember,
+  requireServerOwner,
+  roomReaderIds
+} from "./members.js";
+import { baselineRoomReadState } from "./readState.js";
+import { roomById, roomsVisibleTo } from "./rooms.js";
 import {
   authenticatedWriteLimit,
   requireJoinedServer,
@@ -153,13 +160,9 @@ export function registerServerRoutes(context: RouteContext) {
   fastify.get("/api/servers/:serverId/rooms", async (request, reply) => {
     const scope = requireJoinedServer(context, request, reply);
     if (!scope) return;
-    const { serverId } = scope;
+    const { serverId, user } = scope;
     return {
-      rooms: all<RoomRow>(
-        database.sqlite,
-        `select ${roomColumns} from rooms where server_id = ? order by position asc`,
-        [serverId]
-      ).map(publicRoom),
+      rooms: roomsVisibleTo(database.sqlite, serverId, user.id),
       categories: categoriesForServer(database, serverId),
       uncategorizedPosition: uncategorizedPositionForServer(database, serverId)
     };
@@ -387,11 +390,7 @@ export function registerServerRoutes(context: RouteContext) {
     database.save();
     io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
     return {
-      rooms: all<RoomRow>(
-        database.sqlite,
-        `select ${roomColumns} from rooms where server_id = ? order by position asc`,
-        [serverId]
-      ).map(publicRoom),
+      rooms: roomsVisibleTo(database.sqlite, serverId, scope.owner.id),
       categories: categoriesForServer(database, serverId),
       uncategorizedPosition: uncategorizedPositionForServer(database, serverId)
     };
@@ -467,6 +466,90 @@ export function registerServerRoutes(context: RouteContext) {
     return { room: { ...current, name } };
   });
 
+  // One route replaces a channel's privacy and Channel access together, so an
+  // owner never leaves a channel half-configured (ADR-0037).
+  fastify.put("/api/servers/:serverId/rooms/:roomId/access", async (request, reply) => {
+    const scope = requireOwnedServer(context, request, reply, { roomId: roomIdParam });
+    if (!scope) return;
+    const { owner, serverId, roomId } = scope;
+    const body = z
+      .object({
+        isPrivate: z.boolean(),
+        listed: z.boolean(),
+        userIds: z.array(z.string().min(1).max(128)).max(500)
+      })
+      .strict()
+      .parse(request.body);
+    const current = roomById(database.sqlite, roomId);
+    if (!current || current.serverId !== serverId) return reply.code(404).send({ error: "room_not_found" });
+    if (body.isPrivate && current.isAfk) return reply.code(409).send({ error: "afk_room_cannot_be_private" });
+    const welcomeRoomId = one<{ welcome_room_id: string | null }>(
+      database.sqlite,
+      "select welcome_room_id from servers where id = ?",
+      [serverId]
+    )?.welcome_room_id;
+    if (body.isPrivate && welcomeRoomId === roomId) {
+      return reply.code(409).send({ error: "welcome_room_cannot_be_private" });
+    }
+
+    // Only ordinary active human members are listed: owners always have access,
+    // and a Bot is let in by a Summon, never by the list.
+    const eligible = new Set(
+      all<{ user_id: string }>(
+        database.sqlite,
+        `select m.user_id from server_members m join users u on u.id = m.user_id
+         where m.server_id = ? and m.role = 'member' and m.banned_at is null and m.removed_at is null
+           and u.banned_at is null and u.deleted_at is null and coalesce(u.is_bot, 0) = 0`,
+        [serverId]
+      ).map((row) => row.user_id)
+    );
+    const owners = new Set(
+      all<{ user_id: string }>(
+        database.sqlite,
+        "select user_id from server_members where server_id = ? and role = 'owner'",
+        [serverId]
+      ).map((row) => row.user_id)
+    );
+    const grantees = body.userIds.filter((userId) => !owners.has(userId));
+    if (grantees.some((userId) => !eligible.has(userId))) {
+      return reply.code(400).send({ error: "access_member_invalid" });
+    }
+    const userIds = body.isPrivate ? [...new Set(grantees)] : [];
+
+    const readersBefore = roomReaderIds(database.sqlite, current);
+    const now = new Date().toISOString();
+    database.sqlite.exec("begin immediate");
+    try {
+      run(database.sqlite, "update rooms set is_private = ?, listed = ? where id = ? and server_id = ?", [
+        body.isPrivate ? 1 : 0,
+        body.isPrivate && body.listed ? 1 : 0,
+        roomId,
+        serverId
+      ]);
+      run(database.sqlite, "delete from room_access where room_id = ?", [roomId]);
+      for (const userId of userIds) {
+        run(
+          database.sqlite,
+          "insert into room_access (room_id, user_id, granted_by_user_id, granted_at) values (?, ?, ?, ?)",
+          [roomId, userId, owner.id, now]
+        );
+      }
+      const updated = roomById(database.sqlite, roomId)!;
+      const newReaders = [...roomReaderIds(database.sqlite, updated)].filter((userId) => !readersBefore.has(userId));
+      baselineRoomReadState(database.sqlite, roomId, newReaders);
+      audit(database, owner.id, "room.accessChanged", null, serverId);
+      database.sqlite.exec("commit");
+    } catch (cause) {
+      database.sqlite.exec("rollback");
+      throw cause;
+    }
+    database.save();
+    realtime.revokeRoomAccess(serverId, roomId);
+    io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
+    const room = roomById(database.sqlite, roomId)!;
+    return { room: room.isPrivate ? { ...room, accessUserIds: userIds } : room };
+  });
+
   fastify.delete("/api/servers/:serverId/rooms/:roomId", async (request, reply) => {
     const scope = requireOwnedServer(context, request, reply, { roomId: roomIdParam });
     if (!scope) return;
@@ -481,6 +564,7 @@ export function registerServerRoutes(context: RouteContext) {
     database.sqlite.exec("begin immediate");
     try {
       run(database.sqlite, "delete from room_read_cursors where room_id = ?", [roomId]);
+      run(database.sqlite, "delete from room_access where room_id = ?", [roomId]);
       run(database.sqlite, "delete from messages where room_id = ?", [roomId]);
       run(database.sqlite, "delete from rooms where id = ? and server_id = ?", [roomId, serverId]);
       audit(database, owner.id, "room.deleted", null, serverId);
@@ -524,6 +608,9 @@ export function registerServerRoutes(context: RouteContext) {
         "delete from room_read_cursors where room_id in (select id from rooms where server_id = ?)",
         [serverId]
       );
+      run(database.sqlite, "delete from room_access where room_id in (select id from rooms where server_id = ?)", [
+        serverId
+      ]);
       run(database.sqlite, "delete from messages where room_id in (select id from rooms where server_id = ?)", [
         serverId
       ]);
@@ -559,11 +646,7 @@ export function registerServerRoutes(context: RouteContext) {
     if (!requireServerMember(database, defaultServerId, user.id, reply)) return;
 
     return {
-      rooms: all<RoomRow>(
-        database.sqlite,
-        `select ${roomColumns} from rooms where server_id = ? order by position asc`,
-        [defaultServerId]
-      ).map(publicRoom),
+      rooms: roomsVisibleTo(database.sqlite, defaultServerId, user.id),
       categories: categoriesForServer(database, defaultServerId),
       uncategorizedPosition: uncategorizedPositionForServer(database, defaultServerId)
     };
@@ -596,7 +679,18 @@ export function createServerRoom(
       : serverId === defaultServerId && name === "Lobby" && kind === "voice"
         ? "lobby"
         : crypto.randomUUID();
-  const room: RoomSummary = { id, serverId, name, kind, position, categoryId, isAfk };
+  const room: RoomSummary = {
+    id,
+    serverId,
+    name,
+    kind,
+    position,
+    categoryId,
+    isAfk,
+    isPrivate: false,
+    listed: false,
+    canEnter: true
+  };
   run(
     database.sqlite,
     "insert into rooms (id, server_id, name, kind, position, is_afk, category_id) values (?, ?, ?, ?, ?, ?, ?)",
@@ -608,5 +702,7 @@ export function createServerRoom(
 /** The owner's Welcome notice channel while it is still a text channel of this server. */
 function chosenWelcomeRoom(database: VoxlyDatabase, serverId: string, roomId: string | null) {
   const room = roomId ? roomById(database.sqlite, roomId) : null;
-  return room && room.serverId === serverId && room.kind === "text" ? room.id : null;
+  // A Welcome notice in a channel the newcomer cannot read greets nobody, so a
+  // Private channel is never one (ADR-0037).
+  return room && room.serverId === serverId && room.kind === "text" && !room.isPrivate ? room.id : null;
 }

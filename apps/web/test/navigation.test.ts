@@ -66,7 +66,10 @@ describe("frontend navigation", () => {
       kind: "voice" as const,
       categoryId: null,
       position: 1,
-      isAfk: false
+      isAfk: false,
+      isPrivate: false,
+      listed: false,
+      canEnter: true
     };
     const text = {
       id: "text",
@@ -75,7 +78,10 @@ describe("frontend navigation", () => {
       kind: "text" as const,
       categoryId: null,
       position: 2,
-      isAfk: false
+      isAfk: false,
+      isPrivate: false,
+      listed: false,
+      canEnter: true
     };
 
     assert.equal(firstServerRoomPath("s1", [voice, text]), "/app/server/s1/text/text");

@@ -726,6 +726,16 @@ requirement.
 - Choosing a Result sends back the link the bot built, unread, on the same `add`
   a paste uses. Never construct a source's URL here.
 
+- A private channel shows a muted lock beside its name with an accessible
+  "Private channel" label. When `canEnter` is false the row is view-only: a
+  Listed text channel opens without a composer or message actions, and a
+  Listed voice channel lists its members but never joins, never offers Music,
+  and shows no Call length. Owners set access from the channel menu's Channel
+  access dialog; the move menu offers only channels the member can enter, and
+  the Mention picker in a private channel offers only people with access.
+  Leaving the route when a refreshed room list no longer holds the viewed
+  channel is how a member who lost a Hidden channel is moved off it.
+
 ## Controls, Icons, and Accessibility
 
 - Functional UI icons are inline React SVG using `currentColor`; do not add an

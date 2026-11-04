@@ -535,6 +535,20 @@ before changing it.
   each client reloads. Only a deletion carries `deletedRoomId`, which moves
   viewers off a room that no longer exists.
 
+- Private channels (ADR-0037) have one rule, `roomAccess` in `members.ts`:
+  Server owners and members on a channel's `room_access` list may enter it;
+  everyone else of an active Membership may read a Listed channel and nothing
+  of a Hidden one. Every channel route asks it — read routes need `canRead`,
+  writes and reactions need `canEnter` — and the room list, unread state,
+  Mention recipients and `message:new` audiences are filtered by it. Never
+  check access at write time or copy it onto messages.
+- The access route is owner-only, strips owners and Bots from the list, and
+  refuses the AFK room and the Welcome notice channel; neither may become
+  private, and a private channel may not be chosen for either. Losing access
+  evicts in the same request: voice members get `room_access_revoked`, and
+  sockets that may no longer read leave the text room. Kick, ban and Account
+  deletion clear that Membership's grants.
+
 ## Atomic Voice and Realtime State
 
 - `voice:join` accepts a typed `VoiceJoinRequest` and requires an ACK. Do not
@@ -564,6 +578,14 @@ before changing it.
 - Kicks, bans, channel deletion, server deletion, explicit leave, and socket
   cleanup must remove affected voice/subscription state and notify clients with
   the existing typed reasons.
+
+- A private voice channel's `voice:joined`, `voice:left` and outside snapshot go
+  only to sockets that may see it. Listed observers receive members but never
+  `callLengthMs`; Hidden ones receive nothing, and a direct snapshot request
+  for one answers with an empty roster, exactly as a missing channel does. `voice:join` needs `canEnter` or the
+  channel's summon allowance, which a member with access creates by sending a
+  music command and which lets the Music bot in for that Set — never a branch
+  on `is_bot`. An owner move to a channel the member cannot enter is refused.
 
 ## Optional Third-Party Providers
 

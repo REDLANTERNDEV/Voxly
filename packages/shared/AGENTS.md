@@ -57,6 +57,11 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   the affected Server and lets clients anonymize already-loaded message and
   directory state without broadcasting Account history elsewhere.
 
+- `RoomSummary` is per viewer: `isPrivate`, `listed` and `canEnter` describe
+  what that viewer may do, and `accessUserIds` is sent only to viewers who can
+  enter. Nothing on the wire may let a client infer a Hidden channel it cannot
+  see (ADR-0037).
+
 ## Invite Contract Invariants
 
 - Invite creation uses independent `expiresInMinutes` and `maxUses` values.

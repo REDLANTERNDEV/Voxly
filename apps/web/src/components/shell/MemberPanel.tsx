@@ -5,6 +5,7 @@ import type { MemberAction, Translate } from "../../app/types.js";
 import { UserPlusIcon } from "../ui/Icons.js";
 import { PresenceDot } from "./AccountStatusMenu.js";
 import {
+  canMemberEnter,
   canOwnerModeratePerson,
   canOwnerVoiceModerate,
   countPeople,
@@ -174,7 +175,9 @@ export function MemberPanel({
                   : undefined
               }
               moveTargets={
-                canModeratePerson && voiceRoom ? voiceRooms.filter((room) => room.id !== voiceRoom.id) : undefined
+                canModeratePerson && voiceRoom
+                  ? voiceRooms.filter((room) => room.id !== voiceRoom.id && canMemberEnter(room, user))
+                  : undefined
               }
               onMove={canModeratePerson && voiceRoom ? (roomId) => onMoveMember(user.userId, roomId) : undefined}
               selfControls={selfControls}

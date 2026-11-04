@@ -20,7 +20,10 @@ const textRoom: RoomSummary = {
   kind: "text",
   categoryId: null,
   position: 10,
-  isAfk: false
+  isAfk: false,
+  isPrivate: false,
+  listed: false,
+  canEnter: true
 };
 const voiceRoom: RoomSummary = {
   id: "lobby",
@@ -29,7 +32,10 @@ const voiceRoom: RoomSummary = {
   kind: "voice",
   categoryId: null,
   position: 20,
-  isAfk: false
+  isAfk: false,
+  isPrivate: false,
+  listed: false,
+  canEnter: true
 };
 
 describe("channel state", () => {
@@ -59,7 +65,10 @@ describe("channel state", () => {
       kind: "text",
       categoryId: null,
       position: 10,
-      isAfk: false
+      isAfk: false,
+      isPrivate: false,
+      listed: false,
+      canEnter: true
     };
     const rooms = [textRoom, voiceRoom, betaText];
 

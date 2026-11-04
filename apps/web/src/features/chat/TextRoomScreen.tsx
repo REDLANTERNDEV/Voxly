@@ -16,6 +16,7 @@ import { ChatComposerInput } from "./ChatComposerInput.js";
 import { PinnedMessages } from "./PinnedMessages.js";
 import { trimMentionDraft } from "../../lib/chatInteractions.js";
 import { ReplyQuote } from "./ReplyQuote.js";
+import { canMemberEnter } from "../../lib/memberDirectory.js";
 import {
   reconcileMentionContent,
   reconcileReplyIdentity,
@@ -83,6 +84,13 @@ export function TextRoomScreen(props: TextRoomProps) {
   const previousMessageIdsRef = useRef<string[]>([]);
   const roomId = props.currentRoom?.id;
   const userId = props.user.id;
+  // A Listed channel the viewer cannot enter is read-only, and a private
+  // channel's Mention picker offers only those who can read it (ADR-0037).
+  const readOnly = props.currentRoom ? !props.currentRoom.canEnter : false;
+  const currentRoom = props.currentRoom;
+  const mentionMembers = currentRoom
+    ? props.serverMembers.filter((member) => canMemberEnter(currentRoom, member))
+    : props.serverMembers;
   useEffect(() => {
     if (roomId) composerDrafts.write(userId, roomId, { body: draft, mentions: draftMentions, replyTo: replyTarget });
   }, [userId, roomId, draft, draftMentions, replyTarget]);
@@ -285,6 +293,7 @@ export function TextRoomScreen(props: TextRoomProps) {
                 key={message.id}
                 message={message}
                 grouped={continuesGroup(displayedMessages[index - 1], message)}
+                readOnly={readOnly}
                 user={props.user}
                 members={props.serverMembers}
                 onlineUsers={props.onlineUsers}
@@ -352,7 +361,12 @@ export function TextRoomScreen(props: TextRoomProps) {
           }
         }}
       >
-        {replyTarget ? (
+        {readOnly ? (
+          <p className="composer-read-only" role="note">
+            {props.t("channel.readOnly")}
+          </p>
+        ) : null}
+        {!readOnly && replyTarget ? (
           <div className="composer-reply">
             <span className="composer-reply-label" aria-hidden="true">
               <ReplyIcon />
@@ -383,40 +397,42 @@ export function TextRoomScreen(props: TextRoomProps) {
             </button>
           </div>
         ) : null}
-        <form onSubmit={submit}>
-          <label className="form-field" htmlFor="messageInput">
-            <span className="label composer-field-label">
-              {props.t("room.messageLabel", { room: props.currentRoom?.name ?? "lobby" })}
-            </span>
-            <ChatComposerInput
-              inputRef={composerRef}
-              id="messageInput"
-              label={props.t("room.messageLabel", { room: props.currentRoom?.name ?? "lobby" })}
-              placeholder={props.t("room.chatPlaceholder")}
-              body={draft}
-              mentions={draftMentions}
-              members={props.serverMembers}
-              onlineUsers={props.onlineUsers}
-              t={props.t}
-              onChange={(body, mentions) => {
-                setDraft(body);
-                setDraftMentions(mentions);
-              }}
-              onSubmit={() => composerRef.current?.form?.requestSubmit()}
-              onEscape={() => setReplyTarget(null)}
-              trailingControl={
-                <button
-                  className="btn btn-primary composer-send"
-                  type="submit"
-                  aria-label={props.t("common.send")}
-                  title={props.t("common.send")}
-                >
-                  <ArrowIcon />
-                </button>
-              }
-            />
-          </label>
-        </form>
+        {readOnly ? null : (
+          <form onSubmit={submit}>
+            <label className="form-field" htmlFor="messageInput">
+              <span className="label composer-field-label">
+                {props.t("room.messageLabel", { room: props.currentRoom?.name ?? "lobby" })}
+              </span>
+              <ChatComposerInput
+                inputRef={composerRef}
+                id="messageInput"
+                label={props.t("room.messageLabel", { room: props.currentRoom?.name ?? "lobby" })}
+                placeholder={props.t("room.chatPlaceholder")}
+                body={draft}
+                mentions={draftMentions}
+                members={mentionMembers}
+                onlineUsers={props.onlineUsers}
+                t={props.t}
+                onChange={(body, mentions) => {
+                  setDraft(body);
+                  setDraftMentions(mentions);
+                }}
+                onSubmit={() => composerRef.current?.form?.requestSubmit()}
+                onEscape={() => setReplyTarget(null)}
+                trailingControl={
+                  <button
+                    className="btn btn-primary composer-send"
+                    type="submit"
+                    aria-label={props.t("common.send")}
+                    title={props.t("common.send")}
+                  >
+                    <ArrowIcon />
+                  </button>
+                }
+              />
+            </label>
+          </form>
+        )}
         <p className="error-text" aria-live="polite">
           {error}
         </p>

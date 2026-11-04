@@ -45,6 +45,30 @@ export interface RoomSummary {
    * joined by hand like any other.
    */
   isAfk: boolean;
+  /**
+   * A Private channel: only the Server's owners and its Channel access may
+   * enter it (ADR-0037). A Hidden one is never sent to anyone else.
+   */
+  isPrivate: boolean;
+  /** A private channel that people without access may still see, view-only. */
+  listed: boolean;
+  /**
+   * Whether the viewer this summary was built for may write in this text
+   * channel or join this voice channel. Always true for a public channel.
+   */
+  canEnter: boolean;
+  /**
+   * The Channel access of a private channel, sent only to a viewer who can
+   * enter it. Server owners are not listed: they always have access.
+   */
+  accessUserIds?: string[];
+}
+
+/** An owner's replacement of one channel's privacy and Channel access. */
+export interface RoomAccessUpdate {
+  isPrivate: boolean;
+  listed: boolean;
+  userIds: string[];
 }
 
 /** A server-wide group of text and voice rooms. */
@@ -295,6 +319,7 @@ export type VoiceForceLeaveReason =
   | "owner_disconnect"
   | "server_access_revoked"
   | "room_deleted"
+  | "room_access_revoked"
   | "socket_disconnect"
   | "server_deleted";
 

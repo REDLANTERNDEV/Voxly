@@ -20,6 +20,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type {
   PresenceUser,
+  RoomSummary,
   RtcSignalAck,
   VisualMediaKind,
   VisualTarget,
@@ -32,12 +33,7 @@ import type {
   VoiceSnapshot
 } from "@voxly/shared";
 import type { VoxlyDatabase } from "./db/database.js";
-import {
-  activeServerMembership,
-  hasActiveServerMembership,
-  serverPresenceUser,
-  type ServerMemberRow
-} from "./members.js";
+import { activeServerMembership, roomAccess, serverPresenceUser, type ServerMemberRow } from "./members.js";
 import { roomById } from "./rooms.js";
 import {
   callAck,
@@ -135,6 +131,14 @@ interface VoiceContext {
    * cannot disagree about whether a room is occupied.
    */
   calls: Map<string, number>;
+  /**
+   * The voice channels each Music bot has been summoned into by someone who
+   * may enter them. A Summon is what lets the bot into a Private channel, so
+   * the join check reads this rather than branching on the account being a Bot
+   * (ADR-0037). Each entry lasts for the Set: it survives a reconnect, and is
+   * dropped when the bot leaves that channel on purpose or the room is deleted.
+   */
+  summonAllowances: Map<string, Set<string>>;
 }
 
 /**
@@ -174,6 +178,14 @@ export interface VoiceRealtime {
   refreshMemberIdentity: (serverId: string, userId: string, user: PresenceUser) => void;
   /** Reapply owner mute/deafen to the member's live media state. */
   updateModeration: (serverId: string, userId: string, moderation: VoiceModerationState) => void;
+  /** Let this Music bot into this voice channel for the Summon just made. */
+  allowSummon: (botUserId: string, roomId: string) => void;
+  /**
+   * Re-apply a voice channel's access after it changed: anyone inside who may
+   * no longer enter is forced out, and every audience is re-sent what it may
+   * now see.
+   */
+  revokeRoomAccess: (room: RoomSummary) => void;
 }
 
 export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase): VoiceRealtime {
@@ -184,7 +196,8 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
     subscriptions: new Map<string, VisualSubscriptions>(),
     holders: new Map<string, { roomId: string; sessionId: string }>(),
     pendingDisconnects: new Map(),
-    calls: new Map<string, number>()
+    calls: new Map<string, number>(),
+    summonAllowances: new Map<string, Set<string>>()
   };
 
   return {
@@ -279,6 +292,7 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
       context.membership.delete(roomId);
       context.subscriptions.delete(roomId);
       context.calls.delete(roomId);
+      for (const allowed of context.summonAllowances.values()) allowed.delete(roomId);
       for (const socket of io.sockets.sockets.values()) {
         const socketUser = socket.data.user as PresenceUser | undefined;
         observeSocketRoomChange(socket.leave(`voice:${roomId}`));
@@ -299,8 +313,58 @@ export function createVoiceRealtime(io: VoxlyIoServer, database: VoxlyDatabase):
         members.set(userId, { ...current, media, moderation });
         emitVoiceSnapshot(context, roomId, members);
       }
+    },
+    allowSummon(botUserId, roomId) {
+      const allowed = context.summonAllowances.get(botUserId) ?? new Set<string>();
+      allowed.add(roomId);
+      context.summonAllowances.set(botUserId, allowed);
+    },
+    revokeRoomAccess(room) {
+      if (room.kind !== "voice") return;
+      for (const userId of [...(context.membership.get(room.id)?.keys() ?? [])]) {
+        if (mayEnterVoice(context, room, userId)) continue;
+        leaveVoiceMember(context, room.id, userId);
+        emitVoiceForceLeave(context, userId, room.id, "room_access_revoked");
+      }
+      emitVoiceSnapshot(context, room.id, context.membership.get(room.id));
     }
   };
+}
+
+/** Whether a member may be in this voice channel: access, or the Summon that brought the Music bot. */
+function mayEnterVoice(context: VoiceContext, room: RoomSummary, userId: string) {
+  return (
+    roomAccess(context.database.sqlite, room, userId).canEnter ||
+    (context.summonAllowances.get(userId)?.has(room.id) ?? false)
+  );
+}
+
+/**
+ * Sends one realtime fact about a channel to every socket in its Server that
+ * may see inside it, telling the sender whether each may also enter it. A
+ * public channel reaches all of them; a Hidden one only its entrants; a Listed
+ * one everyone, who are told apart so the Call length stays with entrants
+ * (ADR-0037).
+ */
+function forEachRoomObserver(
+  context: VoiceContext,
+  room: RoomSummary,
+  skip: (socket: VoxlySocket) => boolean,
+  send: (socket: VoxlySocket, canEnter: boolean) => void
+) {
+  const answers = new Map<string, boolean | null>();
+  for (const socket of context.io.sockets.sockets.values()) {
+    if (!socket.rooms.has(`server:${room.serverId}`) || skip(socket)) continue;
+    const socketUser = socket.data.user as PresenceUser | undefined;
+    if (!socketUser) continue;
+    let canEnter = answers.get(socketUser.userId);
+    if (canEnter === undefined) {
+      const access = roomAccess(context.database.sqlite, room, socketUser.userId);
+      canEnter = access.canRead ? access.canEnter : null;
+      answers.set(socketUser.userId, canEnter);
+    }
+    if (canEnter !== null && canEnter !== undefined) send(socket, canEnter);
+  }
 }
 
 function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user: PresenceUser) {
@@ -326,6 +390,14 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
       const roomUser = serverPresenceUser(database.sqlite, room.serverId, user.userId);
       if (!roomUser) {
         ack({ ok: false, error: "forbidden" });
+        return;
+      }
+      if (!mayEnterVoice(context, room, user.userId)) {
+        // A Hidden channel is refused as if it did not exist.
+        ack({
+          ok: false,
+          error: roomAccess(database.sqlite, room, user.userId).canSee ? "forbidden" : "room_not_found"
+        });
         return;
       }
 
@@ -402,7 +474,16 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
       clearPendingDisconnect(context, user.userId);
       ack({ ok: true, state: memberState });
       emitVoiceSnapshot(context, roomId, members);
-      socket.to(`server:${room.serverId}`).emit("voice:joined", { roomId, user: roomUser });
+      if (room.isPrivate) {
+        forEachRoomObserver(
+          context,
+          room,
+          (candidate) => candidate.id === socket.id,
+          (candidate) => candidate.emit("voice:joined", { roomId, user: roomUser })
+        );
+      } else {
+        socket.to(`server:${room.serverId}`).emit("voice:joined", { roomId, user: roomUser });
+      }
     })
   );
 
@@ -424,6 +505,8 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
         return;
       }
       leaveVoice(context, socket, parsed.data, user.userId);
+      // Leaving on purpose ends the Set there, and with it the Summon's allowance.
+      context.summonAllowances.get(user.userId)?.delete(parsed.data);
     })
   );
 
@@ -436,7 +519,8 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
         return;
       }
       const room = roomById(database.sqlite, parsed.data);
-      if (!room || !hasActiveServerMembership(database.sqlite, room.serverId, user.userId)) {
+      const access = room ? roomAccess(database.sqlite, room, user.userId) : null;
+      if (!room || !access?.canRead) {
         callAck(ack, { roomId: parsed.data, viewerInVoiceRoom: false, members: [] });
         return;
       }
@@ -448,7 +532,7 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
           context.membership.get(parsed.data),
           viewerInVoiceRoom,
           viewerInVoiceRoom,
-          callLength(context, parsed.data)
+          access.canEnter ? callLength(context, parsed.data) : undefined
         )
       );
     })
@@ -474,7 +558,9 @@ function registerVoiceHandlers(context: VoiceContext, socket: VoxlySocket, user:
         return;
       }
       const membership = activeServerMembership(database.sqlite, room.serverId, user.userId);
-      if (!membership) {
+      // Access is re-checked here too, so a media change can never outlive a
+      // revoked grant even for the instant before eviction lands (ADR-0037).
+      if (!membership || !mayEnterVoice(context, room, user.userId)) {
         callAck(ack, { ok: false, error: "not_in_voice_room" });
         return;
       }
@@ -613,7 +699,16 @@ function leaveVoiceMember(context: VoiceContext, roomId: string, userId: string)
   const room = roomById(context.database.sqlite, roomId);
   if (!room) return;
   emitVoiceSnapshot(context, roomId, members);
-  context.io.to(`server:${room.serverId}`).emit("voice:left", { roomId, userId });
+  if (room.isPrivate) {
+    forEachRoomObserver(
+      context,
+      room,
+      () => false,
+      (socket) => socket.emit("voice:left", { roomId, userId })
+    );
+  } else {
+    context.io.to(`server:${room.serverId}`).emit("voice:left", { roomId, userId });
+  }
 }
 
 /**
@@ -636,10 +731,23 @@ function emitVoiceSnapshot(context: VoiceContext, roomId: string, members: Voice
   // Observer snapshots intentionally carry the room roster, but they must not
   // be mistaken for proof that the receiving socket is in that voice room.
   context.io.to(voiceRoom).emit("voice:snapshot", voiceSnapshot(roomId, members, true, true, callLengthMs));
-  context.io
-    .to(`server:${room.serverId}`)
-    .except(voiceRoom)
-    .emit("voice:snapshot", voiceSnapshot(roomId, members, false, false, callLengthMs));
+  if (!room.isPrivate) {
+    context.io
+      .to(`server:${room.serverId}`)
+      .except(voiceRoom)
+      .emit("voice:snapshot", voiceSnapshot(roomId, members, false, false, callLengthMs));
+    return;
+  }
+  // A Listed channel's observers see who is inside but not how long the Call
+  // has run; a Hidden channel's see nothing unless they may enter it.
+  const entrantSnapshot = voiceSnapshot(roomId, members, false, false, callLengthMs);
+  const observerSnapshot = voiceSnapshot(roomId, members, false, false, undefined);
+  forEachRoomObserver(
+    context,
+    room,
+    (socket) => socket.rooms.has(voiceRoom),
+    (socket, canEnter) => socket.emit("voice:snapshot", canEnter ? entrantSnapshot : observerSnapshot)
+  );
 }
 
 function callLength(context: VoiceContext, roomId: string): number | undefined {

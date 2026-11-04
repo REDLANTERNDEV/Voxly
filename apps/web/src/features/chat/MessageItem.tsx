@@ -63,7 +63,8 @@ export function MessageItem({
   waved = false,
   onWave,
   identityChanges = noMemberIdentityChanges,
-  grouped = false
+  grouped = false,
+  readOnly = false
 }: {
   message: ChatMessage;
   user: PublicUser;
@@ -91,6 +92,8 @@ export function MessageItem({
   identityChanges?: MemberIdentityChanges;
   /** Continues the previous message's group: no avatar or author line of its own. */
   grouped?: boolean;
+  /** Shown in a Listed channel the viewer cannot enter. */
+  readOnly?: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -130,7 +133,8 @@ export function MessageItem({
   const isOwn = message.userId === user.id;
   const displayNickname = message.authorDeleted ? t("common.deletedMember") : message.nickname;
   // Anyone who can read a message can answer it, so every row has a menu.
-  const hasActions = true;
+  // A Listed channel the viewer cannot enter is read, never acted on (ADR-0037).
+  const hasActions = !readOnly;
   const embeds = messageEmbeds(message.body, message.suppressedEmbedKeys);
 
   useEffect(() => {
@@ -454,6 +458,7 @@ export function MessageItem({
             onClear={(emoji) => onClearReactions(message.id, emoji)}
             pickerOpen={pickerOpen}
             onPickerChange={setPickerOpen}
+            readOnly={readOnly}
           />
         ) : null}
         {isBusy ? (

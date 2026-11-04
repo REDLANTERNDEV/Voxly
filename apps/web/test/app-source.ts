@@ -85,7 +85,8 @@ const declarations: Array<[string, string]> = [
   ["src/components/ui/Icons.tsx", "HeadsetIcon"],
   ["src/components/ui/Icons.tsx", "CameraIcon"],
   ["src/components/ui/Icons.tsx", "ScreenIcon"],
-  ["src/components/ui/Icons.tsx", "ReplyIcon"]
+  ["src/components/ui/Icons.tsx", "ReplyIcon"],
+  ["src/components/ui/Icons.tsx", "LockIcon"]
 ];
 
 function declarationSource(path: string, name: string) {

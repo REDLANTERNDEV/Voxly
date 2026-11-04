@@ -1,4 +1,4 @@
-import { hasActiveServerMembership } from "./members.js";
+import { hasActiveServerMembership, roomAccess } from "./members.js";
 /**
  * The Music bot's control plane: how a member's request reaches the bot.
  *
@@ -199,7 +199,7 @@ export interface MusicRealtime {
 export function createMusicRealtime(
   io: VoxlyIoServer,
   database: VoxlyDatabase,
-  voice: Pick<VoiceRealtime, "isVoiceMember" | "isVoiceSocketMember">
+  voice: Pick<VoiceRealtime, "isVoiceMember" | "isVoiceSocketMember" | "allowSummon">
 ): MusicRealtime {
   return {
     registerHandlers(socket, user) {
@@ -229,7 +229,7 @@ export function createMusicRealtime(
 async function forwardMusicCommand(
   io: VoxlyIoServer,
   database: VoxlyDatabase,
-  voice: Pick<VoiceRealtime, "isVoiceMember" | "isVoiceSocketMember">,
+  voice: Pick<VoiceRealtime, "isVoiceMember" | "isVoiceSocketMember" | "allowSummon">,
   requestedByUserId: string,
   socket: VoxlySocket,
   payload: unknown
@@ -268,6 +268,12 @@ async function forwardMusicCommand(
   const botSocket = sockets.at(-1);
   if (!botSocket) {
     return { ok: false, error: "bot_offline" };
+  }
+  // A Private channel admits the Music bot because someone who may enter it
+  // asked for it, not because it is a Bot (ADR-0037). Recorded before the bot
+  // is asked, since its answer may be to join.
+  if (roomAccess(database.sqlite, room, requestedByUserId).canEnter) {
+    voice.allowSummon(account.userId, room.id);
   }
   // The most recently connected socket, and only that one. An account may
   // briefly hold two — a reconnect whose predecessor has not dropped yet — and

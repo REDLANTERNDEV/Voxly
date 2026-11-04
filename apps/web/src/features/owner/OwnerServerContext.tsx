@@ -180,11 +180,14 @@ export function OwnerServerContext({
                 }}
               >
                 <option value="">{t("owner.welcomeRoomTop")}</option>
-                {textRooms.map((room) => (
-                  <option key={room.id} value={room.id}>
-                    # {room.name}
-                  </option>
-                ))}
+                {/* A Welcome notice in a channel the newcomer cannot read greets nobody (ADR-0037). */}
+                {textRooms
+                  .filter((room) => !room.isPrivate)
+                  .map((room) => (
+                    <option key={room.id} value={room.id}>
+                      # {room.name}
+                    </option>
+                  ))}
               </select>
             </label>
             <span className="small" aria-live="polite">

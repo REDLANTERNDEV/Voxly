@@ -7817,3 +7817,73 @@ button.reply-quote:focus-visible .reply-quote-body {
     width: 36px;
   }
 }
+
+/* Private channels (ADR-0037). The channel name keeps its ellipsis and the lock
+   follows it without ever being truncated away. */
+.rail .channel-label {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+.rail .channel-lock {
+  display: inline-flex;
+  flex: none;
+}
+.rail .channel-lock .ui-icon {
+  height: 13px;
+  width: 13px;
+}
+.rail .channel-item[aria-disabled="true"] {
+  cursor: default;
+}
+.composer-read-only {
+  font-size: 14px;
+  margin: 0;
+  padding: 10px 4px;
+  text-align: center;
+}
+.channel-access-dialog {
+  max-height: min(640px, calc(100dvh - 32px));
+  overflow-y: auto;
+}
+.channel-access-toggle,
+.channel-access-visibility label,
+.channel-access-list label {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-height: 32px;
+}
+.channel-access-visibility,
+.channel-access-members {
+  border: 0;
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.channel-access-visibility legend,
+.channel-access-members legend {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.channel-access-list {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+  margin: 6px 0 0;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 0;
+}
+.channel-access-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.channel-access-list .muted {
+  font-size: 12px;
+  margin-left: auto;
+}

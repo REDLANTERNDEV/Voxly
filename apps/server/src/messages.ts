@@ -36,11 +36,19 @@ import {
   type ChatMessageKind,
   type MessageMention,
   type MessageMentionInput,
-  type MessageReactionState
+  type MessageReactionState,
+  type RoomSummary
 } from "@voxly/shared";
 import { requireUser } from "./auth/sessions.js";
 import { all, one, run, type VoxlyDatabase } from "./db/database.js";
-import { isServerOwner, requireServerMember, serverPresenceUser, visiblyOnlineUserIds } from "./members.js";
+import {
+  isServerOwner,
+  requireRoomAccess,
+  roomEntrantIds,
+  roomReaderIds,
+  serverPresenceUser,
+  visiblyOnlineUserIds
+} from "./members.js";
 import { roomById } from "./rooms.js";
 import { messageLimit, roomIdParam, type RouteContext } from "./http.js";
 
@@ -126,7 +134,7 @@ export function registerMessageRoutes(context: RouteContext) {
     const user = requireUser(database, request, reply, secureCookies);
     if (!user) return;
     const { roomId } = z.object({ roomId: roomIdParam }).parse(request.params);
-    if (!requireTextRoom(database, roomId, user.id, reply)) return;
+    if (!requireTextRoom(database, roomId, user.id, "read", reply)) return;
     const rows = all<MessageRow>(
       database.sqlite,
       `select ${messageColumns} ${messageSources}
@@ -141,7 +149,7 @@ export function registerMessageRoutes(context: RouteContext) {
     const user = requireUser(database, request, reply, secureCookies);
     if (!user) return;
     const { roomId, messageId } = messageParamsSchema.parse(request.params);
-    if (!requireTextRoom(database, roomId, user.id, reply)) return;
+    if (!requireTextRoom(database, roomId, user.id, "read", reply)) return;
     const target = messageById(database.sqlite, roomId, messageId);
     if (!target) return reply.code(404).send({ error: "message_not_found" });
     const before = all<MessageRow>(
@@ -177,7 +185,7 @@ export function registerMessageRoutes(context: RouteContext) {
         const user = requireUser(database, request, reply, secureCookies);
         if (!user) return;
         const { roomId, messageId } = messageParamsSchema.parse(request.params);
-        const room = requireTextRoom(database, roomId, user.id, reply);
+        const room = requireTextRoom(database, roomId, user.id, "enter", reply);
         if (!room) return;
         if (!isServerOwner(database.sqlite, room.serverId, user.id))
           return reply.code(403).send({ error: "forbidden" });
@@ -208,7 +216,7 @@ export function registerMessageRoutes(context: RouteContext) {
         mode === "clearAll"
           ? null
           : z.object({ emoji: z.string().refine((value) => chatEmojiSet.has(value)) }).parse(request.params).emoji;
-      const room = requireTextRoom(database, roomId, user.id, reply);
+      const room = requireTextRoom(database, roomId, user.id, "enter", reply);
       if (!room) return;
       if ((mode === "clearAll" || mode === "clearEmoji") && !isServerOwner(database.sqlite, room.serverId, user.id))
         return reply.code(403).send({ error: "forbidden" });
@@ -286,7 +294,7 @@ export function registerMessageRoutes(context: RouteContext) {
       return;
     }
     const { roomId } = z.object({ roomId: roomIdParam }).parse(request.params);
-    if (!requireTextRoom(database, roomId, user.id, reply)) return;
+    if (!requireTextRoom(database, roomId, user.id, "read", reply)) return;
     const { limit } = z
       .object({
         limit: z.coerce.number().int().positive().max(200).default(100)
@@ -342,7 +350,7 @@ export function registerMessageRoutes(context: RouteContext) {
     if (!room) {
       return reply.code(404).send({ error: "room_not_found" });
     }
-    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
+    if (!requireRoomAccess(database, room, user.id, "enter", reply)) return;
     if (room.kind !== "text") {
       return reply.code(400).send({ error: "messages_require_text_room" });
     }
@@ -356,7 +364,7 @@ export function registerMessageRoutes(context: RouteContext) {
 
     const sender = serverPresenceUser(database.sqlite, room.serverId, user.id);
     if (!sender) return reply.code(403).send({ error: "server_forbidden" });
-    const mentions = prepareMentions(database.sqlite, io, room.serverId, body.body, body.mentions);
+    const mentions = prepareMentions(database.sqlite, io, room, body.body, body.mentions);
     if (!mentions) return reply.code(400).send({ error: "invalid_mentions" });
     const message: ChatMessage = {
       kind: "message",
@@ -397,7 +405,7 @@ export function registerMessageRoutes(context: RouteContext) {
     database.save();
     // Every active server member needs the lightweight notification so clients
     // can maintain unread counts for text rooms they have not opened yet.
-    io.to(`server:${room.serverId}`).emit("message:new", message);
+    emitNewMessage(io, database.sqlite, room, message);
 
     return reply.code(201).send({ message });
   });
@@ -417,7 +425,7 @@ export function registerMessageRoutes(context: RouteContext) {
     if (!room) {
       return reply.code(404).send({ error: "room_not_found" });
     }
-    if (!requireServerMember(database, room.serverId, user.id, reply)) return;
+    if (!requireRoomAccess(database, room, user.id, "enter", reply)) return;
     if (room.kind !== "text") {
       return reply.code(400).send({ error: "messages_require_text_room" });
     }
@@ -479,7 +487,7 @@ export function registerMessageRoutes(context: RouteContext) {
       throw error;
     }
     database.save();
-    io.to(`server:${room.serverId}`).emit("message:new", message);
+    emitNewMessage(io, database.sqlite, room, message);
     return reply.code(201).send({ message });
   });
 
@@ -492,7 +500,7 @@ export function registerMessageRoutes(context: RouteContext) {
     const body = z
       .object({ body: messageBodySchema, mentions: z.array(mentionSchema).max(maxMentionsPerMessage).default([]) })
       .parse(request.body);
-    if (!requireTextRoom(database, roomId, user.id, reply)) return;
+    if (!requireTextRoom(database, roomId, user.id, "enter", reply)) return;
     const current = messageById(database.sqlite, roomId, messageId);
     if (!current) {
       return reply.code(404).send({ error: "message_not_found" });
@@ -508,7 +516,7 @@ export function registerMessageRoutes(context: RouteContext) {
     }
 
     const room = roomById(database.sqlite, roomId)!;
-    const mentions = prepareMentions(database.sqlite, io, room.serverId, body.body, body.mentions, current);
+    const mentions = prepareMentions(database.sqlite, io, room, body.body, body.mentions, current);
     if (!mentions) return reply.code(400).send({ error: "invalid_mentions" });
     const editedAt = new Date().toISOString();
     run(database.sqlite, "update messages set body = ?, edited_at = ?, mentions = ? where id = ?", [
@@ -539,7 +547,7 @@ export function registerMessageRoutes(context: RouteContext) {
           .regex(/^(youtube|x|vimeo|spotify):[A-Za-z0-9:_-]+$/u)
       })
       .parse(request.body);
-    const room = requireTextRoom(database, roomId, user.id, reply);
+    const room = requireTextRoom(database, roomId, user.id, "enter", reply);
     if (!room) return;
     const current = messageById(database.sqlite, roomId, messageId);
     if (!current) return reply.code(404).send({ error: "message_not_found" });
@@ -569,7 +577,7 @@ export function registerMessageRoutes(context: RouteContext) {
       return;
     }
     const { roomId, messageId } = messageParamsSchema.parse(request.params);
-    const room = requireTextRoom(database, roomId, user.id, reply);
+    const room = requireTextRoom(database, roomId, user.id, "enter", reply);
     if (!room) return;
     const current = messageById(database.sqlite, roomId, messageId);
     if (!current) {
@@ -616,13 +624,21 @@ export function registerMessageRoutes(context: RouteContext) {
  * the whole truth; only `POST` has a request worth refusing on its own terms,
  * and it says so where it spells its own steps out.
  */
-function requireTextRoom(database: VoxlyDatabase, roomId: string, userId: string, reply: FastifyReply) {
+function requireTextRoom(
+  database: VoxlyDatabase,
+  roomId: string,
+  userId: string,
+  need: "read" | "enter",
+  reply: FastifyReply
+) {
   const room = roomById(database.sqlite, roomId);
   if (!room || room.kind !== "text") {
     reply.code(404).send({ error: "room_not_found" });
     return null;
   }
-  if (!requireServerMember(database, room.serverId, userId, reply)) return null;
+  // Reading needs `canRead`; writing, reacting and editing need `canEnter`
+  // (ADR-0037). A Hidden channel answers like a missing one.
+  if (!requireRoomAccess(database, room, userId, need, reply)) return null;
   return room;
 }
 
@@ -660,7 +676,7 @@ function writeMessageRow(sqlite: DatabaseSync, message: ChatMessage, mentions: M
  */
 export function welcomeRoomId(sqlite: DatabaseSync, serverId: string, chosen: string | null) {
   const room = chosen ? roomById(sqlite, chosen) : null;
-  if (room && room.serverId === serverId && room.kind === "text") return room.id;
+  if (room && room.serverId === serverId && room.kind === "text" && !room.isPrivate) return room.id;
   // Mirrors the client's channel groups: the uncategorized group sits at
   // `servers.uncategorized_position` and wins a tie with a category.
   return (
@@ -670,7 +686,7 @@ export function welcomeRoomId(sqlite: DatabaseSync, serverId: string, chosen: st
        from rooms
        join servers on servers.id = rooms.server_id
        left join categories on categories.id = rooms.category_id
-       where rooms.server_id = ? and rooms.kind = 'text'
+       where rooms.server_id = ? and rooms.kind = 'text' and coalesce(rooms.is_private, 0) = 0
        order by coalesce(categories.position, servers.uncategorized_position) asc,
          rooms.category_id is not null asc, rooms.position asc, rooms.id asc
        limit 1`,
@@ -717,6 +733,26 @@ export function writeWelcomeNotice(sqlite: DatabaseSync, serverId: string, userI
   };
   writeMessageRow(sqlite, notice, []);
   return notice;
+}
+
+/**
+ * `message:new` carries the whole message to every socket in the Server, so
+ * unread counts work without joining each text channel. A Hidden channel's
+ * message must reach only those who may read it (ADR-0037); a Listed one is
+ * readable by every member, so it goes to all of them as a public one does.
+ */
+export function emitNewMessage(io: RouteContext["io"], sqlite: DatabaseSync, room: RoomSummary, message: ChatMessage) {
+  if (!room.isPrivate || room.listed) {
+    io.to(`server:${room.serverId}`).emit("message:new", message);
+    return;
+  }
+  const readers = roomReaderIds(sqlite, room);
+  for (const socket of io.sockets.sockets.values()) {
+    const socketUser = socket.data.user as { userId?: string } | undefined;
+    if (socketUser?.userId && readers.has(socketUser.userId) && socket.rooms.has(`server:${room.serverId}`)) {
+      socket.emit("message:new", message);
+    }
+  }
 }
 
 /** Announced like any new message, so unread counts include it. */
@@ -912,7 +948,7 @@ function resolveMentions(sqlite: DatabaseSync | undefined, serverId: string, jso
 function prepareMentions(
   sqlite: DatabaseSync,
   io: RouteContext["io"],
-  serverId: string,
+  room: RoomSummary,
   body: string,
   inputs: MessageMentionInput[],
   previous?: ChatMessage
@@ -924,14 +960,19 @@ function prepareMentions(
   // An invisible member is reported to everyone else as offline, so @here
   // passes them by exactly as it passes by someone who is.
   const onlineIds = visiblyOnlineUserIds(sqlite, io.sockets.sockets.values());
-  const people = all<{ userId: string; nickname: string; mentionCode: string }>(
+  const members = all<{ userId: string; nickname: string; mentionCode: string }>(
     sqlite,
     `select users.id as userId, coalesce(server_members.nickname, users.nickname) as nickname, server_members.mention_code as mentionCode
      from server_members join users on users.id = server_members.user_id where server_members.server_id = ?
        and server_members.banned_at is null and server_members.removed_at is null
        and users.banned_at is null and users.deleted_at is null and users.is_bot = 0`,
-    [serverId]
+    [room.serverId]
   );
+  // In a Private channel a Mention reaches only those who may enter it, so
+  // neither a person nor @everyone can be told about a conversation they
+  // cannot read (ADR-0037).
+  const entrants = room.isPrivate ? roomEntrantIds(sqlite, room) : null;
+  const people = entrants ? members.filter((person) => entrants.has(person.userId)) : members;
   const result: MessageMention[] = [];
   for (const input of inputs) {
     const retained = input.id

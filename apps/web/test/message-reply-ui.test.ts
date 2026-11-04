@@ -22,8 +22,8 @@ describe("message reply affordances", () => {
     );
   });
 
-  it("gives every reader the menu, since anyone who can read a message can answer it", () => {
-    assert.match(messageItem, /const\s+hasActions\s+=\s+true;/);
+  it("gives every reader who may write the menu, and a read-only Listed viewer none (ADR-0037)", () => {
+    assert.match(messageItem, /const\s+hasActions\s+=\s+!readOnly;/);
     // The menu must still grow and shrink with the permission-gated entries.
     assert.match(
       messageItem,

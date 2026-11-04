@@ -9,6 +9,7 @@ import type {
   PresenceChoiceState,
   PresenceUser,
   PublicUser,
+  RoomAccessUpdate,
   RoomSummary,
   ServerRoomLayout,
   VisualTarget,
@@ -142,6 +143,7 @@ export interface ShellActions {
   onDeleteCategory: (categoryId: string) => Promise<void>;
   onSaveRoomLayout: (layout: ServerRoomLayout) => Promise<void>;
   onRenameRoom: (roomId: string, name: string) => Promise<void>;
+  onUpdateRoomAccess: (roomId: string, access: RoomAccessUpdate) => Promise<void>;
   onDeleteRoom: (roomId: string) => Promise<void>;
   onDeleteServer: () => Promise<void>;
   onModerateMember: (userId: string, action: "ban" | "unban" | "kick") => Promise<void>;

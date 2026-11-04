@@ -10,7 +10,14 @@
 
 import type { FastifyReply } from "fastify";
 import type { DatabaseSync } from "node:sqlite";
-import type { PresenceChoiceRequest, PresenceChoiceState, PresenceStatus, PresenceUser, UserRole } from "@voxly/shared";
+import type {
+  PresenceChoiceRequest,
+  PresenceChoiceState,
+  PresenceStatus,
+  PresenceUser,
+  RoomSummary,
+  UserRole
+} from "@voxly/shared";
 import { baselineMembershipReadState } from "./readState.js";
 import { all, one, run, assignMentionCode, type VoxlyDatabase } from "./db/database.js";
 
@@ -339,4 +346,101 @@ export function publicPresence(user: { id: string; nickname: string; role: UserR
     role: user.role,
     isBot: user.isBot
   };
+}
+
+/**
+ * What one member may do with one channel (ADR-0037).
+ *
+ * `canSee`: the channel appears in their list. `canRead`: they may read its
+ * history, unread state and live messages, and see who is in it. `canEnter`:
+ * they may write, react and join. A public channel grants all three to every
+ * active Membership; a private one grants them to the Server's owners and its
+ * Channel access, and only `canSee` and `canRead` to others when it is Listed.
+ */
+export type RoomAccess = { canSee: boolean; canRead: boolean; canEnter: boolean };
+
+/** The facts about a channel the access rule reads. */
+export type RoomAccessSubject = Pick<RoomSummary, "id" | "serverId" | "isPrivate" | "listed">;
+
+const noRoomAccess: RoomAccess = { canSee: false, canRead: false, canEnter: false };
+
+export function hasRoomGrant(sqlite: DatabaseSync, roomId: string, userId: string) {
+  return Boolean(
+    one(sqlite, "select 1 as granted from room_access where room_id = ? and user_id = ?", [roomId, userId])
+  );
+}
+
+export function roomAccess(sqlite: DatabaseSync, room: RoomAccessSubject, userId: string): RoomAccess {
+  const membership = activeServerMembership(sqlite, room.serverId, userId);
+  if (!membership) return noRoomAccess;
+  if (!room.isPrivate || membership.role === "owner" || hasRoomGrant(sqlite, room.id, userId)) {
+    return { canSee: true, canRead: true, canEnter: true };
+  }
+  return room.listed ? { canSee: true, canRead: true, canEnter: false } : noRoomAccess;
+}
+
+/** The Channel access of one private channel, owners not included. */
+export function roomGrantUserIds(sqlite: DatabaseSync, roomId: string) {
+  return all<{ user_id: string }>(sqlite, "select user_id from room_access where room_id = ? order by granted_at", [
+    roomId
+  ]).map((row) => row.user_id);
+}
+
+/**
+ * Everyone an active Membership currently lets enter a channel: every member
+ * for a public channel, otherwise owners plus its Channel access.
+ */
+export function roomEntrantIds(sqlite: DatabaseSync, room: Omit<RoomAccessSubject, "listed">): Set<string> {
+  const rows = room.isPrivate
+    ? all<{ user_id: string }>(
+        sqlite,
+        `select m.user_id from server_members m join users u on u.id = m.user_id
+         where m.server_id = ? and m.banned_at is null and m.removed_at is null and u.banned_at is null
+           and (m.role = 'owner' or exists (select 1 from room_access a where a.room_id = ? and a.user_id = m.user_id))`,
+        [room.serverId, room.id]
+      )
+    : all<{ user_id: string }>(
+        sqlite,
+        `select m.user_id from server_members m join users u on u.id = m.user_id
+         where m.server_id = ? and m.banned_at is null and m.removed_at is null and u.banned_at is null`,
+        [room.serverId]
+      );
+  return new Set(rows.map((row) => row.user_id));
+}
+
+/** Everyone who may read a channel: entrants, or every member when it is public or Listed. */
+export function roomReaderIds(sqlite: DatabaseSync, room: RoomAccessSubject): Set<string> {
+  return roomEntrantIds(sqlite, room.isPrivate && room.listed ? { ...room, isPrivate: false } : room);
+}
+
+/**
+ * Reply helper for a channel route. A channel the member cannot see answers as if
+ * it did not exist, so a Hidden channel's id never confirms anything.
+ */
+export function requireRoomAccess(
+  database: VoxlyDatabase,
+  room: RoomAccessSubject,
+  userId: string,
+  need: "read" | "enter",
+  reply: FastifyReply
+) {
+  if (!requireServerMember(database, room.serverId, userId, reply)) return null;
+  const access = roomAccess(database.sqlite, room, userId);
+  if (!access.canSee) {
+    reply.code(404).send({ error: "room_not_found" });
+    return null;
+  }
+  if (need === "enter" ? !access.canEnter : !access.canRead) {
+    reply.code(403).send({ error: "room_forbidden" });
+    return null;
+  }
+  return access;
+}
+
+/** A Membership leaving a Server takes its Channel access with it. */
+export function clearRoomGrants(sqlite: DatabaseSync, serverId: string, userId: string) {
+  run(sqlite, "delete from room_access where user_id = ? and room_id in (select id from rooms where server_id = ?)", [
+    userId,
+    serverId
+  ]);
 }

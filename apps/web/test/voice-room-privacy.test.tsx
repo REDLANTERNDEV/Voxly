@@ -11,7 +11,10 @@ const room = {
   kind: "voice" as const,
   position: 0,
   categoryId: null,
-  isAfk: false
+  isAfk: false,
+  isPrivate: false,
+  listed: false,
+  canEnter: true
 };
 const publisher = {
   user: { userId: "publisher", nickname: "Publisher", role: "member" as const },

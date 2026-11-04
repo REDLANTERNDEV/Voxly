@@ -174,8 +174,22 @@ export const rooms = sqliteTable("rooms", {
   name: text("name").notNull(),
   kind: text("kind", { enum: ["text", "voice"] }).notNull(),
   position: integer("position").notNull(),
-  categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" })
+  categoryId: text("category_id").references(() => categories.id, { onDelete: "set null" }),
+  isAfk: integer("is_afk").notNull().default(0),
+  isPrivate: integer("is_private").notNull().default(0),
+  listed: integer("listed").notNull().default(0)
 });
+
+export const roomAccess = sqliteTable(
+  "room_access",
+  {
+    roomId: text("room_id").notNull(),
+    userId: text("user_id").notNull(),
+    grantedByUserId: text("granted_by_user_id"),
+    grantedAt: text("granted_at").notNull()
+  },
+  (table) => [primaryKey({ columns: [table.roomId, table.userId] })]
+);
 
 export const servers = sqliteTable("servers", {
   id: text("id").primaryKey(),

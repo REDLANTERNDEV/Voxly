@@ -331,6 +331,9 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "rooms", "server_id", "text");
   addColumnIfMissing(sqlite, "rooms", "is_afk", "integer not null default 0");
   addColumnIfMissing(sqlite, "rooms", "category_id", "text references categories(id) on delete set null");
+  // Private channels (ADR-0037): every existing channel stays public.
+  addColumnIfMissing(sqlite, "rooms", "is_private", "integer not null default 0");
+  addColumnIfMissing(sqlite, "rooms", "listed", "integer not null default 0");
   addColumnIfMissing(sqlite, "servers", "afk_timeout_minutes", "integer");
   addColumnIfMissing(sqlite, "servers", "uncategorized_position", "integer not null default 0");
   // Welcome notices are on by default, existing servers included; no room means the top text channel.
@@ -366,6 +369,18 @@ function migrate(sqlite: DatabaseSync) {
      from invites
      where used_by_user_id is not null and used_at is not null`
   );
+
+  sqlite.exec(`
+    create table if not exists room_access (
+      room_id text not null,
+      user_id text not null,
+      granted_by_user_id text,
+      granted_at text not null,
+      primary key (room_id, user_id)
+    );
+    create index if not exists idx_room_access_user
+      on room_access (user_id);
+  `);
 
   sqlite.exec(`
     create index if not exists idx_server_members_user

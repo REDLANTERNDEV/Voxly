@@ -1,4 +1,4 @@
-import type { PresenceStatus, PresenceUser, PublicUser, UserRole } from "@voxly/shared";
+import type { PresenceStatus, PresenceUser, PublicUser, RoomSummary, UserRole } from "@voxly/shared";
 
 export function canOwnerVoiceModerate(currentRole: UserRole | null, currentUserId: string, target: PresenceUser) {
   return currentRole === "owner" && target.role === "member" && target.userId !== currentUserId;
@@ -74,4 +74,19 @@ export type MemberPresenceState = "online" | "idle" | "dnd" | "invisible" | "off
 export function memberPresenceState(user: { status?: PresenceStatus }, online: boolean): MemberPresenceState {
   if (!online) return "offline";
   return user.status === "idle" || user.status === "dnd" ? user.status : "online";
+}
+
+/**
+ * Whether this member may enter this channel, as far as the viewer can tell
+ * (ADR-0037). Owners always may; for a private channel anyone else must be on
+ * its Channel access, which only a viewer who can enter it is sent. The server
+ * decides; this only keeps the move menu and Mention picker from offering what
+ * it would refuse.
+ */
+export function canMemberEnter(
+  room: Pick<RoomSummary, "isPrivate" | "accessUserIds">,
+  member: Pick<PresenceUser, "userId" | "role">
+) {
+  if (!room.isPrivate || member.role === "owner") return true;
+  return room.accessUserIds?.includes(member.userId) ?? false;
 }

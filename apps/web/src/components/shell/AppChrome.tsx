@@ -255,6 +255,8 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           onDeleteCategory={props.onDeleteCategory}
           onSaveRoomLayout={props.onSaveRoomLayout}
           onRenameRoom={props.onRenameRoom}
+          onUpdateRoomAccess={props.onUpdateRoomAccess}
+          serverMembers={props.serverMembers}
           onDeleteRoom={props.onDeleteRoom}
           onInputVolumeChange={props.onInputVolumeChange}
           onJoinVoice={props.onJoinVoice}

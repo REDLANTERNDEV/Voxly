@@ -1,4 +1,4 @@
-import type { MessageMentionInput, MessageReactionsEvent } from "@voxly/shared";
+import type { MessageMentionInput, MessageReactionsEvent, RoomAccessUpdate } from "@voxly/shared";
 import type {
   AppConfigResponse,
   CategorySummary,
@@ -321,6 +321,14 @@ export async function updateServerRoomLayout(serverId: string, layout: ServerRoo
     method: "PATCH",
     body: JSON.stringify(layout)
   });
+}
+
+/** Replace one channel's privacy and Channel access (owners only; ADR-0037). */
+export async function updateServerRoomAccess(serverId: string, roomId: string, access: RoomAccessUpdate) {
+  return request<{ room: RoomSummary }>(
+    `/api/servers/${encodeURIComponent(serverId)}/rooms/${encodeURIComponent(roomId)}/access`,
+    { method: "PUT", body: JSON.stringify(access) }
+  );
 }
 
 export async function renameServerRoom(serverId: string, roomId: string, name: string) {

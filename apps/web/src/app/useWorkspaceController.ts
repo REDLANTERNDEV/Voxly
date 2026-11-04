@@ -7,7 +7,8 @@ import type {
   PublicUser,
   RoomSummary,
   ServerRoomLayout,
-  VoiceModerationState
+  VoiceModerationState,
+  RoomAccessUpdate
 } from "@voxly/shared";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
@@ -25,6 +26,7 @@ import {
   moveVoiceMember,
   renameServerCategory,
   renameServerRoom,
+  updateServerRoomAccess,
   updateServer,
   updateServerAfkTimeout,
   updateServerWelcome,
@@ -139,7 +141,12 @@ export function useWorkspaceController({
       setRooms(response.rooms);
       setCategories(response.categories);
       setUncategorizedPosition(response.uncategorizedPosition);
-      if ((currentRoute.name === "text" || currentRoute.name === "voice") && currentRoute.roomId === deletedRoomId) {
+      // A deleted channel and a Hidden channel the member just lost access to
+      // look the same from here: the viewed channel is no longer in their list.
+      if (
+        (currentRoute.name === "text" || currentRoute.name === "voice") &&
+        (currentRoute.roomId === deletedRoomId || !response.rooms.some((room) => room.id === currentRoute.roomId))
+      ) {
         const target = response.rooms.find((room) => room.kind === currentRoute.name) ?? response.rooms[0];
         if (target) navigate(serverPath(serverId, target.kind, target.id));
       }
@@ -347,6 +354,13 @@ export function useWorkspaceController({
         )
       );
       navigate(serverPath(activeServerId, response.room.kind, response.room.id));
+    },
+    updateRoomAccess: async (roomId: string, access: RoomAccessUpdate) => {
+      const serverId = activeServerId;
+      await updateServerRoomAccess(serverId, roomId, access);
+      // The server re-shapes every member's view of the list; the owner's own
+      // copy is simply fetched again rather than patched by hand.
+      await refreshRooms(serverId);
     },
     renameRoom: async (roomId: string, name: string) => {
       const serverId = activeServerId;

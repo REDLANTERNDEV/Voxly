@@ -223,6 +223,7 @@ export function forceLeaveNoticeKey(reason: VoiceForceLeaveReason): TranslationK
   if (reason === "joined_another_room") return "voiceNotice.joinedAnotherRoom";
   if (reason === "owner_disconnect") return "voiceNotice.ownerDisconnect";
   if (reason === "server_access_revoked") return "voiceNotice.accessRevoked";
+  if (reason === "room_access_revoked") return "voiceNotice.channelAccessRevoked";
   return "voiceNotice.roomGone";
 }
 

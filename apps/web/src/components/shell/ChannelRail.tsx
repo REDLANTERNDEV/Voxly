@@ -10,13 +10,15 @@ import {
   ChevronIcon,
   GearIcon,
   HashIcon,
+  LockIcon,
   HeadsetIcon,
   MicIcon,
   ScreenIcon,
   SpeakerIcon
 } from "../../components/ui/Icons.js";
 import { NavLink } from "../../components/ui/Navigation.js";
-import { canOwnerModeratePerson, canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
+import { ChannelAccessDialog } from "../../features/owner/ChannelAccessDialog.js";
+import { canMemberEnter, canOwnerModeratePerson, canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
 import { voiceChannelActivation } from "../../lib/voiceChannelActivation.js";
 import { sidebarVoiceStatusKeys, sidebarVoiceStatusLabelKeys } from "../../lib/voiceControls.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
@@ -49,6 +51,7 @@ type ChannelRailProps = Pick<
   | "noiseSuppressionSupported"
   | "notificationSounds"
   | "rooms"
+  | "serverMembers"
   | "categories"
   | "uncategorizedPosition"
   | "route"
@@ -72,6 +75,7 @@ type ChannelRailProps = Pick<
     | "onDeleteCategory"
     | "onSaveRoomLayout"
     | "onRenameRoom"
+    | "onUpdateRoomAccess"
     | "onDeleteRoom"
     | "onInputVolumeChange"
     | "onJoinVoice"
@@ -97,6 +101,24 @@ type ChannelRailProps = Pick<
     mobileStatus?: ReactNode;
   };
 
+/**
+ * A channel's name, and for a Private channel a muted lock that a screen
+ * reader hears as words rather than missing.
+ */
+function ChannelLabel({ room, t }: { room: RoomSummary; t: ChannelRailProps["t"] }) {
+  return (
+    <span className="channel-label">
+      <span className="channel-name">{room.name}</span>
+      {room.isPrivate ? (
+        <span className="channel-lock" title={t("channel.private")}>
+          <LockIcon />
+          <span className="sr-only">{t("channel.private")}</span>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export function ChannelRail(props: ChannelRailProps) {
   const canManageServer = activeServerRole(props) === "owner";
   const canInvite = canInviteToActiveServer(props);
@@ -105,11 +127,15 @@ export function ChannelRail(props: ChannelRailProps) {
     null
   );
   const [deleteTarget, setDeleteTarget] = useState<RoomSummary | null>(null);
+  const [accessTarget, setAccessTarget] = useState<{ room: RoomSummary; trigger: HTMLButtonElement | null } | null>(
+    null
+  );
   const [deleteError, setDeleteError] = useState("");
   const [moveTarget, setMoveTarget] = useState<RoomSummary | null>(null);
   const [joiningRoomId, setJoiningRoomId] = useState<string | null>(null);
   const activateVoiceRoom = (room: RoomSummary) => {
-    if (props.socketState !== "live") return;
+    // A Listed channel without access is seen, never entered (ADR-0037).
+    if (props.socketState !== "live" || !room.canEnter) return;
     const action = voiceChannelActivation(props.activeVoiceRoomId, room.id);
     if (action === "open") {
       props.onNavigate(serverPath(props.activeServerId, "voice", room.id));
@@ -141,6 +167,7 @@ export function ChannelRail(props: ChannelRailProps) {
         actions={actions}
         disabled={props.rooms.text.length + props.rooms.voice.length <= 1}
         onRename={(trigger) => setRenameTarget({ room, trigger })}
+        onAccess={(trigger) => setAccessTarget({ room, trigger })}
         onRequest={() => setDeleteTarget(room)}
         t={props.t}
       />
@@ -172,7 +199,7 @@ export function ChannelRail(props: ChannelRailProps) {
             <span className="channel-prefix" aria-hidden="true">
               <HashIcon />
             </span>
-            <span className="channel-name">{room.name}</span>
+            <ChannelLabel room={room} t={props.t} />
             {props.unreadByRoom[room.id] ? (
               <span className="badge unread-badge">{props.unreadByRoom[room.id]}</span>
             ) : (
@@ -186,6 +213,11 @@ export function ChannelRail(props: ChannelRailProps) {
 
     const members = voiceMembersForRoom(props, room.id);
     const callStart = props.callStarts[room.id];
+    // The server withholds a Listed channel's Call length from people who
+    // cannot enter it; the rail does not show one it may still hold either.
+    const showCallLength = callStart !== undefined && room.canEnter;
+    const moveTargetsFor = (user: PresenceUser) =>
+      props.rooms.voice.filter((target) => target.id !== room.id && canMemberEnter(target, user));
     return (
       <div className="voice-channel-block" key={room.id}>
         <div
@@ -202,6 +234,9 @@ export function ChannelRail(props: ChannelRailProps) {
             className={`channel-item ${props.route.name === "voice" && props.route.roomId === room.id ? "is-active" : ""}`}
             href={serverPath(props.activeServerId, "voice", room.id)}
             onNavigate={props.onNavigate}
+            // A Listed channel without access is seen, never entered
+            // (ADR-0037): no join, no move, and no opening its stage.
+            disabledReason={room.canEnter ? undefined : props.t("channel.noAccessVoice")}
             onClick={(event) => {
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
               event.preventDefault();
@@ -209,11 +244,11 @@ export function ChannelRail(props: ChannelRailProps) {
               activateVoiceRoom(room);
             }}
           >
-            <span className={`channel-prefix ${callStart === undefined ? "" : "is-calling"}`} aria-hidden="true">
+            <span className={`channel-prefix ${showCallLength ? "is-calling" : ""}`} aria-hidden="true">
               <SpeakerIcon />
             </span>
-            <span className="channel-name">{room.name}</span>
-            {callStart === undefined ? null : <CallLength startedAt={callStart} t={props.t} />}
+            <ChannelLabel room={room} t={props.t} />
+            {showCallLength ? <CallLength startedAt={callStart} t={props.t} /> : null}
           </NavLink>
           {actionControl}
         </div>
@@ -234,7 +269,7 @@ export function ChannelRail(props: ChannelRailProps) {
                 canModerate: canModeratePerson,
                 canVoiceModerate,
                 canAssignRoles,
-                canMove: canModeratePerson && props.rooms.voice.length > 1,
+                canMove: canModeratePerson && moveTargetsFor(member.user).length > 0,
                 hasSelfControls: !isRemote && Boolean(props.activeVoiceRoomId)
               });
               const hasActions = isRemote || canRename || canModerate || canAssignRoles || !isRemote;
@@ -270,7 +305,7 @@ export function ChannelRail(props: ChannelRailProps) {
                   <span className="avatar">{initial(member.user.nickname)}</span>
                   <span className="voice-channel-user-copy">
                     <span className="voice-channel-user-name">
-                      {member.media.screen ? (
+                      {member.media.screen && room.canEnter ? (
                         <LiveStreamPopover
                           icon={<ScreenIcon off={false} />}
                           liveLabel={props.t("common.live")}
@@ -347,9 +382,7 @@ export function ChannelRail(props: ChannelRailProps) {
                             }
                           : undefined
                       }
-                      moveTargets={
-                        canModeratePerson ? props.rooms.voice.filter((target) => target.id !== room.id) : undefined
-                      }
+                      moveTargets={canModeratePerson ? moveTargetsFor(member.user) : undefined}
                       onMove={
                         canModeratePerson
                           ? (targetRoomId) => props.onMoveMember(member.user.userId, targetRoomId)
@@ -482,6 +515,24 @@ export function ChannelRail(props: ChannelRailProps) {
           {deleteError}
         </p>
       ) : null}
+      {accessTarget ? (
+        <ChannelAccessDialog
+          key={accessTarget.room.id}
+          room={accessTarget.room}
+          members={props.serverMembers}
+          lockedReason={
+            accessTarget.room.isAfk
+              ? props.t("channel.accessAfkLocked")
+              : activeServer?.welcomeRoomId === accessTarget.room.id
+                ? props.t("channel.accessWelcomeLocked")
+                : null
+          }
+          returnFocus={accessTarget.trigger}
+          t={props.t}
+          onCancel={() => setAccessTarget(null)}
+          onSave={(access) => props.onUpdateRoomAccess(accessTarget.room.id, access)}
+        />
+      ) : null}
       {renameTarget ? (
         <ChannelNameDialog
           key={renameTarget.room.id}
@@ -543,8 +594,9 @@ export function ChannelRail(props: ChannelRailProps) {
   );
 }
 
+/** Five 40px rows (Rename, Channel access, Move up, Move down, Delete), the category picker, and padding. */
 function channelActionMenuHeight() {
-  return 234;
+  return 274;
 }
 
 export function ChannelDeleteControl({
@@ -555,6 +607,7 @@ export function ChannelDeleteControl({
   disabled,
   onRequest,
   onRename,
+  onAccess,
   t
 }: {
   actionMenu: SidebarActionMenuController;
@@ -564,6 +617,7 @@ export function ChannelDeleteControl({
   disabled: boolean;
   onRequest: () => void;
   onRename?: (trigger: HTMLButtonElement | null) => void;
+  onAccess?: (trigger: HTMLButtonElement | null) => void;
   t: Translate;
 }) {
   const menuKey = `channel:${room.id}`;
@@ -591,6 +645,19 @@ export function ChannelDeleteControl({
               }}
             >
               {t("channel.rename")}
+            </button>
+          ) : null}
+          {onAccess ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const trigger = actionMenu.active?.trigger ?? null;
+                actionMenu.close();
+                onAccess(trigger);
+              }}
+            >
+              {t("channel.access")}
             </button>
           ) : null}
           <label className="channel-move-menu-field">

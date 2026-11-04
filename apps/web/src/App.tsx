@@ -310,6 +310,7 @@ export function App() {
         onDeleteCategory: workspace.actions.deleteCategory,
         onSaveRoomLayout: workspace.actions.saveRoomLayout,
         onRenameRoom: workspace.actions.renameRoom,
+        onUpdateRoomAccess: workspace.actions.updateRoomAccess,
         onDeleteRoom: workspace.actions.deleteRoom,
         onDeleteServer: workspace.actions.deleteServer,
         onModerateMember: workspace.actions.moderateMember,

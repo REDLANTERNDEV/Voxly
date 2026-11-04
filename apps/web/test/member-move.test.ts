@@ -18,14 +18,18 @@ describe("owner member move", () => {
     assert.match(submenu, /useListNavigation/);
   });
 
-  it("lists every voice room except the one the member already occupies", () => {
+  it("lists every voice room except the one the member already occupies, and none they cannot enter", () => {
     assert.match(
       rail,
-      /moveTargets=\{\s*canModeratePerson\s+\?\s+props\.rooms\.voice\.filter\(\s*\(\s*target\s*\)\s+=>\s*\s+target\.id\s+!==\s+room\.id\s*\)\s+:\s+undefined\s*\}/
+      /moveTargets=\{\s*canModeratePerson\s+\?\s+moveTargetsFor\(\s*member\.user\s*\)\s+:\s+undefined\s*\}/
+    );
+    assert.match(
+      rail,
+      /const\s+moveTargetsFor\s*=\s*\(\s*user:\s*PresenceUser\s*\)\s*=>\s*props\.rooms\.voice\.filter\(\s*\(\s*target\s*\)\s*=>\s*target\.id\s*!==\s*room\.id\s*&&\s*canMemberEnter\(\s*target,\s*user\s*\)\s*\)/
     );
     assert.match(
       panel,
-      /moveTargets=\{\s*canModeratePerson\s+&&\s+voiceRoom\s+\?\s+voiceRooms\.filter\(\s*\(\s*room\s*\)\s+=>\s*\s+room\.id\s+!==\s+voiceRoom\.id\s*\)\s+:\s+undefined\s*\}/
+      /moveTargets=\{\s*canModeratePerson\s+&&\s+voiceRoom\s+\?\s+voiceRooms\.filter\(\s*\(\s*room\s*\)\s+=>\s+room\.id\s+!==\s+voiceRoom\.id\s+&&\s+canMemberEnter\(room,\s*user\)\s*\)\s+:\s+undefined\s*\}/
     );
   });
 

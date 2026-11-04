@@ -77,7 +77,10 @@ describe("servers and the rooms inside them", () => {
         kind: "voice",
         position: 30,
         categoryId: null,
-        isAfk: true
+        isAfk: true,
+        isPrivate: false,
+        listed: false,
+        canEnter: true
       });
       assert.equal(storedRoom(db, afk.id)?.is_afk, 1);
       assert.equal(storedRoom(db, ordinary.id)?.is_afk, 0);
@@ -158,7 +161,8 @@ describe("servers and the rooms inside them", () => {
         "PATCH /api/servers/:serverId/welcome",
         "POST /api/servers",
         "POST /api/servers/:serverId/categories",
-        "POST /api/servers/:serverId/rooms"
+        "POST /api/servers/:serverId/rooms",
+        "PUT /api/servers/:serverId/rooms/:roomId/access"
       ]);
     });
   });

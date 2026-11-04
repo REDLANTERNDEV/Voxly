@@ -366,3 +366,12 @@ export function SpeakerIcon() {
     </svg>
   );
 }
+// A small padlock beside a Private channel's name (ADR-0037).
+export function LockIcon() {
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="5.5" y="11" width="13" height="9" rx="2" />
+      <path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3" />
+    </svg>
+  );
+}

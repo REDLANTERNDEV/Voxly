@@ -57,6 +57,8 @@ import {
   serverPresenceUsers,
   readPresenceChoice,
   writePresenceChoice,
+  clearRoomGrants,
+  roomAccess,
   type OnlineRegistry
 } from "./members.js";
 import { roomById } from "./rooms.js";
@@ -687,6 +689,8 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
       }
       if (action === "ban" || action === "kick") {
         revokeInvitesCreatedBy(database, serverId, userId, now);
+        // Rejoining must never quietly restore a Private channel (ADR-0037).
+        clearRoomGrants(database.sqlite, serverId, userId);
       }
       audit(database, owner.id, `member.${action}`, userId, serverId);
       database.sqlite.exec("commit");
@@ -734,6 +738,12 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     // room summoned it into, and leaving would destroy a Queue from a control
     // that says nothing about destroying one. ADR-0010.
     if (rejectBotTarget(database, userId, reply)) return;
+    // A move is a join the member's own client performs, so it obeys the same
+    // rule a join does: no placing someone in a Private channel they cannot
+    // enter (ADR-0037).
+    if (!roomAccess(database.sqlite, room, userId).canEnter) {
+      return reply.code(409).send({ error: "room_forbidden" });
+    }
     if (!realtime.moveVoice(serverId, userId, roomId)) {
       return reply.code(409).send({ error: "member_not_in_voice" });
     }
@@ -910,7 +920,8 @@ function registerRealtime(
         if (
           !room ||
           !serverMembership(database.sqlite, room.serverId, user.userId) ||
-          !hasActiveServerMembership(database.sqlite, room.serverId, user.userId)
+          !hasActiveServerMembership(database.sqlite, room.serverId, user.userId) ||
+          !roomAccess(database.sqlite, room, user.userId).canRead
         ) {
           return;
         }
@@ -983,6 +994,17 @@ function registerRealtime(
     deleteRoom(_serverId, roomId) {
       voice.deleteRoom(roomId, "room_deleted");
       for (const socket of io.sockets.sockets.values()) observeSocketRoomChange(socket.leave(`room:${roomId}`));
+    },
+    revokeRoomAccess(serverId, roomId) {
+      const room = roomById(database.sqlite, roomId);
+      if (!room || room.serverId !== serverId) return;
+      for (const socket of io.sockets.sockets.values()) {
+        const socketUser = socket.data.user as PresenceUser | undefined;
+        if (!socketUser) continue;
+        const access = roomAccess(database.sqlite, room, socketUser.userId);
+        if (!access.canRead) observeSocketRoomChange(socket.leave(`room:${roomId}`));
+      }
+      voice.revokeRoomAccess(room);
     },
     deleteServer(serverId, roomIds, affectedUserIds) {
       for (const roomId of roomIds) {

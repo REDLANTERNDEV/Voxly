@@ -16,7 +16,8 @@ export function MessageReactions({
   onReact,
   onClear,
   pickerOpen,
-  onPickerChange
+  onPickerChange,
+  readOnly = false
 }: {
   state: MessageReactionState;
   userId: string;
@@ -28,6 +29,8 @@ export function MessageReactions({
   /** The picker is the row's, so the message toolbar can open the same one. */
   pickerOpen: boolean;
   onPickerChange(open: boolean): void;
+  /** A Listed channel the viewer cannot enter: counts stay readable, nothing is pressable. */
+  readOnly?: boolean;
 }) {
   const [details, setDetails] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -56,7 +59,7 @@ export function MessageReactions({
                 className="reaction-chip"
                 aria-pressed={own}
                 aria-busy={busy}
-                disabled={busy}
+                disabled={busy || readOnly}
                 aria-label={t(own ? "chat.removeOwnReaction" : "chat.addReaction", {
                   emoji: reaction.emoji,
                   count: reaction.userIds.length
@@ -84,7 +87,7 @@ export function MessageReactions({
         })}
         {/* Beside reactions that already exist, as in Discord. A message with none
             reacts from its toolbar or menu and keeps no empty row for it. */}
-        {state.reactions.length > 0 ? (
+        {state.reactions.length > 0 && !readOnly ? (
           <button
             className="reaction-add"
             type="button"

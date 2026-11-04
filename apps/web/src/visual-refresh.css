@@ -4554,3 +4554,13 @@ select {
 .voice-channel-users {
   padding: 2px 8px 4px 34px;
 }
+
+/* A Private channel's lock and a Listed channel's read-only note use the
+   rail's and the page's muted colours: privacy is a fact, not an alert. */
+.rail .channel-lock {
+  color: var(--rail-muted);
+}
+.composer-read-only,
+.channel-access-list .muted {
+  color: var(--muted);
+}
