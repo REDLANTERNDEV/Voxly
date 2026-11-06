@@ -273,6 +273,30 @@ export const serverPermissions = [
 export type Permission = (typeof serverPermissions)[number];
 
 /**
+ * The colours a Role may take: a fixed palette, each legible as name text on
+ * both the light and the dark theme (design decision 12). A Role holds one of
+ * these or none; the server refuses anything else.
+ */
+export const roleColors = [
+  "#d93f3f",
+  "#d9661a",
+  "#a8800a",
+  "#2f9e5b",
+  "#14958a",
+  "#2b7fd4",
+  "#5865e0",
+  "#8e52c9",
+  "#c9408f",
+  "#7a8591"
+] as const;
+
+export type RoleColor = (typeof roleColors)[number];
+
+/** A Role's name is 1–32 characters, and a Server holds at most 50 Roles (`@everyone` and Admin included). */
+export const roleNameMaxLength = 32;
+export const maxRolesPerServer = 50;
+
+/**
  * The two Roles whose place is fixed. `@everyone` is always last and is never
  * given; Admin is always first and only the Server owner gives or changes it.
  * Every other Role, Davetçi included, has no kind.
@@ -290,7 +314,7 @@ export interface RoleSummary {
    */
   name: string | null;
   /** A colour from the fixed palette, or null for a Role that changes no name's colour. */
-  color: string | null;
+  color: RoleColor | null;
   /** Higher is higher: Admin holds the largest, `@everyone` always 0. */
   position: number;
   /** Whether its members show under their own heading in the member list. */
@@ -299,6 +323,18 @@ export interface RoleSummary {
   permissions: Permission[];
   kind: RoleKind | null;
 }
+
+/** What a Role edit may change; anything left out stays as it is. */
+export type RoleChange = Partial<Pick<RoleSummary, "name" | "color" | "separate" | "permissions">>;
+
+/**
+ * The finite refusals of the Role routes, beside the generic `forbidden`:
+ * too many Roles, a reorder that does not name every movable Role once, a
+ * field a fixed Role keeps (`@everyone`'s name, colour and grouping; Admin's
+ * Administrator), and deleting Admin or `@everyone`.
+ */
+export type RoleError =
+  "role_limit_reached" | "role_order_invalid" | "role_field_fixed" | "role_fixed" | "role_not_found";
 
 /**
  * A Server's Roles, highest first, with what they make the asking member: the

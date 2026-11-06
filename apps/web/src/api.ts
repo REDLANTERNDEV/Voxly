@@ -1,4 +1,11 @@
-import type { MessageMentionInput, MessageReactionsEvent, RoomAccessUpdate, ServerRolesResponse } from "@voxly/shared";
+import type {
+  MessageMentionInput,
+  MessageReactionsEvent,
+  RoleChange,
+  RoleSummary,
+  RoomAccessUpdate,
+  ServerRolesResponse
+} from "@voxly/shared";
 import type {
   AppConfigResponse,
   CategorySummary,
@@ -540,6 +547,34 @@ export async function updateServerMemberNickname(serverId: string, userId: strin
 
 export async function fetchServerRoles(serverId: string) {
   return request<ServerRolesResponse>(`/api/servers/${encodeURIComponent(serverId)}/roles`);
+}
+
+export async function createServerRole(serverId: string, name: string) {
+  return request<{ role: RoleSummary }>(`/api/servers/${encodeURIComponent(serverId)}/roles`, {
+    method: "POST",
+    body: JSON.stringify({ name })
+  });
+}
+
+export async function updateServerRole(serverId: string, roleId: string, change: RoleChange) {
+  return request<{ role: RoleSummary }>(
+    `/api/servers/${encodeURIComponent(serverId)}/roles/${encodeURIComponent(roleId)}`,
+    { method: "PATCH", body: JSON.stringify(change) }
+  );
+}
+
+/** The movable Roles, top first; Admin and `@everyone` never move. */
+export async function reorderServerRoles(serverId: string, roleIds: string[]) {
+  return request<{ roles: RoleSummary[] }>(`/api/servers/${encodeURIComponent(serverId)}/roles/order`, {
+    method: "PUT",
+    body: JSON.stringify({ roleIds })
+  });
+}
+
+export async function deleteServerRole(serverId: string, roleId: string) {
+  await request<void>(`/api/servers/${encodeURIComponent(serverId)}/roles/${encodeURIComponent(roleId)}`, {
+    method: "DELETE"
+  });
 }
 
 /** Gives (`true`) or removes (`false`) one Role; the answer is the member as they now are. */

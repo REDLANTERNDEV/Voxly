@@ -22,11 +22,24 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import type { RoleSummary } from "@voxly/shared";
+import {
+  maxRolesPerServer,
+  roleColors,
+  roleNameMaxLength,
+  serverPermissions,
+  type Permission,
+  type RoleSummary
+} from "@voxly/shared";
 import { audit } from "./audit.js";
 import { isBotUser } from "./bots.js";
-import { run } from "./db/database.js";
-import { authenticatedWriteLimit, requireJoinedServer, userIdParam, type RouteContext } from "./http.js";
+import { all, one, run, type VoxlyDatabase } from "./db/database.js";
+import {
+  authenticatedWriteLimit,
+  requireJoinedServer,
+  requirePermittedServer,
+  userIdParam,
+  type RouteContext
+} from "./http.js";
 import { revokeInvitesCreatedBy } from "./invites.js";
 import {
   activeServerMembership,
@@ -63,6 +76,69 @@ export function mayChangeMemberRole(
 
 export const roleIdParam = z.string().uuid();
 
+const roleNameSchema = z.string().trim().min(1).max(roleNameMaxLength);
+const roleBodySchema = z
+  .object({
+    name: roleNameSchema.optional(),
+    color: z.enum(roleColors).nullable().optional(),
+    separate: z.boolean().optional(),
+    permissions: z.array(z.enum(serverPermissions)).optional()
+  })
+  .strict();
+
+/**
+ * Whether the actor may change, reorder or delete this Role: the owner may
+ * change any; anyone else only a Role strictly below their own highest, and
+ * never Admin (decisions 4 and 5). Manage roles is checked by the caller.
+ */
+export function mayManageRole(sqlite: DatabaseSync, serverId: string, actorId: string, role: RoleSummary) {
+  if (activeServerMembership(sqlite, serverId, actorId)?.role === "owner") return true;
+  if (role.kind === "admin") return false;
+  return role.position < rankOf(sqlite, serverId, actorId);
+}
+
+/** Active members who may create Invites now, so a change can tell who just lost it. */
+function inviteCreators(sqlite: DatabaseSync, serverId: string) {
+  return new Set(
+    all<{ user_id: string }>(
+      sqlite,
+      "select user_id from server_members where server_id = ? and banned_at is null and removed_at is null",
+      [serverId]
+    )
+      .map((row) => row.user_id)
+      .filter((userId) => hasPermission(sqlite, serverId, userId, "createInvites"))
+  );
+}
+
+/**
+ * Losing Create invites through a Role change takes the links already issued
+ * with it, exactly as taking the Role away from one member does.
+ */
+function revokeLostInvites(database: VoxlyDatabase, serverId: string, before: Set<string>, now: string) {
+  const after = inviteCreators(database.sqlite, serverId);
+  for (const userId of before) {
+    if (!after.has(userId)) revokeInvitesCreatedBy(database, serverId, userId, now);
+  }
+}
+
+/** Positions stay dense, `@everyone` at 0 and Admin on top, so rank compares cleanly. */
+function renumberRoles(sqlite: DatabaseSync, serverId: string) {
+  const ids = all<{ id: string }>(sqlite, "select id from roles where server_id = ? order by position asc", [serverId]);
+  ids.forEach((row, index) => run(sqlite, "update roles set position = ? where id = ?", [index, row.id]));
+}
+
+function inTransaction<T>(database: VoxlyDatabase, work: () => T): T {
+  database.sqlite.exec("begin immediate");
+  try {
+    const result = work();
+    database.sqlite.exec("commit");
+    return result;
+  } catch (cause) {
+    database.sqlite.exec("rollback");
+    throw cause;
+  }
+}
+
 export function registerRoleRoutes(context: RouteContext) {
   const { fastify, database, io, realtime } = context;
 
@@ -76,6 +152,176 @@ export function registerRoleRoutes(context: RouteContext) {
       rank: rankOf(database.sqlite, serverId, user.id)
     };
   });
+
+  fastify.post("/api/servers/:serverId/roles", { config: authenticatedWriteLimit }, async (request, reply) => {
+    const scope = requirePermittedServer(context, request, reply, "manageRoles");
+    if (!scope) return;
+    const { user: actor, serverId } = scope;
+    const { name } = z.object({ name: roleNameSchema }).strict().parse(request.body);
+    const count =
+      one<{ count: number }>(database.sqlite, "select count(*) as count from roles where server_id = ?", [serverId])
+        ?.count ?? 0;
+    if (count >= maxRolesPerServer) return reply.code(409).send({ error: "role_limit_reached" });
+    const roleId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    // A new Role goes just above `@everyone`, below everything else, so whoever
+    // made it can manage it.
+    inTransaction(database, () => {
+      run(database.sqlite, "update roles set position = position + 1 where server_id = ? and position >= 1", [
+        serverId
+      ]);
+      run(
+        database.sqlite,
+        "insert into roles (id, server_id, name, position, permissions, created_at) values (?, ?, ?, 1, '[]', ?)",
+        [roleId, serverId, name, now]
+      );
+      audit(database, actor.id, "role.created", null, serverId);
+    });
+    database.save();
+    io.to(`server:${serverId}`).emit("server:rolesChanged", { serverId });
+    return reply.code(201).send({ role: serverRole(database.sqlite, serverId, roleId) });
+  });
+
+  fastify.put("/api/servers/:serverId/roles/order", { config: authenticatedWriteLimit }, async (request, reply) => {
+    const scope = requirePermittedServer(context, request, reply, "manageRoles");
+    if (!scope) return;
+    const { user: actor, serverId } = scope;
+    const { roleIds } = z
+      .object({ roleIds: z.array(roleIdParam).max(maxRolesPerServer) })
+      .strict()
+      .parse(request.body);
+    // Admin and `@everyone` never move, so only the Roles between them are named.
+    const movable = serverRoles(database.sqlite, serverId).filter((role) => role.kind === null);
+    const named = new Set(roleIds);
+    if (named.size !== roleIds.length || named.size !== movable.length || movable.some((role) => !named.has(role.id))) {
+      return reply.code(400).send({ error: "role_order_invalid" });
+    }
+    const nextPosition = new Map(roleIds.map((id, index) => [id, roleIds.length - index]));
+    // Already in this order: nothing to write, audit or tell anyone.
+    if (movable.every((role) => nextPosition.get(role.id) === role.position)) {
+      return { roles: serverRoles(database.sqlite, serverId) };
+    }
+    // Anyone but the owner moves only what is below them: every Role at or
+    // above their rank keeps its place, which also keeps the rest below it.
+    if (activeServerMembership(database.sqlite, serverId, actor.id)?.role !== "owner") {
+      const rank = rankOf(database.sqlite, serverId, actor.id);
+      if (movable.some((role) => role.position >= rank && nextPosition.get(role.id) !== role.position)) {
+        return reply.code(403).send({ error: "forbidden" });
+      }
+    }
+    inTransaction(database, () => {
+      for (const [id, position] of nextPosition) {
+        run(database.sqlite, "update roles set position = ? where id = ? and server_id = ?", [position, id, serverId]);
+      }
+      run(database.sqlite, "update roles set position = ? where server_id = ? and kind = 'admin'", [
+        roleIds.length + 1,
+        serverId
+      ]);
+      audit(database, actor.id, "role.reordered", null, serverId);
+    });
+    database.save();
+    io.to(`server:${serverId}`).emit("server:rolesChanged", { serverId });
+    return { roles: serverRoles(database.sqlite, serverId) };
+  });
+
+  fastify.patch("/api/servers/:serverId/roles/:roleId", { config: authenticatedWriteLimit }, async (request, reply) => {
+    const scope = requirePermittedServer(context, request, reply, "manageRoles", { roleId: roleIdParam });
+    if (!scope) return;
+    const { user: actor, serverId, roleId } = scope;
+    const body = roleBodySchema.parse(request.body ?? {});
+    const role = serverRole(database.sqlite, serverId, roleId);
+    if (!role) return reply.code(404).send({ error: "role_not_found" });
+    if (!mayManageRole(database.sqlite, serverId, actor.id, role)) return reply.code(403).send({ error: "forbidden" });
+    // `@everyone` is every Membership, not a group anyone reads by name or colour.
+    if (
+      role.kind === "everyone" &&
+      (body.name !== undefined || body.color !== undefined || body.separate !== undefined)
+    ) {
+      return reply.code(400).send({ error: "role_field_fixed" });
+    }
+    // Admin holds Administrator, always (ADR-0038); its other Permissions are moot.
+    if (role.kind === "admin" && body.permissions && !body.permissions.includes("administrator")) {
+      return reply.code(400).send({ error: "role_field_fixed" });
+    }
+    const permissions = body.permissions
+      ? serverPermissions.filter((permission: Permission) => body.permissions!.includes(permission))
+      : undefined;
+    // Only the owner switches Administrator, on or off, on any Role (decision 5).
+    const isOwner = activeServerMembership(database.sqlite, serverId, actor.id)?.role === "owner";
+    if (
+      permissions &&
+      !isOwner &&
+      permissions.includes("administrator") !== role.permissions.includes("administrator")
+    ) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
+    // Nobody but the owner switches on a Permission they do not hold
+    // themselves: otherwise Manage roles alone could put Manage server on a
+    // lower Role its holder already has, or on `@everyone`, and promote them.
+    if (permissions && !isOwner) {
+      const own = new Set(permissionsFor(database.sqlite, serverId, actor.id));
+      if (permissions.some((permission) => !role.permissions.includes(permission) && !own.has(permission))) {
+        return reply.code(403).send({ error: "forbidden" });
+      }
+    }
+    // Already as asked: nothing to write, audit or tell anyone.
+    const unchanged =
+      (body.name === undefined || body.name === role.name) &&
+      (body.color === undefined || body.color === role.color) &&
+      (body.separate === undefined || body.separate === role.separate) &&
+      (permissions === undefined || permissions.join() === role.permissions.join());
+    if (unchanged) return { role };
+    const now = new Date().toISOString();
+    inTransaction(database, () => {
+      const before = inviteCreators(database.sqlite, serverId);
+      if (body.name !== undefined) run(database.sqlite, "update roles set name = ? where id = ?", [body.name, roleId]);
+      if (body.color !== undefined)
+        run(database.sqlite, "update roles set color = ? where id = ?", [body.color, roleId]);
+      if (body.separate !== undefined) {
+        run(database.sqlite, "update roles set separate = ? where id = ?", [body.separate ? 1 : 0, roleId]);
+      }
+      if (permissions) {
+        run(database.sqlite, "update roles set permissions = ? where id = ?", [JSON.stringify(permissions), roleId]);
+        revokeLostInvites(database, serverId, before, now);
+      }
+      audit(database, actor.id, "role.updated", null, serverId);
+    });
+    database.save();
+    io.to(`server:${serverId}`).emit("server:rolesChanged", { serverId });
+    return { role: serverRole(database.sqlite, serverId, roleId) };
+  });
+
+  fastify.delete(
+    "/api/servers/:serverId/roles/:roleId",
+    { config: authenticatedWriteLimit },
+    async (request, reply) => {
+      const scope = requirePermittedServer(context, request, reply, "manageRoles", { roleId: roleIdParam });
+      if (!scope) return;
+      const { user: actor, serverId, roleId } = scope;
+      const role = serverRole(database.sqlite, serverId, roleId);
+      if (!role) return reply.code(404).send({ error: "role_not_found" });
+      if (!mayManageRole(database.sqlite, serverId, actor.id, role))
+        return reply.code(403).send({ error: "forbidden" });
+      if (role.kind !== null) return reply.code(409).send({ error: "role_fixed" });
+      const holders = all<{ user_id: string }>(database.sqlite, "select user_id from member_roles where role_id = ?", [
+        roleId
+      ]).map((row) => row.user_id);
+      const now = new Date().toISOString();
+      inTransaction(database, () => {
+        const before = inviteCreators(database.sqlite, serverId);
+        // Deleting a Role takes it from its members (decision 7).
+        run(database.sqlite, "delete from member_roles where role_id = ?", [roleId]);
+        run(database.sqlite, "delete from roles where id = ? and server_id = ?", [roleId, serverId]);
+        renumberRoles(database.sqlite, serverId);
+        revokeLostInvites(database, serverId, before, now);
+        audit(database, actor.id, "role.deleted", null, serverId);
+      });
+      database.save();
+      for (const userId of holders) realtime.refreshMemberIdentity(serverId, userId);
+      io.to(`server:${serverId}`).emit("server:rolesChanged", { serverId });
+      return reply.code(204).send();
+    }
+  );
 
   const changeMemberRole = (give: boolean) => async (request: FastifyRequest, reply: FastifyReply) => {
     const scope = requireJoinedServer(context, request, reply, { userId: userIdParam, roleId: roleIdParam });

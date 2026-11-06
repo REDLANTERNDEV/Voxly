@@ -16,9 +16,11 @@ import type { OwnerInvite, ServerMember } from "../../types.js";
 import { ServerOverviewSettings } from "../owner/OwnerServerContext.js";
 import { ServerAccessLinksSection, ServerInviteTrailSection } from "./ServerAccessSections.js";
 import { ServerMembersSection } from "./ServerMembersSection.js";
+import { ServerRolesSection } from "./ServerRolesSection.js";
 
 const sectionTitles = {
   overview: "serverSettings.overview",
+  roles: "serverSettings.roles",
   members: "serverSettings.members",
   inviteTrail: "serverSettings.inviteTrail",
   accessLinks: "serverSettings.accessLinks",
@@ -27,6 +29,7 @@ const sectionTitles = {
 
 const sectionIcons = {
   overview: <GearIcon />,
+  roles: <ShieldIcon />,
   members: <UsersIcon />,
   inviteTrail: <ShieldIcon />,
   accessLinks: <LinkIcon />,
@@ -43,7 +46,16 @@ const focusable =
 
 export type ServerSettingsWindowProps = Pick<
   ShellModel,
-  "user" | "servers" | "serverRoles" | "activeServerId" | "rooms" | "appConfig" | "language" | "timeFormat" | "t"
+  | "user"
+  | "servers"
+  | "serverRoles"
+  | "serverMembers"
+  | "activeServerId"
+  | "rooms"
+  | "appConfig"
+  | "language"
+  | "timeFormat"
+  | "t"
 > &
   Pick<
     ShellActions,
@@ -54,6 +66,11 @@ export type ServerSettingsWindowProps = Pick<
     | "onModerateMember"
     | "onVoiceModeration"
     | "onUpdateMemberNickname"
+    | "onCreateRole"
+    | "onUpdateRole"
+    | "onReorderRoles"
+    | "onDeleteRole"
+    | "onSetMemberRole"
   > & {
     onClose: () => void;
   };
@@ -274,6 +291,20 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
               onSetAfkTimeout={props.onSetAfkTimeout}
               textRooms={props.rooms.text}
               onSetWelcome={props.onSetWelcome}
+            />
+          ) : null}
+          {section === "roles" ? (
+            <ServerRolesSection
+              actor={server}
+              roles={props.serverRoles}
+              members={props.serverMembers}
+              t={t}
+              onError={setStatus}
+              onCreateRole={props.onCreateRole}
+              onUpdateRole={props.onUpdateRole}
+              onReorderRoles={props.onReorderRoles}
+              onDeleteRole={props.onDeleteRole}
+              onSetMemberRole={props.onSetMemberRole}
             />
           ) : null}
           {section === "members" ? (

@@ -10,7 +10,14 @@
 
 import type { FastifyReply } from "fastify";
 import type { DatabaseSync } from "node:sqlite";
-import { serverPermissions, type Permission, type RoleKind, type RoleSummary } from "@voxly/shared";
+import {
+  roleColors,
+  serverPermissions,
+  type Permission,
+  type RoleColor,
+  type RoleKind,
+  type RoleSummary
+} from "@voxly/shared";
 import type {
   PresenceChoiceRequest,
   PresenceChoiceState,
@@ -155,7 +162,8 @@ function toRoleSummary(row: RoleRow): RoleSummary {
     id: row.id,
     serverId: row.serverId,
     name: row.name,
-    color: row.color,
+    // A stored colour outside the palette reads as none rather than reaching a client.
+    color: (roleColors as readonly string[]).includes(row.color ?? "") ? (row.color as RoleColor) : null,
     position: row.position,
     separate: Boolean(row.separate),
     permissions: parsePermissions(row.permissions),

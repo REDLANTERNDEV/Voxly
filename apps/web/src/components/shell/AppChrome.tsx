@@ -447,6 +447,12 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           onModerateMember={props.onModerateMember}
           onVoiceModeration={props.onVoiceModeration}
           onUpdateMemberNickname={props.onUpdateMemberNickname}
+          serverMembers={props.serverMembers}
+          onCreateRole={props.onCreateRole}
+          onUpdateRole={props.onUpdateRole}
+          onReorderRoles={props.onReorderRoles}
+          onDeleteRole={props.onDeleteRole}
+          onSetMemberRole={props.onSetMemberRole}
           onClose={() => setServerSettingsOpen(false)}
         />
       ) : null}

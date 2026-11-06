@@ -14,7 +14,7 @@ export interface ServerStanding {
   permissions: readonly Permission[];
 }
 
-export type ServerSettingsSection = "overview" | "members" | "inviteTrail" | "accessLinks" | "deleteServer";
+export type ServerSettingsSection = "overview" | "roles" | "members" | "inviteTrail" | "accessLinks" | "deleteServer";
 
 /** In the order the window lists them. */
 const sectionRules: ReadonlyArray<{
@@ -23,6 +23,7 @@ const sectionRules: ReadonlyArray<{
   ownerOnly?: true;
 }> = [
   { id: "overview", reaches: (server) => server.permissions.includes("manageServer") },
+  { id: "roles", reaches: (server) => server.permissions.includes("manageRoles") },
   // Membership routes are still the owner's until they run on Manage members,
   // Voice moderation and Manage roles; a section that could only be refused
   // is not offered.

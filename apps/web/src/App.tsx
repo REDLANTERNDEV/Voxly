@@ -16,6 +16,7 @@ import { useChatController } from "./features/chat/useChatController.js";
 import { selfSpeaking, useIdlePresence } from "./app/useIdlePresence.js";
 import { usePresenceChoice } from "./app/usePresenceChoice.js";
 import { nicknameActions } from "./app/nicknameActions.js";
+import { roleActions } from "./app/roleActions.js";
 import { AudioPlaybackRecovery, GlobalVoiceAudio, RemoteAudio } from "./features/voice/VoicePresentation.js";
 import { joinVoiceWithAudioUnlock } from "./features/voice/voiceActions.js";
 import { combineOutputVolume } from "./lib/audioLevels.js";
@@ -317,7 +318,7 @@ export function App() {
         onModerateMember: workspace.actions.moderateMember,
         onVoiceModeration: workspace.actions.voiceModeration,
         ...nicknameActions(workspace, chat),
-        onSetMemberRole: workspace.actions.setMemberRole,
+        ...roleActions(workspace),
         onDisconnectMember: workspace.actions.disconnectMember,
         onMoveMember: workspace.actions.moveMember,
         onDrawerChange: setDrawer,

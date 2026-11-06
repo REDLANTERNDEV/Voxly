@@ -22,7 +22,7 @@ const role = (id: string, position: number, extra: Partial<RoleSummary> = {}): R
 const roles = [
   role("admin", 3, { kind: "admin", permissions: ["administrator"] }),
   role("recruiter", 2, { permissions: ["createInvites"] }),
-  role("helper", 1, { name: "Helper", color: "#3b82f6" }),
+  role("helper", 1, { name: "Helper", color: "#2b7fd4" }),
   role("everyone", 0, { kind: "everyone" })
 ];
 const owner: RoleActor = { role: "owner", permissions: [...serverPermissions], rank: 4 };
@@ -124,7 +124,7 @@ describe("Roles (ADR-0038)", () => {
     assert.match(rows, /aria-checked="true"[^>]*>.*Recruiter/);
     assert.match(rows, /aria-disabled="true"[^>]*title="Only the owner can give this role"/);
     assert.match(rows, /title="Everyone has this role"/);
-    assert.match(rows, /style="--role-color:#3b82f6"/);
+    assert.match(rows, /style="--role-color:#2b7fd4"/);
   });
 
   it("keeps the submenu open across toggles and opens it from the arrow key", () => {

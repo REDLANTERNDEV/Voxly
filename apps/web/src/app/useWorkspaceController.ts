@@ -5,6 +5,7 @@ import type {
   PresenceStatus,
   PresenceUser,
   PublicUser,
+  RoleChange,
   RoleSummary,
   RoomSummary,
   ServerRoomLayout,
@@ -23,6 +24,10 @@ import {
   fetchServerDirectory,
   fetchServerRoles,
   setServerMemberRole,
+  createServerRole,
+  updateServerRole,
+  reorderServerRoles,
+  deleteServerRole,
   fetchServerRooms,
   fetchServers,
   moderateServerMember,
@@ -459,6 +464,34 @@ export function useWorkspaceController({
       const response = await updateServerMemberNickname(serverId, accountId, nickname);
       applyMemberUpdate(serverId, response.user);
       return response.user;
+    },
+    // Each answer is applied at once; `server:rolesChanged` then brings the
+    // viewer's own Permissions, which only the server works out.
+    createRole: async (name: string) => {
+      const serverId = activeServerId;
+      const response = await createServerRole(serverId, name);
+      await refreshServerRoles(serverId);
+      return response.role;
+    },
+    updateRole: async (roleId: string, change: RoleChange) => {
+      const serverId = activeServerId;
+      const response = await updateServerRole(serverId, roleId, change);
+      setRolesByServer((current) => ({
+        ...current,
+        [serverId]: (current[serverId] ?? []).map((role) => (role.id === roleId ? response.role : role))
+      }));
+      return response.role;
+    },
+    reorderRoles: async (roleIds: string[]) => {
+      const serverId = activeServerId;
+      const response = await reorderServerRoles(serverId, roleIds);
+      setRolesByServer((current) => ({ ...current, [serverId]: response.roles }));
+    },
+    deleteRole: async (roleId: string) => {
+      const serverId = activeServerId;
+      await deleteServerRole(serverId, roleId);
+      // The server renumbered every position; read them back rather than guess.
+      await refreshServerRoles(serverId);
     },
     setMemberRole: async (userId: string, roleId: string, give: boolean) => {
       const response = await setServerMemberRole(activeServerId, userId, roleId, give);

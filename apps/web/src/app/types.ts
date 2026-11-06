@@ -159,6 +159,11 @@ export interface ShellActions {
   onUpdateOwnNickname: (serverId: string, nickname: string | null) => Promise<PresenceUser>;
   /** Gives (`true`) or removes (`false`) one Role on a member of the active Server. */
   onSetMemberRole: (userId: string, roleId: string, give: boolean) => Promise<PresenceUser>;
+  onCreateRole: (name: string) => Promise<RoleSummary>;
+  onUpdateRole: (roleId: string, change: import("@voxly/shared").RoleChange) => Promise<RoleSummary>;
+  /** The movable Roles of the active Server, top first. */
+  onReorderRoles: (roleIds: string[]) => Promise<void>;
+  onDeleteRole: (roleId: string) => Promise<void>;
   onDisconnectMember: (roomId: string, userId: string) => Promise<void>;
   onMoveMember: (userId: string, roomId: string) => void;
   onDrawerChange: (drawer: Drawer) => void;

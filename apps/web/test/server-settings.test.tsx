@@ -34,6 +34,7 @@ function renderWindow(server: ServerSummary) {
       user={{ id: "me", nickname: "Me", role: "member", bannedAt: null }}
       servers={[server]}
       serverRoles={[]}
+      serverMembers={[]}
       activeServerId="server"
       rooms={{ text: [], voice: [] }}
       appConfig={{ clientVersion: null, publicUrl: null, turnstile: null, analytics: null } as never}
@@ -47,6 +48,15 @@ function renderWindow(server: ServerSummary) {
       onModerateMember={noop}
       onVoiceModeration={async () => ({ moderation: { muted: false, deafened: false } })}
       onUpdateMemberNickname={async () => ({ userId: "x", nickname: "x", role: "member" })}
+      onCreateRole={async () => {
+        throw new Error("unused");
+      }}
+      onUpdateRole={async () => {
+        throw new Error("unused");
+      }}
+      onReorderRoles={noop}
+      onDeleteRole={noop}
+      onSetMemberRole={async () => ({ userId: "x", nickname: "x", role: "member" })}
       onClose={() => undefined}
     />
   );
@@ -56,13 +66,14 @@ describe("Server settings (ADR-0038, decisions 14–16 and 20)", () => {
   it("lists only the sections a member's Permissions reach", () => {
     assert.deepEqual(serverSettingsSections(owner), [
       "overview",
+      "roles",
       "members",
       "inviteTrail",
       "accessLinks",
       "deleteServer"
     ]);
     // An Admin runs the Server but never the owner's own three.
-    assert.deepEqual(serverSettingsSections(admin), ["overview"]);
+    assert.deepEqual(serverSettingsSections(admin), ["overview", "roles"]);
     assert.deepEqual(serverSettingsSections({ role: "member", permissions: ["manageServer"] }), ["overview"]);
     assert.deepEqual(serverSettingsSections(recruiter), []);
     assert.deepEqual(serverSettingsSections(plain), []);
@@ -79,7 +90,7 @@ describe("Server settings (ADR-0038, decisions 14–16 and 20)", () => {
   it("renders the window with its sections and the owner's under their own heading", () => {
     const html = renderWindow(summary(owner));
     assert.match(html, /role="dialog" aria-modal="true" aria-label="Server settings for Basement"/);
-    for (const label of ["Overview", "Members", "Invite trail", "Access links", "Delete server"]) {
+    for (const label of ["Overview", "Roles", "Members", "Invite trail", "Access links", "Delete server"]) {
       assert.match(html, new RegExp(`<span>${label}</span>`));
     }
     assert.match(html, /Owner only/);

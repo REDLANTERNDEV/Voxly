@@ -296,6 +296,20 @@ requirement.
   above the viewer's rank is locked ("You can only manage roles below yours").
   A seeded Role with a null name shows its localized name: `@everyone`, Admin,
   and Davetçi / Recruiter.
+- Server settings › Roles (Manage roles) lists the Roles highest first with
+  their member counts (people only; `@everyone` counts everyone) and Create
+  role, which makes "new role" and opens it. Movable Roles reorder by dragging
+  and by named Move up / Move down buttons that give the same order
+  (`moveRole`, `dropRole`); Admin and `@everyone` never move, and a Role at or
+  above the viewer's rank neither moves nor is passed. The Role editor has the
+  Role list with a back button and **+**, and tabs Display (name, a palette
+  colour as a named radio, the separate-group switch, Delete with
+  confirmation), Permissions (one named switch with its description per
+  Permission, a search, Clear permissions) and Manage members (add and remove,
+  by the same rule as Roles ›). `@everyone` shows Permissions alone. A Role the
+  viewer cannot change shows why and disables its controls; Administrator's
+  switch is the owner's alone, and a Permission the viewer does not hold
+  cannot be switched on, saying why.
 - Server and channel deletion keep exact-name confirmation and server-side
   protection against deleting the final owner server or final protected
   channel.

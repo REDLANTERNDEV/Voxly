@@ -297,6 +297,20 @@ queries across endpoints.
   removes or changes Admin; `@everyone` is never given or removed; a Bot and
   an owner are never the subject. Every one of these refusals is the same
   generic 403 `forbidden`. A change that leaves nothing to do writes nothing.
+- Roles are created (`POST …/roles`), edited (`PATCH …/roles/:roleId`),
+  reordered (`PUT …/roles/order`, naming every movable Role top first) and
+  deleted on Manage roles. A new Role goes just above `@everyone`; positions
+  stay dense with `@everyone` at 0 and Admin on top. A Server holds at most 50
+  Roles (`role_limit_reached`) and a name is 1–32 characters. Anyone but the
+  owner changes, moves or deletes only Roles strictly below their own highest,
+  never Admin, and never switches Administrator on or off, nor switches on any Permission they
+  do not hold themselves (so Manage roles alone cannot promote its holder); `@everyone` keeps
+  its name, colour and grouping, Admin always keeps Administrator
+  (`role_field_fixed`), Admin and `@everyone` cannot be deleted
+  (`role_fixed`). A colour is one of the shared `roleColors` or none. A change, or a reorder, that changes nothing writes nothing. Every
+  change is audited (`role.created` / `.updated` / `.reordered` / `.deleted`),
+  emits `server:rolesChanged`, and revokes the Invites of anyone it left
+  without Create invites.
 - A Role change is audited (`role.given` / `role.removed`), refreshes the
   member's identity (`server:memberUpdated` with `roleIds`), and emits
   `server:rolesChanged` to the Server room. Removing a Role that leaves the

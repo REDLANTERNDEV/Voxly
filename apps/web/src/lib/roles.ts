@@ -75,3 +75,86 @@ export function roleDisplayName(role: Pick<RoleSummary, "name" | "kind">, t: (ke
   if (role.name !== null) return role.name;
   return t(role.kind === "everyone" ? "role.everyone" : role.kind === "admin" ? "role.admin" : "role.recruiter");
 }
+
+/**
+ * Whether the actor may change, reorder or delete this Role: the owner any;
+ * anyone else holding Manage roles only a Role strictly below their own
+ * highest, and never Admin. Mirrors what the server checks.
+ */
+export function canManageRole(actor: RoleActor | undefined, role: Pick<RoleSummary, "kind" | "position">) {
+  if (!actor || !holdsPermission(actor, "manageRoles")) return false;
+  if (actor.role === "owner") return true;
+  if (role.kind === "admin") return false;
+  return role.position < actor.rank;
+}
+
+/** Why a Role cannot be changed by this actor, or null when it can. */
+export function roleEditLock(
+  actor: RoleActor | undefined,
+  role: Pick<RoleSummary, "kind" | "position">
+): "ownerOnly" | "belowYours" | null {
+  if (canManageRole(actor, role)) return null;
+  return role.kind === "admin" ? "ownerOnly" : "belowYours";
+}
+
+/**
+ * The movable Roles' ids, top first, after moving one up (-1) or down (+1),
+ * or null when the move is not allowed: a fixed Role, the edge of the list,
+ * or a swap with a Role the actor may not manage.
+ */
+export function moveRole(
+  actor: RoleActor | undefined,
+  roles: readonly RoleSummary[],
+  roleId: string,
+  direction: -1 | 1
+): string[] | null {
+  const movable = roles.filter((role) => role.kind === null);
+  const index = movable.findIndex((role) => role.id === roleId);
+  const other = movable[index + direction];
+  const role = movable[index];
+  if (!role || !other || !canManageRole(actor, role) || !canManageRole(actor, other)) return null;
+  const ids = movable.map((item) => item.id);
+  ids[index] = other.id;
+  ids[index + direction] = role.id;
+  return ids;
+}
+
+/**
+ * The movable Roles' ids, top first, after dropping one onto another's place,
+ * or null when either is out of the actor's reach or nothing moves.
+ */
+export function dropRole(
+  actor: RoleActor | undefined,
+  roles: readonly RoleSummary[],
+  roleId: string,
+  targetId: string
+): string[] | null {
+  const movable = roles.filter((role) => role.kind === null);
+  const from = movable.findIndex((role) => role.id === roleId);
+  const to = movable.findIndex((role) => role.id === targetId);
+  if (from < 0 || to < 0 || from === to) return null;
+  const [lo, hi] = from < to ? [from, to] : [to, from];
+  // Every Role whose place changes must be one the actor may manage.
+  if (movable.slice(lo, hi + 1).some((role) => !canManageRole(actor, role))) return null;
+  const ids = movable.map((item) => item.id);
+  const [moved] = ids.splice(from, 1);
+  ids.splice(to, 0, moved!);
+  return ids;
+}
+
+/** How many people hold a Role: everyone for `@everyone`, never a Bot. */
+export function roleMemberCount(role: Pick<RoleSummary, "id" | "kind">, members: readonly PresenceUser[]) {
+  const people = members.filter((member) => !member.isBot);
+  if (role.kind === "everyone") return people.length;
+  return people.filter((member) => member.roleIds?.includes(role.id)).length;
+}
+
+/** The permission list a Clear leaves: Administrator stays unless the owner clears it. */
+export function clearedPermissions(
+  actor: RoleActor | undefined,
+  role: Pick<RoleSummary, "permissions" | "kind">
+): Permission[] {
+  // Admin holds Administrator always; anyone else's Clear may not drop it either.
+  const keep = role.kind === "admin" || (actor?.role !== "owner" && role.permissions.includes("administrator"));
+  return keep ? ["administrator"] : [];
+}
