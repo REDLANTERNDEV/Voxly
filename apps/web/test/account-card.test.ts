@@ -11,6 +11,7 @@ function render(overrides: Partial<Parameters<typeof AccountCard>[0]> = {}) {
       menuRef: createRef<HTMLDetailsElement>(),
       nickname: "Ada",
       mentionCode: "A7K2X9",
+      roles: [],
       isOwner: false,
       selfState: "dnd",
       presenceChoice: { status: "dnd", until: null },

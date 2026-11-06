@@ -13,6 +13,7 @@ import { controlPresentation } from "../../lib/voiceControls.js";
 import { selfPresenceState } from "../../lib/presenceChoice.js";
 import { AccountCard } from "./AccountCard.js";
 import { PresenceDot } from "./AccountStatusMenu.js";
+import { heldRoles } from "../../lib/roles.js";
 type VoiceDockProps = Pick<
   ShellModel,
   | "activeServerId"
@@ -25,6 +26,7 @@ type VoiceDockProps = Pick<
   | "route"
   | "rooms"
   | "servers"
+  | "serverRoles"
   | "socketState"
   | "t"
   | "user"
@@ -56,6 +58,7 @@ export function VoiceDock(props: VoiceDockProps) {
   const accountMenuRef = useRef<HTMLDetailsElement>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const self = props.onlineUsers.find((member) => member.userId === props.user.id);
+  const selfEntry = props.serverMembers.find((member) => member.userId === props.user.id);
   const selfState = selfPresenceState(props.presenceChoice.status, self?.status);
   const roomName = props.activeVoiceRoomId
     ? (props.rooms.voice.find((room) => room.id === props.activeVoiceRoomId)?.name ?? props.t("room.lobbyVoice"))
@@ -224,10 +227,8 @@ export function VoiceDock(props: VoiceDockProps) {
               <AccountCard
                 menuRef={accountMenuRef}
                 nickname={props.currentNickname}
-                mentionCode={
-                  self?.mentionCode ??
-                  props.serverMembers.find((member) => member.userId === props.user.id)?.mentionCode
-                }
+                mentionCode={self?.mentionCode ?? selfEntry?.mentionCode}
+                roles={heldRoles(props.serverRoles, self ?? selfEntry ?? {})}
                 isOwner={props.user.role === "owner"}
                 selfState={selfState}
                 presenceChoice={props.presenceChoice}

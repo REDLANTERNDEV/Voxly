@@ -44,7 +44,7 @@ describe("bot member counts", () => {
   it("counts the member badges and the mobile subtitle by people", () => {
     assert.match(
       memberPanel,
-      /<span\s+className="badge">\s*\{\s*countPeople\(\s*visibleOnline\s*\)\s*\}\s*<\/span>\s*/
+      /<span\s+className="badge">\s*\{\s*countPeople\(\s*onlineGroups\.rest\s*\)\s*\}\s*<\/span>\s*/
     );
     assert.match(
       memberPanel,

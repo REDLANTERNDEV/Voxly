@@ -11,6 +11,8 @@ import { MenuOverlayScope } from "../ContextMenu.js";
 import { CopyIcon, EditIcon, GearIcon, LeaveIcon, ShieldIcon } from "../ui/Icons.js";
 import { NavLink } from "../ui/Navigation.js";
 import { AccountStatusMenu, PresenceDot } from "./AccountStatusMenu.js";
+import type { RoleSummary } from "@voxly/shared";
+import { RoleLabels } from "../ui/RoleLabels.js";
 
 /**
  * The dock's account card, laid out like a profile card: who you are in this
@@ -21,6 +23,8 @@ export function AccountCard(props: {
   menuRef: RefObject<HTMLDetailsElement | null>;
   nickname: string;
   mentionCode?: string;
+  /** Your Roles in this Server, highest first (design decision 13). */
+  roles: readonly RoleSummary[];
   isOwner: boolean;
   selfState: MemberPresenceState;
   presenceChoice: PresenceChoiceState;
@@ -83,6 +87,7 @@ export function AccountCard(props: {
               {props.mentionCode ? <span className="mono">#{props.mentionCode}</span> : null}
               {props.isOwner ? <span className="account-card-badge">{t("common.owner")}</span> : null}
             </span>
+            <RoleLabels roles={props.roles} t={t} />
           </div>
         </header>
         <div className="account-card-section">

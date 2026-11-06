@@ -24,6 +24,8 @@ import {
   type MemberPresenceState
 } from "../../lib/memberDirectory.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
+import { groupOnlineByRole, memberColor, roleDisplayName } from "../../lib/roles.js";
+import { RoleTintedName } from "../ui/RoleTintedName.js";
 import {
   MemberActionMenu,
   memberActionMenuHeight,
@@ -100,6 +102,7 @@ export function MemberPanel({
   const visibleOffline = normalizedQuery
     ? groupedMembers.offline.filter((member) => member.nickname.toLocaleLowerCase().includes(normalizedQuery))
     : groupedMembers.offline;
+  const onlineGroups = groupOnlineByRole(serverRoles, visibleOnline);
   const renderMembers = (users: PresenceUser[], online: boolean) =>
     users.map((user) => {
       const voiceRoom = roomByMemberId.get(user.userId);
@@ -147,7 +150,7 @@ export function MemberPanel({
             <PresenceDot state={presenceState} label={t(`presence.${presenceState}` as const)} />
           </span>
           <span className="member-copy">
-            <strong>{user.nickname}</strong>
+            <RoleTintedName name={user.nickname} color={memberColor(serverRoles, user)} />
             <span>{detail}</span>
           </span>
           {user.isBot ? (
@@ -215,17 +218,33 @@ export function MemberPanel({
       {normalizedQuery && visibleOnline.length === 0 && visibleOffline.length === 0 ? (
         <p className="member-panel-no-results">{t("member.noResults")}</p>
       ) : null}
-      <section className="member-section">
-        <div className="member-section-head">
-          <span className="label">{t("common.online")}</span>
-          <span className="badge">{countPeople(visibleOnline)}</span>
-        </div>
-        {visibleOnline.length === 0 && !normalizedQuery ? (
-          <p className="muted small">{t("room.presenceWaiting")}</p>
-        ) : (
-          renderMembers(visibleOnline, true)
-        )}
-      </section>
+      {/* A Role shown separately gathers its online members under its own
+          heading, highest first; everyone else online stays under Online
+          (ADR-0038, design decision 11). */}
+      {onlineGroups.groups.map((group) => (
+        <section className="member-section member-section-role" key={group.role.id}>
+          <div className="member-section-head">
+            <span className="label member-section-role-name">
+              {t("member.roleGroup", { role: roleDisplayName(group.role, t), count: countPeople(group.members) })}
+            </span>
+          </div>
+          {renderMembers(group.members, true)}
+        </section>
+      ))}
+      {/* Online stays while it holds anyone, or while nobody has loaded yet. */}
+      {onlineGroups.rest.length > 0 || onlineGroups.groups.length === 0 ? (
+        <section className="member-section">
+          <div className="member-section-head">
+            <span className="label">{t("common.online")}</span>
+            <span className="badge">{countPeople(onlineGroups.rest)}</span>
+          </div>
+          {visibleOnline.length === 0 && !normalizedQuery ? (
+            <p className="muted small">{t("room.presenceWaiting")}</p>
+          ) : (
+            renderMembers(onlineGroups.rest, true)
+          )}
+        </section>
+      ) : null}
       {visibleOffline.length > 0 ? (
         <section className="member-section member-section-offline">
           <div className="member-section-head">

@@ -158,3 +158,43 @@ export function clearedPermissions(
   const keep = role.kind === "admin" || (actor?.role !== "owner" && role.permissions.includes("administrator"));
   return keep ? ["administrator"] : [];
 }
+
+/**
+ * The Roles a member holds, highest first, `@everyone` left out. Like every
+ * helper here it relies on `roles` arriving highest first, as the server sends
+ * them and as the client keeps them.
+ */
+export function heldRoles(roles: readonly RoleSummary[], member: Pick<PresenceUser, "roleIds">) {
+  const held = new Set(member.roleIds ?? []);
+  return roles.filter((role) => role.kind !== "everyone" && held.has(role.id));
+}
+
+/**
+ * The colour a member's name takes: their highest Role that has one (design
+ * decision 12). Null when none of their Roles is coloured, which changes
+ * nothing about how the name is drawn.
+ */
+export function memberColor(roles: readonly RoleSummary[], member: Pick<PresenceUser, "roleIds">) {
+  return heldRoles(roles, member).find((role) => role.color !== null)?.color ?? null;
+}
+
+/**
+ * The online members under each Role shown separately, highest first, then
+ * everyone else online (design decision 11). Someone in several such Roles
+ * appears once, under the highest. Offline members are not grouped here.
+ */
+export function groupOnlineByRole<User extends Pick<PresenceUser, "roleIds">>(
+  roles: readonly RoleSummary[],
+  online: readonly User[]
+): { groups: Array<{ role: RoleSummary; members: User[] }>; rest: User[] } {
+  const separate = roles.filter((role) => role.separate && role.kind !== "everyone");
+  const groups = separate.map((role) => ({ role, members: [] as User[] }));
+  const rest: User[] = [];
+  for (const member of online) {
+    const held = new Set(member.roleIds ?? []);
+    const group = groups.find((item) => held.has(item.role.id));
+    if (group) group.members.push(member);
+    else rest.push(member);
+  }
+  return { groups: groups.filter((group) => group.members.length > 0), rest };
+}

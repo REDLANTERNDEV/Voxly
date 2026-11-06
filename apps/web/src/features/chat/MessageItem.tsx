@@ -39,6 +39,9 @@ import {
   noMemberIdentityChanges,
   type MemberIdentityChanges
 } from "../../lib/memberIdentity.js";
+import { useServerRoles } from "../../app/serverRolesContext.js";
+import { RoleTintedName } from "../../components/ui/RoleTintedName.js";
+import { memberColor } from "../../lib/roles.js";
 export function MessageItem({
   message,
   user,
@@ -132,6 +135,9 @@ export function MessageItem({
   const isNotice = message.kind === "memberJoined";
   const isOwn = message.userId === user.id;
   const displayNickname = message.authorDeleted ? t("common.deletedMember") : message.nickname;
+  const serverRoles = useServerRoles();
+  const author = members.find((member) => member.userId === message.userId);
+  const authorColor = author ? memberColor(serverRoles, author) : null;
   // Anyone who can read a message can answer it, so every row has a menu.
   // A Listed channel the viewer cannot enter is read, never acted on (ADR-0037).
   const hasActions = !readOnly;
@@ -313,7 +319,9 @@ export function MessageItem({
           // A grouped row keeps its author and time for screen readers; sighted
           // readers have the name above and the time in the gutter on hover.
           <div className={`message-meta${grouped ? " sr-only" : ""}`}>
-            <span className="message-author">{displayNickname}</span>
+            <span className="message-author">
+              <RoleTintedName as="span" name={displayNickname} color={message.authorDeleted ? null : authorColor} />
+            </span>
             {message.pinnedAt ? <span className="message-pin-label">{t("chat.pinned")}</span> : null}
             {isMentioned(message, user.id) ? <span className="sr-only">{t("chat.mentioned")}</span> : null}
             <span className="message-time mono">

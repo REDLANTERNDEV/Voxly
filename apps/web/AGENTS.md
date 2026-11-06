@@ -293,6 +293,13 @@ requirement.
   `GET /api/servers/:serverId/roles` on every `server:rolesChanged`) and never
   works a Permission out from Roles (ADR-0038). There is no per-member invite
   switch and no Inviters figure; a member's role line names their highest Role.
+- The member list gathers online members of each Role shown separately under a
+  `ROLE — n` heading, highest first, each member once under their highest such
+  Role; everyone else online stays under Online and offline members under
+  Offline (`groupOnlineByRole`). Names in the list and on chat messages take
+  their Role colour (`memberColor`), and the person card and the dock's
+  account card list the member's Roles as `RoleLabels`. Message rows and cards
+  read the Roles from `ServerRolesContext`, provided by the app chrome.
 - Roles are given from **Roles ›** in the shared member menu, in both sidebars
   and on the stage, through `memberRolesMenu` so the rows cannot differ. It
   appears only when the viewer holds Manage roles and the target is neither an
@@ -910,6 +917,13 @@ folded into a width: a touchscreen laptop is wide and cannot right-click.
   dedicated rail tokens rather than assuming the rail is always dark. Preserve
   readable foreground/background contrast for text, placeholders, icons,
   disabled states, and native selects in both themes.
+- Role colour is the one text colour chosen in the app rather than by the
+  theme (whoever holds Manage roles picks it), so it is admitted on purpose
+  (design decision 12): a name takes its highest coloured Role's palette colour
+  through `.role-tinted` in `visual-refresh.css`, mixed 50/50 toward `--fg` in
+  `srgb-linear`, which keeps every `roleColors` entry at 4.5:1 or better on
+  every light and dark surface a name sits on; a test pins it. Add a palette colour only with that
+  check passing. Colour is never the only signal: Role labels carry the name.
 - A theme change is incomplete if any text becomes indistinguishable from its
   surface. Keep structural CSS tests for the token contract and inspect both
   themes in a browser for geometry- and rendering-sensitive regressions.

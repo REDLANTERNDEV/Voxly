@@ -8365,3 +8365,37 @@ button.reply-quote:focus-visible .reply-quote-body {
     min-width: 44px;
   }
 }
+
+/* Role labels on a profile card (decision 13): dot and name, never colour alone. */
+.role-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  margin: 6px 0 0;
+  min-width: 0;
+  padding: 0;
+}
+.role-label {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 1px 8px;
+}
+.role-label > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A separate-group heading truncates rather than wrapping on a phone. */
+.member-section-role-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

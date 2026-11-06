@@ -4,6 +4,9 @@ import type { Translate } from "../../app/types.js";
 import { installationOrigins, openInviteInPlace, parseInviteInput } from "../../lib/invites.js";
 import { messageContentSegments } from "../../lib/messageEmbeds.js";
 import { ChatDialog } from "./ChatDialog.js";
+import { useServerRoles } from "../../app/serverRolesContext.js";
+import { RoleLabels } from "../../components/ui/RoleLabels.js";
+import { heldRoles } from "../../lib/roles.js";
 
 export function MessageBody({
   body,
@@ -23,6 +26,7 @@ export function MessageBody({
   cards?: boolean;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const serverRoles = useServerRoles();
   const pieces: Array<{ text: string; mention?: MessageMention }> = [];
   let offset = 0;
   for (const mention of mentions) {
@@ -89,6 +93,7 @@ export function MessageBody({
           <p className="chat-person-name">{selected?.nickname ?? selectedMention.nickname}</p>
           <p className="mono">#{selected?.mentionCode ?? selectedMention.mentionCode}</p>
           <p>{selected ? t(selected.role === "owner" ? "chat.owner" : "chat.member") : t("chat.formerMember")}</p>
+          {selected ? <RoleLabels roles={heldRoles(serverRoles, selected)} t={t} /> : null}
           <p>{t(onlineUsers.some((member) => member.userId === selectedId) ? "chat.online" : "chat.offline")}</p>
         </ChatDialog>
       ) : null}

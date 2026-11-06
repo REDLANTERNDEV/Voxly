@@ -4535,3 +4535,13 @@ select {
 .channel-access-list .muted {
   color: var(--muted);
 }
+
+/*
+ * Role colour (design decision 12): the palette colour mixed toward the
+ * theme's text colour, which keeps every palette entry at 4.5:1 or better on
+ * every light and dark surface a name sits on. `role-appearance.test.tsx`
+ * pins the ratio; change both together.
+ */
+.role-tinted {
+  color: color-mix(in srgb-linear, var(--role-color) 50%, var(--fg));
+}

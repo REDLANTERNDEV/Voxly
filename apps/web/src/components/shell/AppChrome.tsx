@@ -25,6 +25,7 @@ import { WorkspaceRail } from "./WorkspaceRail.js";
 import { ServerSettingsWindow } from "../../features/serverSettings/ServerSettingsWindow.js";
 import type { ServerMenuItem } from "../../lib/serverSettings.js";
 import type { RailRequest } from "./ChannelRail.js";
+import { ServerRolesContext } from "../../app/serverRolesContext.js";
 export function AppChrome(props: ShellModel & ShellActions & { children: ReactNode; mobileTitle: string }) {
   const { onCloseAudioSettings } = props;
   const mobileRoomsRef = useRef<HTMLButtonElement | null>(null);
@@ -165,7 +166,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
   );
 
   return (
-    <>
+    <ServerRolesContext.Provider value={props.serverRoles}>
       <a className="skip-link" href="#main-content">
         {props.t("shell.skip")}
       </a>
@@ -378,6 +379,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
       </div>
       <VoiceDock
         activeServerId={props.activeServerId}
+        serverRoles={props.serverRoles}
         activeVoiceRoomId={props.activeVoiceRoomId}
         connectionHealth={props.connectionHealth}
         voiceQuality={props.voiceQuality}
@@ -500,6 +502,6 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           }}
         />
       ) : null}
-    </>
+    </ServerRolesContext.Provider>
   );
 }
