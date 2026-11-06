@@ -2,7 +2,13 @@ import type { PresenceUser, RoomSummary } from "@voxly/shared";
 import { useState, type ReactNode } from "react";
 import { ApiError } from "../../api.js";
 import { serverPath } from "../../app/navigation.js";
-import { activeServerRole, canInviteToActiveServer, initial, voiceMembersForRoom } from "../../app/presentation.js";
+import {
+  activeServerRole,
+  canInviteToActiveServer,
+  initial,
+  memberRolesMenu,
+  voiceMembersForRoom
+} from "../../app/presentation.js";
 import type { MemberAction, ShellActions, ShellModel, Translate } from "../../app/types.js";
 import { ChannelNameDialog, ConfirmDialog } from "../../components/ui/Dialogs.js";
 import {
@@ -52,6 +58,7 @@ type ChannelRailProps = Pick<
   | "notificationSounds"
   | "rooms"
   | "serverMembers"
+  | "serverRoles"
   | "categories"
   | "uncategorizedPosition"
   | "route"
@@ -89,7 +96,7 @@ type ChannelRailProps = Pick<
     | "onThemeChange"
     | "onToggleControl"
     | "onToggleMicrophoneTest"
-    | "onUpdateMemberPermissions"
+    | "onSetMemberRole"
     | "onVoiceModeration"
     | "onWatchLive"
     | "onMoveMember"
@@ -261,7 +268,8 @@ export function ChannelRail(props: ChannelRailProps) {
               const canModerate = canOwnerVoiceModerate(activeServerRole(props), props.user.id, member.user);
               const canVoiceModerate = canModerate;
               const canModeratePerson = canOwnerModeratePerson(activeServerRole(props), props.user.id, member.user);
-              const canAssignRoles = canManageServer && member.user.role === "member" && !member.user.isBot;
+              const roles = memberRolesMenu(props, member.user);
+              const canAssignRoles = Boolean(roles);
               const menuHeight = memberActionMenuHeight({
                 hasVolume: isRemote,
                 canRename,
@@ -375,13 +383,7 @@ export function ChannelRail(props: ChannelRailProps) {
                             }
                           : undefined
                       }
-                      onToggleInviteRole={
-                        canAssignRoles
-                          ? (canInviteMember) => {
-                              void props.onUpdateMemberPermissions(member.user.userId, canInviteMember);
-                            }
-                          : undefined
-                      }
+                      roles={roles}
                       moveTargets={canModeratePerson ? moveTargetsFor(member.user) : undefined}
                       onMove={
                         canModeratePerson

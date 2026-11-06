@@ -2,7 +2,7 @@ import type { PresenceUser } from "@voxly/shared";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { serverPath } from "../../app/navigation.js";
-import { activeServerRole } from "../../app/presentation.js";
+import { activeServerRole, memberRolesMenu } from "../../app/presentation.js";
 import type { MemberAction, ShellActions, ShellModel } from "../../app/types.js";
 import { ConfirmDialog, NicknameDialog } from "../../components/ui/Dialogs.js";
 import { MenuIcon, UsersIcon } from "../../components/ui/Icons.js";
@@ -269,7 +269,8 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           onSelectServer={props.onSelectServer}
           onThemeChange={props.onThemeChange}
           onToggleMicrophoneTest={props.onToggleMicrophoneTest}
-          onUpdateMemberPermissions={props.onUpdateMemberPermissions}
+          onSetMemberRole={props.onSetMemberRole}
+          serverRoles={props.serverRoles}
           onMoveMember={props.onMoveMember}
           onVoiceModeration={props.onVoiceModeration}
           onWatchLive={props.onWatchLive}
@@ -284,6 +285,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           value={{
             activeServerId: props.activeServerId,
             servers: props.servers,
+            serverRoles: props.serverRoles,
             user: props.user,
             rooms: props.rooms,
             memberVolumes: props.memberVolumes,
@@ -296,7 +298,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
             t: props.t,
             onMemberVolumeChange: props.onMemberVolumeChange,
             onVoiceModeration: props.onVoiceModeration,
-            onUpdateMemberPermissions: props.onUpdateMemberPermissions,
+            onSetMemberRole: props.onSetMemberRole,
             onMoveMember: props.onMoveMember,
             onToggleControl: props.onToggleControl,
             actionMenu,
@@ -339,7 +341,8 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           memberVolumes={props.memberVolumes}
           onMemberVolumeChange={props.onMemberVolumeChange}
           onVoiceModeration={props.onVoiceModeration}
-          onUpdateMemberPermissions={props.onUpdateMemberPermissions}
+          serverRoles={props.serverRoles}
+          rolesMenuFor={(member) => memberRolesMenu(props, member)}
           onMoveMember={props.onMoveMember}
           onRequestNickname={(member, returnFocus) => setNicknameTarget({ user: member, returnFocus })}
           onRequestMemberAction={(member, action, roomId) => {

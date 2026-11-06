@@ -117,7 +117,15 @@ web serving, and owner recovery CLIs.
   nothing about sessions.
 - `src/members.ts` owns membership lookups, the permission guards routes call,
   effective server identity, and presence status. Add an authorization rule
-  there rather than inline in a route or socket handler.
+  there rather than inline in a route or socket handler. That includes the Role
+  resolver (ADR-0038) — `permissionsFor`, `hasPermission`, `rankOf`,
+  `outranks` and `requireServerPermission` — which every Server-scoped check
+  asks rather than reading Roles itself.
+- `src/roles.ts` owns the routes that read a Server's Roles and give or remove
+  them, and the one rule (`mayChangeMemberRole`) that decides a Role change.
+  `src/roleSeeds.ts` makes every Server's three Roles once, at creation and on
+  upgrade; it is a leaf over the raw SQLite handle because `db/database.ts`
+  runs it while opening the file.
 - `src/voice.ts` owns live voice state: who is in which voice room, who is
   subscribed to whose camera or screen, media normalization, snapshot audience
   scoping, force-leave, room teardown, and RTC signal forwarding. It registers
@@ -144,6 +152,8 @@ web serving, and owner recovery CLIs.
   Music bot's presence and control relay.
 - `test/members.test.ts` covers membership, permission, and presence rules
   directly, without an HTTP or socket round trip.
+- `test/roles.test.ts` covers the seeding and the upgrade, the resolver, every
+  refusal of a Role change, and that Role changes reach other clients.
 - `test/voice.test.ts` covers the media, moderation, and snapshot-redaction
   rules the same way.
 - `test/bots.test.ts` covers bot configuration, account seeding, and session
@@ -192,6 +202,11 @@ queries across endpoints.
   `moderator_muted` / `moderator_deafened` / `can_invite` additively. Backfill legacy invite
   consumption once, retain the legacy first-use metadata, and preserve owner
   moderation values across restarts and membership lifecycle changes.
+- Roles are additive: `roles`, `member_roles` and `servers.roles_seeded_at`.
+  A Server is seeded once, marked by `roles_seeded_at`, so a restart never makes
+  a second set or gives back a deleted Davetçi. The upgrade places every active
+  human Membership with `can_invite` set in Davetçi and gives `@everyone`
+  nothing; `can_invite` itself stays and is never read again (ADR-0038).
 - Legacy user-to-default-server backfill runs only when introducing the
   `server_members` table to an older database. Routine startups and later
   migrations must never infer default-server membership from global `users`;
@@ -266,14 +281,27 @@ queries across endpoints.
 ## Membership and Moderation
 
 - Every server-scoped route and event requires an active, non-banned,
-  non-removed membership; owner actions additionally require active owner role.
-  Invite creation is the sole exception: an active member holding the
-  `can_invite` grant may create invites for that server.
-- `server_members.can_invite` is an owner-assigned, per-server grant. Only an
-  active owner may set it, and only on ordinary members — owners already hold
-  every permission, so their row stays untouched. Listing and revoking invites
-  remain owner-only, so a delegated inviter can add people but cannot audit or
-  undo anyone's links.
+  non-removed membership; owner actions additionally require active owner role,
+  until a ticket moves them onto a Permission. Invite creation asks for the
+  Create invites Permission through `requireServerPermission`.
+- Permissions add up (ADR-0038): `@everyone` plus every Role a member holds,
+  with Administrator implying every other one. The owner holds them all and
+  stands one above the highest Role; a Bot holds none, whatever a row says.
+  Rank is the position of a member's highest Role and decides only whom they
+  may act on — strictly below them. The server answers both; `GET
+/api/servers` and `GET /api/servers/:serverId/roles` report the caller's
+  `permissions` and `rank` so the client never works them out.
+- Giving or removing a Role needs Manage roles, a target strictly below the
+  actor, and a Role strictly below the actor's own highest. Only the owner gives,
+  removes or changes Admin; `@everyone` is never given or removed; a Bot and
+  an owner are never the subject. Every one of these refusals is the same
+  generic 403 `forbidden`. A change that leaves nothing to do writes nothing.
+- A Role change is audited (`role.given` / `role.removed`), refreshes the
+  member's identity (`server:memberUpdated` with `roleIds`), and emits
+  `server:rolesChanged` to the Server room. Removing a Role that leaves the
+  member without Create invites revokes the Invites they issued, as revoking
+  the old grant did. Listing and revoking invites remain owner-only, so a
+  member who may invite can add people but cannot audit or undo anyone's links.
 - The owner invite list carries each Invite's creator and its Invite trail,
   resolved per Server, with a Deleted account's nickname and Mention code
   withheld. Reading the list deletes that Server's past invites nobody joined
@@ -282,8 +310,10 @@ queries across endpoints.
 - An Account's owner details add, per Membership, the Invite it joined through
   and the people that Account's Invites brought in. `requireOwner` guards it:
   the installation-wide trail is the Installation owner's alone.
-- Banning or kicking clears `can_invite`, so a member who later returns through
-  a new invite cannot resume issuing links without a fresh grant.
+- Banning or kicking deletes the Membership's Roles, so a member who later
+  returns through a new invite holds none of them; Account deletion does the
+  same for every Server. The Installation-wide ban leaves them, inert, as it
+  leaves Channel access.
 - Accepting a valid invite as an existing active member returns the target
   `serverId` and leaves its remaining capacity unchanged. Reopening a previously
   consumed invite never restores a removed or banned membership.
@@ -301,7 +331,7 @@ queries across endpoints.
   active owner may update an ordinary member; owner/self targets are rejected.
   Neither kick, ban, rejoin, channel movement, nor restart clears these flags.
 - The member directory is available to active members and exposes only active
-  users' `userId`, `nickname`, `mentionCode`, `role`, `canInvite`, and Bot flag. Omit banned/removed
+  users' `userId`, `nickname`, `mentionCode`, `role`, `roleIds`, and Bot flag. Omit banned/removed
   memberships and all moderation/session fields.
 - Membership changes emit the existing directory/access events to the correct
   server rooms. Do not broadcast server-scoped data globally.
@@ -357,9 +387,13 @@ credential there first.
   `userId` as a UUID, so a readable id would make the bot unmuteable.
 - `is_bot` is presentation and moderation policy, never a permission. No
   authorization decision may branch on it: the bot is authorized exactly like the
-  member it is.
-- Refuse kick, ban, the `can_invite` grant, access-link creation, **and a voice
-  move** for a bot target with `cannot_moderate_bot`. A move is the surprising
+  member it is. The one exception is Roles: a Bot holds none, so its
+  Permissions are always empty and no Role action targets it (ADR-0038,
+  ADR-0010), not even `@everyone`'s, so a Role can never give a Bot more than a
+  person has.
+- Refuse kick, ban, access-link creation, **and a voice move** for a bot target
+  with `cannot_moderate_bot`; a Role is refused for a Bot with the generic 403
+  every other Role refusal gives (ADR-0038). A move is the surprising
   one and ADR-0010 records why: the bot goes where it is summoned, so the
   arriving half would place it in a room nobody there asked for it — bypassing
   the live-voice-membership door below — and the leaving half would destroy that

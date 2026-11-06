@@ -173,7 +173,7 @@ _Avoid_: Pair, connect, transfer, add
 
 **Invite**:
 Deliberately not either of the above: an Invite admits a new _person_ to one
-Server, and only that Server's owner or a member holding its invite grant may
+Server, and only a member holding that Server's Create invites Permission may
 issue one. Linking a Device and recovering access are a member's own business
 and never route through an owner. Someone who already has an Account on this
 Installation redeems an Invite as that Account, never as a new one (ADR-0036).
@@ -238,6 +238,51 @@ can enter that channel — for a public channel, everyone in the Server. It
 belongs to the channel; a member's own time in voice is a different measure.
 _Avoid_: Timer, duration, uptime
 
+### Roles
+
+**Role**:
+A named group of Memberships in one Server, carrying Permissions, a rank, an
+optional colour, and whether its members show separately in the member list.
+A member's Permissions are the union of every Role they hold; a Role never takes
+a Permission away (ADR-0038).
+_Avoid_: Rank (that is the Role's position), group, title
+
+**@everyone**:
+The Role every Membership holds without being given it. It is always last, and
+it cannot be given, removed or deleted.
+_Avoid_: Default role, base role, members
+
+**Admin**:
+The fixed Role at the top of a Server's Roles, holding Administrator. Only the
+Server owner gives it, removes it or changes it. It is a Role inside one
+Server, never the Installation owner.
+_Avoid_: Moderator, operator, owner
+
+**Permission**:
+One named right inside a Server — Create invites, Manage channels, Manage
+server, Manage roles, Manage members, Voice moderation, Manage messages, Manage
+invites, or Administrator. The list is closed; the server checks it on every
+action.
+_Avoid_: Grant (that was the old per-member invite switch), privilege, access
+
+**Administrator**:
+The Permission that holds every other Permission and enters every Private
+channel. Only the Server owner switches it on or off.
+_Avoid_: Admin (that is the Role), superuser
+
+**Rank**:
+The position of a member's highest Role. It decides only whom they may manage:
+they act on people, and change Roles, strictly below it. It never changes what
+a Permission allows. The Server owner stands above every rank.
+_Avoid_: Level (that is the levels and leagues measure), priority
+
+**Server settings**:
+The window where a Server is run: its overview, Roles, members, invites and
+bans. Anyone holding at least one Permission opens it, and sees only the
+sections their Permissions reach. It is not the owner panel, which covers the
+whole installation.
+_Avoid_: Owner panel, dashboard, admin panel
+
 ### Channels
 
 **Channel**:
@@ -247,16 +292,17 @@ legacy spelling, not a second concept.
 _Avoid_: Room in copy, glossary and new comments
 
 **Private channel**:
-A Channel only its Channel access and the Server's owners may enter — read and
-write for text, join and talk for voice. Whether it is checked is decided when
+A Channel only its Channel access, members holding Administrator and the
+Server's owners may enter — read and write for text, join and talk for voice. Whether it is checked is decided when
 something is read, so it covers the Channel's whole history (ADR-0037).
 _Avoid_: Locked channel, secret channel, restricted channel
 
 **Channel access**:
-The members a Server owner chose for one Private channel. Being on it grants
-everything an ordinary member may do in that Channel; Server owners are always
-on it implicitly, and a Bot is never on it.
-_Avoid_: Whitelist, allowlist (in copy), permissions, role
+The members and Roles chosen for one Private channel. Being on it, directly or
+through a Role, grants everything an ordinary member may do in that Channel;
+Server owners and Administrator holders are always on it implicitly, and a Bot
+is never on it (ADR-0037, ADR-0038).
+_Avoid_: Whitelist, allowlist (in copy), permissions
 
 **Hidden**:
 A Private channel that people without Channel access do not know exists.

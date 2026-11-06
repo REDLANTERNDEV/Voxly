@@ -33,12 +33,14 @@ import { createMusicBotAccount } from "./bots.js";
 import { all, defaultServerId, one, run, type VoxlyDatabase } from "./db/database.js";
 import {
   activateServerMembership,
-  mayCreateInvites,
+  permissionsFor,
+  rankOf,
   requireServerMember,
   requireServerOwner,
   roomReaderIds
 } from "./members.js";
 import { baselineRoomReadState } from "./readState.js";
+import { seedServerRoles } from "./roleSeeds.js";
 import { roomById, roomsVisibleTo } from "./rooms.js";
 import {
   authenticatedWriteLimit,
@@ -92,7 +94,6 @@ export function registerServerRoutes(context: RouteContext) {
       id: string;
       name: string;
       role: "owner" | "member";
-      canInvite: number;
       afkTimeoutMinutes: number | null;
       welcomeNotices: number;
       welcomeRoomId: string | null;
@@ -101,7 +102,6 @@ export function registerServerRoutes(context: RouteContext) {
     }>(
       database.sqlite,
       `select servers.id, servers.name, server_members.role,
-        server_members.can_invite as canInvite,
         server_members.nickname as nickname, server_members.mention_code as mentionCode,
         servers.afk_timeout_minutes as afkTimeoutMinutes,
         servers.welcome_notices as welcomeNotices, servers.welcome_room_id as welcomeRoomId
@@ -116,7 +116,10 @@ export function registerServerRoutes(context: RouteContext) {
     return {
       servers: memberships.map((membership) => ({
         ...membership,
-        canInvite: mayCreateInvites(membership.role, membership.canInvite),
+        // What the member's Roles make them here, worked out on the server so
+        // the client only reflects it (ADR-0038).
+        permissions: permissionsFor(database.sqlite, membership.id, user.id),
+        rank: rankOf(database.sqlite, membership.id, user.id),
         afkTimeoutMinutes: afkTimeoutOf(membership.afkTimeoutMinutes),
         welcomeNotices: Boolean(membership.welcomeNotices),
         // A deleted or converted choice reads as the top-channel default it now behaves as.
@@ -145,6 +148,7 @@ export function registerServerRoutes(context: RouteContext) {
       now
     ]);
     activateServerMembership(database, serverId, owner.id, "owner", now);
+    seedServerRoles(database.sqlite, serverId, now);
     createServerRoom(database, serverId, "general", "text", 10);
     createServerRoom(database, serverId, "Lobby", "voice", 20);
     createServerRoom(database, serverId, afkRoomName, "voice", 30, true);
@@ -154,7 +158,15 @@ export function registerServerRoutes(context: RouteContext) {
     database.save();
     await realtime.grantServerAccess(serverId, owner.id);
     realtime.notifyBotOfServerChange();
-    return reply.code(201).send({ server: { id: serverId, name: body.name, role: "owner", canInvite: true } });
+    return reply.code(201).send({
+      server: {
+        id: serverId,
+        name: body.name,
+        role: "owner",
+        permissions: permissionsFor(database.sqlite, serverId, owner.id),
+        rank: rankOf(database.sqlite, serverId, owner.id)
+      }
+    });
   });
 
   fastify.get("/api/servers/:serverId/rooms", async (request, reply) => {
@@ -449,7 +461,15 @@ export function registerServerRoutes(context: RouteContext) {
     audit(database, owner.id, "server.renamed", null, serverId);
     database.save();
     io.to(`server:${serverId}`).emit("server:updated", { serverId, name });
-    return { server: { id: serverId, name, role: "owner" as const, canInvite: true } };
+    return {
+      server: {
+        id: serverId,
+        name,
+        role: "owner" as const,
+        permissions: permissionsFor(database.sqlite, serverId, owner.id),
+        rank: rankOf(database.sqlite, serverId, owner.id)
+      }
+    };
   });
 
   fastify.patch("/api/servers/:serverId/rooms/:roomId", async (request, reply) => {
@@ -619,6 +639,8 @@ export function registerServerRoutes(context: RouteContext) {
       ]);
       run(database.sqlite, "delete from invites where server_id = ?", [serverId]);
       run(database.sqlite, "delete from access_claims where server_id = ?", [serverId]);
+      run(database.sqlite, "delete from member_roles where server_id = ?", [serverId]);
+      run(database.sqlite, "delete from roles where server_id = ?", [serverId]);
       run(database.sqlite, "delete from server_members where server_id = ?", [serverId]);
       run(database.sqlite, "delete from rooms where server_id = ?", [serverId]);
       run(database.sqlite, "delete from categories where server_id = ?", [serverId]);

@@ -233,10 +233,12 @@ export interface PresenceUser {
   nickname: string;
   role: UserRole;
   /**
-   * Per-server grant that lets a plain member create invites. Optional because
-   * presence objects synthesised from the local session have no server context.
+   * The Roles this member was given in this Server, `@everyone` not included:
+   * every Membership holds it without being given it. Optional because presence
+   * objects synthesised from the local session have no server context. A Bot
+   * holds none (ADR-0038).
    */
-  canInvite?: boolean;
+  roleIds?: string[];
   /**
    * Optional for the same reason; an absent status reads as online, so a
    * synthesised entry never claims someone is away.
@@ -249,6 +251,65 @@ export interface PresenceUser {
    * and an absent value reads as a person.
    */
   isBot?: boolean;
+}
+
+/**
+ * The closed list of Permissions a Role can carry (ADR-0038, `CONTEXT.md`).
+ * Every server check names one of these; nothing else is a Permission.
+ * `administrator` holds every other one and enters every Private channel.
+ */
+export const serverPermissions = [
+  "createInvites",
+  "manageChannels",
+  "manageServer",
+  "manageRoles",
+  "manageMembers",
+  "voiceModeration",
+  "manageMessages",
+  "manageInvites",
+  "administrator"
+] as const;
+
+export type Permission = (typeof serverPermissions)[number];
+
+/**
+ * The two Roles whose place is fixed. `@everyone` is always last and is never
+ * given; Admin is always first and only the Server owner gives or changes it.
+ * Every other Role, Davetçi included, has no kind.
+ */
+export type RoleKind = "everyone" | "admin";
+
+export interface RoleSummary {
+  id: string;
+  serverId: string;
+  /**
+   * What the Role is called, or null while a seeded Role still has the name it
+   * was seeded with. The client shows its own localized name then: `@everyone`
+   * and Admin by `kind`, and Davetçi / Recruiter for an ordinary Role. A Role
+   * someone named is shown exactly as named.
+   */
+  name: string | null;
+  /** A colour from the fixed palette, or null for a Role that changes no name's colour. */
+  color: string | null;
+  /** Higher is higher: Admin holds the largest, `@everyone` always 0. */
+  position: number;
+  /** Whether its members show under their own heading in the member list. */
+  separate: boolean;
+  /** What the Role itself carries, not expanded: `administrator` is listed alone. */
+  permissions: Permission[];
+  kind: RoleKind | null;
+}
+
+/**
+ * A Server's Roles, highest first, with what they make the asking member: the
+ * Permissions they hold (already expanded, so `administrator` arrives with
+ * every other one) and their rank. The client reads these answers; it never
+ * works them out from the Roles itself.
+ */
+export interface ServerRolesResponse {
+  roles: RoleSummary[];
+  permissions: Permission[];
+  rank: number;
 }
 
 export interface ServerPresenceSnapshot {
@@ -846,6 +907,12 @@ export interface ServerToClientEvents {
   "server:directoryChanged": (payload: { serverId: string }) => void;
   "server:memberUpdated": (payload: { serverId: string; user: PresenceUser }) => void;
   "server:memberDeleted": (payload: { serverId: string; userId: string }) => void;
+  /**
+   * A Server's Roles, a Role's Permissions, or someone's Roles changed. A
+   * refresh signal only: each client asks again for the Roles and what they now
+   * make it, since a change to anyone's Roles can change its own Permissions.
+   */
+  "server:rolesChanged": (payload: { serverId: string }) => void;
   "server:updated": (payload: { serverId: string; name: string }) => void;
   "server:afkUpdated": (payload: { serverId: string; afkTimeoutMinutes: AfkTimeoutMinutes }) => void;
   "server:welcomeUpdated": (payload: ServerWelcomeSettings & { serverId: string }) => void;

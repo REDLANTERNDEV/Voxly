@@ -3,6 +3,7 @@ import type {
   ChatMessage,
   PresenceUser,
   PublicUser,
+  RoleSummary,
   VoiceForceLeaveReason,
   VoiceMediaState,
   VoiceModerationState
@@ -10,31 +11,62 @@ import type {
 import type { ReactNode } from "react";
 import { CameraIcon, HeadsetIcon, MicIcon, ScreenIcon } from "../components/ui/Icons.js";
 import { type LanguageCode, type TranslationKey, type VoiceErrorKey } from "../lib/i18n.js";
+import { memberRoleRows, roleDisplayName, type RoleMenuRow } from "../lib/roles.js";
 import type { ConnectionHealth } from "../lib/useConnectionHealth.js";
 import type { VoiceQuality } from "../lib/useVoiceQuality.js";
 import { sidebarVoiceStatusKeys, type VoiceControls } from "../lib/voiceControls.js";
 import type { OwnerInvite } from "../types.js";
-import type { ShellModel, ThemeChoice, Translate } from "./types.js";
+import type { ShellActions, ShellModel, ThemeChoice, Translate } from "./types.js";
 import { timeFormatOptions, type TimeFormatPreference } from "../lib/timeFormat.js";
 
 export function activeServerRole(props: Pick<ShellModel, "activeServerId" | "servers">) {
   return props.servers.find((server) => server.id === props.activeServerId)?.role ?? null;
 }
 
-export function canInviteToActiveServer(props: Pick<ShellModel, "activeServerId" | "servers">) {
+/** The rail invite affordance follows the Create invites Permission the server reported. */
+export function canInviteToActiveServer(props: {
+  activeServerId: string;
+  servers: ReadonlyArray<Pick<ShellModel["servers"][number], "id" | "permissions">>;
+}) {
   const server = props.servers.find((item) => item.id === props.activeServerId);
-  return Boolean(server && (server.role === "owner" || server.canInvite));
+  return Boolean(server?.permissions.includes("createInvites"));
 }
 
 /**
- * Owner outranks the delegated invite grant, which outranks a plain member. A
- * Bot is none of those: it is named for what it is, because "User" next to a
- * service account is the one thing this label must never say.
+ * The Roles submenu for one member of the active Server, or undefined when it
+ * should not appear. Every surface that opens a member menu asks this, so the
+ * rows cannot differ between the two sidebars and the stage.
  */
-export function memberRoleLabel(user: Pick<PresenceUser, "role" | "canInvite" | "isBot">, t: Translate) {
+export function memberRolesMenu(
+  props: Pick<ShellModel, "activeServerId" | "servers" | "serverRoles"> & Pick<ShellActions, "onSetMemberRole">,
+  target: PresenceUser
+): { rows: RoleMenuRow[]; onToggle: (roleId: string, give: boolean) => void } | undefined {
+  const actor = props.servers.find((server) => server.id === props.activeServerId);
+  const rows = memberRoleRows(actor, props.serverRoles, target);
+  if (!rows) return undefined;
+  return {
+    rows,
+    onToggle: (roleId, give) => {
+      void props.onSetMemberRole(target.userId, roleId, give).catch(() => undefined);
+    }
+  };
+}
+
+/**
+ * Owner first, then the member's highest Role, then a plain member. A Bot is
+ * none of those: it is named for what it is, because "User" next to a service
+ * account is the one thing this label must never say.
+ */
+export function memberRoleLabel(
+  user: Pick<PresenceUser, "role" | "roleIds" | "isBot">,
+  t: Translate,
+  roles: readonly RoleSummary[] = []
+) {
   if (user.isBot) return t("common.bot");
   if (user.role === "owner") return t("common.owner");
-  return user.canInvite ? t("member.inviterRole") : t("common.user");
+  const held = new Set(user.roleIds ?? []);
+  const highest = roles.find((role) => role.kind !== "everyone" && held.has(role.id));
+  return highest ? roleDisplayName(highest, t) : t("common.user");
 }
 
 export function includeCurrentPresence(users: PresenceUser[], user: PublicUser) {

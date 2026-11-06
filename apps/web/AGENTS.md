@@ -193,7 +193,7 @@ requirement.
   account nickname. Preserve the server-scoped self nickname while realtime is
   disconnected.
 - Member-safe directory data is limited to user ID, nickname, Mention code, server role, the
-  invite grant, and whether the account is a Bot. Do not reuse owner moderation
+  member's `roleIds`, and whether the account is a Bot. Do not reuse owner moderation
   records as a public directory response.
 - A Bot is listed with the members it sits among, marked with a visible text
   badge and a title that says what it is — not an icon alone, which reads as
@@ -204,8 +204,8 @@ requirement.
   inflates the one number a member reads as "how busy is it". A new surface that
   counts members inherits this rule; the count is over people, the list is not.
 - Offer a Bot the voice actions it can be the subject of — mute, deafen and
-  disconnect — and withhold the ones that presuppose a person: kick, ban, invite
-  grant, access link **and a move**. Do it in every surface that presents them:
+  disconnect — and withhold the ones that presuppose a person: kick, ban, Roles,
+  access link **and a move**. Do it in every surface that presents them:
   both sidebars and the owner panel. The server refuses all five for a Bot, so
   offering them would be a menu of guaranteed errors — and the client hiding them
   is presentation, never the enforcement.
@@ -248,7 +248,7 @@ requirement.
   default. An accessible eye control may reveal and hide the complete link;
   copy actions always use the complete one-time value. Masking is presentation
   only and must not place a transformed value into the clipboard or API state.
-- Owner and delegated-member invite creation share one composer, so the label,
+- The owner dashboard and the rail's invite popover share one composer, so the label,
   expiry, capacity, and masked-link contracts cannot drift between the owner
   dashboard and the rail popover.
 - A dashed "+" after the last server in the workspace rail opens the join
@@ -257,10 +257,22 @@ requirement.
   is one Join path. Another Installation's Invite is named by its host and
   handed off (a new tab in a browser, the address to add from the Voxly home in
   the desktop app), never joined here (ADR-0036).
-- The rail invite affordance appears only when the active server summary reports
-  `canInvite`, which is true for owners and for members holding the grant. The
-  grant is assigned from member action menus, is offered only by an owner acting
-  on an ordinary member, and shows as a distinct role in member surfaces.
+- The rail invite affordance appears only when the active server summary's
+  `permissions` include `createInvites`. The client reads `permissions` and
+  `rank` as the server reported them (`GET /api/servers`, refreshed from
+  `GET /api/servers/:serverId/roles` on every `server:rolesChanged`) and never
+  works a Permission out from Roles (ADR-0038). There is no per-member invite
+  switch and no Inviters figure; a member's role line names their highest Role.
+- Roles are given from **Roles ›** in the shared member menu, in both sidebars
+  and on the stage, through `memberRolesMenu` so the rows cannot differ. It
+  appears only when the viewer holds Manage roles and the target is neither an
+  owner nor a Bot and sits strictly below the viewer's rank, and only when some
+  row is left to toggle. Every Role is listed highest first with a checkbox,
+  a colour dot and its name; `@everyone` is ticked and locked ("Everyone has
+  this role"), Admin is locked for anyone but the owner, and a Role at or
+  above the viewer's rank is locked ("You can only manage roles below yours").
+  A seeded Role with a null name shows its localized name: `@everyone`, Admin,
+  and Davetçi / Recruiter.
 - Server and channel deletion keep exact-name confirmation and server-side
   protection against deleting the final owner server or final protected
   channel.
@@ -492,6 +504,13 @@ requirement.
   and exposed on hover/focus for fine pointers.
 - Preserve the 4-pixel gap between a channel surface and its owner-action
   trigger. Long labels must truncate without displacing actions.
+- A submenu of checkbox rows (Roles ›) stays open while its rows are toggled:
+  a row calls its action and never closes the menu. Its rows are
+  `menuitemcheckbox` with `aria-checked`; a locked row is `aria-disabled`
+  rather than `disabled`, so arrow keys still reach it and its reason is read
+  (`aria-describedby`) and shown on hover (`title`). → opens a panel of rows as
+  it opens a flat list, ← and Escape close it back to its trigger, and Space
+  toggles the focused row.
 - Keep destructive confirmation state with the calling surface. The menu
   closes before its existing dialog opens.
 - Owner nickname actions share the same secondary-click/ellipsis menus as

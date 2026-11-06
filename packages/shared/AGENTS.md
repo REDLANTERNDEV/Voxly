@@ -57,6 +57,14 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   the affected Server and lets clients anonymize already-loaded message and
   directory state without broadcasting Account history elsewhere.
 
+- Permissions are the closed `serverPermissions` list; a stored or sent name
+  outside it is dropped, never guessed at. `RoleSummary.permissions` is what
+  the Role itself carries; the `permissions` the server reports for a member
+  are already expanded, so Administrator arrives with every other one.
+  `PresenceUser.roleIds` leaves out `@everyone`, which every Membership holds.
+  `server:rolesChanged` is a refresh signal scoped to one Server room
+  (ADR-0038).
+
 - `RoomSummary` is per viewer: `isPrivate`, `listed` and `canEnter` describe
   what that viewer may do, and `accessUserIds` is sent only to viewers who can
   enter. Nothing on the wire may let a client infer a Hidden channel it cannot

@@ -1,6 +1,6 @@
 import type { PresenceUser, VoiceModerationState } from "@voxly/shared";
 import { createContext, useContext, type ReactNode } from "react";
-import { activeServerRole } from "../../app/presentation.js";
+import { activeServerRole, memberRolesMenu } from "../../app/presentation.js";
 import type { MemberAction, ShellActions, ShellModel } from "../../app/types.js";
 import { canMemberEnter, canOwnerModeratePerson, canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
@@ -15,6 +15,7 @@ type StageActions = Pick<
   ShellModel,
   | "activeServerId"
   | "servers"
+  | "serverRoles"
   | "user"
   | "rooms"
   | "memberVolumes"
@@ -28,7 +29,7 @@ type StageActions = Pick<
 > &
   Pick<
     ShellActions,
-    "onMemberVolumeChange" | "onVoiceModeration" | "onUpdateMemberPermissions" | "onMoveMember" | "onToggleControl"
+    "onMemberVolumeChange" | "onVoiceModeration" | "onSetMemberRole" | "onMoveMember" | "onToggleControl"
   > & {
     actionMenu: SidebarActionMenuController;
     onRequestNickname(member: PresenceUser, returnFocus: HTMLButtonElement | null): void;
@@ -55,7 +56,8 @@ export function StageMemberActions({
   const canRename = !isRemote || (role === "owner" && member.role === "member");
   const canVoiceModerate = canOwnerVoiceModerate(role, props.user.id, member);
   const canModerate = canOwnerModeratePerson(role, props.user.id, member);
-  const canAssignRoles = role === "owner" && member.role === "member" && !member.isBot;
+  const roles = memberRolesMenu(props, member);
+  const canAssignRoles = Boolean(roles);
   const selfControls =
     !isRemote && props.activeVoiceRoomId
       ? {
@@ -122,13 +124,7 @@ export function StageMemberActions({
               }
             : undefined
         }
-        onToggleInviteRole={
-          canAssignRoles
-            ? (value) => {
-                void props.onUpdateMemberPermissions(member.userId, value);
-              }
-            : undefined
-        }
+        roles={roles}
         moveTargets={
           canModerate
             ? props.rooms.voice.filter((room) => room.id !== roomId && canMemberEnter(room, member))

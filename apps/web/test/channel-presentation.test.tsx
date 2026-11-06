@@ -66,7 +66,8 @@ it("keeps existing-server controls outside the new-server section", () => {
           id: "server",
           name: "Basement",
           role: "owner",
-          canInvite: true,
+          permissions: [],
+          rank: 3,
           afkTimeoutMinutes: 30,
           welcomeNotices: true,
           welcomeRoomId: null
@@ -98,7 +99,8 @@ it("offers the Welcome notice switch and every text channel, with the top channe
             id: "server",
             name: "Basement",
             role: "owner",
-            canInvite: true,
+            permissions: [],
+            rank: 3,
             afkTimeoutMinutes: 30,
             welcomeNotices,
             welcomeRoomId

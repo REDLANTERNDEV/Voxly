@@ -10,6 +10,7 @@
 
 import type { FastifyReply } from "fastify";
 import type { DatabaseSync } from "node:sqlite";
+import { serverPermissions, type Permission, type RoleKind, type RoleSummary } from "@voxly/shared";
 import type {
   PresenceChoiceRequest,
   PresenceChoiceState,
@@ -29,7 +30,6 @@ export type ServerMemberRow = {
   removed_at: string | null;
   moderator_muted: number;
   moderator_deafened: number;
-  can_invite: number;
 };
 
 export function activateServerMembership(
@@ -55,7 +55,7 @@ export function serverMembership(sqlite: DatabaseSync, serverId: string, userId:
   return one<ServerMemberRow>(
     sqlite,
     `select server_id, user_id, role, banned_at, removed_at,
-      moderator_muted, moderator_deafened, can_invite
+      moderator_muted, moderator_deafened
      from server_members where server_id = ? and user_id = ?`,
     [serverId, userId]
   );
@@ -122,40 +122,173 @@ export function requireServerOwner(database: VoxlyDatabase, serverId: string, us
   return membership;
 }
 
-/**
- * Owners already hold every permission, so the per-member grant only decides
- * anything for an ordinary member. Callers report this effective answer rather
- * than the raw `can_invite` column.
+/*
+ * Roles and Permissions (ADR-0038). The resolver every Server-scoped check
+ * asks; `roles.ts` owns the routes that change them.
  */
-export function mayCreateInvites(role: UserRole, grant: number | boolean) {
-  return role === "owner" || Boolean(grant);
+
+type RoleRow = {
+  id: string;
+  serverId: string;
+  name: string | null;
+  color: string | null;
+  position: number;
+  separate: number;
+  permissions: string;
+  kind: RoleKind | null;
+};
+
+const roleColumns = `id, server_id as serverId, name, color, position, separate, permissions, kind`;
+
+/** A stored list read defensively: anything that is not a known Permission is dropped. */
+function parsePermissions(stored: string): Permission[] {
+  try {
+    const parsed: unknown = JSON.parse(stored);
+    return Array.isArray(parsed) ? serverPermissions.filter((permission) => parsed.includes(permission)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function toRoleSummary(row: RoleRow): RoleSummary {
+  return {
+    id: row.id,
+    serverId: row.serverId,
+    name: row.name,
+    color: row.color,
+    position: row.position,
+    separate: Boolean(row.separate),
+    permissions: parsePermissions(row.permissions),
+    kind: row.kind
+  };
+}
+
+/** A Server's Roles, highest first. */
+export function serverRoles(sqlite: DatabaseSync, serverId: string): RoleSummary[] {
+  return all<RoleRow>(sqlite, `select ${roleColumns} from roles where server_id = ? order by position desc`, [
+    serverId
+  ]).map(toRoleSummary);
+}
+
+export function serverRole(sqlite: DatabaseSync, serverId: string, roleId: string): RoleSummary | null {
+  const row = one<RoleRow>(sqlite, `select ${roleColumns} from roles where server_id = ? and id = ?`, [
+    serverId,
+    roleId
+  ]);
+  return row ? toRoleSummary(row) : null;
+}
+
+/** The ids of the Roles a member was given, `@everyone` not included. */
+export function memberRoleIds(sqlite: DatabaseSync, serverId: string, userId: string): string[] {
+  return all<{ role_id: string }>(
+    sqlite,
+    `select member_roles.role_id from member_roles join roles on roles.id = member_roles.role_id
+     where member_roles.server_id = ? and member_roles.user_id = ? order by roles.position desc`,
+    [serverId, userId]
+  ).map((row) => row.role_id);
 }
 
 /**
- * Invite creation is the one privileged action an owner can delegate. Listing
- * and revoking links stays owner-only: a delegated inviter can add people but
- * cannot audit or undo anyone else's links.
+ * Who a member is in one Server, for the resolver: null when they hold no
+ * active Membership. A Bot is reported as holding no Roles at all.
  */
-export function requireServerInviter(database: VoxlyDatabase, serverId: string, userId: string, reply: FastifyReply) {
+function standing(sqlite: DatabaseSync, serverId: string, userId: string) {
+  const membership = activeServerMembership(sqlite, serverId, userId);
+  if (!membership) return null;
+  const roles = serverRoles(sqlite, serverId);
+  const isOwner = membership.role === "owner";
+  const isBot = Boolean(one<{ is_bot: number }>(sqlite, "select is_bot from users where id = ?", [userId])?.is_bot);
+  const held = isBot ? new Set<string>() : new Set(memberRoleIds(sqlite, serverId, userId));
+  const own = roles.filter((role) => role.kind === "everyone" || held.has(role.id));
+  return { roles, own, isOwner, isBot };
+}
+
+/**
+ * The Permissions a member holds in a Server, in the order of the closed list.
+ * Already expanded: the owner and an Administrator holder get every one.
+ */
+export function permissionsFor(sqlite: DatabaseSync, serverId: string, userId: string): Permission[] {
+  const found = standing(sqlite, serverId, userId);
+  if (!found || found.isBot) return [];
+  if (found.isOwner) return [...serverPermissions];
+  const held = new Set(found.own.flatMap((role) => role.permissions));
+  if (held.has("administrator")) return [...serverPermissions];
+  return serverPermissions.filter((permission) => held.has(permission));
+}
+
+export function hasPermission(sqlite: DatabaseSync, serverId: string, userId: string, permission: Permission) {
+  return permissionsFor(sqlite, serverId, userId).includes(permission);
+}
+
+/**
+ * The position of a member's highest Role: 0 for `@everyone` alone, and one
+ * above the highest Role for the owner, who stands above every rank.
+ */
+export function rankOf(sqlite: DatabaseSync, serverId: string, userId: string): number {
+  const found = standing(sqlite, serverId, userId);
+  if (!found) return 0;
+  if (found.isOwner) return Math.max(0, ...found.roles.map((role) => role.position)) + 1;
+  return Math.max(0, ...found.own.map((role) => role.position));
+}
+
+/**
+ * Whether the actor may act on the target: strictly above them. Nobody
+ * outranks the owner, the owner included — an owner is never the subject of a
+ * Role action — and the owner outranks every other member.
+ */
+export function outranks(sqlite: DatabaseSync, serverId: string, actorId: string, targetId: string) {
+  const actor = activeServerMembership(sqlite, serverId, actorId);
+  const target = activeServerMembership(sqlite, serverId, targetId);
+  if (!actor || !target || target.role === "owner") return false;
+  if (actor.role === "owner") return true;
+  return rankOf(sqlite, serverId, actorId) > rankOf(sqlite, serverId, targetId);
+}
+
+/**
+ * Reply helper: an active member holding the Permission, or null once a 403
+ * has been sent. Membership is checked first, so a stranger hears the same
+ * `server_forbidden` as on every other server-scoped route.
+ */
+export function requireServerPermission(
+  database: VoxlyDatabase,
+  serverId: string,
+  userId: string,
+  permission: Permission,
+  reply: FastifyReply
+) {
   const membership = requireServerMember(database, serverId, userId, reply);
   if (!membership) return null;
-  if (!mayCreateInvites(membership.role, membership.can_invite)) {
+  if (!hasPermission(database.sqlite, serverId, userId, permission)) {
     reply.code(403).send({ error: "forbidden" });
     return null;
   }
   return membership;
 }
 
-interface PresenceUserRow extends Record<string, unknown>, Omit<PresenceUser, "canInvite" | "isBot"> {
-  canInvite: number;
+interface PresenceUserRow extends Record<string, unknown>, Omit<PresenceUser, "roleIds" | "isBot"> {
+  roleIds: string | null;
   isBot: number;
+}
+
+/**
+ * A member's Roles as one column, in no particular order: whoever needs the
+ * highest reads the Server's Roles, which are sorted. A Bot holds none,
+ * whatever a stray row says (ADR-0038). Shared by every shape carrying `roleIds`.
+ */
+export const memberRoleIdsColumn = `case when users.is_bot = 1 then null else (
+        select group_concat(member_roles.role_id, ',') from member_roles
+        where member_roles.server_id = server_members.server_id and member_roles.user_id = server_members.user_id
+      ) end`;
+
+export function parseRoleIds(stored: string | null) {
+  return stored ? stored.split(",") : [];
 }
 
 const presenceColumns = `select users.id as userId,
       server_members.mention_code as mentionCode,
       coalesce(server_members.nickname, users.nickname) as nickname,
       server_members.role,
-      server_members.can_invite as canInvite,
+      ${memberRoleIdsColumn} as roleIds,
       users.is_bot as isBot`;
 
 function toPresenceUser(row: PresenceUserRow): PresenceUser {
@@ -164,7 +297,7 @@ function toPresenceUser(row: PresenceUserRow): PresenceUser {
     mentionCode: row.mentionCode,
     nickname: row.nickname,
     role: row.role,
-    canInvite: Boolean(row.canInvite),
+    roleIds: parseRoleIds(row.roleIds),
     isBot: Boolean(row.isBot)
   };
 }
@@ -337,7 +470,7 @@ export function writePresenceChoice(sqlite: DatabaseSync, userId: string, choice
 /**
  * The identity a socket carries for its whole connection, built from the
  * authenticated session. It has no server context, so it carries neither the
- * per-server invite grant nor a status.
+ * member's Roles nor a status.
  */
 export function publicPresence(user: { id: string; nickname: string; role: UserRole; isBot: boolean }): PresenceUser {
   return {
@@ -435,6 +568,11 @@ export function requireRoomAccess(
     return null;
   }
   return access;
+}
+
+/** A Membership leaving a Server takes its Roles with it, so rejoining restores none. */
+export function clearMemberRoles(sqlite: DatabaseSync, serverId: string, userId: string) {
+  run(sqlite, "delete from member_roles where server_id = ? and user_id = ?", [serverId, userId]);
 }
 
 /** A Membership leaving a Server takes its Channel access with it. */

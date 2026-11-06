@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { canInviteToActiveServer, memberRoleLabel } from "../src/app/presentation.js";
+import { serverPermissions, type RoleSummary } from "@voxly/shared";
 import { translate } from "../src/lib/i18n.js";
 import type { ServerSummary } from "../src/types.js";
 
@@ -10,7 +11,8 @@ const servers: ServerSummary[] = [
     id: "alpha",
     name: "Alpha",
     role: "owner",
-    canInvite: true,
+    permissions: [...serverPermissions],
+    rank: 3,
     afkTimeoutMinutes: 60,
     welcomeNotices: true,
     welcomeRoomId: null
@@ -19,7 +21,8 @@ const servers: ServerSummary[] = [
     id: "beta",
     name: "Beta",
     role: "member",
-    canInvite: true,
+    permissions: ["createInvites"],
+    rank: 1,
     afkTimeoutMinutes: 60,
     welcomeNotices: true,
     welcomeRoomId: null
@@ -28,38 +31,49 @@ const servers: ServerSummary[] = [
     id: "gamma",
     name: "Gamma",
     role: "member",
-    canInvite: false,
+    permissions: [],
+    rank: 0,
     afkTimeoutMinutes: 60,
     welcomeNotices: true,
     welcomeRoomId: null
   }
 ];
 
-describe("delegated invite permission", () => {
-  it("opens the invite affordance for owners and granted members only", () => {
+describe("the Create invites Permission (ADR-0038)", () => {
+  it("opens the invite affordance for exactly the members holding Create invites", () => {
     assert.equal(canInviteToActiveServer({ activeServerId: "alpha", servers }), true);
     assert.equal(canInviteToActiveServer({ activeServerId: "beta", servers }), true);
     assert.equal(canInviteToActiveServer({ activeServerId: "gamma", servers }), false);
     assert.equal(canInviteToActiveServer({ activeServerId: "missing", servers }), false);
   });
 
-  it("ranks owner above the delegated invite role in member lists", () => {
+  it("labels a member by owner, then their highest Role, then User", () => {
     const t = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
       translate("en", key, values);
+    const roles: RoleSummary[] = [
+      {
+        id: "recruiter",
+        serverId: "beta",
+        name: null,
+        color: null,
+        position: 1,
+        separate: false,
+        permissions: ["createInvites"],
+        kind: null
+      }
+    ];
 
-    assert.equal(memberRoleLabel({ role: "owner", canInvite: true }, t), "Owner");
-    assert.equal(memberRoleLabel({ role: "member", canInvite: true }, t), "Inviter");
-    assert.equal(memberRoleLabel({ role: "member", canInvite: false }, t), "User");
+    assert.equal(memberRoleLabel({ role: "owner", roleIds: ["recruiter"] }, t, roles), "Owner");
+    assert.equal(memberRoleLabel({ role: "member", roleIds: ["recruiter"] }, t, roles), "Recruiter");
+    assert.equal(memberRoleLabel({ role: "member", roleIds: [] }, t, roles), "User");
+    assert.equal(memberRoleLabel({ role: "member", roleIds: [], isBot: true }, t, roles), "Bot");
   });
 
-  it("localizes the invite role controls in both supported languages", () => {
-    assert.equal(translate("en", "member.grantInviteRole"), "Allow creating invites");
-    assert.equal(translate("tr", "member.grantInviteRole"), "Davet oluşturma yetkisi ver");
-    assert.equal(translate("tr", "member.revokeInviteRole"), "Davet yetkisini kaldır");
+  it("localizes the invite copy in both supported languages", () => {
     assert.equal(translate("tr", "invite.createFor", { server: "Onyx" }), "Onyx sunucusuna kişi davet et");
   });
 
-  it("puts the rail invite trigger beside the brand lockup and gates it on the grant", () => {
+  it("puts the rail invite trigger beside the brand lockup and gates it on the Permission", () => {
     const rail = readFileSync("src/components/shell/ChannelRail.tsx", "utf8");
     const styles = readFileSync("src/styles.css", "utf8");
 
@@ -77,13 +91,13 @@ describe("delegated invite permission", () => {
     assert.doesNotMatch(ownerPanel, /createServerInvite/);
   });
 
-  it("only offers the role toggle to owners acting on plain members", () => {
-    const panel = readFileSync("src/components/shell/MemberPanel.tsx", "utf8");
-    const menu = readFileSync("src/components/shell/SidebarMenus.tsx", "utf8");
-
-    assert.match(panel, /const\s+canAssignRoles\s+=\s+canModerate\s+&&\s+user\.role\s+===\s+"member"/);
-    assert.match(panel, /onToggleInviteRole=\{\s*canAssignRoles\s+\?/);
-    assert.match(menu, /member\.grantInviteRole/);
-    assert.match(menu, /member\.revokeInviteRole/);
+  it("has no per-member invite switch left anywhere", () => {
+    for (const file of [
+      "src/components/shell/MemberPanel.tsx",
+      "src/components/shell/SidebarMenus.tsx",
+      "src/features/owner/OwnerPanel.tsx"
+    ]) {
+      assert.doesNotMatch(readFileSync(file, "utf8"), /canInvite|onToggleInviteRole|grantInviteRole/, file);
+    }
   });
 });

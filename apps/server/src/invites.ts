@@ -43,7 +43,7 @@ import { rejectBotTarget } from "./bots.js";
 import { all, defaultServerId, one, run, type VoxlyDatabase } from "./db/database.js";
 import {
   activateServerMembership,
-  requireServerInviter,
+  requireServerPermission,
   serverHeadcount,
   serverMembership,
   visiblyOnlineUserIds
@@ -390,18 +390,16 @@ export function registerInviteRoutes(context: RouteContext) {
   });
 
   fastify.post("/api/servers/:serverId/invites", { config: authenticatedWriteLimit }, async (request, reply) => {
-    // Spelled out rather than using a shared preamble: invite creation is the
-    // one server-scoped route an ordinary member may reach, through the
-    // `can_invite` grant, so it asks `requireServerInviter` rather than
-    // membership or ownership.
+    // Spelled out rather than using a shared preamble: invite creation asks for
+    // the Create invites Permission (ADR-0038), not membership or ownership.
     const user = requireUser(database, request, reply, secureCookies);
     if (!user) return;
     const { serverId } = z.object({ serverId: serverIdParam }).parse(request.params);
-    const membership = requireServerInviter(database, serverId, user.id, reply);
+    const membership = requireServerPermission(database, serverId, user.id, "createInvites", reply);
     if (!membership) return;
     const body = inviteBodySchema.parse(request.body ?? {});
-    // A never-expiring link is a standing credential. Delegated inviters can add
-    // people; handing them a permanent one exceeds what that grant is meant to be.
+    // A never-expiring link is a standing credential. Create invites lets a
+    // member add people; handing them a permanent one exceeds what it is for.
     if (body.expiresInMinutes === null && membership.role !== "owner") {
       return reply.code(403).send({ error: "invite_expiry_required" });
     }

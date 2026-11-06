@@ -323,7 +323,7 @@ export function AppRoutes({
         onModerateMember={shellProps.onModerateMember}
         onVoiceModeration={shellProps.onVoiceModeration}
         onUpdateMemberNickname={shellProps.onUpdateMemberNickname}
-        onUpdateMemberPermissions={shellProps.onUpdateMemberPermissions}
+        serverRoles={shellProps.serverRoles}
       />
     );
   if (route.name === "voice")

@@ -1,4 +1,4 @@
-import type { MessageMentionInput, MessageReactionsEvent, RoomAccessUpdate } from "@voxly/shared";
+import type { MessageMentionInput, MessageReactionsEvent, RoomAccessUpdate, ServerRolesResponse } from "@voxly/shared";
 import type {
   AppConfigResponse,
   CategorySummary,
@@ -538,13 +538,15 @@ export async function updateServerMemberNickname(serverId: string, userId: strin
   );
 }
 
-export async function updateServerMemberPermissions(serverId: string, userId: string, canInvite: boolean) {
+export async function fetchServerRoles(serverId: string) {
+  return request<ServerRolesResponse>(`/api/servers/${encodeURIComponent(serverId)}/roles`);
+}
+
+/** Gives (`true`) or removes (`false`) one Role; the answer is the member as they now are. */
+export async function setServerMemberRole(serverId: string, userId: string, roleId: string, give: boolean) {
   return request<{ user: PresenceUser }>(
-    `/api/servers/${encodeURIComponent(serverId)}/members/${encodeURIComponent(userId)}/permissions`,
-    {
-      method: "PATCH",
-      body: JSON.stringify({ canInvite })
-    }
+    `/api/servers/${encodeURIComponent(serverId)}/members/${encodeURIComponent(userId)}/roles/${encodeURIComponent(roleId)}`,
+    { method: give ? "PUT" : "DELETE" }
   );
 }
 

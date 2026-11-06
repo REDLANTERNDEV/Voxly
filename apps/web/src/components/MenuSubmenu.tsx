@@ -190,7 +190,16 @@ function SubmenuNode({
           type="button"
           className={`menu-submenu-trigger${className ? ` ${className}` : ""}`}
           aria-describedby={description ? descriptionId : undefined}
-          {...getReferenceProps()}
+          {...getReferenceProps({
+            // A flat list opens on → through list navigation; a panel of
+            // richer rows has none, so it is opened here the same way.
+            onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => {
+              if (!panelMode || open || event.key !== "ArrowRight") return;
+              event.preventDefault();
+              keyboardOpenRef.current = true;
+              setOpen(true);
+            }
+          })}
         >
           {icon}
           {description ? (

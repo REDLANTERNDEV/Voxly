@@ -1,5 +1,6 @@
 import { afkRoomName } from "@voxly/shared";
 import { DatabaseSync } from "node:sqlite";
+import { seedMissingServerRoles } from "../roleSeeds.js";
 
 type DbParam = string | number | bigint | Uint8Array | null;
 
@@ -18,6 +19,7 @@ export async function openDatabase(databasePath: string): Promise<VoxlyDatabase>
   migrate(sqlite);
   seedRooms(sqlite);
   seedAfkRooms(sqlite);
+  seedMissingServerRoles(sqlite);
   for (const row of all<{ server_id: string; user_id: string }>(
     sqlite,
     "select server_id, user_id from server_members where mention_code is null"
@@ -84,7 +86,9 @@ export function dumpTables(sqlite: DatabaseSync) {
     ownerClaims: all(sqlite, "select * from owner_claims"),
     accessClaims: all(sqlite, "select * from access_claims"),
     auditEvents: all(sqlite, "select * from audit_events"),
-    accountDeletionRequests: all(sqlite, "select * from account_deletion_requests")
+    accountDeletionRequests: all(sqlite, "select * from account_deletion_requests"),
+    roles: all(sqlite, "select * from roles"),
+    memberRoles: all(sqlite, "select * from member_roles")
   };
 }
 
@@ -380,6 +384,36 @@ function migrate(sqlite: DatabaseSync) {
     );
     create index if not exists idx_room_access_user
       on room_access (user_id);
+  `);
+
+  // Roles (ADR-0038). Additive: `server_members.can_invite` stays, unread, and
+  // `servers.roles_seeded_at` marks a Server whose three Roles were made, so a
+  // restart never makes them twice nor gives back a Davetçi someone deleted.
+  addColumnIfMissing(sqlite, "servers", "roles_seeded_at", "text");
+  sqlite.exec(`
+    create table if not exists roles (
+      id text primary key,
+      server_id text not null,
+      name text,
+      kind text check (kind in ('everyone', 'admin')),
+      seed text check (seed in ('everyone', 'admin', 'recruiter')),
+      color text,
+      position integer not null,
+      separate integer not null default 0,
+      permissions text not null default '[]',
+      created_at text not null
+    );
+    create unique index if not exists idx_roles_server_kind on roles (server_id, kind) where kind is not null;
+    create index if not exists idx_roles_server_position on roles (server_id, position);
+    create table if not exists member_roles (
+      server_id text not null,
+      user_id text not null,
+      role_id text not null,
+      granted_by_user_id text,
+      granted_at text not null,
+      primary key (role_id, user_id)
+    );
+    create index if not exists idx_member_roles_member on member_roles (server_id, user_id);
   `);
 
   sqlite.exec(`

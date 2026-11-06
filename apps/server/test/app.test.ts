@@ -5,7 +5,13 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { afkRoomName, DEFAULT_AFK_TIMEOUT_MINUTES, musicBotNickname, replyExcerptMaxLength } from "@voxly/shared";
+import {
+  afkRoomName,
+  DEFAULT_AFK_TIMEOUT_MINUTES,
+  musicBotNickname,
+  replyExcerptMaxLength,
+  serverPermissions
+} from "@voxly/shared";
 import { createVoxlyApp, type VoxlyApp } from "../src/app.js";
 import { hashToken } from "../src/auth/tokens.js";
 import { createOwnerClaim, createOwnerLoginClaim } from "../src/auth/ownerClaims.js";
@@ -1862,7 +1868,9 @@ describe("Voxly HTTP MVP", () => {
       payload: { name: "Onyx Lounge" }
     });
     assert.equal(renamed.statusCode, 200);
-    assert.deepEqual(renamed.json(), { server: { id: serverId, name: "Onyx Lounge", role: "owner", canInvite: true } });
+    assert.deepEqual(renamed.json(), {
+      server: { id: serverId, name: "Onyx Lounge", role: "owner", permissions: [...serverPermissions], rank: 3 }
+    });
 
     const afterRename = await app.server.inject({
       method: "POST",
@@ -1922,7 +1930,7 @@ describe("Voxly HTTP MVP", () => {
       cookies: member.cookies
     });
     assert.equal(visibleToMember.statusCode, 200);
-    const directoryKeys = ["canInvite", "isBot", "mentionCode", "nickname", "role", "userId"];
+    const directoryKeys = ["isBot", "mentionCode", "nickname", "role", "roleIds", "userId"];
     assert.deepEqual(
       visibleToMember.json().members.map((entry: Record<string, unknown>) => Object.keys(entry).sort()),
       [directoryKeys, directoryKeys, directoryKeys]
@@ -1962,7 +1970,7 @@ describe("Voxly HTTP MVP", () => {
     );
   });
 
-  it("lets the owner delegate invite creation without delegating invite management", async () => {
+  it("lets Davetçi create invites without delegating invite management", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");
     const serverId = defaultServerId;
@@ -1975,37 +1983,19 @@ describe("Voxly HTTP MVP", () => {
     });
     assert.equal(beforeGrant.statusCode, 403);
 
-    const memberCannotGrant = await app.server.inject({
-      method: "PATCH",
-      url: `/api/servers/${serverId}/members/${member.user.id}/permissions`,
-      cookies: member.cookies,
-      payload: { canInvite: true }
-    });
-    assert.equal(memberCannotGrant.statusCode, 403);
-
-    const granted = await app.server.inject({
-      method: "PATCH",
-      url: `/api/servers/${serverId}/members/${member.user.id}/permissions`,
-      cookies: owner.cookies,
-      payload: { canInvite: true }
-    });
+    assert.equal((await setRecruiter(app, member.cookies, member.user.id, true)).statusCode, 403);
+    const granted = await setRecruiter(app, owner.cookies, member.user.id, true);
     assert.equal(granted.statusCode, 200);
-    assert.equal(granted.json().user.canInvite, true);
-
-    const ownerPermissionsRejected = await app.server.inject({
-      method: "PATCH",
-      url: `/api/servers/${serverId}/members/${owner.user.id}/permissions`,
-      cookies: owner.cookies,
-      payload: { canInvite: false }
-    });
-    assert.equal(ownerPermissionsRejected.statusCode, 409);
+    assert.equal(granted.json().user.roleIds.length, 1);
 
     const memberServers = await app.server.inject({
       method: "GET",
       url: "/api/servers",
       cookies: member.cookies
     });
-    assert.equal(memberServers.json().servers.find((entry: { id: string }) => entry.id === serverId)?.canInvite, true);
+    assert.deepEqual(memberServers.json().servers.find((entry: { id: string }) => entry.id === serverId)?.permissions, [
+      "createInvites"
+    ]);
 
     const delegatedInvite = await app.server.inject({
       method: "POST",
@@ -2036,14 +2026,9 @@ describe("Voxly HTTP MVP", () => {
     });
     assert.equal(revokeAttempt.statusCode, 403);
 
-    const revoked = await app.server.inject({
-      method: "PATCH",
-      url: `/api/servers/${serverId}/members/${member.user.id}/permissions`,
-      cookies: owner.cookies,
-      payload: { canInvite: false }
-    });
+    const revoked = await setRecruiter(app, owner.cookies, member.user.id, false);
     assert.equal(revoked.statusCode, 200);
-    assert.equal(revoked.json().user.canInvite, false);
+    assert.deepEqual(revoked.json().user.roleIds, []);
 
     const afterRevoke = await app.server.inject({
       method: "POST",
@@ -2054,17 +2039,12 @@ describe("Voxly HTTP MVP", () => {
     assert.equal(afterRevoke.statusCode, 403);
   });
 
-  it("drops the invite grant when a delegated member loses access", async () => {
+  it("drops Davetçi when a delegated member loses access", async () => {
     const owner = await bootstrapOwner(app);
     const member = await acceptInvite(app, owner.cookies, "Ada");
     const serverId = defaultServerId;
 
-    await app.server.inject({
-      method: "PATCH",
-      url: `/api/servers/${serverId}/members/${member.user.id}/permissions`,
-      cookies: owner.cookies,
-      payload: { canInvite: true }
-    });
+    await setRecruiter(app, owner.cookies, member.user.id, true);
     await app.server.inject({
       method: "POST",
       url: `/api/servers/${serverId}/members/${member.user.id}/kick`,
@@ -2708,11 +2688,6 @@ describe("Voxly HTTP MVP", () => {
       { method: "POST" as const, url: `/api/servers/${defaultServerId}/members/${botId}/kick` },
       { method: "POST" as const, url: `/api/servers/${defaultServerId}/members/${botId}/ban` },
       { method: "POST" as const, url: `/api/servers/${defaultServerId}/members/${botId}/access-links` },
-      {
-        method: "PATCH" as const,
-        url: `/api/servers/${defaultServerId}/members/${botId}/permissions`,
-        payload: { canInvite: true }
-      },
       // A move is the newest of these and the least obvious. It is refused
       // because the bot goes where it is summoned and nowhere else: the
       // arriving half would put it in a room nobody in that room asked for it,
@@ -3037,12 +3012,7 @@ describe("Voxly invite lifecycle hardening", () => {
   });
 
   async function grantInviter(ownerCookies: Record<string, string>, userId: string) {
-    const response = await app.server.inject({
-      method: "PATCH",
-      url: `/api/servers/${defaultServerId}/members/${userId}/permissions`,
-      cookies: ownerCookies,
-      payload: { canInvite: true }
-    });
+    const response = await setRecruiter(app, ownerCookies, userId, true);
     assert.equal(response.statusCode, 200);
   }
 
@@ -3112,12 +3082,7 @@ describe("Voxly invite lifecycle hardening", () => {
     await grantInviter(owner.cookies, member.user.id);
     const invite = await createInviteAs(member.cookies, "Mallory link");
 
-    const revoke = await app.server.inject({
-      method: "PATCH",
-      url: `/api/servers/${defaultServerId}/members/${member.user.id}/permissions`,
-      cookies: owner.cookies,
-      payload: { canInvite: false }
-    });
+    const revoke = await setRecruiter(app, owner.cookies, member.user.id, false);
     assert.equal(revoke.statusCode, 200);
 
     const accepted = await acceptAs(invite.token, "Stranger");
@@ -3299,6 +3264,18 @@ describe("music bot credentials", () => {
     }
   });
 });
+
+/** Gives or removes the seeded Davetçi Role, which holds Create invites. */
+async function setRecruiter(app: VoxlyApp, cookies: Record<string, string>, userId: string, give: boolean) {
+  const role = one<{ id: string }>(app.sqlite, "select id from roles where server_id = ? and seed = 'recruiter'", [
+    defaultServerId
+  ])!;
+  return app.server.inject({
+    method: give ? "PUT" : "DELETE",
+    url: `/api/servers/${defaultServerId}/members/${userId}/roles/${role.id}`,
+    cookies
+  });
+}
 
 async function bootstrapOwner(app: VoxlyApp) {
   const response = await app.server.inject({

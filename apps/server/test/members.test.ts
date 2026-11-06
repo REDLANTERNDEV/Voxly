@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import type { FastifyReply } from "fastify";
-import { defaultServerId, openDatabase, run, type VoxlyDatabase } from "../src/db/database.js";
+import { defaultServerId, one, openDatabase, run, type VoxlyDatabase } from "../src/db/database.js";
 import type { PresenceChoiceState, PresenceUser } from "@voxly/shared";
 import {
   activeServerIds,
   activeServerMembership,
   isServerOwner,
-  mayCreateInvites,
   hasActiveServerMembership,
-  requireServerInviter,
+  requireServerPermission,
   requireServerMember,
   requireServerOwner,
   publicPresence,
@@ -34,7 +33,6 @@ interface MemberOptions {
   removedAt?: string;
   /** Banned globally, which must override every server membership. */
   globallyBannedAt?: string;
-  canInvite?: boolean;
   /** An account with no row in `server_members` at all. */
   membership?: false;
 }
@@ -77,17 +75,9 @@ describe("server membership", () => {
       if (options.membership === false) continue;
       run(
         opened.sqlite,
-        `insert into server_members (server_id, user_id, role, banned_at, removed_at, can_invite, joined_at)
-         values (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          defaultServerId,
-          userId,
-          role,
-          options.bannedAt ?? null,
-          options.removedAt ?? null,
-          options.canInvite ? 1 : 0,
-          joinedAt
-        ]
+        `insert into server_members (server_id, user_id, role, banned_at, removed_at, joined_at)
+         values (?, ?, ?, ?, ?, ?)`,
+        [defaultServerId, userId, role, options.bannedAt ?? null, options.removedAt ?? null, joinedAt]
       );
     }
     return opened;
@@ -196,25 +186,37 @@ describe("server membership", () => {
       assert.deepEqual(formerOwner.sent.body, { error: "server_forbidden" });
     });
 
-    it("treats an owner as able to invite whether or not the grant is set", () => {
-      assert.equal(mayCreateInvites("owner", 0), true);
-      assert.equal(mayCreateInvites("member", 0), false);
-      assert.equal(mayCreateInvites("member", 1), true);
-    });
+    it("admits an owner or a member whose Roles hold the Permission, but not a plain member", async () => {
+      const db = await seed({ owner: { role: "owner" }, recruiter: {}, member: {} });
+      const recruiterRole = one<{ id: string }>(
+        db.sqlite,
+        "select id from roles where seed = 'recruiter' and server_id = ?",
+        [defaultServerId]
+      )!;
+      run(db.sqlite, "insert into member_roles (server_id, user_id, role_id, granted_at) values (?, ?, ?, ?)", [
+        defaultServerId,
+        "recruiter",
+        recruiterRole.id,
+        joinedAt
+      ]);
 
-    it("admits an owner or a granted inviter, but not a plain member", async () => {
-      const db = await seed({ owner: { role: "owner" }, inviter: { canInvite: true }, member: {} });
-
-      for (const userId of ["owner", "inviter"]) {
+      for (const userId of ["owner", "recruiter"]) {
         const admitted = replyDouble();
-        assert.equal(requireServerInviter(db, defaultServerId, userId, admitted.reply)?.user_id, userId);
+        assert.equal(
+          requireServerPermission(db, defaultServerId, userId, "createInvites", admitted.reply)?.user_id,
+          userId
+        );
         assert.equal(admitted.sent.statusCode, null, `${userId} may create invites`);
       }
 
       const refused = replyDouble();
-      assert.equal(requireServerInviter(db, defaultServerId, "member", refused.reply), null);
+      assert.equal(requireServerPermission(db, defaultServerId, "member", "createInvites", refused.reply), null);
       assert.equal(refused.sent.statusCode, 403);
       assert.deepEqual(refused.sent.body, { error: "forbidden" });
+
+      const stranger = replyDouble();
+      assert.equal(requireServerPermission(db, defaultServerId, "nobody", "createInvites", stranger.reply), null);
+      assert.deepEqual(stranger.sent.body, { error: "server_forbidden" });
     });
   });
 

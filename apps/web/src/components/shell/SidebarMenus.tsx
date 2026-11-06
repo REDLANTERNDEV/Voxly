@@ -1,10 +1,11 @@
 import type { PresenceUser, RoomSummary, VoiceModerationState } from "@voxly/shared";
-import type { MouseEvent } from "react";
-import { useRef } from "react";
+import type { CSSProperties, MouseEvent } from "react";
+import { useId, useRef } from "react";
 import type { MemberAction, Translate } from "../../app/types.js";
 import { HeadsetIcon, MicIcon, MoreIcon } from "../../components/ui/Icons.js";
 import { VolumeControl } from "../../components/ui/Primitives.js";
 import { type ContextMenuDescriptor } from "../../lib/contextMenu.js";
+import { roleDisplayName, type RoleLock, type RoleMenuRow } from "../../lib/roles.js";
 import { MenuSubmenu } from "../MenuSubmenu.js";
 import { ContextMenu } from "../ContextMenu.js";
 export interface SidebarActionMenuController {
@@ -102,7 +103,7 @@ export function memberActionMenuHeight({
     (hasVolume ? 64 : 0) +
     (hasSelfControls ? 80 : 0) +
     (canRename ? 40 : 0) +
-    (canAssignRoles ? 62 : 0) +
+    (canAssignRoles ? 40 : 0) +
     (canVoiceModerate ? 80 : 0) +
     (canMove ? 40 : 0) +
     (canDisconnect ? 40 : 0) +
@@ -121,7 +122,7 @@ export function MemberActionMenu({
   canModerate,
   moderation,
   onVoiceModeration,
-  onToggleInviteRole,
+  roles,
   moveTargets,
   onMove,
   onRename,
@@ -140,7 +141,12 @@ export function MemberActionMenu({
   canModerate: boolean;
   moderation?: VoiceModerationState;
   onVoiceModeration?: (moderation: Partial<VoiceModerationState>) => void;
-  onToggleInviteRole?: (canInvite: boolean) => void;
+  /**
+   * The member's Roles submenu (ADR-0038): every Role, ticked when held and
+   * locked where the actor may not change it. Absent when the actor may change
+   * none of them on this member.
+   */
+  roles?: { rows: RoleMenuRow[]; onToggle: (roleId: string, give: boolean) => void };
   /** Voice rooms this member may be moved to; empty hides the entry. */
   moveTargets?: RoomSummary[];
   onMove?: (roomId: string) => void;
@@ -177,7 +183,7 @@ export function MemberActionMenu({
     canDisconnect,
     canModerate,
     canVoiceModerate: Boolean(moderation && onVoiceModeration),
-    canAssignRoles: Boolean(onToggleInviteRole),
+    canAssignRoles: Boolean(roles),
     canMove: Boolean(onMove && moveTargets && moveTargets.length > 0),
     hasSelfControls: Boolean(selfControls)
   });
@@ -239,15 +245,8 @@ export function MemberActionMenu({
               {t("member.changeNickname")}
             </button>
           ) : null}
-          {onToggleInviteRole ? (
-            <button
-              className={member.canInvite ? "is-active" : ""}
-              type="button"
-              aria-pressed={Boolean(member.canInvite)}
-              onClick={() => onToggleInviteRole(!member.canInvite)}
-            >
-              {member.canInvite ? t("member.revokeInviteRole") : t("member.grantInviteRole")}
-            </button>
+          {roles ? (
+            <MemberRolesSubmenu nickname={member.nickname} rows={roles.rows} onToggle={roles.onToggle} t={t} />
           ) : null}
           {moderation && onVoiceModeration ? (
             <>
@@ -311,5 +310,85 @@ export function MemberMoveSubmenu({
 }) {
   return (
     <MenuSubmenu label={label} items={rooms.map((room) => ({ id: room.id, label: room.name }))} onSelect={onSelect} />
+  );
+}
+
+/**
+ * Roles › in a member's menu. Each row toggles one Role at once and the
+ * flyout stays open, so several can be given in a row; the menu closes only by
+ * the ordinary ways out. The answer comes back as the member's updated
+ * `roleIds`, which is what ticks the box.
+ */
+export function MemberRolesSubmenu({
+  nickname,
+  rows,
+  onToggle,
+  t
+}: {
+  nickname: string;
+  rows: RoleMenuRow[];
+  onToggle: (roleId: string, give: boolean) => void;
+  t: Translate;
+}) {
+  return (
+    <MenuSubmenu
+      label={t("member.roles")}
+      panelLabel={t("member.rolesFor", { nickname })}
+      className="member-roles-trigger"
+    >
+      {rows.map((row) => (
+        <MemberRoleRow key={row.role.id} row={row} onToggle={onToggle} t={t} />
+      ))}
+    </MenuSubmenu>
+  );
+}
+
+/**
+ * One Role as a checkbox row. A locked row stays focusable, so a keyboard or
+ * screen-reader user reaches it and hears why, but it does nothing: it is
+ * `aria-disabled` rather than `disabled`, which would also hide its reason.
+ */
+export function MemberRoleRow({
+  row,
+  onToggle,
+  t
+}: {
+  row: RoleMenuRow;
+  onToggle: (roleId: string, give: boolean) => void;
+  t: Translate;
+}) {
+  const reasonId = useId();
+  const lockKeys: Record<RoleLock, "role.lockEveryone" | "role.lockOwnerOnly" | "role.lockBelowYours"> = {
+    everyone: "role.lockEveryone",
+    ownerOnly: "role.lockOwnerOnly",
+    belowYours: "role.lockBelowYours"
+  };
+  const reason = row.lock ? t(lockKeys[row.lock]) : undefined;
+  return (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={row.held}
+      aria-disabled={row.lock ? true : undefined}
+      title={reason}
+      aria-describedby={reason ? reasonId : undefined}
+      className={`member-role-option${row.lock ? " is-locked" : ""}`}
+      onClick={() => {
+        if (!row.lock) onToggle(row.role.id, !row.held);
+      }}
+    >
+      <span className="member-role-check" aria-hidden="true" />
+      <span
+        className={`member-role-dot${row.role.color ? "" : " is-plain"}`}
+        aria-hidden="true"
+        style={row.role.color ? ({ "--role-color": row.role.color } as CSSProperties) : undefined}
+      />
+      <span className="member-role-name">{roleDisplayName(row.role, t)}</span>
+      {reason ? (
+        <span className="sr-only" id={reasonId}>
+          {reason}
+        </span>
+      ) : null}
+    </button>
   );
 }

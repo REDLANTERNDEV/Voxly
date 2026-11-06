@@ -1,4 +1,4 @@
-import type { AfkTimeoutMinutes } from "@voxly/shared";
+import type { AfkTimeoutMinutes, Permission } from "@voxly/shared";
 import type {
   CategorySummary,
   ChatMessage,
@@ -25,8 +25,14 @@ export interface ServerSummary {
   id: string;
   name: string;
   role: "owner" | "member";
-  /** True for owners and for members the owner granted invite rights to. */
-  canInvite: boolean;
+  /**
+   * What your Roles make you here, worked out by the server and already
+   * expanded (the owner and Administrator holders get every one). The client
+   * reads it; it never works a Permission out from Roles (ADR-0038).
+   */
+  permissions: Permission[];
+  /** Your rank: the position of your highest Role, one above them all for the owner. */
+  rank: number;
   /** Owner-set idle window before a member is parked in the AFK room. */
   afkTimeoutMinutes: AfkTimeoutMinutes;
   /** Whether invite joins post a Welcome notice, and the owner's channel for it. */
@@ -49,7 +55,8 @@ export interface ServerMember {
   id: string;
   nickname: string;
   role: "owner" | "member";
-  canInvite: boolean;
+  /** The Roles this member was given, `@everyone` not included. */
+  roleIds: string[];
   /** A service account rather than a person; see the shared `PresenceUser`. */
   isBot: boolean;
   bannedAt: string | null;

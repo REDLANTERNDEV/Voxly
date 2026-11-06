@@ -228,11 +228,15 @@ describe("the owner panel", () => {
     it("revokes the invites a banned member issued, so they cannot rejoin under a new account", async () => {
       const owner = await bootstrapOwner(app);
       const member = await acceptInvite(app, owner.cookies, "Ada");
+      const recruiter = one<{ id: string }>(
+        app.sqlite,
+        "select id from roles where server_id = ? and seed = 'recruiter'",
+        [defaultServerId]
+      )!;
       const granted = await app.server.inject({
-        method: "PATCH",
-        url: `/api/servers/${defaultServerId}/members/${member.user.id}/permissions`,
-        cookies: owner.cookies,
-        payload: { canInvite: true }
+        method: "PUT",
+        url: `/api/servers/${defaultServerId}/members/${member.user.id}/roles/${recruiter.id}`,
+        cookies: owner.cookies
       });
       assert.equal(granted.statusCode, 200);
       const issued = await app.server.inject({

@@ -92,8 +92,7 @@ describe("voice moderation state", () => {
       banned_at: null,
       removed_at: null,
       moderator_muted: 1,
-      moderator_deafened: 0,
-      can_invite: 0
+      moderator_deafened: 0
     } satisfies ServerMemberRow;
     assert.deepEqual(voiceModeration(row), { muted: true, deafened: false });
   });

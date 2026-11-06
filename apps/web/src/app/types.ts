@@ -9,6 +9,7 @@ import type {
   PresenceChoiceState,
   PresenceUser,
   PublicUser,
+  RoleSummary,
   RoomAccessUpdate,
   RoomSummary,
   ServerRoomLayout,
@@ -66,6 +67,8 @@ export interface ShellModel {
   /** The Status this member picked; others see its effect through `onlineUsers`. */
   presenceChoice: PresenceChoiceState;
   serverMembers: PresenceUser[];
+  /** The active Server's Roles, highest first. */
+  serverRoles: RoleSummary[];
   socketState: "connecting" | "live" | "reconnecting" | "offline";
   connectionHealth: ConnectionHealth;
   voiceQuality: VoiceQuality;
@@ -154,7 +157,8 @@ export interface ShellActions {
   onUpdateMemberNickname: (userId: string, nickname: string) => Promise<PresenceUser>;
   /** Sets or, with `null`, clears your own nickname on any server you belong to. */
   onUpdateOwnNickname: (serverId: string, nickname: string | null) => Promise<PresenceUser>;
-  onUpdateMemberPermissions: (userId: string, canInvite: boolean) => Promise<PresenceUser>;
+  /** Gives (`true`) or removes (`false`) one Role on a member of the active Server. */
+  onSetMemberRole: (userId: string, roleId: string, give: boolean) => Promise<PresenceUser>;
   onDisconnectMember: (roomId: string, userId: string) => Promise<void>;
   onMoveMember: (userId: string, roomId: string) => void;
   onDrawerChange: (drawer: Drawer) => void;

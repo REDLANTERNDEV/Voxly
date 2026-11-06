@@ -46,7 +46,8 @@ import {
   currentChoice,
   hasActiveServerMembership,
   isVisiblyOnline,
-  mayCreateInvites,
+  memberRoleIdsColumn,
+  parseRoleIds,
   presenceChoiceFor,
   presenceStatusOf,
   publicPresence,
@@ -58,6 +59,7 @@ import {
   readPresenceChoice,
   writePresenceChoice,
   clearRoomGrants,
+  clearMemberRoles,
   roomAccess,
   type OnlineRegistry
 } from "./members.js";
@@ -82,6 +84,7 @@ import { registerNotificationRoutes } from "./notifications.js";
 import { registerMessageRoutes } from "./messages.js";
 import { registerOwnerPanelRoutes } from "./ownerPanel.js";
 import { registerAccountDeletionRoutes } from "./accountDeletion.js";
+import { registerRoleRoutes } from "./roles.js";
 import { registerServerRoutes } from "./servers.js";
 import { createUser, nicknameSchema, publicUser } from "./users.js";
 import {
@@ -237,6 +240,7 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
   registerRecoveryRoutes(context);
   registerServerRoutes(context);
   registerInviteRoutes(context);
+  registerRoleRoutes(context);
   registerMessageRoutes(context);
   registerNotificationRoutes(context);
   registerOwnerPanelRoutes(context);
@@ -459,14 +463,14 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
       userId: string;
       nickname: string;
       role: "owner" | "member";
-      canInvite: number;
+      roleIds: string | null;
       isBot: number;
     }>(
       database.sqlite,
       `select users.id as userId, server_members.mention_code as mentionCode,
         coalesce(server_members.nickname, users.nickname) as nickname,
         server_members.role,
-        server_members.can_invite as canInvite,
+        ${memberRoleIdsColumn} as roleIds,
         users.is_bot as isBot
        from server_members
        join users on users.id = server_members.user_id
@@ -479,7 +483,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     return {
       members: members.map((member) => ({
         ...member,
-        canInvite: Boolean(member.canInvite),
+        roleIds: parseRoleIds(member.roleIds),
         isBot: Boolean(member.isBot)
       }))
     };
@@ -498,7 +502,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
       joinedAt: string;
       moderatorMuted: number;
       moderatorDeafened: number;
-      canInvite: number;
+      roleIds: string | null;
       isBot: number;
     }>(
       database.sqlite,
@@ -509,7 +513,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
         server_members.joined_at as joinedAt,
         server_members.moderator_muted as moderatorMuted,
         server_members.moderator_deafened as moderatorDeafened,
-        server_members.can_invite as canInvite,
+        ${memberRoleIdsColumn} as roleIds,
         users.is_bot as isBot
        from server_members
        join users on users.id = server_members.user_id
@@ -519,57 +523,13 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
       [serverId]
     );
     return {
-      members: members.map(({ moderatorMuted, moderatorDeafened, canInvite, isBot, ...member }) => ({
+      members: members.map(({ moderatorMuted, moderatorDeafened, roleIds, isBot, ...member }) => ({
         ...member,
-        canInvite: mayCreateInvites(member.role, canInvite),
+        roleIds: parseRoleIds(roleIds),
         isBot: Boolean(isBot),
         moderation: { muted: Boolean(moderatorMuted), deafened: Boolean(moderatorDeafened) }
       }))
     };
-  });
-
-  server.patch("/api/servers/:serverId/members/:userId/permissions", async (request, reply) => {
-    // Spelled out rather than using `requireOwnedServer`: this route answers a
-    // malformed body before it answers a caller who does not own the server,
-    // and which of the two a client sees is observable.
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
-    const { serverId, userId } = z.object({ serverId: serverIdParam, userId: userIdParam }).parse(request.params);
-    const { canInvite } = z.object({ canInvite: z.boolean() }).strict().parse(request.body);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
-    const target = serverMembership(database.sqlite, serverId, userId);
-    if (!target || target.removed_at) {
-      return reply.code(404).send({ error: "member_not_found" });
-    }
-    // Owners already hold every permission; storing a grant for them would let a
-    // later revoke read as if it removed something.
-    if (target.role === "owner") {
-      return reply.code(409).send({ error: "cannot_change_owner_permissions" });
-    }
-    if (rejectBotTarget(database, userId, reply)) return;
-    database.sqlite.exec("begin immediate");
-    try {
-      run(database.sqlite, "update server_members set can_invite = ? where server_id = ? and user_id = ?", [
-        canInvite ? 1 : 0,
-        serverId,
-        userId
-      ]);
-      // Revoking the grant has to take its products with it, or the links the
-      // member already issued keep admitting people after the owner believes the
-      // delegation ended.
-      if (!canInvite) {
-        revokeInvitesCreatedBy(database, serverId, userId, new Date().toISOString());
-      }
-      audit(database, owner.id, canInvite ? "member.invite_granted" : "member.invite_revoked", userId, serverId);
-      database.sqlite.exec("commit");
-    } catch (cause) {
-      database.sqlite.exec("rollback");
-      throw cause;
-    }
-    database.save();
-    const updated = realtime.refreshMemberIdentity(serverId, userId);
-    if (!updated) return reply.code(404).send({ error: "member_not_found" });
-    return { user: updated };
   });
 
   server.patch("/api/servers/:serverId/members/:userId/nickname", async (request, reply) => {
@@ -657,10 +617,10 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     if (!member) return reply.code(404).send({ error: "member_not_found" });
     if (rejectBotTarget(database, userId, reply)) return;
     const now = new Date().toISOString();
-    // Losing access also drops the invite grant, so a member who returns through
-    // a later invite cannot silently resume issuing links.
+    // Losing access also drops the member's Roles, so one who returns through a
+    // later invite cannot silently resume issuing links or anything else.
     //
-    // Dropping the grant is not enough on its own: invites are bearer tokens with
+    // Dropping the Roles is not enough on its own: invites are bearer tokens with
     // no tie to their creator's standing, so any link the member already minted
     // stays usable. A kicked member could replay one to clear their own
     // `removed_at`, and a banned one could replay it under a fresh nickname —
@@ -672,7 +632,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
       if (action === "ban") {
         run(
           database.sqlite,
-          "update server_members set banned_at = ?, removed_at = null, can_invite = 0 where server_id = ? and user_id = ?",
+          "update server_members set banned_at = ?, removed_at = null where server_id = ? and user_id = ?",
           [now, serverId, userId]
         );
       } else if (action === "unban") {
@@ -681,16 +641,17 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
           userId
         ]);
       } else {
-        run(
-          database.sqlite,
-          "update server_members set removed_at = ?, can_invite = 0 where server_id = ? and user_id = ?",
-          [now, serverId, userId]
-        );
+        run(database.sqlite, "update server_members set removed_at = ? where server_id = ? and user_id = ?", [
+          now,
+          serverId,
+          userId
+        ]);
       }
       if (action === "ban" || action === "kick") {
         revokeInvitesCreatedBy(database, serverId, userId, now);
-        // Rejoining must never quietly restore a Private channel (ADR-0037).
+        // Rejoining must never quietly restore a Private channel (ADR-0037) or a Role (ADR-0038).
         clearRoomGrants(database.sqlite, serverId, userId);
+        clearMemberRoles(database.sqlite, serverId, userId);
       }
       audit(database, owner.id, `member.${action}`, userId, serverId);
       database.sqlite.exec("commit");

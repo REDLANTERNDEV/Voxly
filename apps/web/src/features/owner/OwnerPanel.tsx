@@ -40,6 +40,7 @@ type OwnerPanelProps = Pick<
   | "user"
   | "currentNickname"
   | "servers"
+  | "serverRoles"
   | "activeServerId"
   | "rooms"
   | "appConfig"
@@ -60,7 +61,6 @@ type OwnerPanelProps = Pick<
     | "onModerateMember"
     | "onVoiceModeration"
     | "onUpdateMemberNickname"
-    | "onUpdateMemberPermissions"
   >;
 
 type OwnerSection = "overview" | "invites" | "members" | "server" | "deletionRequests" | "accounts";
@@ -195,12 +195,6 @@ export function OwnerPanel(props: OwnerPanelProps) {
   const activeMembers = people.filter((member) => !member.bannedAt);
   const stats = [
     { key: "members", label: props.t("common.members"), value: activeMembers.length, icon: <UsersIcon /> },
-    {
-      key: "inviters",
-      label: props.t("owner.statInviters"),
-      value: people.filter((member) => member.role === "member" && member.canInvite).length,
-      icon: <UserPlusIcon />
-    },
     {
       key: "invites",
       label: props.t("owner.statActiveInvites"),
@@ -459,10 +453,8 @@ export function OwnerPanel(props: OwnerPanelProps) {
                       />
                     </span>
                     <span className="dash-cell" role="cell">
-                      <span
-                        className={`dash-role ${member.role === "owner" ? "is-owner" : member.canInvite ? "is-inviter" : ""}`}
-                      >
-                        {memberRoleLabel(member, props.t)}
+                      <span className={`dash-role ${member.role === "owner" ? "is-owner" : ""}`}>
+                        {memberRoleLabel(member, props.t, props.serverRoles)}
                       </span>
                     </span>
                     <span className="dash-cell" role="cell">
@@ -504,22 +496,6 @@ export function OwnerPanel(props: OwnerPanelProps) {
                                   }}
                                 >
                                   {props.t("member.changeNickname")}
-                                </button>
-                              ) : null}
-                              {canManageMembership ? (
-                                <button
-                                  className={member.canInvite ? "is-active" : ""}
-                                  type="button"
-                                  aria-pressed={member.canInvite}
-                                  onClick={async () => {
-                                    closeMenu();
-                                    await props.onUpdateMemberPermissions(member.id, !member.canInvite);
-                                    await reload();
-                                  }}
-                                >
-                                  {member.canInvite
-                                    ? props.t("member.revokeInviteRole")
-                                    : props.t("member.grantInviteRole")}
                                 </button>
                               ) : null}
                               {canVoiceModerate ? (

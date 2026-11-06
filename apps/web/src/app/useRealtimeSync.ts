@@ -20,6 +20,9 @@ interface RealtimeHandlers {
   directoryChanged(serverId: string): void;
   memberUpdated(serverId: string, user: PresenceUser): void;
   memberDeleted(serverId: string, userId: string): void;
+  rolesChanged(serverId: string): void;
+  /** The workspace's own catch-up on every (re)connect, beside `connected`. */
+  reconnected(): void;
   serverUpdated(serverId: string, name: string): void;
   afkUpdated(serverId: string, afkTimeoutMinutes: AfkTimeoutMinutes): void;
   welcomeUpdated(serverId: string, settings: ServerWelcomeSettings): void;
@@ -75,6 +78,7 @@ export function useRealtimeSync({
     next.on("connect", () => {
       setSocketState("live");
       handlersRef.current.connected();
+      handlersRef.current.reconnected();
     });
     next.io.on("reconnect_attempt", () => setSocketState("reconnecting"));
     next.on("disconnect", () => {
@@ -99,6 +103,7 @@ export function useRealtimeSync({
       handlersRef.current.memberUpdated(serverId, nextUser)
     );
     next.on("server:memberDeleted", ({ serverId, userId }) => handlersRef.current.memberDeleted(serverId, userId));
+    next.on("server:rolesChanged", ({ serverId }) => handlersRef.current.rolesChanged(serverId));
     next.on("server:updated", ({ serverId, name }) => handlersRef.current.serverUpdated(serverId, name));
     next.on("server:afkUpdated", ({ serverId, afkTimeoutMinutes }) =>
       handlersRef.current.afkUpdated(serverId, afkTimeoutMinutes)

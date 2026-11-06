@@ -1,8 +1,14 @@
-import type { PresenceUser, PublicUser, RoomSummary, VoiceModerationState, VoiceSnapshot } from "@voxly/shared";
-import { useState } from "react";
+import type {
+  PresenceUser,
+  PublicUser,
+  RoleSummary,
+  RoomSummary,
+  VoiceModerationState,
+  VoiceSnapshot
+} from "@voxly/shared";
+import { useState, type ComponentProps } from "react";
 import { initial, memberRoleLabel } from "../../app/presentation.js";
 import type { MemberAction, Translate } from "../../app/types.js";
-import { UserPlusIcon } from "../ui/Icons.js";
 import { PresenceDot } from "./AccountStatusMenu.js";
 import {
   canMemberEnter,
@@ -32,7 +38,8 @@ export function MemberPanel({
   memberVolumes,
   onMemberVolumeChange,
   onVoiceModeration,
-  onUpdateMemberPermissions,
+  serverRoles,
+  rolesMenuFor,
   onMoveMember,
   onRequestNickname,
   onRequestMemberAction,
@@ -65,7 +72,9 @@ export function MemberPanel({
     userId: string,
     moderation: Partial<VoiceModerationState>
   ) => Promise<{ moderation: VoiceModerationState }>;
-  onUpdateMemberPermissions: (userId: string, canInvite: boolean) => Promise<PresenceUser>;
+  serverRoles: RoleSummary[];
+  /** The member's Roles submenu, or undefined where the viewer may change none of their Roles. */
+  rolesMenuFor: (user: PresenceUser) => ComponentProps<typeof MemberActionMenu>["roles"];
   onMoveMember: (userId: string, roomId: string) => void;
   onRequestNickname: (user: PresenceUser, returnFocus: HTMLButtonElement | null) => void;
   onRequestMemberAction: (user: PresenceUser, action: MemberAction, roomId?: string) => void;
@@ -93,7 +102,7 @@ export function MemberPanel({
       const voiceMember = voiceRoom
         ? voiceSnapshots[voiceRoom.id]?.members.find((member) => member.user.userId === user.userId)
         : undefined;
-      const roleLabel = memberRoleLabel(user, t);
+      const roleLabel = memberRoleLabel(user, t, serverRoles);
       const detail = voiceRoom ? `${roleLabel} · ${voiceRoom.name}` : roleLabel;
       const isSelf = user.userId === currentUser.id;
       // Your own row shows the Status you picked, Invisible included, where
@@ -105,7 +114,8 @@ export function MemberPanel({
       const selfControls = isSelf && selfVoice ? selfVoice : undefined;
       const canModerateRemote = canOwnerVoiceModerate(canModerate ? "owner" : null, currentUser.id, user);
       const canModeratePerson = canOwnerModeratePerson(canModerate ? "owner" : null, currentUser.id, user);
-      const canAssignRoles = canModerate && user.role === "member" && !user.isBot;
+      const roles = rolesMenuFor(user);
+      const canAssignRoles = Boolean(roles);
       const hasRemoteActions = user.userId !== currentUser.id;
       const hasActions = hasRemoteActions || canRename || canAssignRoles || Boolean(selfControls);
       const menuHeight = memberActionMenuHeight({
@@ -140,11 +150,6 @@ export function MemberPanel({
               {t("common.bot")}
             </span>
           ) : null}
-          {!user.isBot && user.role === "member" && user.canInvite ? (
-            <span className="member-role-tag" title={t("member.inviterRole")}>
-              <UserPlusIcon />
-            </span>
-          ) : null}
           {hasActions ? (
             <MemberActionMenu
               actionMenu={actionMenu}
@@ -167,13 +172,7 @@ export function MemberPanel({
                     }
                   : undefined
               }
-              onToggleInviteRole={
-                canAssignRoles
-                  ? (canInvite) => {
-                      void onUpdateMemberPermissions(user.userId, canInvite);
-                    }
-                  : undefined
-              }
+              roles={roles}
               moveTargets={
                 canModeratePerson && voiceRoom
                   ? voiceRooms.filter((room) => room.id !== voiceRoom.id && canMemberEnter(room, user))

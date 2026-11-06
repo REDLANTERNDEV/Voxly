@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import type { PresenceUser } from "@voxly/shared";
 import { translate } from "../src/lib/i18n.js";
+import { memberRoleRows } from "../src/lib/roles.js";
 import {
   canOwnerModeratePerson,
   canOwnerVoiceModerate,
@@ -82,9 +83,12 @@ describe("bot moderation offers", () => {
     assert.match(channelRail, /onMove=\{\s*canModeratePerson\s+\?/);
   });
 
-  it("does not offer a bot the invite grant it could never use", () => {
-    assert.match(memberPanel, /const\s+canAssignRoles\s+=\s+.*&&\s+!user\.isBot;/);
-    assert.match(channelRail, /const\s+canAssignRoles\s+=\s+.*&&\s+!member\.user\.isBot;/);
+  it("does not offer a bot a Role it could never hold (ADR-0038)", () => {
+    const owner = { role: "owner" as const, permissions: ["manageRoles" as const], rank: 1 };
+    assert.equal(memberRoleRows(owner, [], { ...bot, roleIds: [] }), null);
+    // Every sidebar asks the same helper, so none can offer one.
+    assert.match(memberPanel, /const\s+roles\s+=\s+rolesMenuFor\(\s*user\s*\)/);
+    assert.match(channelRail, /const\s+roles\s+=\s+memberRolesMenu\(\s*props,\s*member\.user\s*\)/);
   });
 
   it("counts the owner dashboard tiles by people too", () => {
@@ -113,10 +117,6 @@ describe("bot marker", () => {
       memberPanel,
       /\{\s*user\.isBot\s+\?\s+\(?\s*<span\s+className="member-role-tag\s+is-bot"\s+title=\{\s*t\(\s*"member\.botRole"\s*\)\s*\}\s*>\s*\{\s*t\(\s*"common\.bot"\s*\)\s*\}\s*<\/span>\s*\)?\s*:\s+null\s*\}\s*/
     );
-  });
-
-  it("does not stack the inviter icon on top of the bot marker", () => {
-    assert.match(memberPanel, /\{\s*!user\.isBot\s+&&\s+user\.role\s+===\s+"member"\s+&&\s+user\.canInvite\s+\?/);
   });
 
   it("gives the marker its own shape rather than relying on colour alone", () => {

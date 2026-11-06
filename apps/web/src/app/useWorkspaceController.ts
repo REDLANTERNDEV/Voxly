@@ -5,6 +5,7 @@ import type {
   PresenceStatus,
   PresenceUser,
   PublicUser,
+  RoleSummary,
   RoomSummary,
   ServerRoomLayout,
   VoiceModerationState,
@@ -20,6 +21,8 @@ import {
   deleteServerRoom,
   disconnectVoiceMember,
   fetchServerDirectory,
+  fetchServerRoles,
+  setServerMemberRole,
   fetchServerRooms,
   fetchServers,
   moderateServerMember,
@@ -31,7 +34,6 @@ import {
   updateServerAfkTimeout,
   updateServerWelcome,
   updateServerMemberNickname,
-  updateServerMemberPermissions,
   updateServerRoomLayout,
   updateVoiceModeration
 } from "../api.js";
@@ -45,6 +47,8 @@ import { serverPath } from "./navigation.js";
 import { includeCurrentPresence, presenceFromUser, upsertPresence } from "./presentation.js";
 import type { Route } from "./types.js";
 import { desktopNotificationPath, type DesktopNotificationTarget } from "../lib/desktopNotifications.js";
+
+const noRoles: RoleSummary[] = [];
 
 export function useWorkspaceController({
   user,
@@ -63,6 +67,7 @@ export function useWorkspaceController({
 }) {
   const accountId = user?.id;
   const [servers, setServers] = useState<ServerSummary[]>([]);
+  const [rolesByServer, setRolesByServer] = useState<Record<string, RoleSummary[]>>({});
 
   const [serverListReady, setServerListReady] = useState(false);
   const [serverListError, setServerListError] = useState(false);
@@ -105,6 +110,7 @@ export function useWorkspaceController({
       ? route.serverId
       : (servers[0]?.id ?? defaultServerId);
   const serverMembers = serverMembersByServer[activeServerId] ?? [];
+  const serverRoles = rolesByServer[activeServerId] ?? noRoles;
   const onlineUsers = onlineUsersByServer[activeServerId] ?? (user ? [currentServerPresence(user, serverMembers)] : []);
   const activeRooms = useMemo(() => roomsForServer(rooms, activeServerId), [activeServerId, rooms]);
   const currentRoom = activeRooms.find(
@@ -124,6 +130,24 @@ export function useWorkspaceController({
     (serverId: string) =>
       fetchServerDirectory(serverId).then((response) => {
         setServerMembersByServer((current) => ({ ...current, [serverId]: response.members }));
+      }),
+    []
+  );
+
+  /**
+   * A Server's Roles and what they now make this member. Asked again on every
+   * `server:rolesChanged`, because any change to anyone's Roles can change the
+   * viewer's own Permissions, and only the server works those out (ADR-0038).
+   */
+  const refreshServerRoles = useCallback(
+    (serverId: string) =>
+      fetchServerRoles(serverId).then((response) => {
+        setRolesByServer((current) => ({ ...current, [serverId]: response.roles }));
+        setServers((current) =>
+          current.map((server) =>
+            server.id === serverId ? { ...server, permissions: response.permissions, rank: response.rank } : server
+          )
+        );
       }),
     []
   );
@@ -208,6 +232,7 @@ export function useWorkspaceController({
       setServerListReady(false);
       setOnlineUsersByServer({});
       setServerMembersByServer({});
+      setRolesByServer({});
       return;
     }
     let mounted = true;
@@ -262,10 +287,19 @@ export function useWorkspaceController({
       .catch(() => {
         if (mounted) setServerMembersByServer((current) => ({ ...current, [activeServerId]: [] }));
       });
+    void refreshServerRoles(activeServerId).catch(() => undefined);
     return () => {
       mounted = false;
     };
-  }, [activeServerId, indexRooms, hasActiveMembership, serverListReady, serverListError, accountId]);
+  }, [
+    activeServerId,
+    indexRooms,
+    hasActiveMembership,
+    serverListReady,
+    serverListError,
+    accountId,
+    refreshServerRoles
+  ]);
 
   useEffect(() => {
     if (
@@ -304,24 +338,13 @@ export function useWorkspaceController({
     };
   }, [navigate, route, serverListReady, serverListError, servers]);
 
-  // A member update can flip the viewer's own invite grant, so the server list —
-  // which gates every invite affordance in the shell — has to follow it live.
-  const applyMemberUpdate = useCallback(
-    (serverId: string, next: PresenceUser) => {
-      setOnlineUsersByServer((current) => replaceServerPresenceUserIfPresent(current, serverId, next));
-      setServerMembersByServer((current) => ({
-        ...current,
-        [serverId]: replacePresenceUser(current[serverId] ?? [], next)
-      }));
-      if (!user || next.userId !== user.id || next.canInvite === undefined) return;
-      setServers((current) =>
-        current.map((server) =>
-          server.id === serverId ? { ...server, canInvite: server.role === "owner" || Boolean(next.canInvite) } : server
-        )
-      );
-    },
-    [user]
-  );
+  const applyMemberUpdate = useCallback((serverId: string, next: PresenceUser) => {
+    setOnlineUsersByServer((current) => replaceServerPresenceUserIfPresent(current, serverId, next));
+    setServerMembersByServer((current) => ({
+      ...current,
+      [serverId]: replacePresenceUser(current[serverId] ?? [], next)
+    }));
+  }, []);
 
   const actions = {
     selectServer: async (serverId: string) => {
@@ -433,8 +456,8 @@ export function useWorkspaceController({
       applyMemberUpdate(serverId, response.user);
       return response.user;
     },
-    updateMemberPermissions: async (userId: string, canInvite: boolean) => {
-      const response = await updateServerMemberPermissions(activeServerId, userId, canInvite);
+    setMemberRole: async (userId: string, roleId: string, give: boolean) => {
+      const response = await setServerMemberRole(activeServerId, userId, roleId, give);
       applyMemberUpdate(activeServerId, response.user);
       return response.user;
     },
@@ -461,6 +484,7 @@ export function useWorkspaceController({
     activeServerId,
     onlineUsers,
     serverMembers,
+    serverRoles,
     activeRooms,
     currentRoom,
     roomGroups,
@@ -471,6 +495,7 @@ export function useWorkspaceController({
     roomServerIdsRef,
     loadAcceptedServer,
     refreshServerDirectory,
+    refreshServerRoles,
     refreshRooms,
     refreshServersAfterDeletion,
     actions,
@@ -505,6 +530,13 @@ export function useWorkspaceController({
       }),
     /** The server summary fields an owner changes, as they arrive over realtime, keyed by event handler. */
     serverSummaryUpdates: {
+      // A Role change missed while offline must not leave stale Permissions.
+      reconnected: () => {
+        void refreshServerRoles(activeServerId).catch(() => undefined);
+      },
+      rolesChanged: (serverId: string) => {
+        void refreshServerRoles(serverId).catch(() => undefined);
+      },
       serverUpdated: (serverId: string, name: string) =>
         setServers((current) => current.map((server) => (server.id === serverId ? { ...server, name } : server))),
       afkUpdated: (serverId: string, afkTimeoutMinutes: AfkTimeoutMinutes) =>
@@ -527,6 +559,11 @@ export function useWorkspaceController({
         return next;
       });
       setServerMembersByServer((current) => {
+        const next = { ...current };
+        delete next[serverId];
+        return next;
+      });
+      setRolesByServer((current) => {
         const next = { ...current };
         delete next[serverId];
         return next;

@@ -95,12 +95,9 @@ function deleteAccount(
       "update users set nickname = '', deleted_at = ?, deletion_source = ? where id = ? and deleted_at is null",
       [now, source, userId]
     );
-    run(
-      database.sqlite,
-      "update server_members set nickname = null, removed_at = ?, can_invite = 0 where user_id = ?",
-      [now, userId]
-    );
+    run(database.sqlite, "update server_members set nickname = null, removed_at = ? where user_id = ?", [now, userId]);
     run(database.sqlite, "delete from room_access where user_id = ?", [userId]);
+    run(database.sqlite, "delete from member_roles where user_id = ?", [userId]);
     revokeSessionsForUser(database.sqlite, userId, now);
     run(database.sqlite, "delete from session_tokens where session_id in (select id from sessions where user_id = ?)", [
       userId
