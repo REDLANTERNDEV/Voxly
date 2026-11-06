@@ -7,16 +7,19 @@ import { InviteComposer } from "./InviteComposer.js";
 const popoverWidth = 300;
 
 /**
- * Rail-level invite affordance for anyone allowed to create links — the owner
- * and members holding the invite grant. Mirrors the channel-create popover so
+ * Rail-level invite affordance for anyone holding Create invites (ADR-0038),
+ * also opened by the server menu's Invite people. Mirrors the channel-create popover so
  * the rail keeps one interaction model for its inline forms.
  */
 export function InviteQuickAction({
   serverId,
   serverName,
   publicUrl,
+  openRequest = 0,
   t
 }: {
+  /** Bumped by the server menu's Invite people to open this popover from elsewhere. */
+  openRequest?: number;
   serverId: string;
   serverName: string;
   publicUrl: string | null;
@@ -53,6 +56,21 @@ export function InviteQuickAction({
   // Closing on a server switch avoids leaving a popover that would mint a link
   // for the server the user just navigated away from.
   useEffect(() => setIsOpen(false), [serverId]);
+
+  // A request made before this mounted is not replayed: only a new one opens it.
+  const seenRequestRef = useRef(openRequest);
+  useEffect(() => {
+    if (openRequest === seenRequestRef.current) return;
+    seenRequestRef.current = openRequest;
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      setPosition({
+        top: rect.bottom + 8,
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - popoverWidth - 8))
+      });
+    }
+    setIsOpen(true);
+  }, [openRequest]);
 
   return (
     <>

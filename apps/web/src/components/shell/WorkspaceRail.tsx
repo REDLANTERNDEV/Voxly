@@ -9,6 +9,7 @@ import { MenuSubmenu } from "../MenuSubmenu.js";
 import { openSidebarMenuFromPointer, type SidebarActionMenuController } from "./SidebarMenus.js";
 import { NavLink } from "../ui/Navigation.js";
 import { serverMark } from "../../lib/inviteJoin.js";
+import { serverMenuHeight, serverMenuItems, type ServerMenuItem } from "../../lib/serverSettings.js";
 
 type WorkspaceRailProps = Pick<
   ShellModel,
@@ -25,7 +26,16 @@ type WorkspaceRailProps = Pick<
     actionMenu: SidebarActionMenuController;
     onOpenSettings: () => void;
     onCloseDrawer: () => void;
+    /** Carries out one of the server menu's own items for that Server. */
+    onServerMenuItem: (serverId: string, item: ServerMenuItem) => void;
   };
+
+const serverMenuLabels = {
+  settings: "serverSettings.title",
+  invite: "serverMenu.invite",
+  createChannel: "serverMenu.createChannel",
+  createCategory: "serverMenu.createCategory"
+} as const;
 
 export function WorkspaceRail({
   activeServerId,
@@ -37,6 +47,7 @@ export function WorkspaceRail({
   onSelectServer,
   onOpenSettings,
   onCloseDrawer,
+  onServerMenuItem,
   actionMenu,
   serverNotificationState,
   serverNotificationTime,
@@ -90,7 +101,10 @@ export function WorkspaceRail({
             const state = serverNotificationState?.servers.find((state) => state.serverId === server.id);
             const count = serverUnreadCount(state, serverNotificationTime);
             const muted = serverNotificationsMuted(state, serverNotificationTime);
-            const menuKey = `server-notifications:${server.id}`;
+            // One menu for the Server, from its icon here and from its name in
+            // the channel rail (design decision 14).
+            const menuKey = `server-menu:${server.id}`;
+            const items = serverMenuItems(server);
             return (
               <div className="workspace-server" key={server.id}>
                 <button
@@ -102,7 +116,9 @@ export function WorkspaceRail({
                   aria-current={server.id === activeServerId ? "page" : undefined}
                   aria-busy={switching === server.id}
                   disabled={switching !== null}
-                  onContextMenu={(event) => openSidebarMenuFromPointer(event, actionMenu, menuKey, 220, 100)}
+                  onContextMenu={(event) =>
+                    openSidebarMenuFromPointer(event, actionMenu, menuKey, 220, serverMenuHeight(items.length))
+                  }
                   onKeyDown={(event) => {
                     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
                     event.preventDefault();
@@ -112,7 +128,7 @@ export function WorkspaceRail({
                       x: rect.right,
                       y: rect.top,
                       menuWidth: 220,
-                      menuHeight: 100,
+                      menuHeight: serverMenuHeight(items.length),
                       trigger: event.currentTarget
                     });
                   }}
@@ -139,9 +155,22 @@ export function WorkspaceRail({
                 {actionMenu.active?.key === menuKey ? (
                   <ContextMenu
                     descriptor={actionMenu.active}
-                    label={t("server.notificationMenu", { server: server.name })}
+                    label={t("serverMenu.label", { server: server.name })}
                     onClose={actionMenu.close}
                   >
+                    {items.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          actionMenu.close();
+                          onServerMenuItem(server.id, item);
+                        }}
+                      >
+                        {t(serverMenuLabels[item])}
+                      </button>
+                    ))}
                     <MenuSubmenu
                       label={t("server.muteNotifications")}
                       items={[

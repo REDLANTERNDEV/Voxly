@@ -77,8 +77,8 @@ _Avoid_: Message emoji, rating
 
 **Welcome notice**:
 The line a Server posts in a member's name when they join through an Invite,
-which other members answer by waving. On by default; the Server owner turns it
-off or chooses its channel. It carries no text of its own: each reader sees it
+which other members answer by waving. On by default; anyone holding Manage server turns
+it off or chooses its channel. It carries no text of its own: each reader sees it
 in their own language.
 _Avoid_: System message, join message, greeting
 

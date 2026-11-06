@@ -1,6 +1,6 @@
 import { downloadVoiceDiagnostics } from "../../lib/voiceDiagnostics.js";
 import { useRef, useState } from "react";
-import { activeServerRole, initial, voiceSignalPresentation } from "../../app/presentation.js";
+import { initial, voiceSignalPresentation } from "../../app/presentation.js";
 import type { ShellActions, ShellModel, Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
 import { CameraIcon, HangUpIcon, HeadsetIcon, MicIcon, ScreenIcon } from "../../components/ui/Icons.js";
@@ -52,7 +52,6 @@ type VoiceDockProps = Pick<
   };
 
 export function VoiceDock(props: VoiceDockProps) {
-  const canManageServer = activeServerRole(props) === "owner";
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const accountMenuRef = useRef<HTMLDetailsElement>(null);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -236,7 +235,7 @@ export function VoiceDock(props: VoiceDockProps) {
                 timeFormat={props.timeFormat}
                 t={props.t}
                 ownerPanelHref={
-                  canManageServer ? `/app/server/${encodeURIComponent(props.activeServerId)}/owner` : null
+                  props.user.role === "owner" ? `/app/server/${encodeURIComponent(props.activeServerId)}/owner` : null
                 }
                 onPresenceChoiceChange={props.onPresenceChoiceChange}
                 onNavigate={props.onNavigate}

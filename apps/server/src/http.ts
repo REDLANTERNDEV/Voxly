@@ -21,10 +21,10 @@
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import type { PresenceUser, VoiceModerationState } from "@voxly/shared";
+import type { Permission, PresenceUser, VoiceModerationState } from "@voxly/shared";
 import { requireOwner, requireUser } from "./auth/sessions.js";
 import type { VoxlyDatabase } from "./db/database.js";
-import { requireServerMember, requireServerOwner } from "./members.js";
+import { hasPermission, requireServerMember, requireServerOwner } from "./members.js";
 import type { VoxlyIoServer } from "./socket.js";
 import type { TurnstileConfig } from "./turnstile.js";
 
@@ -180,4 +180,25 @@ export function requireJoinedServer<Shape extends z.ZodRawShape = Record<string,
 ) {
   const scope = requireServerScope(context, request, reply, extra, "member");
   return scope && { user: scope.actor, ...scope.params };
+}
+
+/**
+ * An active member of the server the path names who holds one Permission there
+ * (ADR-0038), plus the path parameters. A member without it hears the generic
+ * 403 `forbidden`; a stranger hears `server_forbidden`, as everywhere else.
+ */
+export function requirePermittedServer<Shape extends z.ZodRawShape = Record<string, never>>(
+  context: RouteContext,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  permission: Permission,
+  extra: Shape = {} as Shape
+) {
+  const scope = requireServerScope(context, request, reply, extra, "member");
+  if (!scope) return null;
+  if (!hasPermission(context.database.sqlite, scope.params.serverId, scope.actor.id, permission)) {
+    reply.code(403).send({ error: "forbidden" });
+    return null;
+  }
+  return { user: scope.actor, ...scope.params };
 }

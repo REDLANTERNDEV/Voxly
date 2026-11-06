@@ -22,6 +22,9 @@ import { VoiceDock } from "./VoiceDock.js";
 import { selfPresenceState } from "../../lib/presenceChoice.js";
 import { StageActionsContext } from "./StageMemberActions.js";
 import { WorkspaceRail } from "./WorkspaceRail.js";
+import { ServerSettingsWindow } from "../../features/serverSettings/ServerSettingsWindow.js";
+import type { ServerMenuItem } from "../../lib/serverSettings.js";
+import type { RailRequest } from "./ChannelRail.js";
 export function AppChrome(props: ShellModel & ShellActions & { children: ReactNode; mobileTitle: string }) {
   const { onCloseAudioSettings } = props;
   const mobileRoomsRef = useRef<HTMLButtonElement | null>(null);
@@ -30,6 +33,8 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("account");
   const [settingsContextError, setSettingsContextError] = useState<TranslationKey | "">("");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
+  const [railRequest, setRailRequest] = useState<RailRequest | null>(null);
   const [nicknameTarget, setNicknameTarget] = useState<{
     user: PresenceUser;
     returnFocus: HTMLButtonElement | null;
@@ -74,6 +79,21 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
     [activeActionMenu, closeActionMenu, openActionMenu]
   );
   const openProfile = useCallback(() => setProfileOpen(true), []);
+  const { activeServerId, onSelectServer } = props;
+  // The server menu acts on the Server it was opened for, which may not be the
+  // one on screen yet: switch to it first, then do what was asked there.
+  const runServerMenuItem = useCallback(
+    async (serverId: string, item: ServerMenuItem) => {
+      if (serverId !== activeServerId) await onSelectServer(serverId);
+      if (item === "settings") {
+        setServerSettingsOpen(true);
+        return;
+      }
+      const kind = item === "invite" ? "invite" : item === "createChannel" ? "room" : "category";
+      setRailRequest((current) => ({ kind, nonce: (current?.nonce ?? 0) + 1 }));
+    },
+    [activeServerId, onSelectServer]
+  );
   const selfPresence = selfPresenceState(
     props.presenceChoice.status,
     props.onlineUsers.find((member) => member.userId === props.user.id)?.status
@@ -203,8 +223,12 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
             mobileRoomsRef.current?.focus();
           }}
           onOpenSettings={() => openSettings()}
+          onServerMenuItem={(serverId, item) => {
+            void runServerMenuItem(serverId, item).catch(() => undefined);
+          }}
         />
         <ChannelRail
+          railRequest={railRequest}
           mobileStatus={
             <div className="mobile-drawer-status">
               <VoiceDock
@@ -403,6 +427,27 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           contextError={settingsContextError}
           onClose={closeSettings}
           onOpenProfile={openProfile}
+        />
+      ) : null}
+      {serverSettingsOpen ? (
+        <ServerSettingsWindow
+          user={props.user}
+          servers={props.servers}
+          serverRoles={props.serverRoles}
+          activeServerId={props.activeServerId}
+          rooms={props.rooms}
+          appConfig={props.appConfig}
+          language={props.language}
+          timeFormat={props.timeFormat}
+          t={props.t}
+          onUpdateServerName={props.onUpdateServerName}
+          onSetAfkTimeout={props.onSetAfkTimeout}
+          onSetWelcome={props.onSetWelcome}
+          onDeleteServer={props.onDeleteServer}
+          onModerateMember={props.onModerateMember}
+          onVoiceModeration={props.onVoiceModeration}
+          onUpdateMemberNickname={props.onUpdateMemberNickname}
+          onClose={() => setServerSettingsOpen(false)}
         />
       ) : null}
       {/* A sibling of Settings, never a child: React portal events bubble through

@@ -24,7 +24,8 @@ web serving, and owner recovery CLIs.
   for socket handlers: the `RouteContext` a route module is handed, the
   `RealtimeModeration` vocabulary it speaks to reach live state, the shared
   rate-limit tiers, and the preamble every server-scoped route runs —
-  `requireOwnedServer` / `requireJoinedServer`, plus the `serverIdParam`,
+  `requireOwnedServer` / `requireJoinedServer` / `requirePermittedServer`
+  (one Permission, ADR-0038), plus the `serverIdParam`,
   `roomIdParam` and `userIdParam` path vocabulary. A new server-scoped route
   starts from that preamble rather than restating the guard order; the
   exceptions are routes that must answer a malformed body before a forbidden
@@ -340,9 +341,11 @@ queries across endpoints.
 - Server deletion remains atomic while preserving global identities and audit
   history that other servers still need. Delete dependent `invite_uses` before
   deleting that server's invites.
-- Server names are owner-managed, trimmed to 2–64 characters, persisted before
-  publication, and updated only after active owner authorization in that
-  server. Record the rename in the audit log and emit the typed update only to
+- Server names are trimmed to 2–64 characters, persisted before publication,
+  and updated only by an active member holding Manage server, as are the AFK
+  timeout and the Welcome notice (`requirePermittedServer`). Deleting the
+  Server, the Invite trail and access links stay the Server owner's for good
+  (ADR-0038). Record the rename in the audit log and emit the typed update only to
   the renamed server room.
 - Invite links identify an invite, not a cached server name. Preview a valid,
   unexhausted, unrevoked, unexpired invite by joining its current server row so an

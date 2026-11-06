@@ -36,7 +36,7 @@ import {
   permissionsFor,
   rankOf,
   requireServerMember,
-  requireServerOwner,
+  requireServerPermission,
   roomReaderIds
 } from "./members.js";
 import { baselineRoomReadState } from "./readState.js";
@@ -46,6 +46,7 @@ import {
   authenticatedWriteLimit,
   requireJoinedServer,
   requireOwnedServer,
+  requirePermittedServer,
   roomIdParam,
   serverIdParam,
   type RouteContext
@@ -409,16 +410,16 @@ export function registerServerRoutes(context: RouteContext) {
   });
 
   fastify.patch("/api/servers/:serverId/afk", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply);
+    const scope = requirePermittedServer(context, request, reply, "manageServer");
     if (!scope) return;
-    const { owner, serverId } = scope;
+    const { user: actor, serverId } = scope;
     const { afkTimeoutMinutes } = z
       .object({
         afkTimeoutMinutes: z.number().int().refine(isAfkTimeoutMinutes, { message: "unsupported_timeout" })
       })
       .parse(request.body);
     run(database.sqlite, "update servers set afk_timeout_minutes = ? where id = ?", [afkTimeoutMinutes, serverId]);
-    audit(database, owner.id, "server.afkTimeoutChanged", null, serverId);
+    audit(database, actor.id, "server.afkTimeoutChanged", null, serverId);
     database.save();
     // Every member runs their own idle clock, so all of them need the new value
     // rather than only the owner who set it.
@@ -427,9 +428,9 @@ export function registerServerRoutes(context: RouteContext) {
   });
 
   fastify.patch("/api/servers/:serverId/welcome", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply);
+    const scope = requirePermittedServer(context, request, reply, "manageServer");
     if (!scope) return;
-    const { owner, serverId } = scope;
+    const { user: actor, serverId } = scope;
     const { welcomeNotices, welcomeRoomId } = z
       .object({ welcomeNotices: z.boolean(), welcomeRoomId: z.string().min(1).max(128).nullable() })
       .parse(request.body);
@@ -441,33 +442,34 @@ export function registerServerRoutes(context: RouteContext) {
       welcomeRoomId,
       serverId
     ]);
-    audit(database, owner.id, "server.welcomeChanged", null, serverId);
+    audit(database, actor.id, "server.welcomeChanged", null, serverId);
     database.save();
-    // Owners elsewhere in the server keep the setting on screen too.
+    // Everyone else with Server settings open keeps the setting on screen too.
     io.to(`server:${serverId}`).emit("server:welcomeUpdated", { serverId, welcomeNotices, welcomeRoomId });
     return { welcomeNotices, welcomeRoomId };
   });
 
   fastify.patch("/api/servers/:serverId", async (request, reply) => {
-    // Spelled out rather than using `requireOwnedServer`: this route answers a
-    // malformed body before it answers a caller who does not own the server,
-    // and which of the two a client sees is observable.
-    const owner = requireOwner(database, request, reply, secureCookies);
-    if (!owner) return;
+    // Spelled out rather than using `requirePermittedServer`: this route
+    // answers a malformed body before it answers a caller without Manage
+    // server, and which of the two a client sees is observable.
+    const actor = requireUser(database, request, reply, secureCookies);
+    if (!actor) return;
     const { serverId } = z.object({ serverId: serverIdParam }).parse(request.params);
     const { name } = z.object({ name: serverNameSchema }).parse(request.body);
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    const membership = requireServerPermission(database, serverId, actor.id, "manageServer", reply);
+    if (!membership) return;
     run(database.sqlite, "update servers set name = ? where id = ?", [name, serverId]);
-    audit(database, owner.id, "server.renamed", null, serverId);
+    audit(database, actor.id, "server.renamed", null, serverId);
     database.save();
     io.to(`server:${serverId}`).emit("server:updated", { serverId, name });
     return {
       server: {
         id: serverId,
         name,
-        role: "owner" as const,
-        permissions: permissionsFor(database.sqlite, serverId, owner.id),
-        rank: rankOf(database.sqlite, serverId, owner.id)
+        role: membership.role,
+        permissions: permissionsFor(database.sqlite, serverId, actor.id),
+        rank: rankOf(database.sqlite, serverId, actor.id)
       }
     };
   });

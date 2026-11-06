@@ -62,11 +62,8 @@ describe("member volume menus", () => {
     assert.match(app, /if\s+\(\s*items\.length\s+===\s+0\s*\)\s+\{\s*return\s+null;\s*\}\s*/);
     assert.match(app, /className="dash-table\s+is-members"/);
     assert.match(app, /className="dash-cell\s+is-actions"/);
-    assert.match(app, /memberRoleLabel\(\s*member,\s+props\.t,\s+props\.serverRoles\s*\)/);
-    assert.match(
-      app,
-      /member\.bannedAt\s+\?\s+props\.t\(\s*"common\.banned"\s*\)\s+:\s+props\.t\(\s*"common\.active"\s*\)/
-    );
+    assert.match(app, /memberRoleLabel\(\s*member,\s+t,\s+props\.serverRoles\s*\)/);
+    assert.match(app, /member\.bannedAt\s+\?\s+t\(\s*"common\.banned"\s*\)\s+:\s+t\(\s*"common\.active"\s*\)/);
     // The mark dropped its label, so the label has to survive as the name.
     assert.match(
       app,

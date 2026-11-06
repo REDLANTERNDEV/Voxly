@@ -9,7 +9,10 @@ describe("sidebar brand identity", () => {
     const brand = app.match(/function BrandLockup[\s\S]*?\n}\n\nfunction NavLink/)?.[0] ?? "";
 
     assert.doesNotMatch(rail, /<BrandLockup|<ServerSwitcher/);
-    assert.match(rail, /className="rail-head"[\s\S]*?<strong className="rail-server-name"[\s\S]*?<InviteQuickAction/);
+    assert.match(
+      rail,
+      /className="rail-head"[\s\S]*?<button\s+className="rail-server-name rail-server-menu"[\s\S]*?<InviteQuickAction/
+    );
     assert.match(brand, /\{subtitle \? <span>\{subtitle\}<\/span> : null\}/);
   });
 });

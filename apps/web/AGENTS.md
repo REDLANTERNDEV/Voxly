@@ -206,7 +206,7 @@ requirement.
 - Offer a Bot the voice actions it can be the subject of — mute, deafen and
   disconnect — and withhold the ones that presuppose a person: kick, ban, Roles,
   access link **and a move**. Do it in every surface that presents them:
-  both sidebars and the owner panel. The server refuses all five for a Bot, so
+  both sidebars and Server settings. The server refuses all five for a Bot, so
   offering them would be a menu of guaranteed errors — and the client hiding them
   is presentation, never the enforcement.
 - A move is the one that reads like it belongs on the other list, so gate it on
@@ -214,25 +214,48 @@ requirement.
   summoned into a room by somebody in it and never pushed sideways; ADR-0010
   records what each half of a move would otherwise do. Mute and disconnect are
   honoured by the bot process itself (ADR-0009).
-- The normal server switcher is navigation for owners and members. Server
-  creation and deletion belong in the selected owner-server context.
+- The normal server switcher is navigation for owners and members. Creating a
+  Server belongs to the owner panel's installation overview; deleting one to
+  Server settings › Delete server, the Server owner's alone.
 - Show the Voxly mark once in authenticated navigation: in the workspace rail
   on desktop and the top bar on narrow screens. The channel rail places the server name beside a visible invite action.
   Server switching uses letter avatars in the workspace rail; on phones, it
   opens alongside the channel drawer with an explicit close control. The active server
-  name remains visible in the channel rail header.
+  name remains visible in the channel rail header, as the button that opens the
+  server menu.
+- **The server menu** (design decision 14) opens from the Server's name in the
+  channel rail and from a right-click, Context Menu key or Shift+F10 on its
+  icon in the workspace rail: one menu, keyed `server-menu:<id>`, rendered by
+  the workspace rail. Its items come from `serverMenuItems`, read off the
+  Server's reported `permissions` — Server settings when any section is
+  reachable, Invite people on Create invites, Create channel and Create
+  category while channel routes still need the owner — followed by the
+  notification mutes. An item for a Server not on screen switches to it first.
+  Invite people opens the rail's invite popover, and the create items open the
+  channel organizer's form, so each has one implementation.
+- **Server settings** (decisions 15 and 20) is a full-screen window over the
+  shell, below the shared menu layer so a member menu inside it still draws on
+  top. Its sections come from `serverSettingsSections`: Overview on Manage
+  server; Members while membership routes need the owner; and, under an "Owner
+  only" heading, Invite trail, Access links and Delete server. It recomputes
+  them from the live `ServerSummary`, so a lost Permission closes its section
+  and an empty list closes the window. Escape closes it unless a dialog or menu
+  inside it is open. Under 900px it is two steps: the section list, then one
+  section full-screen with a named back button that returns focus to that
+  section's entry.
 - Keep selected-server settings and destructive actions separate from the new
   server creation section. Creation fields affect only the new server.
 - Owners rename text and voice channels through the shared channel action menu
   and focused dialog. Acknowledged names update in place; IDs and calls survive.
 - Uncategorized channels render under one text heading and one voice heading,
   preserving saved order within each type. Layout moves use that displayed order.
-- The selected owner-server context also owns server renaming. Trim and enforce
+- Server settings › Overview owns server renaming. Trim and enforce
   the server's 2–64 character contract, update local navigation from the HTTP
-  acknowledgement, and apply scoped realtime name updates to the matching
-  server summary without disturbing other memberships.
-- Owner invites, access links, membership actions, and history operate on that
-  selected owner context; do not reintroduce a second invite target selector.
+  acknowledgement by changing only the summary's name, and apply scoped
+  realtime name updates to the matching server summary without disturbing
+  other memberships.
+- The Invite trail, access links, membership actions, and history operate on
+  the Server whose settings are open; do not reintroduce a target selector.
 - Each Invite row names its Inviter by nickname in that Server and Mention
   code, and opens its Invite trail in place: who joined, when, and their state
   (Active, Kicked, Banned, Deleted), each its own. Past invites (expired, used
@@ -248,9 +271,9 @@ requirement.
   default. An accessible eye control may reveal and hide the complete link;
   copy actions always use the complete one-time value. Masking is presentation
   only and must not place a transformed value into the clipboard or API state.
-- The owner dashboard and the rail's invite popover share one composer, so the label,
-  expiry, capacity, and masked-link contracts cannot drift between the owner
-  dashboard and the rail popover.
+- Every invite is created through the one composer in the rail's invite
+  popover, which the server menu's Invite people also opens, so the label,
+  expiry, capacity, and masked-link contracts have one implementation.
 - A dashed "+" after the last server in the workspace rail opens the join
   dialog for every member. It only joins: one field, read by
   `parseInviteInput`. This Installation's Invite opens the invite card, so there
@@ -333,10 +356,11 @@ requirement.
   pending-count badge; reloads may refresh the badge but must not replay the
   notification. Direct deletion requires the exact global nickname plus a
   second permanent-action confirmation.
-- Those two sections sit under their own `Installation` heading in the owner
-  navigation, and while either is open the `Target server` picker gives way to
-  a label saying it covers every Server: under the picker they read as a filter
-  that does not work. An Account's details show the Invite each Membership
+- The owner panel covers the whole installation and nothing about one Server
+  (decision 16): an installation overview (creating a Server), `Deletion
+requests` and `Accounts`, under one `Installation` heading, with a label
+  saying it covers every Server and no Target server picker. Only the
+  Installation owner opens it; the account card offers it to them alone. An Account's details show the Invite each Membership
   joined through and the people its Invites brought in, grouped by Server;
   every name but a Deleted account's opens that Account, and the heading takes
   focus again.
@@ -417,7 +441,7 @@ requirement.
   apart, and its time. Everyone but the member it welcomes gets one wave button,
   hidden once their wave is in the loaded history or the server answers 409. It
   offers no edit. A reply to a notice quotes what happened, not an empty body.
-  The owner's switch and channel live in the selected owner-server context.
+  The switch and channel live in Server settings › Overview.
 - A reply renders its quote from `replyToMessageId`, not from `replyTo`. A
   target that has been deleted keeps the strip and says so; silently demoting
   the message to an ordinary one loses the fact that it was an answer.
@@ -466,8 +490,8 @@ requirement.
 
 - Sidebar rows with actions open the shared portal menu from secondary click or
   ellipsis. Server avatars omit the ellipsis: retain secondary click and keyboard
-  menus, and expose Server notification actions through the mobile Server-name
-  header button. Left-rail voice-participant rows are the deliberate exception on a
+  menus, and expose Server notification actions through the server menu, which
+  the Server-name header button opens at every width. Left-rail voice-participant rows are the deliberate exception on a
   fine pointer: hide their ellipsis in CSS to preserve status-icon symmetry,
   keep the row focusable, and open the same menu with secondary click, the
   Context Menu key, or Shift+F10. Rows without actions retain the browser
@@ -593,7 +617,7 @@ requirement.
 - Self-managed mute/deafen icons are neutral gray. Owner-enforced mute/deafen
   icons are red and take precedence; owner deafen alone shows only the red
   headset. Keep accessible localized names while remaining visually icon-only.
-- Owner voice moderation is available for ordinary members in the owner panel
+- Owner voice moderation is available for ordinary members in Server settings › Members
   regardless of presence and in participant menus while they are in voice.
 - Keep the left channel rail visually quiet: text/voice section headings do not
   show room totals, and voice-channel rows do not show participant totals.

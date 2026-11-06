@@ -17,17 +17,16 @@ describe("server and channel deletion UI", () => {
     assert.doesNotMatch(channelRail, /onRequestDelete=/);
   });
 
-  it("places server lifecycle actions in the owner server context", () => {
-    const app = readAppSource();
-    const ownerPanel = app.match(/function\s+OwnerPanel[\s\S]*?\n}\n\nfunction\s+AppChrome/)?.[0] ?? "";
+  it("places one Server's lifecycle in Server settings and new Servers in the owner panel", () => {
+    const ownerPanel = readFileSync("src/features/owner/OwnerPanel.tsx", "utf8");
+    const window = readFileSync("src/features/serverSettings/ServerSettingsWindow.tsx", "utf8");
 
-    assert.match(ownerPanel, /className="owner-server-context"/);
-    assert.match(ownerPanel, /function\s+OwnerServerContext/);
-    assert.match(ownerPanel, /encodeURIComponent\(\s*event\.currentTarget\.value\s*\)[\s\S]*?\/owner/);
+    assert.match(ownerPanel, /<CreateServerSection/);
     assert.match(ownerPanel, /props\.onCreateServer/);
-    assert.match(ownerPanel, /props\.onUpdateServerName/);
-    assert.match(ownerPanel, /onRename=\{\s*props\.onUpdateServerName\s*\}/);
-    assert.match(ownerPanel, /props\.onDeleteServer/);
+    assert.doesNotMatch(ownerPanel, /dashServerSelect|owner\.targetServer|onDeleteServer|onUpdateServerName/);
+    assert.match(window, /onRename=\{\s*props\.onUpdateServerName\s*\}/);
+    assert.match(window, /props\s*\.onDeleteServer\(\)/);
+    assert.match(window, /confirmationText=\{\s*server\.name\s*\}/);
     assert.doesNotMatch(ownerPanel, /InviteTargetSelector/);
   });
 

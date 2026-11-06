@@ -8,7 +8,7 @@ import {
 } from "@voxly/shared";
 import { useEffect, useState } from "react";
 import type { Translate } from "../../app/types.js";
-import { EditIcon, EyeIcon, PlusIcon, TrashIcon } from "../../components/ui/Icons.js";
+import { EditIcon, EyeIcon, PlusIcon } from "../../components/ui/Icons.js";
 import { maskSecretLink } from "../../lib/invites.js";
 import type { ServerSummary } from "../../types.js";
 export function SecretLinkDisplay({ value, t }: { value: string; t: Translate }) {
@@ -31,49 +31,42 @@ export function SecretLinkDisplay({ value, t }: { value: string; t: Translate })
   );
 }
 
-export function OwnerServerContext({
-  activeServerId,
-  servers,
+/**
+ * One Server's name, AFK timeout and Welcome notice: Server settings ›
+ * Overview, on Manage server (ADR-0038). The server re-checks every save.
+ */
+export function ServerOverviewSettings({
+  server,
   t,
-  onCreate,
   onRename,
   onSetAfkTimeout,
   textRooms,
-  onSetWelcome,
-  onRequestDelete
+  onSetWelcome
 }: {
-  activeServerId: string;
-  servers: ServerSummary[];
+  server: ServerSummary;
   t: Translate;
-  onCreate: (name: string) => Promise<void>;
   onRename: (name: string) => Promise<ServerSummary>;
   onSetAfkTimeout: (minutes: AfkTimeoutMinutes) => Promise<void>;
-  /** The active server's text channels, in sidebar order. */
+  /** The Server's text channels, in sidebar order. */
   textRooms: RoomSummary[];
   onSetWelcome: (settings: ServerWelcomeSettings) => Promise<void>;
-  onRequestDelete: () => void;
 }) {
   const [afkStatus, setAfkStatus] = useState("");
   const [welcomeStatus, setWelcomeStatus] = useState("");
-  const [name, setName] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
-  const [error, setError] = useState("");
   const [renameName, setRenameName] = useState("");
   const [renameStatus, setRenameStatus] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
-  const ownerServers = servers.filter((server) => server.role === "owner");
-  const activeServer = ownerServers.find((server) => server.id === activeServerId);
 
   useEffect(() => {
-    setRenameName(activeServer?.name ?? "");
+    setRenameName(server.name);
     setRenameStatus("");
-  }, [activeServer?.id, activeServer?.name]);
+  }, [server.id, server.name]);
 
   return (
     <div className="owner-server-context">
       <section className="owner-current-server" aria-labelledby="ownerServerContextTitle">
         <div className="owner-server-context-copy">
-          <h2 id="ownerServerContextTitle">{t("server.current", { server: activeServer?.name ?? "" })}</h2>
+          <h2 id="ownerServerContextTitle">{t("server.current", { server: server.name })}</h2>
           <p className="muted small">{t("server.currentCopy")}</p>
         </div>
         <form
@@ -106,11 +99,7 @@ export function OwnerServerContext({
               onChange={(event) => setRenameName(event.currentTarget.value)}
             />
           </label>
-          <button
-            className="btn btn-primary"
-            type="submit"
-            disabled={isRenaming || renameName.trim() === activeServer?.name}
-          >
+          <button className="btn btn-primary" type="submit" disabled={isRenaming || renameName.trim() === server.name}>
             <EditIcon />
             <span>{t("common.save")}</span>
           </button>
@@ -124,7 +113,7 @@ export function OwnerServerContext({
           <select
             className="input"
             id="ownerServerAfkTimeout"
-            value={activeServer?.afkTimeoutMinutes ?? DEFAULT_AFK_TIMEOUT_MINUTES}
+            value={server.afkTimeoutMinutes ?? DEFAULT_AFK_TIMEOUT_MINUTES}
             onChange={(event) => {
               const minutes = Number(event.currentTarget.value);
               if (!isAfkTimeoutMinutes(minutes)) return;
@@ -147,116 +136,108 @@ export function OwnerServerContext({
             {afkStatus}
           </span>
         </label>
-        {activeServer ? (
-          <fieldset className="form-field owner-server-welcome">
-            <legend>{t("owner.welcomeNotices")}</legend>
-            <label className="owner-server-welcome-toggle">
-              <input
-                type="checkbox"
-                checked={activeServer.welcomeNotices}
-                onChange={(event) => {
-                  setWelcomeStatus("");
-                  void onSetWelcome({
-                    welcomeNotices: event.currentTarget.checked,
-                    welcomeRoomId: activeServer.welcomeRoomId
-                  }).catch(() => setWelcomeStatus(t("owner.welcomeFailed")));
-                }}
-              />
-              <span>{t("owner.welcomeNoticesHint")}</span>
-            </label>
-            <label className="owner-server-welcome-room" htmlFor="ownerServerWelcomeRoom">
-              <span>{t("owner.welcomeRoom")}</span>
-              <select
-                className="input"
-                id="ownerServerWelcomeRoom"
-                disabled={!activeServer.welcomeNotices}
-                value={activeServer.welcomeRoomId ?? ""}
-                onChange={(event) => {
-                  setWelcomeStatus("");
-                  void onSetWelcome({
-                    welcomeNotices: activeServer.welcomeNotices,
-                    welcomeRoomId: event.currentTarget.value || null
-                  }).catch(() => setWelcomeStatus(t("owner.welcomeFailed")));
-                }}
-              >
-                <option value="">{t("owner.welcomeRoomTop")}</option>
-                {/* A Welcome notice in a channel the newcomer cannot read greets nobody (ADR-0037). */}
-                {textRooms
-                  .filter((room) => !room.isPrivate)
-                  .map((room) => (
-                    <option key={room.id} value={room.id}>
-                      # {room.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <span className="small" aria-live="polite">
-              {welcomeStatus}
-            </span>
-          </fieldset>
-        ) : null}
-        <div className="owner-server-danger">
-          <div>
-            <h3>{t("server.delete")}</h3>
-            <p className="muted small">{t("server.deleteCopy")}</p>
-          </div>
-          <button
-            className="btn btn-danger"
-            type="button"
-            disabled={ownerServers.length <= 1}
-            onClick={onRequestDelete}
-          >
-            <TrashIcon />
-            <span>{t("server.delete")}</span>
-          </button>
-        </div>
-      </section>
-      <section className="owner-new-server" aria-labelledby="ownerServerCreateTitle">
-        <h2 id="ownerServerCreateTitle">{t("server.createNew")}</h2>
-        <p className="muted small">{t("server.createCopy")}</p>
-        <form
-          className="owner-server-create-form"
-          id="owner-server-create-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const nextName = name.trim();
-            if (nextName.length < 2 || nextName.length > 64) {
-              setError(t("server.nameLength"));
-              return;
-            }
-            setIsCreating(true);
-            setError("");
-            void onCreate(nextName)
-              .then(() => {
-                setName("");
-              })
-              .catch(() => setError(t("server.createFailed")))
-              .finally(() => setIsCreating(false));
-          }}
-        >
-          <label className="form-field" htmlFor="ownerServerName">
-            <span>{t("server.name")}</span>
+        <fieldset className="form-field owner-server-welcome">
+          <legend>{t("owner.welcomeNotices")}</legend>
+          <label className="owner-server-welcome-toggle">
             <input
-              className="input"
-              id="ownerServerName"
-              name="ownerServerName"
-              value={name}
-              onChange={(event) => setName(event.currentTarget.value)}
-              autoComplete="off"
-              maxLength={64}
+              type="checkbox"
+              checked={server.welcomeNotices}
+              onChange={(event) => {
+                setWelcomeStatus("");
+                void onSetWelcome({
+                  welcomeNotices: event.currentTarget.checked,
+                  welcomeRoomId: server.welcomeRoomId
+                }).catch(() => setWelcomeStatus(t("owner.welcomeFailed")));
+              }}
             />
+            <span>{t("owner.welcomeNoticesHint")}</span>
           </label>
-          <button className="btn btn-primary" type="submit" disabled={isCreating}>
-            <PlusIcon />
-            <span>{isCreating ? t("server.creating") : t("server.create")}</span>
-          </button>
-          {error ? (
-            <p className="error-text" aria-live="polite">
-              {error}
-            </p>
-          ) : null}
-        </form>
+          <label className="owner-server-welcome-room" htmlFor="ownerServerWelcomeRoom">
+            <span>{t("owner.welcomeRoom")}</span>
+            <select
+              className="input"
+              id="ownerServerWelcomeRoom"
+              disabled={!server.welcomeNotices}
+              value={server.welcomeRoomId ?? ""}
+              onChange={(event) => {
+                setWelcomeStatus("");
+                void onSetWelcome({
+                  welcomeNotices: server.welcomeNotices,
+                  welcomeRoomId: event.currentTarget.value || null
+                }).catch(() => setWelcomeStatus(t("owner.welcomeFailed")));
+              }}
+            >
+              <option value="">{t("owner.welcomeRoomTop")}</option>
+              {/* A Welcome notice in a channel the newcomer cannot read greets nobody (ADR-0037). */}
+              {textRooms
+                .filter((room) => !room.isPrivate)
+                .map((room) => (
+                  <option key={room.id} value={room.id}>
+                    # {room.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <span className="small" aria-live="polite">
+            {welcomeStatus}
+          </span>
+        </fieldset>
       </section>
     </div>
+  );
+}
+
+/** A new Server, separate from every existing one: the owner panel's installation overview. */
+export function CreateServerSection({ t, onCreate }: { t: Translate; onCreate: (name: string) => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <section className="owner-new-server" aria-labelledby="ownerServerCreateTitle">
+      <h2 id="ownerServerCreateTitle">{t("server.createNew")}</h2>
+      <p className="muted small">{t("server.createCopy")}</p>
+      <form
+        className="owner-server-create-form"
+        id="owner-server-create-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const nextName = name.trim();
+          if (nextName.length < 2 || nextName.length > 64) {
+            setError(t("server.nameLength"));
+            return;
+          }
+          setIsCreating(true);
+          setError("");
+          void onCreate(nextName)
+            .then(() => {
+              setName("");
+            })
+            .catch(() => setError(t("server.createFailed")))
+            .finally(() => setIsCreating(false));
+        }}
+      >
+        <label className="form-field" htmlFor="ownerServerName">
+          <span>{t("server.name")}</span>
+          <input
+            className="input"
+            id="ownerServerName"
+            name="ownerServerName"
+            value={name}
+            onChange={(event) => setName(event.currentTarget.value)}
+            autoComplete="off"
+            maxLength={64}
+          />
+        </label>
+        <button className="btn btn-primary" type="submit" disabled={isCreating}>
+          <PlusIcon />
+          <span>{isCreating ? t("server.creating") : t("server.create")}</span>
+        </button>
+        {error ? (
+          <p className="error-text" aria-live="polite">
+            {error}
+          </p>
+        ) : null}
+      </form>
+    </section>
   );
 }

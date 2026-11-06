@@ -298,17 +298,19 @@ export function AppRoutes({
     );
   }
   if (!shellProps) return renderSurface(<AppShellSkeleton t={t} />);
-  if (route.name === "owner" && shellProps.servers.find((server) => server.id === route.serverId)?.role !== "owner")
+  // The owner panel covers the whole installation, so only the Installation owner opens it (ADR-0038).
+  if (
+    route.name === "owner" &&
+    (shellProps.user.role !== "owner" || !shellProps.servers.some((server) => server.id === route.serverId))
+  )
     return renderSurface(<AppShellSkeleton t={t} />);
   if (route.name === "owner")
     return renderSurface(
       <OwnerPanel
         user={shellProps.user}
         currentNickname={shellProps.currentNickname}
-        servers={shellProps.servers}
         activeServerId={shellProps.activeServerId}
         rooms={shellProps.rooms}
-        appConfig={shellProps.appConfig}
         roomHistory={shellProps.roomHistory}
         language={shellProps.language}
         timeFormat={shellProps.timeFormat}
@@ -316,14 +318,6 @@ export function AppRoutes({
         t={shellProps.t}
         onNavigate={shellProps.onNavigate}
         onCreateServer={shellProps.onCreateServer}
-        onUpdateServerName={shellProps.onUpdateServerName}
-        onSetAfkTimeout={shellProps.onSetAfkTimeout}
-        onSetWelcome={shellProps.onSetWelcome}
-        onDeleteServer={shellProps.onDeleteServer}
-        onModerateMember={shellProps.onModerateMember}
-        onVoiceModeration={shellProps.onVoiceModeration}
-        onUpdateMemberNickname={shellProps.onUpdateMemberNickname}
-        serverRoles={shellProps.serverRoles}
       />
     );
   if (route.name === "voice")

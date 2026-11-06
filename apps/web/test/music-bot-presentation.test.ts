@@ -18,7 +18,8 @@ const bot: PresenceUser = { userId: "bot", nickname: "Music", role: "member", is
 const memberPanel = readFileSync("src/components/shell/MemberPanel.tsx", "utf8");
 const channelRail = readFileSync("src/components/shell/ChannelRail.tsx", "utf8");
 const appChrome = readFileSync("src/components/shell/AppChrome.tsx", "utf8");
-const ownerPanel = readFileSync("src/features/owner/OwnerPanel.tsx", "utf8");
+const ownerPanel = readFileSync("src/features/serverSettings/ServerMembersSection.tsx", "utf8");
+const accessLinks = readFileSync("src/features/serverSettings/ServerAccessSections.tsx", "utf8");
 const styles = readFileSync("src/styles.css", "utf8");
 
 describe("bot member counts", () => {
@@ -91,7 +92,7 @@ describe("bot moderation offers", () => {
     assert.match(channelRail, /const\s+roles\s+=\s+memberRolesMenu\(\s*props,\s*member\.user\s*\)/);
   });
 
-  it("counts the owner dashboard tiles by people too", () => {
+  it("counts the Server settings member figures by people too", () => {
     assert.match(ownerPanel, /const\s+people\s+=\s+users\.filter\(\s*\(\s*member\s*\)\s+=>\s+!member\.isBot\s*\);/);
     assert.match(
       ownerPanel,
@@ -100,14 +101,15 @@ describe("bot moderation offers", () => {
     assert.doesNotMatch(ownerPanel, /value:\s+users\.length\s+-\s+activeMembers\.length/);
   });
 
-  it("splits the owner panel menu so a bot keeps voice moderation and loses the rest", () => {
+  it("splits the Server settings member menu so a bot keeps voice moderation and loses the rest", () => {
     assert.match(ownerPanel, /const\s+canVoiceModerate\s+=\s+member\.role\s+!==\s+"owner";/);
     assert.match(ownerPanel, /const\s+canManageMembership\s+=\s+canVoiceModerate\s+&&\s+!member\.isBot;/);
-    // The access link, ban and kick entries must sit under the membership guard.
+    // The ban and kick entries must sit under the membership guard.
     const membershipGroup = ownerPanel.slice(ownerPanel.search(/\{canManageMembership\s*\?\s*\(?\s*<>/));
-    assert.match(membershipGroup, /owner\.accessLink/);
     assert.match(membershipGroup, /requestBan\(\s*member\s*\)/);
     assert.match(membershipGroup, /member\.kickTitle/);
+    // Access links have their own section, which never offers one to a Bot.
+    assert.match(accessLinks, /users\.filter\(\s*\(member\)\s*=>\s*!member\.isBot\s*&&/);
   });
 });
 

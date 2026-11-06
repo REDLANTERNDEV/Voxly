@@ -73,7 +73,8 @@ describe("desktop UX polish", () => {
       onNavigate() {},
       async onSelectServer() {},
       onOpenSettings() {},
-      onCloseDrawer() {}
+      onCloseDrawer() {},
+      onServerMenuItem() {}
     };
     try {
       const html = renderToStaticMarkup(createElement(WorkspaceRail, props));

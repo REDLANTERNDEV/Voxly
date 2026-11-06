@@ -3,7 +3,7 @@ import { it } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RoomSummary } from "@voxly/shared";
 import { ChannelOrganizer } from "../src/components/shell/ChannelOrganizer.js";
-import { OwnerServerContext } from "../src/features/owner/OwnerServerContext.js";
+import { CreateServerSection, ServerOverviewSettings } from "../src/features/owner/OwnerServerContext.js";
 import { channelGroups, moveRoom, moveRoomBy, roomLayout } from "../src/lib/channelLayout.js";
 import { translate } from "../src/lib/i18n.js";
 const rooms: RoomSummary[] = ["text", "voice", "voice", "text", "voice"].map((kind, index) => ({
@@ -57,71 +57,61 @@ it("renders one heading per uncategorized channel type after interleaved creatio
   );
   assert.equal(new Set(roomLayout(moved).groups.flatMap((group) => group.roomIds)).size, rooms.length);
 });
-it("keeps existing-server controls outside the new-server section", () => {
-  const html = renderToStaticMarkup(
-    <OwnerServerContext
-      activeServerId="server"
-      servers={[
-        {
-          id: "server",
-          name: "Basement",
-          role: "owner",
-          permissions: [],
-          rank: 3,
-          afkTimeoutMinutes: 30,
-          welcomeNotices: true,
-          welcomeRoomId: null
-        }
-      ]}
+it("keeps existing-server controls apart from the new-server section", () => {
+  const creation = renderToStaticMarkup(
+    <CreateServerSection t={(key, values) => translate("en", key, values)} onCreate={noop} />
+  );
+  assert.match(creation, /Create a new server/);
+  assert.doesNotMatch(creation, /ownerServerAfkTimeout|ownerServerRename|ownerServerWelcomeRoom|btn-danger/);
+  const overview = renderToStaticMarkup(
+    <ServerOverviewSettings
+      server={{
+        id: "server",
+        name: "Basement",
+        role: "member",
+        permissions: ["manageServer"],
+        rank: 2,
+        afkTimeoutMinutes: 30,
+        welcomeNotices: true,
+        welcomeRoomId: null
+      }}
       t={(key, values) => translate("en", key, values)}
-      onCreate={noop}
       onRename={async () => {
         throw new Error("unused");
       }}
       onSetAfkTimeout={noop}
       textRooms={rooms.filter((room) => room.kind === "text")}
       onSetWelcome={noop}
-      onRequestDelete={() => {}}
     />
   );
-  const creation = html.slice(html.indexOf('class="owner-new-server"'));
-  assert.match(creation, /Create a new server/);
-  assert.doesNotMatch(creation, /ownerServerAfkTimeout|ownerServerRename|ownerServerWelcomeRoom|btn-danger/);
-  assert.match(html, /Current server: Basement/);
+  assert.match(overview, /Current server: Basement/);
+  assert.doesNotMatch(overview, /owner-new-server|btn-danger/);
 });
 it("offers the Welcome notice switch and every text channel, with the top channel as the default", () => {
   const render = (welcomeNotices: boolean, welcomeRoomId: string | null) =>
     renderToStaticMarkup(
-      <OwnerServerContext
-        activeServerId="server"
-        servers={[
-          {
-            id: "server",
-            name: "Basement",
-            role: "owner",
-            permissions: [],
-            rank: 3,
-            afkTimeoutMinutes: 30,
-            welcomeNotices,
-            welcomeRoomId
-          }
-        ]}
+      <ServerOverviewSettings
+        server={{
+          id: "server",
+          name: "Basement",
+          role: "owner",
+          permissions: [],
+          rank: 3,
+          afkTimeoutMinutes: 30,
+          welcomeNotices,
+          welcomeRoomId
+        }}
         t={(key, values) => translate("tr", key, values)}
-        onCreate={noop}
         onRename={async () => {
           throw new Error("unused");
         }}
         onSetAfkTimeout={noop}
         textRooms={rooms.filter((room) => room.kind === "text")}
         onSetWelcome={noop}
-        onRequestDelete={() => {}}
       />
     );
   const on = render(true, null);
-  const welcome = on.slice(
-    on.indexOf('class="form-field owner-server-welcome"'),
-    on.indexOf('class="owner-server-danger"')
-  );
+  const welcome = on.slice(on.indexOf('class="form-field owner-server-welcome"'), on.length);
   assert.match(welcome, /<legend>Yeni üyelere hoş geldin de<\/legend>/);
   assert.match(welcome, /type="checkbox" checked=""/);
   assert.match(welcome, /<option value="" selected="">En üstteki metin kanalı<\/option>/);

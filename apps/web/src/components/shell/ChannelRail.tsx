@@ -25,6 +25,7 @@ import {
 import { NavLink } from "../../components/ui/Navigation.js";
 import { ChannelAccessDialog } from "../../features/owner/ChannelAccessDialog.js";
 import { canMemberEnter, canOwnerModeratePerson, canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
+import { serverMenuHeight, serverMenuItems } from "../../lib/serverSettings.js";
 import { voiceChannelActivation } from "../../lib/voiceChannelActivation.js";
 import { sidebarVoiceStatusKeys, sidebarVoiceStatusLabelKeys } from "../../lib/voiceControls.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
@@ -106,7 +107,11 @@ type ChannelRailProps = Pick<
     onRequestMemberAction: (user: PresenceUser, action: MemberAction, roomId?: string) => void;
     onOpenSettings: () => void;
     mobileStatus?: ReactNode;
+    /** A server menu item asking the rail to open its invite popover or a create form. */
+    railRequest?: RailRequest | null;
   };
+
+export type RailRequest = { kind: "invite" | "room" | "category"; nonce: number };
 
 /**
  * A channel's name, and for a Private channel a muted lock that a screen
@@ -450,17 +455,17 @@ export function ChannelRail(props: ChannelRailProps) {
       }
     >
       <div className="rail-head">
-        <strong className="rail-server-name" title={activeServer?.name}>
-          {activeServer?.name ?? "Voxly"}
-        </strong>
+        {/* The Server's name opens its menu, the same one its icon's right-click
+            opens in the workspace rail (design decision 14). */}
         <button
-          className="mobile-server-menu"
+          className="rail-server-name rail-server-menu"
           type="button"
-          aria-label={props.t("server.notificationMenu", { server: activeServer?.name ?? "Voxly" })}
-          aria-haspopup="dialog"
-          aria-expanded={props.actionMenu.active?.key === `server-notifications:${props.activeServerId}`}
+          title={activeServer?.name}
+          aria-label={props.t("serverMenu.label", { server: activeServer?.name ?? "Voxly" })}
+          aria-haspopup="menu"
+          aria-expanded={props.actionMenu.active?.key === `server-menu:${props.activeServerId}`}
           onClick={(event) => {
-            const key = `server-notifications:${props.activeServerId}`;
+            const key = `server-menu:${props.activeServerId}`;
             if (props.actionMenu.active?.key === key) {
               props.actionMenu.close();
               return;
@@ -471,7 +476,7 @@ export function ChannelRail(props: ChannelRailProps) {
               x: rect.left,
               y: rect.bottom,
               menuWidth: 220,
-              menuHeight: 100,
+              menuHeight: serverMenuHeight(serverMenuItems(activeServer).length),
               trigger: event.currentTarget
             });
           }}
@@ -481,6 +486,7 @@ export function ChannelRail(props: ChannelRailProps) {
         </button>
         {canInvite ? (
           <InviteQuickAction
+            openRequest={props.railRequest?.kind === "invite" ? props.railRequest.nonce : 0}
             serverId={props.activeServerId}
             serverName={activeServer?.name ?? "Voxly"}
             publicUrl={props.appConfig.publicUrl}
@@ -494,6 +500,11 @@ export function ChannelRail(props: ChannelRailProps) {
         uncategorizedPosition={props.uncategorizedPosition}
         rooms={[...props.rooms.text, ...props.rooms.voice]}
         canManage={canManageServer}
+        createRequest={
+          props.railRequest && props.railRequest.kind !== "invite"
+            ? { kind: props.railRequest.kind, nonce: props.railRequest.nonce }
+            : null
+        }
         actionMenu={props.actionMenu}
         t={props.t}
         onCreateCategory={props.onCreateCategory}

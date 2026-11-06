@@ -82,13 +82,14 @@ describe("the Create invites Permission (ADR-0038)", () => {
     assert.match(styles, /\.rail-head\s*\{\s*[^}]*grid-template-columns:\s*minmax\(\s*0,\s+1fr\s*\)\s+auto/s);
   });
 
-  it("routes both invite surfaces through one composer", () => {
+  it("creates every invite through the one composer the rail popover holds", () => {
     const quickAction = readFileSync("src/features/invites/InviteQuickAction.tsx", "utf8");
     const ownerPanel = readFileSync("src/features/owner/OwnerPanel.tsx", "utf8");
 
     assert.match(quickAction, /<InviteComposer/);
-    assert.match(ownerPanel, /<InviteComposer/);
-    assert.doesNotMatch(ownerPanel, /createServerInvite/);
+    // The server menu's Invite people opens that same popover.
+    assert.match(quickAction, /openRequest/);
+    assert.doesNotMatch(ownerPanel, /createServerInvite|<InviteComposer/);
   });
 
   it("has no per-member invite switch left anywhere", () => {

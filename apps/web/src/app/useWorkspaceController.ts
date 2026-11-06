@@ -316,7 +316,8 @@ export function useWorkspaceController({
   useEffect(() => {
     if (route.name !== "owner" && route.name !== "text" && route.name !== "voice") return;
     const membership = servers.find((server) => server.id === route.serverId);
-    if (!serverListReady || serverListError || (membership && (route.name !== "owner" || membership.role === "owner")))
+    // The owner panel is the Installation owner's; anyone else is sent on to a channel.
+    if (!serverListReady || serverListError || (membership && (route.name !== "owner" || user?.role === "owner")))
       return;
     let cancelled = false;
     const fallbackId = membership?.id ?? servers[0]?.id;
@@ -336,7 +337,7 @@ export function useWorkspaceController({
     return () => {
       cancelled = true;
     };
-  }, [navigate, route, serverListReady, serverListError, servers]);
+  }, [navigate, route, serverListReady, serverListError, servers, user?.role]);
 
   const applyMemberUpdate = useCallback((serverId: string, next: PresenceUser) => {
     setOnlineUsersByServer((current) => replaceServerPresenceUserIfPresent(current, serverId, next));
@@ -365,7 +366,10 @@ export function useWorkspaceController({
     },
     updateServerName: async (name: string) => {
       const response = await updateServer(activeServerId, name);
-      setServers((current) => current.map((server) => (server.id === activeServerId ? response.server : server)));
+      // Only the name changed; the rest of the summary (AFK, welcome, Permissions) stays.
+      setServers((current) =>
+        current.map((server) => (server.id === activeServerId ? { ...server, name: response.server.name } : server))
+      );
       return response.server;
     },
     createRoom: async (name: string, kind: "text" | "voice", categoryId: string | null = null) => {
