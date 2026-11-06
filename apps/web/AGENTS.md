@@ -355,8 +355,8 @@ requirement.
 - Kicked members disappear from the owner member list; banned members remain
   visible so owners can unban them.
 - Nicknames are server-scoped presentation. A member may set or clear their own
-  nickname on any Server they belong to; the selected server owner may rename
-  ordinary members and their own owner identity, but never another owner. Keep the global account nickname unchanged and update directory,
+  nickname on any Server they belong to; Manage members renames someone strictly
+  below the viewer, never an owner. Keep the global account nickname unchanged and update directory,
   presence, voice, loaded messages, owner surfaces, and the local account chip
   from the effective server nickname.
 - Renaming one member from a member menu uses the shared accessible nickname
@@ -408,9 +408,9 @@ requests` and `Accounts`, under one `Installation` heading, with a label
   existing groups remain joinable and removable. Render reaction glyphs at 20px,
   counters at 12px, and controls at least 32px tall (44px on phones/touch).
   Wrap groups instead of widening the message viewport.
-- Server owners can clear one entire emoji group or every reaction in one click
-  without a confirmation dialog; ordinary members can remove only their own.
-  Gate pin and reaction-moderation controls by the selected Server role.
+- Manage messages holders can clear one entire emoji group or every reaction in
+  one click without a confirmation dialog; ordinary members can remove only
+  their own. Gate pin and reaction-moderation controls on Manage messages.
 - Pinned messages load independently of recent history. Old destinations open
   their own bounded context window, preserve scroll and unseen arrivals, and
   provide a return to latest. Context/pin fetches never advance read watermarks.
@@ -500,8 +500,8 @@ requests` and `Accounts`, under one `Installation` heading, with a label
   render at most four previews per message, sandbox provider frames, and leave
   every unknown site as an ordinary link. This is link-preview presentation,
   not a webhook or server-side metadata fetch.
-- A preview close action is visible only to the message author or selected
-  server owner. Require localized confirmation, keep the original link, and
+- A preview close action is visible only to the message author or a Manage
+  messages holder. Require localized confirmation, keep the original link, and
   apply the server-acknowledged suppression so realtime viewers and later
   history loads agree. Multiple previews are suppressed independently.
 - Preserve existing message ownership and moderation permissions in both the UI
@@ -560,9 +560,16 @@ requests` and `Accounts`, under one `Installation` heading, with a label
   closes before its existing dialog opens.
 - Owner nickname actions share the same secondary-click/ellipsis menus as
   member volume and moderation actions. Remote volume remains available to all
-  listeners; renaming someone else remains owner-gated, and both restore focus after the
+  listeners; renaming someone else takes Manage members and rank, and both restore focus after the
   dialog closes when an ellipsis opened the menu.
-- Owner disconnect, kick, and ban actions use this same shared menu from both
+- Every action on a person is offered from the viewer's Permissions and rank
+  through `canVoiceModerate` (mute, deafen, disconnect, Bots included),
+  `canMovePerson`, `canModeratePerson` (kick, ban) and `canRenameMember`, which
+  mirror the server's `outranks`: nobody acts on an owner, on themselves, or on
+  someone at or above their rank. Server settings › Members lists active
+  members with a Roles column and the same actions plus Roles ›; › Bans (Manage
+  members) lists the banned with Unban.
+- Disconnect, kick, and ban actions use this same shared menu from both
   sidebars. Keep one pending confirmation owner in the application chrome so
   labels, destructive copy, focus behavior, and execution cannot drift between
   the two surfaces.

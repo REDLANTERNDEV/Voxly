@@ -11,6 +11,7 @@ import type {
 import type { ReactNode } from "react";
 import { CameraIcon, HeadsetIcon, MicIcon, ScreenIcon } from "../components/ui/Icons.js";
 import { type LanguageCode, type TranslationKey, type VoiceErrorKey } from "../lib/i18n.js";
+import type { ModerationActor } from "../lib/memberDirectory.js";
 import { memberRoleRows, roleDisplayName, type RoleMenuRow } from "../lib/roles.js";
 import type { ConnectionHealth } from "../lib/useConnectionHealth.js";
 import type { VoiceQuality } from "../lib/useVoiceQuality.js";
@@ -19,10 +20,6 @@ import type { OwnerInvite } from "../types.js";
 import type { ShellActions, ShellModel, ThemeChoice, Translate } from "./types.js";
 import { timeFormatOptions, type TimeFormatPreference } from "../lib/timeFormat.js";
 
-export function activeServerRole(props: Pick<ShellModel, "activeServerId" | "servers">) {
-  return props.servers.find((server) => server.id === props.activeServerId)?.role ?? null;
-}
-
 /** The rail invite affordance follows the Create invites Permission the server reported. */
 export function canInviteToActiveServer(props: {
   activeServerId: string;
@@ -30,6 +27,14 @@ export function canInviteToActiveServer(props: {
 }) {
   const server = props.servers.find((item) => item.id === props.activeServerId);
   return Boolean(server?.permissions.includes("createInvites"));
+}
+
+/** The viewer as an actor in the active Server, from what the server reported. */
+export function moderationActor(
+  props: Pick<ShellModel, "activeServerId" | "servers"> & { user: { id: string } }
+): ModerationActor | undefined {
+  const server = props.servers.find((item) => item.id === props.activeServerId);
+  return server && { role: server.role, permissions: server.permissions, rank: server.rank, userId: props.user.id };
 }
 
 /**

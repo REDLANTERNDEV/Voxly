@@ -366,7 +366,11 @@ export function AppRoutes({
     <AppChrome {...shellProps} mobileTitle={shellProps.currentRoom?.name ?? shellProps.t("room.textRoom")}>
       <TextRoomScreen
         key={shellProps.currentRoom?.id}
-        canPin={shellProps.servers.find((server) => server.id === shellProps.activeServerId)?.role === "owner"}
+        canPin={Boolean(
+          shellProps.servers
+            .find((server) => server.id === shellProps.activeServerId)
+            ?.permissions.includes("manageMessages")
+        )}
         serverMembers={shellProps.serverMembers}
         onlineUsers={shellProps.onlineUsers}
         contextMessages={textRoomActions.contextMessages}

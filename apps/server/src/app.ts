@@ -7,6 +7,7 @@ import { Server } from "socket.io";
 import { z } from "zod";
 import {
   isPresenceChoiceRequest,
+  memberSettingsPermissions,
   type ClientToServerEvents,
   type PresenceUser,
   type ServerToClientEvents
@@ -20,7 +21,6 @@ import {
   authenticateSocket,
   clearSessionCookie,
   createSession,
-  requireOwner,
   requireUser,
   logoutBrowserSessions,
   sessionCookieName,
@@ -51,7 +51,9 @@ import {
   presenceChoiceFor,
   presenceStatusOf,
   publicPresence,
-  requireServerOwner,
+  outranks,
+  permissionsFor,
+  requireServerPermission,
   serverMembership,
   serverPresenceUser,
   serverPresenceUserIncludingBanned,
@@ -67,7 +69,7 @@ import { roomById } from "./rooms.js";
 import {
   authenticatedWriteLimit,
   requireJoinedServer,
-  requireOwnedServer,
+  requirePermittedServer,
   roomIdParam,
   serverIdParam,
   unauthenticatedWriteLimit,
@@ -306,7 +308,8 @@ async function readClientVersion(webDistPath: string) {
  *
  * Membership moderation stays here rather than following the owner panel out.
  * The two look alike and are not: these routes are server-scoped and answer to
- * `requireOwnedServer`, while the panel in `ownerPanel.ts` is global-owner and
+ * a Permission and rank (ADR-0038), while the panel in `ownerPanel.ts` is
+ * global-owner and
  * addresses accounts and sessions across the installation.
  *
  * Takes the same `RouteContext` the extracted modules are handed rather than
@@ -490,9 +493,17 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
   });
 
   server.get("/api/servers/:serverId/members", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply);
+    const scope = requireJoinedServer(context, request, reply);
     if (!scope) return;
     const { serverId } = scope;
+    // Server settings › Members and › Bans: anyone who may act on a member
+    // there (ADR-0038, design decision 15).
+    const held = permissionsFor(database.sqlite, serverId, scope.user.id);
+    if (!memberSettingsPermissions.some((item) => held.includes(item))) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
+    // The banned are listed only to whoever may unban them.
+    const showsBanned = held.includes("manageMembers");
     const members = all<{
       id: string;
       nickname: string;
@@ -523,19 +534,21 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
       [serverId]
     );
     return {
-      members: members.map(({ moderatorMuted, moderatorDeafened, roleIds, isBot, ...member }) => ({
-        ...member,
-        roleIds: parseRoleIds(roleIds),
-        isBot: Boolean(isBot),
-        moderation: { muted: Boolean(moderatorMuted), deafened: Boolean(moderatorDeafened) }
-      }))
+      members: members
+        .filter((member) => showsBanned || !member.bannedAt)
+        .map(({ moderatorMuted, moderatorDeafened, roleIds, isBot, ...member }) => ({
+          ...member,
+          roleIds: parseRoleIds(roleIds),
+          isBot: Boolean(isBot),
+          moderation: { muted: Boolean(moderatorMuted), deafened: Boolean(moderatorDeafened) }
+        }))
     };
   });
 
   server.patch("/api/servers/:serverId/members/:userId/nickname", async (request, reply) => {
-    // Spelled out rather than using `requireOwnedServer`: this route answers a
-    // malformed body before it answers a caller who does not own the server,
-    // and which of the two a client sees is observable.
+    // Spelled out rather than using `requirePermittedServer`: this route
+    // answers a malformed body before it answers a caller without Manage
+    // members, and which of the two a client sees is observable.
     const caller = requireUser(database, request, reply, options.secureCookies);
     if (!caller) return;
     const { serverId, userId } = z.object({ serverId: serverIdParam, userId: userIdParam }).parse(request.params);
@@ -543,12 +556,12 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     // again. An empty string is still malformed: clearing is said, not implied.
     const { nickname } = z.object({ nickname: nicknameSchema.nullable() }).parse(request.body);
 
-    // Renaming *somebody else* is moderation and stays the owner's. Renaming
-    // yourself is not: what a member is called is theirs, and needing to ask
-    // the owner to change it is the kind of small indignity that makes a
+    // Renaming *somebody else* is moderation and takes Manage members.
+    // Renaming yourself is not: what a member is called is theirs, and needing
+    // to ask someone to change it is the kind of small indignity that makes a
     // private group feel like somebody else's property.
     const renamingSelf = userId === caller.id;
-    if (!renamingSelf && !requireServerOwner(database, serverId, caller.id, reply)) return;
+    if (!renamingSelf && !requireServerPermission(database, serverId, caller.id, "manageMembers", reply)) return;
     if (renamingSelf && !hasActiveServerMembership(database.sqlite, serverId, caller.id)) {
       return reply.code(403).send({ error: "not_a_member" });
     }
@@ -559,6 +572,10 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     }
     if (target.role === "owner" && !renamingSelf) {
       return reply.code(409).send({ error: "cannot_rename_owner" });
+    }
+    // Only someone strictly below the actor (ADR-0038, decision 4).
+    if (!renamingSelf && !outranks(database.sqlite, serverId, caller.id, userId)) {
+      return reply.code(403).send({ error: "forbidden" });
     }
     run(database.sqlite, "update server_members set nickname = ? where server_id = ? and user_id = ?", [
       nickname,
@@ -573,19 +590,20 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
   });
 
   server.patch("/api/servers/:serverId/members/:userId/voice-moderation", async (request, reply) => {
-    // Spelled out rather than using `requireOwnedServer`: this route answers a
-    // malformed body before it answers a caller who does not own the server,
-    // and which of the two a client sees is observable.
-    const owner = requireOwner(database, request, reply, options.secureCookies);
-    if (!owner) return;
+    // Spelled out rather than using `requirePermittedServer`: this route
+    // answers a malformed body before it answers a caller without Voice
+    // moderation, and which of the two a client sees is observable.
+    const actor = requireUser(database, request, reply, options.secureCookies);
+    if (!actor) return;
     const { serverId, userId } = z.object({ serverId: serverIdParam, userId: userIdParam }).parse(request.params);
     const body = voiceModerationBodySchema.parse(request.body ?? {});
-    if (!requireServerOwner(database, serverId, owner.id, reply)) return;
+    if (!requireServerPermission(database, serverId, actor.id, "voiceModeration", reply)) return;
     const target = serverMembership(database.sqlite, serverId, userId);
     if (!target || target.removed_at) return reply.code(404).send({ error: "member_not_found" });
-    if (userId === owner.id || target.role === "owner") {
+    if (userId === actor.id || target.role === "owner") {
       return reply.code(409).send({ error: "cannot_moderate_owner" });
     }
+    if (!outranks(database.sqlite, serverId, actor.id, userId)) return reply.code(403).send({ error: "forbidden" });
 
     const moderation = {
       muted: body.muted ?? Boolean(target.moderator_muted),
@@ -598,7 +616,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
        where server_id = ? and user_id = ?`,
       [moderation.muted ? 1 : 0, moderation.deafened ? 1 : 0, serverId, userId]
     );
-    audit(database, owner.id, "member.voice_moderation_updated", userId, serverId);
+    audit(database, actor.id, "member.voice_moderation_updated", userId, serverId);
     database.save();
     realtime.updateVoiceModeration(serverId, userId, moderation);
     io.to(`server:${serverId}`).emit("server:directoryChanged", { serverId });
@@ -606,16 +624,18 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
   });
 
   server.post("/api/servers/:serverId/members/:userId/:action", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply, {
+    const scope = requirePermittedServer(context, request, reply, "manageMembers", {
       userId: userIdParam,
       action: z.enum(["ban", "unban", "kick"])
     });
     if (!scope) return;
-    const { owner, serverId, userId, action } = scope;
-    if (userId === owner.id) return reply.code(409).send({ error: "cannot_moderate_owner" });
+    const { user: actor, serverId, userId, action } = scope;
+    if (userId === actor.id) return reply.code(409).send({ error: "cannot_moderate_owner" });
     const member = serverMembership(database.sqlite, serverId, userId);
     if (!member) return reply.code(404).send({ error: "member_not_found" });
     if (rejectBotTarget(database, userId, reply)) return;
+    // Only someone strictly below the actor, and never an owner (decision 4).
+    if (!outranks(database.sqlite, serverId, actor.id, userId)) return reply.code(403).send({ error: "forbidden" });
     const now = new Date().toISOString();
     // Losing access also drops the member's Roles, so one who returns through a
     // later invite cannot silently resume issuing links or anything else.
@@ -653,7 +673,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
         clearRoomGrants(database.sqlite, serverId, userId);
         clearMemberRoles(database.sqlite, serverId, userId);
       }
-      audit(database, owner.id, `member.${action}`, userId, serverId);
+      audit(database, actor.id, `member.${action}`, userId, serverId);
       database.sqlite.exec("commit");
     } catch (cause) {
       database.sqlite.exec("rollback");
@@ -668,23 +688,27 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
   });
 
   server.post("/api/servers/:serverId/voice/:roomId/members/:userId/disconnect", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply, { roomId: roomIdParam, userId: userIdParam });
+    const scope = requirePermittedServer(context, request, reply, "voiceModeration", {
+      roomId: roomIdParam,
+      userId: userIdParam
+    });
     if (!scope) return;
-    const { owner, serverId, roomId, userId } = scope;
+    const { user: actor, serverId, roomId, userId } = scope;
     const room = roomById(database.sqlite, roomId);
     if (!room || room.serverId !== serverId || room.kind !== "voice")
       return reply.code(404).send({ error: "room_not_found" });
+    if (!outranks(database.sqlite, serverId, actor.id, userId)) return reply.code(403).send({ error: "forbidden" });
     if (!realtime.disconnectVoice(serverId, roomId, userId))
       return reply.code(409).send({ error: "member_not_in_voice" });
-    audit(database, owner.id, "voice.disconnected", userId, serverId);
+    audit(database, actor.id, "voice.disconnected", userId, serverId);
     database.save();
     return reply.code(204).send();
   });
 
   server.post("/api/servers/:serverId/voice/members/:userId/move", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply, { userId: userIdParam });
+    const scope = requirePermittedServer(context, request, reply, "voiceModeration", { userId: userIdParam });
     if (!scope) return;
-    const { owner, serverId, userId } = scope;
+    const { user: actor, serverId, userId } = scope;
     const { roomId } = z.object({ roomId: roomIdParam }).parse(request.body);
     const room = roomById(database.sqlite, roomId);
     // Scoped to this server, so a move can never place a member in a room they
@@ -699,6 +723,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     // room summoned it into, and leaving would destroy a Queue from a control
     // that says nothing about destroying one. ADR-0010.
     if (rejectBotTarget(database, userId, reply)) return;
+    if (!outranks(database.sqlite, serverId, actor.id, userId)) return reply.code(403).send({ error: "forbidden" });
     // A move is a join the member's own client performs, so it obeys the same
     // rule a join does: no placing someone in a Private channel they cannot
     // enter (ADR-0037).
@@ -708,7 +733,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     if (!realtime.moveVoice(serverId, userId, roomId)) {
       return reply.code(409).send({ error: "member_not_in_voice" });
     }
-    audit(database, owner.id, "voice.moved", userId, serverId);
+    audit(database, actor.id, "voice.moved", userId, serverId);
     database.save();
     return reply.code(204).send();
   });

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { PresenceUser } from "@voxly/shared";
-import { canOwnerVoiceModerate, currentServerPresence, groupDirectoryMembers } from "../src/lib/memberDirectory.js";
+import { serverPermissions } from "@voxly/shared";
+import { canVoiceModerate, currentServerPresence, groupDirectoryMembers } from "../src/lib/memberDirectory.js";
 import { readFileSync } from "node:fs";
 import { readAppSource } from "./app-source.js";
 
@@ -10,10 +11,14 @@ const ada: PresenceUser = { userId: "ada", nickname: "Ada", role: "member" };
 const ece: PresenceUser = { userId: "ece", nickname: "Ece", role: "member" };
 
 describe("member directory presence", () => {
-  it("limits owner voice moderation to other ordinary members", () => {
-    assert.equal(canOwnerVoiceModerate("owner", owner.userId, ada), true);
-    assert.equal(canOwnerVoiceModerate("owner", owner.userId, owner), false);
-    assert.equal(canOwnerVoiceModerate("member", ada.userId, ece), false);
+  it("limits voice moderation to holders acting on someone below them", () => {
+    const asOwner = { role: "owner" as const, permissions: [...serverPermissions], rank: 3, userId: owner.userId };
+    const asAda = { role: "member" as const, permissions: [], rank: 0, userId: ada.userId };
+    assert.equal(canVoiceModerate(asOwner, [], ada), true);
+    assert.equal(canVoiceModerate(asOwner, [], owner), false);
+    assert.equal(canVoiceModerate(asAda, [], ece), false);
+    // Voice moderation alone does not reach someone at the same rank.
+    assert.equal(canVoiceModerate({ ...asAda, permissions: ["voiceModeration"] }, [], ece), false);
   });
 
   it("groups active directory members online first and keeps offline members", () => {

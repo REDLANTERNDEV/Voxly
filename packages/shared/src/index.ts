@@ -273,6 +273,17 @@ export const serverPermissions = [
 export type Permission = (typeof serverPermissions)[number];
 
 /**
+ * The Permissions that reach Server settings › Members: anyone who may act on a
+ * member there. Shared so the server's check and the client's section cannot
+ * drift apart.
+ */
+export const memberSettingsPermissions = [
+  "manageMembers",
+  "voiceModeration",
+  "manageRoles"
+] as const satisfies readonly (typeof serverPermissions)[number][];
+
+/**
  * The colours a Role may take: a fixed palette, each legible as name text on
  * both the light and the dark theme (design decision 12). A Role holds one of
  * these or none; the server refuses anything else.

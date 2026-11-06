@@ -57,7 +57,7 @@ const actions = {
 
 describe("the Role editor (ADR-0038, decisions 5–7, 17 and 19)", () => {
   it("reaches the Roles section with Manage roles alone", () => {
-    assert.deepEqual(serverSettingsSections({ role: "member", permissions: ["manageRoles"] }), ["roles"]);
+    assert.deepEqual(serverSettingsSections({ role: "member", permissions: ["manageRoles"] }), ["roles", "members"]);
   });
 
   it("lets an Admin manage Roles below them but never Admin, and the owner everything", () => {

@@ -69,12 +69,14 @@ describe("Server settings (ADR-0038, decisions 14–16 and 20)", () => {
       "roles",
       "members",
       "invites",
+      "bans",
       "inviteTrail",
       "accessLinks",
       "deleteServer"
     ]);
     // An Admin runs the Server but never the owner's own three.
-    assert.deepEqual(serverSettingsSections(admin), ["overview", "roles", "invites"]);
+    assert.deepEqual(serverSettingsSections(admin), ["overview", "roles", "members", "invites", "bans"]);
+    assert.deepEqual(serverSettingsSections({ role: "member", permissions: ["voiceModeration"] }), ["members"]);
     assert.deepEqual(serverSettingsSections({ role: "member", permissions: ["manageInvites"] }), ["invites"]);
     assert.deepEqual(serverSettingsSections({ role: "member", permissions: ["manageServer"] }), ["overview"]);
     assert.deepEqual(serverSettingsSections(recruiter), []);

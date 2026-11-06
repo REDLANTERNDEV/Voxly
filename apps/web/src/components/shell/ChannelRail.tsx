@@ -3,10 +3,10 @@ import { useState, type ReactNode } from "react";
 import { ApiError } from "../../api.js";
 import { serverPath } from "../../app/navigation.js";
 import {
-  activeServerRole,
   canInviteToActiveServer,
   initial,
   memberRolesMenu,
+  moderationActor,
   voiceMembersForRoom
 } from "../../app/presentation.js";
 import type { MemberAction, ShellActions, ShellModel, Translate } from "../../app/types.js";
@@ -24,7 +24,13 @@ import {
 } from "../../components/ui/Icons.js";
 import { NavLink } from "../../components/ui/Navigation.js";
 import { ChannelAccessDialog } from "../../features/owner/ChannelAccessDialog.js";
-import { canMemberEnter, canOwnerModeratePerson, canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
+import {
+  canMemberEnter,
+  canModeratePerson as canModeratePersonFor,
+  canMovePerson,
+  canRenameMember,
+  canVoiceModerate
+} from "../../lib/memberDirectory.js";
 import { serverMenuHeight, serverMenuItems } from "../../lib/serverSettings.js";
 import { voiceChannelActivation } from "../../lib/voiceChannelActivation.js";
 import { sidebarVoiceStatusKeys, sidebarVoiceStatusLabelKeys } from "../../lib/voiceControls.js";
@@ -132,7 +138,7 @@ function ChannelLabel({ room, t }: { room: RoomSummary; t: ChannelRailProps["t"]
 }
 
 export function ChannelRail(props: ChannelRailProps) {
-  const canManageServer = activeServerRole(props) === "owner";
+  const actor = moderationActor(props);
 
   const canInvite = canInviteToActiveServer(props);
   const activeServer = props.servers.find((server) => server.id === props.activeServerId);
@@ -274,24 +280,24 @@ export function ChannelRail(props: ChannelRailProps) {
           <div className="voice-channel-users">
             {members.map((member) => {
               const isRemote = member.user.userId !== props.user.id;
-              // Your own name is yours. Somebody else's is the owner's.
-              const canRename = !isRemote || (canManageServer && member.user.role === "member");
-              const canModerate = canOwnerVoiceModerate(activeServerRole(props), props.user.id, member.user);
-              const canVoiceModerate = canModerate;
-              const canModeratePerson = canOwnerModeratePerson(activeServerRole(props), props.user.id, member.user);
+              // Your own name is yours. Somebody else's takes Manage members and rank.
+              const canRename = !isRemote || canRenameMember(actor, props.serverRoles, member.user);
+              const canVoiceModerateMember = canVoiceModerate(actor, props.serverRoles, member.user);
+              const canModeratePerson = canModeratePersonFor(actor, props.serverRoles, member.user);
+              const canMove = canMovePerson(actor, props.serverRoles, member.user);
               const roles = memberRolesMenu(props, member.user);
               const canAssignRoles = Boolean(roles);
               const menuHeight = memberActionMenuHeight({
                 hasVolume: isRemote,
                 canRename,
-                canDisconnect: canModerate,
+                canDisconnect: canVoiceModerateMember,
                 canModerate: canModeratePerson,
-                canVoiceModerate,
+                canVoiceModerate: canVoiceModerateMember,
                 canAssignRoles,
-                canMove: canModeratePerson && moveTargetsFor(member.user).length > 0,
+                canMove: canMove && moveTargetsFor(member.user).length > 0,
                 hasSelfControls: !isRemote && Boolean(props.activeVoiceRoomId)
               });
-              const hasActions = isRemote || canRename || canModerate || canAssignRoles || !isRemote;
+              const hasActions = isRemote || canRename || canVoiceModerateMember || canAssignRoles || !isRemote;
               const menuKey = `rail-member:${member.user.userId}`;
               return (
                 <div
@@ -384,22 +390,20 @@ export function ChannelRail(props: ChannelRailProps) {
                         isRemote ? (volume) => props.onMemberVolumeChange(member.user.userId, volume) : undefined
                       }
                       canRename={canRename}
-                      canDisconnect={canModerate}
+                      canDisconnect={canVoiceModerateMember}
                       canModerate={canModeratePerson}
-                      moderation={canVoiceModerate ? member.moderation : undefined}
+                      moderation={canVoiceModerateMember ? member.moderation : undefined}
                       onVoiceModeration={
-                        canVoiceModerate
+                        canVoiceModerateMember
                           ? (moderation) => {
                               void props.onVoiceModeration(member.user.userId, moderation);
                             }
                           : undefined
                       }
                       roles={roles}
-                      moveTargets={canModeratePerson ? moveTargetsFor(member.user) : undefined}
+                      moveTargets={canMove ? moveTargetsFor(member.user) : undefined}
                       onMove={
-                        canModeratePerson
-                          ? (targetRoomId) => props.onMoveMember(member.user.userId, targetRoomId)
-                          : undefined
+                        canMove ? (targetRoomId) => props.onMoveMember(member.user.userId, targetRoomId) : undefined
                       }
                       selfControls={
                         !isRemote && props.activeVoiceRoomId

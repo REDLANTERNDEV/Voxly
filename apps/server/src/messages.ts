@@ -42,7 +42,7 @@ import {
 import { requireUser } from "./auth/sessions.js";
 import { all, one, run, type VoxlyDatabase } from "./db/database.js";
 import {
-  isServerOwner,
+  hasPermission,
   requireRoomAccess,
   roomEntrantIds,
   roomReaderIds,
@@ -187,7 +187,7 @@ export function registerMessageRoutes(context: RouteContext) {
         const { roomId, messageId } = messageParamsSchema.parse(request.params);
         const room = requireTextRoom(database, roomId, user.id, "enter", reply);
         if (!room) return;
-        if (!isServerOwner(database.sqlite, room.serverId, user.id))
+        if (!hasPermission(database.sqlite, room.serverId, user.id, "manageMessages"))
           return reply.code(403).send({ error: "forbidden" });
         if (!messageById(database.sqlite, roomId, messageId))
           return reply.code(404).send({ error: "message_not_found" });
@@ -218,7 +218,10 @@ export function registerMessageRoutes(context: RouteContext) {
           : z.object({ emoji: z.string().refine((value) => chatEmojiSet.has(value)) }).parse(request.params).emoji;
       const room = requireTextRoom(database, roomId, user.id, "enter", reply);
       if (!room) return;
-      if ((mode === "clearAll" || mode === "clearEmoji") && !isServerOwner(database.sqlite, room.serverId, user.id))
+      if (
+        (mode === "clearAll" || mode === "clearEmoji") &&
+        !hasPermission(database.sqlite, room.serverId, user.id, "manageMessages")
+      )
         return reply.code(403).send({ error: "forbidden" });
       database.sqlite.exec("BEGIN IMMEDIATE");
       let state: MessageReactionState;
@@ -505,7 +508,7 @@ export function registerMessageRoutes(context: RouteContext) {
     if (!current) {
       return reply.code(404).send({ error: "message_not_found" });
     }
-    // Editing is authorship, not moderation: an owner may delete someone
+    // Editing is authorship, not moderation: Manage messages may delete someone
     // else's message but never rewrite it.
     if (current.userId !== user.id) {
       return reply.code(403).send({ error: "forbidden" });
@@ -551,7 +554,7 @@ export function registerMessageRoutes(context: RouteContext) {
     if (!room) return;
     const current = messageById(database.sqlite, roomId, messageId);
     if (!current) return reply.code(404).send({ error: "message_not_found" });
-    if (current.userId !== user.id && !isServerOwner(database.sqlite, room.serverId, user.id)) {
+    if (current.userId !== user.id && !hasPermission(database.sqlite, room.serverId, user.id, "manageMessages")) {
       return reply.code(403).send({ error: "forbidden" });
     }
 
@@ -583,7 +586,7 @@ export function registerMessageRoutes(context: RouteContext) {
     if (!current) {
       return reply.code(404).send({ error: "message_not_found" });
     }
-    if (current.userId !== user.id && !isServerOwner(database.sqlite, room.serverId, user.id)) {
+    if (current.userId !== user.id && !hasPermission(database.sqlite, room.serverId, user.id, "manageMessages")) {
       return reply.code(403).send({ error: "forbidden" });
     }
 

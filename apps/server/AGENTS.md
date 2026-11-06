@@ -351,10 +351,11 @@ queries across endpoints.
 - Kicking sets `removed_at`, revokes effective access, disconnects realtime
   membership, and excludes the user from owner member lists. A kicked user may
   return through the existing invite flow.
-- Banning is distinct from kicking. Banned users remain visible to owners so
-  they can be unbanned, and existing sessions must not restore access.
-- Owner voice mute/deafen are independent, persistent membership flags. Only an
-  active owner may update an ordinary member; owner/self targets are rejected.
+- Banning is distinct from kicking. Banned users remain visible to Manage
+  members holders so they can be unbanned, and existing sessions must not restore access.
+- Moderator mute/deafen are independent, persistent membership flags. Voice
+  moderation updates them, on someone strictly below the actor; owner/self
+  targets are rejected.
   Neither kick, ban, rejoin, channel movement, nor restart clears these flags.
 - The member directory is available to active members and exposes only active
   users' `userId`, `nickname`, `mentionCode`, `role`, `roleIds`, and Bot flag. Omit banned/removed
@@ -390,8 +391,17 @@ queries across endpoints.
 - Store an optional nickname override on `server_members`; the global user
   nickname remains the fallback. An active member may set a trimmed 2–32
   character override for themselves, or clear it with `null`; an empty string
-  is still malformed. Only an active owner of that server may set or clear one
-  for an ordinary member, never for a different owner.
+  is still malformed. Someone else's takes Manage members over a member strictly
+  below the actor, never an owner.
+- Every action on a person runs on its Permission and rank (ADR-0038):
+  Manage members for kick, ban, unban and another's nickname; Voice moderation
+  for moderator mute and deafen, disconnect and move; each also needs
+  `outranks`, which reads a banned member (to unban) but not one who left.
+  Manage messages covers pinning, clearing reactions, preview suppression and
+  deleting another member's message, with no rank: a message is not a person.
+  `GET …/members` (Server settings › Members and › Bans) opens to Manage
+  members, Voice moderation or Manage roles; it lists the banned only to
+  Manage members, who may unban them.
 - `GET /api/servers` reports the caller's own override (or `null`) and Mention
   code on each Membership, and nothing about anyone else's.
 - Every server-scoped directory, owner list, message, presence, and voice shape

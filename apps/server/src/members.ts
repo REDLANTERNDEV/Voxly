@@ -246,7 +246,10 @@ export function rankOf(sqlite: DatabaseSync, serverId: string, userId: string): 
  */
 export function outranks(sqlite: DatabaseSync, serverId: string, actorId: string, targetId: string) {
   const actor = activeServerMembership(sqlite, serverId, actorId);
-  const target = activeServerMembership(sqlite, serverId, targetId);
+  // A banned or kicked member is still someone to unban, keep muted or ban; a
+  // ban or kick took their Roles with it, so they read as rank 0. Each route
+  // decides for itself whether such a target makes sense.
+  const target = serverMembership(sqlite, serverId, targetId);
   if (!actor || !target || target.role === "owner") return false;
   if (actor.role === "owner") return true;
   return rankOf(sqlite, serverId, actorId) > rankOf(sqlite, serverId, targetId);

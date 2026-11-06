@@ -1,28 +1,70 @@
-import type { PresenceStatus, PresenceUser, PublicUser, RoomSummary, UserRole } from "@voxly/shared";
+import type { PresenceStatus, PresenceUser, PublicUser, RoleSummary, RoomSummary } from "@voxly/shared";
+import { holdsPermission, memberRank, type RoleActor } from "./roles.js";
 
-export function canOwnerVoiceModerate(currentRole: UserRole | null, currentUserId: string, target: PresenceUser) {
-  return currentRole === "owner" && target.role === "member" && target.userId !== currentUserId;
+/** Who is acting, with what the server reported their Roles make them here. */
+export interface ModerationActor extends RoleActor {
+  userId: string;
+}
+
+type ModerationTarget = Pick<PresenceUser, "userId" | "role" | "roleIds" | "isBot">;
+
+/**
+ * Whether the actor stands strictly above the target (ADR-0038, decision 4):
+ * the owner above everyone but an owner, anyone else above a lower rank. Nobody
+ * acts on themselves or on an owner. Mirrors what the server checks.
+ */
+export function outranksMember(actor: ModerationActor, roles: readonly RoleSummary[], target: ModerationTarget) {
+  if (target.role === "owner" || target.userId === actor.userId) return false;
+  if (actor.role === "owner") return true;
+  return memberRank(roles, target) < actor.rank;
+}
+
+/** Mute, deafen and disconnect: Voice moderation over someone below, a Bot included (ADR-0009). */
+export function canVoiceModerate(
+  actor: ModerationActor | undefined,
+  roles: readonly RoleSummary[],
+  target: ModerationTarget
+) {
+  return Boolean(actor && holdsPermission(actor, "voiceModeration") && outranksMember(actor, roles, target));
 }
 
 /**
- * The owner actions that presuppose a *person*, which is narrower than voice
- * moderation.
- *
- * Kicking or banning a Bot, delegating invites to it, or minting it a browser
- * access link are all offers the server refuses; presenting them would be a
- * menu of actions that only produce errors. **Moving is in here too**, and it is
- * the one that reads like it should not be: a move says "go there", and the
- * Music bot is only ever sent for. Arriving would put it in a room nobody there
+ * A move, which presupposes a *person*: a move says "go there", and the Music
+ * bot is only ever sent for. Arriving would put it in a room nobody there
  * summoned it into, and leaving would destroy that room's Queue from a control
  * that never mentioned one. The server refuses it as well; this is
  * presentation, never the enforcement. ADR-0010.
- *
- * Muting, deafening and disconnecting are deliberately not in here. Those mean
- * the same thing for a Bot as for anyone else, and it honours them itself
- * (ADR-0009).
  */
-export function canOwnerModeratePerson(currentRole: UserRole | null, currentUserId: string, target: PresenceUser) {
-  return canOwnerVoiceModerate(currentRole, currentUserId, target) && !target.isBot;
+export function canMovePerson(
+  actor: ModerationActor | undefined,
+  roles: readonly RoleSummary[],
+  target: ModerationTarget
+) {
+  return canVoiceModerate(actor, roles, target) && !target.isBot;
+}
+
+/**
+ * Kick and ban: Manage members over a person below. A Bot cannot leave or be
+ * invited back, so it is never offered them (ADR-0010).
+ */
+export function canModeratePerson(
+  actor: ModerationActor | undefined,
+  roles: readonly RoleSummary[],
+  target: ModerationTarget
+) {
+  return Boolean(
+    actor && holdsPermission(actor, "manageMembers") && outranksMember(actor, roles, target) && !target.isBot
+  );
+}
+
+/** Renaming someone else: Manage members over someone below. Your own name is always yours. */
+export function canRenameMember(
+  actor: ModerationActor | undefined,
+  roles: readonly RoleSummary[],
+  target: ModerationTarget
+) {
+  if (actor && target.userId === actor.userId) return true;
+  return Boolean(actor && holdsPermission(actor, "manageMembers") && outranksMember(actor, roles, target));
 }
 
 /**

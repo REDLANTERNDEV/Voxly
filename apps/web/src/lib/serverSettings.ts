@@ -7,7 +7,7 @@
  * re-checks every action regardless, so this decides only what to offer.
  */
 
-import type { Permission } from "@voxly/shared";
+import { memberSettingsPermissions, type Permission } from "@voxly/shared";
 
 export interface ServerStanding {
   role: "owner" | "member";
@@ -15,7 +15,7 @@ export interface ServerStanding {
 }
 
 export type ServerSettingsSection =
-  "overview" | "roles" | "members" | "invites" | "inviteTrail" | "accessLinks" | "deleteServer";
+  "overview" | "roles" | "members" | "invites" | "bans" | "inviteTrail" | "accessLinks" | "deleteServer";
 
 /** In the order the window lists them. */
 const sectionRules: ReadonlyArray<{
@@ -25,11 +25,12 @@ const sectionRules: ReadonlyArray<{
 }> = [
   { id: "overview", reaches: (server) => server.permissions.includes("manageServer") },
   { id: "roles", reaches: (server) => server.permissions.includes("manageRoles") },
-  // Membership routes are still the owner's until they run on Manage members,
-  // Voice moderation and Manage roles; a section that could only be refused
-  // is not offered.
-  { id: "members", reaches: (server) => server.role === "owner" },
+  {
+    id: "members",
+    reaches: (server) => memberSettingsPermissions.some((item) => server.permissions.includes(item))
+  },
   { id: "invites", reaches: (server) => server.permissions.includes("manageInvites") },
+  { id: "bans", reaches: (server) => server.permissions.includes("manageMembers") },
   // These three stay with the owner for good (decision 10).
   { id: "inviteTrail", reaches: (server) => server.role === "owner", ownerOnly: true },
   { id: "accessLinks", reaches: (server) => server.role === "owner", ownerOnly: true },

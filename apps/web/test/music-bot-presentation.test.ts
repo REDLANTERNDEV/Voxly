@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import type { PresenceUser } from "@voxly/shared";
+import { serverPermissions, type PresenceUser } from "@voxly/shared";
 import { translate } from "../src/lib/i18n.js";
 import { memberRoleRows } from "../src/lib/roles.js";
 import {
-  canOwnerModeratePerson,
-  canOwnerVoiceModerate,
+  canModeratePerson,
+  canMovePerson,
+  canVoiceModerate,
   countPeople,
   groupDirectoryMembers
 } from "../src/lib/memberDirectory.js";
@@ -53,21 +54,25 @@ describe("bot member counts", () => {
   });
 });
 
+const asOwner = { role: "owner" as const, permissions: [...serverPermissions], rank: 3, userId: owner.userId };
+const asAda = { role: "member" as const, permissions: [], rank: 0, userId: ada.userId };
+
 describe("bot moderation offers", () => {
   it("keeps voice moderation available, because muting a bot means what it says", () => {
-    assert.equal(canOwnerVoiceModerate("owner", owner.userId, bot), true);
+    assert.equal(canVoiceModerate(asOwner, [], bot), true);
   });
 
   it("withholds the actions a bot cannot be the subject of", () => {
-    assert.equal(canOwnerModeratePerson("owner", owner.userId, ada), true);
-    assert.equal(canOwnerModeratePerson("owner", owner.userId, bot), false);
-    assert.equal(canOwnerModeratePerson("member", ada.userId, bot), false);
+    assert.equal(canModeratePerson(asOwner, [], ada), true);
+    assert.equal(canModeratePerson(asOwner, [], bot), false);
+    assert.equal(canModeratePerson(asAda, [], bot), false);
+    assert.equal(canMovePerson(asOwner, [], bot), false);
   });
 
   it("wires kick and ban in both sidebars to the person answer, not the voice one", () => {
-    assert.match(memberPanel, /const\s+canModeratePerson\s+=\s+canOwnerModeratePerson\(\s*/);
+    assert.match(memberPanel, /const\s+canModeratePerson\s+=\s+canModeratePersonFor\(\s*/);
     assert.match(memberPanel, /canModerate=\{\s*canModeratePerson\s*\}\s*/);
-    assert.match(channelRail, /const\s+canModeratePerson\s+=\s+canOwnerModeratePerson\(\s*/);
+    assert.match(channelRail, /const\s+canModeratePerson\s+=\s+canModeratePersonFor\(\s*/);
     assert.match(channelRail, /canModerate=\{\s*canModeratePerson\s*\}\s*/);
   });
 
@@ -78,10 +83,10 @@ describe("bot moderation offers", () => {
     // would destroy that room's Queue from a control that never said so.
     // ADR-0010. The server refuses it too — this is presentation, not the
     // enforcement.
-    assert.match(memberPanel, /moveTargets=\{\s*canModeratePerson\s+&&\s+voiceRoom\s+\?/);
-    assert.match(memberPanel, /onMove=\{\s*canModeratePerson\s+&&\s+voiceRoom\s+\?/);
-    assert.match(channelRail, /moveTargets=\{\s*canModeratePerson\s+\?/);
-    assert.match(channelRail, /onMove=\{\s*canModeratePerson\s+\?/);
+    assert.match(memberPanel, /moveTargets=\{\s*canMove\s+&&\s+voiceRoom\s+\?/);
+    assert.match(memberPanel, /onMove=\{\s*canMove\s+&&\s+voiceRoom\s+\?/);
+    assert.match(channelRail, /moveTargets=\{\s*canMove\s+\?/);
+    assert.match(channelRail, /onMove=\{\s*canMove\s+\?/);
   });
 
   it("does not offer a bot a Role it could never hold (ADR-0038)", () => {
@@ -93,7 +98,10 @@ describe("bot moderation offers", () => {
   });
 
   it("counts the Server settings member figures by people too", () => {
-    assert.match(ownerPanel, /const\s+people\s+=\s+users\.filter\(\s*\(\s*member\s*\)\s+=>\s+!member\.isBot\s*\);/);
+    assert.match(
+      ownerPanel,
+      /const\s+people\s+=\s+props\.users\.filter\(\s*\(\s*member\s*\)\s+=>\s+!member\.isBot\s*\);/
+    );
     assert.match(
       ownerPanel,
       /const\s+activeMembers\s+=\s+people\.filter\(\s*\(\s*member\s*\)\s+=>\s+!member\.bannedAt\s*\);/
@@ -102,8 +110,8 @@ describe("bot moderation offers", () => {
   });
 
   it("splits the Server settings member menu so a bot keeps voice moderation and loses the rest", () => {
-    assert.match(ownerPanel, /const\s+canVoiceModerate\s+=\s+member\.role\s+!==\s+"owner";/);
-    assert.match(ownerPanel, /const\s+canManageMembership\s+=\s+canVoiceModerate\s+&&\s+!member\.isBot;/);
+    assert.match(ownerPanel, /canVoiceModerate\(actor, props\.serverRoles, target\)/);
+    assert.match(ownerPanel, /canModeratePerson\(actor, props\.serverRoles, target\)/);
     // The ban and kick entries must sit under the membership guard.
     const membershipGroup = ownerPanel.slice(ownerPanel.search(/\{canManageMembership\s*\?\s*\(?\s*<>/));
     assert.match(membershipGroup, /requestBan\(\s*member\s*\)/);

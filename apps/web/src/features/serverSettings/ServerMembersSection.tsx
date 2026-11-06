@@ -1,6 +1,15 @@
 import type { PresenceUser, RoleSummary } from "@voxly/shared";
 import { useCallback, useMemo, useReducer, useState } from "react";
 import { memberRoleLabel } from "../../app/presentation.js";
+import { MemberRolesSubmenu } from "../../components/shell/SidebarMenus.js";
+import {
+  canModeratePerson,
+  canRenameMember,
+  canVoiceModerate,
+  outranksMember,
+  type ModerationActor
+} from "../../lib/memberDirectory.js";
+import { holdsPermission, memberRoleRows, roleDisplayName } from "../../lib/roles.js";
 import type { ShellActions, Translate } from "../../app/types.js";
 import { ContextMenu } from "../../components/ContextMenu.js";
 import { SidebarMenuTrigger, type SidebarActionMenuController } from "../../components/shell/SidebarMenus.js";
@@ -18,16 +27,19 @@ const memberMenuWidth = 232;
  */
 export function ServerMembersSection(
   props: {
-    userId: string;
+    actor: ModerationActor;
+    /** Members, or the banned list with Unban alone (design decision 15). */
+    mode: "members" | "bans";
     users: ServerMember[];
     serverRoles: RoleSummary[];
     t: Translate;
     onChanged: () => Promise<void>;
     onUsersChange: (update: (users: ServerMember[]) => ServerMember[]) => void;
     onError: (message: string) => void;
-  } & Pick<ShellActions, "onModerateMember" | "onVoiceModeration" | "onUpdateMemberNickname">
+  } & Pick<ShellActions, "onModerateMember" | "onVoiceModeration" | "onUpdateMemberNickname" | "onSetMemberRole">
 ) {
-  const { t, users } = props;
+  const { t, actor, mode } = props;
+  const users = props.users.filter((member) => (mode === "bans" ? member.bannedAt : !member.bannedAt));
   const [pendingAction, setPendingAction] = useState<{
     title: string;
     copy: string;
@@ -56,7 +68,7 @@ export function ServerMembersSection(
 
   // Counted over people: the Music bot is a member of the server but not one of
   // the members these figures are read as. It stays in the table below.
-  const people = users.filter((member) => !member.isBot);
+  const people = props.users.filter((member) => !member.isBot);
   const activeMembers = people.filter((member) => !member.bannedAt);
 
   const requestBan = (member: ServerMember) => {
@@ -86,27 +98,38 @@ export function ServerMembersSection(
     <section className="dash-panel server-settings-panel">
       <header className="dash-panel-head">
         <p className="muted small">
-          {t("serverSettings.memberCounts", {
-            members: activeMembers.length,
-            banned: people.length - activeMembers.length
-          })}
+          {mode === "bans"
+            ? t("serverSettings.bannedCount", { count: people.length - activeMembers.length })
+            : t("serverSettings.memberCounts", {
+                members: activeMembers.length,
+                banned: people.length - activeMembers.length
+              })}
         </p>
       </header>
       <div className="dash-table is-members" role="table">
         <div className="dash-table-head" role="row">
           <span role="columnheader">{t("common.user")}</span>
-          <span role="columnheader">{t("common.role")}</span>
+          <span role="columnheader">{t("serverSettings.rolesColumn")}</span>
           <span role="columnheader">{t("common.status")}</span>
           <span role="columnheader">{t("common.actions")}</span>
         </div>
         {users.map((member) => {
           const menuKey = `settings-member:${member.id}`;
-          const canRename = member.role !== "owner" || member.id === props.userId;
-          // Voice moderation reaches the Music bot the same way it reaches
-          // anyone; the membership actions below it do not apply to an
+          const target = { userId: member.id, role: member.role, roleIds: member.roleIds, isBot: member.isBot };
+          // Each action reads the viewer's Permissions and rank, as the server
+          // does (ADR-0038). Voice moderation reaches the Music bot the same way
+          // it reaches anyone; the membership actions do not apply to an
           // account that cannot leave or be invited.
-          const canVoiceModerate = member.role !== "owner";
-          const canManageMembership = canVoiceModerate && !member.isBot;
+          const canRename = mode === "members" && canRenameMember(actor, props.serverRoles, target);
+          // Moderator mute and deafen outlast a ban, so they stay reachable from › Bans.
+          const canVoiceModerateMember = canVoiceModerate(actor, props.serverRoles, target);
+          const canManageMembership =
+            mode === "members"
+              ? canModeratePerson(actor, props.serverRoles, target)
+              : holdsPermission(actor, "manageMembers") && outranksMember(actor, props.serverRoles, target);
+          const roleRows = mode === "members" ? memberRoleRows(actor, props.serverRoles, target) : null;
+          const heldRoles = props.serverRoles.filter((role) => member.roleIds.includes(role.id));
+          const hasActions = canRename || canVoiceModerateMember || canManageMembership || Boolean(roleRows);
           return (
             <div className="dash-table-row" role="row" key={member.id}>
               <span className="dash-cell" role="cell">
@@ -123,9 +146,19 @@ export function ServerMembersSection(
                 />
               </span>
               <span className="dash-cell" role="cell">
-                <span className={`dash-role ${member.role === "owner" ? "is-owner" : ""}`}>
-                  {memberRoleLabel(member, t, props.serverRoles)}
-                </span>
+                {heldRoles.length > 0 ? (
+                  <span className="server-member-roles">
+                    {heldRoles.map((role) => (
+                      <span className="dash-role" key={role.id}>
+                        {roleDisplayName(role, t)}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <span className={`dash-role ${member.role === "owner" ? "is-owner" : ""}`}>
+                    {memberRoleLabel(member, t, props.serverRoles)}
+                  </span>
+                )}
               </span>
               <span className="dash-cell" role="cell">
                 <StatusPill tone={member.bannedAt ? "danger" : "online"}>
@@ -133,19 +166,21 @@ export function ServerMembersSection(
                 </StatusPill>
               </span>
               <span className="dash-cell is-actions" role="cell">
-                {canRename || canVoiceModerate ? (
+                {hasActions ? (
                   <>
                     <SidebarMenuTrigger
                       actionMenu={actionMenu}
                       menuKey={menuKey}
                       label={t("member.actionsFor", { nickname: member.nickname })}
                       menuWidth={memberMenuWidth}
-                      menuHeight={memberMenuHeight(
-                        canRename,
-                        canVoiceModerate,
-                        canManageMembership,
-                        Boolean(member.bannedAt)
-                      )}
+                      menuHeight={
+                        memberMenuHeight(
+                          canRename,
+                          canVoiceModerateMember,
+                          canManageMembership,
+                          Boolean(member.bannedAt)
+                        ) + (roleRows ? 40 : 0)
+                      }
                     />
                     {actionMenu.active?.key === menuKey ? (
                       <ContextMenu
@@ -164,7 +199,20 @@ export function ServerMembersSection(
                             {t("member.changeNickname")}
                           </button>
                         ) : null}
-                        {canVoiceModerate ? (
+                        {roleRows ? (
+                          <MemberRolesSubmenu
+                            nickname={member.nickname}
+                            rows={roleRows}
+                            onToggle={(roleId, give) => {
+                              void props
+                                .onSetMemberRole(member.id, roleId, give)
+                                .then(props.onChanged)
+                                .catch(() => props.onError(t("owner.actionFailed")));
+                            }}
+                            t={t}
+                          />
+                        ) : null}
+                        {canVoiceModerateMember ? (
                           <>
                             <button
                               className={member.moderation.muted ? "is-danger" : ""}

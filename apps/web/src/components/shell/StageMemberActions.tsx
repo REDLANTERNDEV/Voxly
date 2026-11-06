@@ -1,8 +1,14 @@
 import type { PresenceUser, VoiceModerationState } from "@voxly/shared";
 import { createContext, useContext, type ReactNode } from "react";
-import { activeServerRole, memberRolesMenu } from "../../app/presentation.js";
+import { memberRolesMenu, moderationActor } from "../../app/presentation.js";
 import type { MemberAction, ShellActions, ShellModel } from "../../app/types.js";
-import { canMemberEnter, canOwnerModeratePerson, canOwnerVoiceModerate } from "../../lib/memberDirectory.js";
+import {
+  canMemberEnter,
+  canModeratePerson,
+  canMovePerson,
+  canRenameMember,
+  canVoiceModerate
+} from "../../lib/memberDirectory.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
 import {
   MemberActionMenu,
@@ -51,11 +57,12 @@ export function StageMemberActions({
 }) {
   const props = useContext(StageActionsContext);
   if (!props) return <>{children}</>;
-  const role = activeServerRole(props);
+  const actor = moderationActor(props);
   const isRemote = member.userId !== props.user.id;
-  const canRename = !isRemote || (role === "owner" && member.role === "member");
-  const canVoiceModerate = canOwnerVoiceModerate(role, props.user.id, member);
-  const canModerate = canOwnerModeratePerson(role, props.user.id, member);
+  const canRename = !isRemote || canRenameMember(actor, props.serverRoles, member);
+  const canVoiceModerateMember = canVoiceModerate(actor, props.serverRoles, member);
+  const canModerate = canModeratePerson(actor, props.serverRoles, member);
+  const canMove = canMovePerson(actor, props.serverRoles, member);
   const roles = memberRolesMenu(props, member);
   const canAssignRoles = Boolean(roles);
   const selfControls =
@@ -80,11 +87,11 @@ export function StageMemberActions({
   const menuHeight = memberActionMenuHeight({
     hasVolume: isRemote,
     canRename,
-    canDisconnect: canVoiceModerate,
+    canDisconnect: canVoiceModerateMember,
     canModerate,
-    canVoiceModerate,
+    canVoiceModerate: canVoiceModerateMember,
     canAssignRoles,
-    canMove: canModerate && props.rooms.voice.length > 1,
+    canMove: canMove && props.rooms.voice.length > 1,
     hasSelfControls: Boolean(selfControls)
   });
   return (
@@ -114,11 +121,11 @@ export function StageMemberActions({
         volume={isRemote ? (props.memberVolumes[member.userId] ?? DEFAULT_VOLUME_PERCENT) : undefined}
         onVolumeChange={isRemote ? (volume) => props.onMemberVolumeChange(member.userId, volume) : undefined}
         canRename={canRename}
-        canDisconnect={canVoiceModerate}
+        canDisconnect={canVoiceModerateMember}
         canModerate={canModerate}
-        moderation={canVoiceModerate ? moderation : undefined}
+        moderation={canVoiceModerateMember ? moderation : undefined}
         onVoiceModeration={
-          canVoiceModerate
+          canVoiceModerateMember
             ? (value) => {
                 void props.onVoiceModeration(member.userId, value);
               }
@@ -126,11 +133,9 @@ export function StageMemberActions({
         }
         roles={roles}
         moveTargets={
-          canModerate
-            ? props.rooms.voice.filter((room) => room.id !== roomId && canMemberEnter(room, member))
-            : undefined
+          canMove ? props.rooms.voice.filter((room) => room.id !== roomId && canMemberEnter(room, member)) : undefined
         }
-        onMove={canModerate ? (target) => props.onMoveMember(member.userId, target) : undefined}
+        onMove={canMove ? (target) => props.onMoveMember(member.userId, target) : undefined}
         selfControls={selfControls}
         onRename={(focus) => props.onRequestNickname(member, focus)}
         onRequestAction={(action) => props.onRequestMemberAction(member, action, roomId)}

@@ -842,6 +842,9 @@ const translations = {
     "member.botRole": "Automated member",
     "serverSettings.roles": "Roles",
     "serverSettings.invites": "Invites",
+    "serverSettings.bans": "Bans",
+    "serverSettings.bannedCount": "{count} banned.",
+    "serverSettings.rolesColumn": "Roles",
     "roles.copy":
       "Members hold @everyone and every role they are given; their permissions add up. A role's place decides only who manages whom.",
     "roles.create": "Create role",
@@ -2009,6 +2012,9 @@ const translations = {
     "member.botRole": "Otomatik üye",
     "serverSettings.roles": "Roller",
     "serverSettings.invites": "Davetler",
+    "serverSettings.bans": "Yasaklar",
+    "serverSettings.bannedCount": "{count} yasaklı.",
+    "serverSettings.rolesColumn": "Roller",
     "roles.copy":
       "Üyeler @everyone rolüne ve kendilerine verilen her role sahiptir; izinleri toplanır. Bir rolün sırası yalnızca kimin kimi yönettiğini belirler.",
     "roles.create": "Rol oluştur",

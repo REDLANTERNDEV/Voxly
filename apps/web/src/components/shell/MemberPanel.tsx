@@ -12,8 +12,11 @@ import type { MemberAction, Translate } from "../../app/types.js";
 import { PresenceDot } from "./AccountStatusMenu.js";
 import {
   canMemberEnter,
-  canOwnerModeratePerson,
-  canOwnerVoiceModerate,
+  canModeratePerson as canModeratePersonFor,
+  canMovePerson,
+  canRenameMember,
+  canVoiceModerate,
+  type ModerationActor,
   countPeople,
   currentServerPresence,
   groupDirectoryMembers,
@@ -34,7 +37,7 @@ export function MemberPanel({
   voiceRooms,
   voiceSnapshots,
   currentUser,
-  canModerate,
+  actor,
   memberVolumes,
   onMemberVolumeChange,
   onVoiceModeration,
@@ -65,7 +68,8 @@ export function MemberPanel({
     deafenEnabled: boolean;
     onToggle: (control: "mic" | "deafen") => void;
   };
-  canModerate: boolean;
+  /** The viewer as an actor here; every action below reads its Permissions and rank (ADR-0038). */
+  actor: ModerationActor | undefined;
   memberVolumes: Record<string, number>;
   onMemberVolumeChange: (userId: string, volume: number) => void;
   onVoiceModeration: (
@@ -108,12 +112,13 @@ export function MemberPanel({
       // Your own row shows the Status you picked, Invisible included, where
       // everyone else sees what the server told them.
       const presenceState = isSelf && selfPresence ? selfPresence : memberPresenceState(user, online);
-      // Your own name is yours; somebody else's is the owner's.
-      const canRename = isSelf || (canModerate && user.role === "member");
+      // Your own name is yours; somebody else's takes Manage members and rank.
+      const canRename = isSelf || canRenameMember(actor, serverRoles, user);
       // The two self-silences belong on your own row here as much as in the rail.
       const selfControls = isSelf && selfVoice ? selfVoice : undefined;
-      const canModerateRemote = canOwnerVoiceModerate(canModerate ? "owner" : null, currentUser.id, user);
-      const canModeratePerson = canOwnerModeratePerson(canModerate ? "owner" : null, currentUser.id, user);
+      const canModerateRemote = canVoiceModerate(actor, serverRoles, user);
+      const canModeratePerson = canModeratePersonFor(actor, serverRoles, user);
+      const canMove = canMovePerson(actor, serverRoles, user);
       const roles = rolesMenuFor(user);
       const canAssignRoles = Boolean(roles);
       const hasRemoteActions = user.userId !== currentUser.id;
@@ -125,7 +130,7 @@ export function MemberPanel({
         canModerate: canModeratePerson,
         canVoiceModerate: Boolean(voiceRoom && canModerateRemote),
         canAssignRoles,
-        canMove: Boolean(voiceRoom && canModeratePerson && voiceRooms.length > 1),
+        canMove: Boolean(voiceRoom && canMove && voiceRooms.length > 1),
         hasSelfControls: Boolean(selfControls)
       });
       const menuKey = `directory-member:${user.userId}`;
@@ -174,11 +179,11 @@ export function MemberPanel({
               }
               roles={roles}
               moveTargets={
-                canModeratePerson && voiceRoom
+                canMove && voiceRoom
                   ? voiceRooms.filter((room) => room.id !== voiceRoom.id && canMemberEnter(room, user))
                   : undefined
               }
-              onMove={canModeratePerson && voiceRoom ? (roomId) => onMoveMember(user.userId, roomId) : undefined}
+              onMove={canMove && voiceRoom ? (roomId) => onMoveMember(user.userId, roomId) : undefined}
               selfControls={selfControls}
               onRename={(returnFocus) => onRequestNickname(user, returnFocus)}
               onRequestAction={(action) =>

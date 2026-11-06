@@ -19,26 +19,24 @@ describe("owner member move", () => {
   });
 
   it("lists every voice room except the one the member already occupies, and none they cannot enter", () => {
-    assert.match(
-      rail,
-      /moveTargets=\{\s*canModeratePerson\s+\?\s+moveTargetsFor\(\s*member\.user\s*\)\s+:\s+undefined\s*\}/
-    );
+    assert.match(rail, /moveTargets=\{\s*canMove\s+\?\s+moveTargetsFor\(\s*member\.user\s*\)\s+:\s+undefined\s*\}/);
     assert.match(
       rail,
       /const\s+moveTargetsFor\s*=\s*\(\s*user:\s*PresenceUser\s*\)\s*=>\s*props\.rooms\.voice\.filter\(\s*\(\s*target\s*\)\s*=>\s*target\.id\s*!==\s*room\.id\s*&&\s*canMemberEnter\(\s*target,\s*user\s*\)\s*\)/
     );
     assert.match(
       panel,
-      /moveTargets=\{\s*canModeratePerson\s+&&\s+voiceRoom\s+\?\s+voiceRooms\.filter\(\s*\(\s*room\s*\)\s+=>\s+room\.id\s+!==\s+voiceRoom\.id\s+&&\s+canMemberEnter\(room,\s*user\)\s*\)\s+:\s+undefined\s*\}/
+      /moveTargets=\{\s*canMove\s+&&\s+voiceRoom\s+\?\s+voiceRooms\.filter\(\s*\(\s*room\s*\)\s+=>\s+room\.id\s+!==\s+voiceRoom\.id\s+&&\s+canMemberEnter\(room,\s*user\)\s*\)\s+:\s+undefined\s*\}/
     );
   });
 
-  it("offers the move only to an owner, only for a member who is in voice, and never for a bot", () => {
-    // `canModeratePerson` rather than the voice answer beside it: mute, deafen
-    // and disconnect mean the same thing for the Music bot and a move does not.
+  it("offers the move only on Voice moderation and rank, only for a member in voice, and never for a bot", () => {
+    // `canMovePerson` rather than the voice answer beside it: mute, deafen and
+    // disconnect mean the same thing for the Music bot and a move does not.
     // ADR-0010.
-    assert.match(panel, /onMove=\{\s*canModeratePerson\s+&&\s+voiceRoom\s+\?/);
-    assert.match(rail, /onMove=\{\s*canModeratePerson\s+\?/);
+    assert.match(panel, /const\s+canMove\s+=\s+canMovePerson\(/);
+    assert.match(panel, /onMove=\{\s*canMove\s+&&\s+voiceRoom\s+\?/);
+    assert.match(rail, /onMove=\{\s*canMove\s+\?/);
   });
 
   it("closes the menu before acting, so the flyout does not linger over the move", () => {

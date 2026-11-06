@@ -2,7 +2,7 @@ import type { PresenceUser } from "@voxly/shared";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { serverPath } from "../../app/navigation.js";
-import { activeServerRole, memberRolesMenu } from "../../app/presentation.js";
+import { memberRolesMenu, moderationActor } from "../../app/presentation.js";
 import type { MemberAction, ShellActions, ShellModel } from "../../app/types.js";
 import { ConfirmDialog, NicknameDialog } from "../../components/ui/Dialogs.js";
 import { MenuIcon, UsersIcon } from "../../components/ui/Icons.js";
@@ -28,7 +28,6 @@ import type { RailRequest } from "./ChannelRail.js";
 export function AppChrome(props: ShellModel & ShellActions & { children: ReactNode; mobileTitle: string }) {
   const { onCloseAudioSettings } = props;
   const mobileRoomsRef = useRef<HTMLButtonElement | null>(null);
-  const canModerate = activeServerRole(props) === "owner";
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("account");
   const [settingsContextError, setSettingsContextError] = useState<TranslationKey | "">("");
@@ -361,7 +360,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
           voiceRooms={props.rooms.voice}
           voiceSnapshots={props.voiceSnapshots}
           currentUser={props.user}
-          canModerate={canModerate}
+          actor={moderationActor(props)}
           memberVolumes={props.memberVolumes}
           onMemberVolumeChange={props.onMemberVolumeChange}
           onVoiceModeration={props.onVoiceModeration}

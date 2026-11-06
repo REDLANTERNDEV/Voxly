@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, fetchServerInvites, fetchServerMembers } from "../../api.js";
+import { moderationActor } from "../../app/presentation.js";
 import type { ShellActions, ShellModel } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
 import {
@@ -21,6 +22,7 @@ import { ServerRolesSection } from "./ServerRolesSection.js";
 const sectionTitles = {
   overview: "serverSettings.overview",
   invites: "serverSettings.invites",
+  bans: "serverSettings.bans",
   roles: "serverSettings.roles",
   members: "serverSettings.members",
   inviteTrail: "serverSettings.inviteTrail",
@@ -31,6 +33,7 @@ const sectionTitles = {
 const sectionIcons = {
   overview: <GearIcon />,
   invites: <LinkIcon />,
+  bans: <ShieldIcon />,
   roles: <ShieldIcon />,
   members: <UsersIcon />,
   inviteTrail: <ShieldIcon />,
@@ -108,17 +111,18 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
   const onCloseRef = useRef(props.onClose);
   onCloseRef.current = props.onClose;
   const requestRef = useRef(0);
-  const ownsServer = server?.role === "owner";
+  const actor = moderationActor(props);
+  const readsMembers = sections.includes("members");
   const readsInvites = Boolean(server?.permissions.includes("manageInvites"));
   const serverId = props.activeServerId;
 
   const reload = useCallback(async () => {
     // Each list is asked for only by someone whose Permissions reach it.
-    if (!ownsServer && !readsInvites) return;
+    if (!readsMembers && !readsInvites) return;
     const requestId = ++requestRef.current;
     try {
       const [members, invitesResponse] = await Promise.all([
-        ownsServer ? fetchServerMembers(serverId) : null,
+        readsMembers ? fetchServerMembers(serverId) : null,
         readsInvites ? fetchServerInvites(serverId) : null
       ]);
       if (requestId !== requestRef.current) return;
@@ -127,7 +131,7 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
     } catch {
       if (requestId === requestRef.current) setStatus(t("owner.dataError"));
     }
-  }, [ownsServer, readsInvites, serverId, t]);
+  }, [readsMembers, readsInvites, serverId, t]);
 
   useEffect(() => {
     setStatus("");
@@ -313,9 +317,11 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
               onSetMemberRole={props.onSetMemberRole}
             />
           ) : null}
-          {section === "members" ? (
+          {(section === "members" || section === "bans") && actor ? (
             <ServerMembersSection
-              userId={props.user.id}
+              key={section}
+              actor={actor}
+              mode={section}
               users={users}
               serverRoles={props.serverRoles}
               t={t}
@@ -325,6 +331,7 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
               onModerateMember={props.onModerateMember}
               onVoiceModeration={props.onVoiceModeration}
               onUpdateMemberNickname={props.onUpdateMemberNickname}
+              onSetMemberRole={props.onSetMemberRole}
             />
           ) : null}
           {section === "invites" ? (
