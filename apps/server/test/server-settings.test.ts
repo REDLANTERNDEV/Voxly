@@ -117,11 +117,21 @@ describe("Server settings on Permissions", () => {
     assert.equal(created.statusCode, 201);
     for (const request of [
       { method: "DELETE" as const, url: `/api/servers/${defaultServerId}` },
-      { method: "GET" as const, url: `/api/servers/${defaultServerId}/invites` },
       { method: "POST" as const, url: `/api/servers/${defaultServerId}/members/${plain.user.id}/access-links` }
     ]) {
       const response = await app.server.inject({ ...request, cookies: admin.cookies });
       assert.equal(response.statusCode, 403, request.url);
+    }
+    // An Admin holds Manage invites and sees every link, but not the trail.
+    const invites = await app.server.inject({
+      method: "GET",
+      url: `/api/servers/${defaultServerId}/invites`,
+      cookies: admin.cookies
+    });
+    assert.equal(invites.statusCode, 200);
+    for (const invite of invites.json().invites as Array<{ createdBy: unknown; uses: unknown[] }>) {
+      assert.equal(invite.createdBy, null);
+      assert.deepEqual(invite.uses, []);
     }
   });
 });

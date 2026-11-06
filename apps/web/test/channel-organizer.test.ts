@@ -131,8 +131,8 @@ describe("server channel organizer", () => {
     assert.doesNotMatch(styles, /\.channel-category-chevron\.is-collapsed/);
   });
 
-  it("drags the full owner channel row and category header without stealing normal clicks", () => {
-    assert.match(rail, /"data-drag-kind":\s+canManageServer\s+\?\s+"room"\s+:\s+undefined/);
+  it("drags the full channel row and category header without stealing normal clicks", () => {
+    assert.match(rail, /"data-drag-kind":\s+canManageChannels\s+\?\s+"room"\s+:\s+undefined/);
     assert.match(organizer, /data-drag-kind=\{\s*canManage\s+\?\s+"category"\s+:\s+undefined\s*\}\s*/);
     const pointerDown = organizer.match(/function\s+onPointerDown\(\s*event:[\s\S]*?\n\s+}/)?.[0] ?? "";
     assert.doesNotMatch(

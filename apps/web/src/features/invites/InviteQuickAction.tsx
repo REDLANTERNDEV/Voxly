@@ -16,8 +16,11 @@ export function InviteQuickAction({
   serverName,
   publicUrl,
   openRequest = 0,
+  allowPermanent = false,
   t
 }: {
+  /** Manage invites: the composer may offer a link that never expires. */
+  allowPermanent?: boolean;
   /** Bumped by the server menu's Invite people to open this popover from elsewhere. */
   openRequest?: number;
   serverId: string;
@@ -105,7 +108,13 @@ export function InviteQuickAction({
                   <CloseIcon />
                 </button>
               </header>
-              <InviteComposer serverId={serverId} publicUrl={publicUrl} idPrefix="railInvite" t={t} />
+              <InviteComposer
+                serverId={serverId}
+                publicUrl={publicUrl}
+                idPrefix="railInvite"
+                allowPermanent={allowPermanent}
+                t={t}
+              />
             </div>,
             document.body
           )

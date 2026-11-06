@@ -14,13 +14,14 @@ import { OwnerInviteTable } from "../owner/OwnerInviteTable.js";
 import { SecretLinkDisplay } from "../owner/OwnerServerContext.js";
 
 /**
- * Server settings › Invite trail, the owner's alone (ADR-0034): every Invite
- * with who made it and who joined through it, active ones revocable, past
- * ones folded away.
+ * Server settings › Invites (Manage invites) and › Invite trail (the owner's
+ * alone, ADR-0034): every Invite, active ones revocable, past ones folded away;
+ * the trail adds who made each and who joined through it.
  */
 export function ServerInviteTrailSection({
   serverId,
   invites,
+  showTrail = true,
   language,
   timeFormat,
   t,
@@ -29,6 +30,8 @@ export function ServerInviteTrailSection({
 }: {
   serverId: string;
   invites: OwnerInvite[];
+  /** Off in the Invites section, which lists and revokes but never shows the trail. */
+  showTrail?: boolean;
   language: LanguageCode;
   timeFormat: TimeFormatPreference;
   t: Translate;
@@ -58,6 +61,7 @@ export function ServerInviteTrailSection({
               timeFormat={timeFormat}
               t={t}
               onRevoke={setRevoking}
+              showTrail={showTrail}
             />
           )}
           {past.length > 0 ? (
@@ -70,6 +74,7 @@ export function ServerInviteTrailSection({
                 timeFormat={timeFormat}
                 t={t}
                 onRevoke={setRevoking}
+                showTrail={showTrail}
               />
             </details>
           ) : null}

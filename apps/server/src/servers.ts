@@ -18,6 +18,7 @@
  * `docs/adr/0013-route-modules-register-their-own-routes.md`.
  */
 
+import type { FastifyReply } from "fastify";
 import { z } from "zod";
 import {
   afkRoomName,
@@ -37,6 +38,7 @@ import {
   rankOf,
   requireServerMember,
   requireServerPermission,
+  roomAccess,
   roomReaderIds
 } from "./members.js";
 import { baselineRoomReadState } from "./readState.js";
@@ -88,6 +90,20 @@ function uncategorizedPositionForServer(database: VoxlyDatabase, serverId: strin
 
 export function registerServerRoutes(context: RouteContext) {
   const { fastify, database, io, realtime, secureCookies } = context;
+
+  /**
+   * Manage channels reaches the channels its holder can enter. A Hidden one
+   * they cannot see answers as if it did not exist; a Listed one they may only
+   * read is refused. Otherwise the Channel access route would let them add
+   * themselves to any Private channel, which ADR-0038 keeps for its access,
+   * Administrator and the owner. Returns true once it has answered.
+   */
+  function refuseUnenteredRoom(room: RoomSummary, actorId: string, reply: FastifyReply) {
+    const access = roomAccess(database.sqlite, room, actorId);
+    if (access.canEnter) return false;
+    reply.code(access.canSee ? 403 : 404).send({ error: access.canSee ? "room_forbidden" : "room_not_found" });
+    return true;
+  }
   fastify.get("/api/servers", async (request, reply) => {
     const user = requireUser(database, request, reply, secureCookies);
     if (!user) return;
@@ -182,9 +198,9 @@ export function registerServerRoutes(context: RouteContext) {
   });
 
   fastify.post("/api/servers/:serverId/rooms", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply);
+    const scope = requirePermittedServer(context, request, reply, "manageChannels");
     if (!scope) return;
-    const { owner, serverId } = scope;
+    const { user: actor, serverId } = scope;
     const body = z
       .object({
         name: roomNameSchema,
@@ -215,7 +231,7 @@ export function registerServerRoutes(context: RouteContext) {
         [serverId]
       )?.position ?? 0;
     const room = createServerRoom(database, serverId, body.name, body.kind, position + 10, false, categoryId);
-    audit(database, owner.id, "room.created", null, serverId);
+    audit(database, actor.id, "room.created", null, serverId);
     database.save();
     // Members already in the server hold a cached room list, so a new channel is
     // invisible until they reload unless the same signal that covers deletion
@@ -225,9 +241,9 @@ export function registerServerRoutes(context: RouteContext) {
   });
 
   fastify.post("/api/servers/:serverId/categories", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply);
+    const scope = requirePermittedServer(context, request, reply, "manageChannels");
     if (!scope) return;
-    const { owner, serverId } = scope;
+    const { user: actor, serverId } = scope;
     const { name } = z.object({ name: categoryNameSchema }).parse(request.body);
     const categoryCount =
       one<{ count: number }>(database.sqlite, "select count(*) as count from categories where server_id = ?", [
@@ -250,16 +266,18 @@ export function registerServerRoutes(context: RouteContext) {
       category.name,
       category.position
     ]);
-    audit(database, owner.id, "category.created", null, serverId);
+    audit(database, actor.id, "category.created", null, serverId);
     database.save();
     io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
     return reply.code(201).send({ category });
   });
 
   fastify.patch("/api/servers/:serverId/categories/:categoryId", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply, { categoryId: z.string().min(1).max(128) });
+    const scope = requirePermittedServer(context, request, reply, "manageChannels", {
+      categoryId: z.string().min(1).max(128)
+    });
     if (!scope) return;
-    const { owner, serverId, categoryId } = scope;
+    const { user: actor, serverId, categoryId } = scope;
     const { name } = z.object({ name: categoryNameSchema }).parse(request.body);
     const current = one<CategoryRow>(
       database.sqlite,
@@ -268,7 +286,7 @@ export function registerServerRoutes(context: RouteContext) {
     );
     if (!current) return reply.code(404).send({ error: "category_not_found" });
     run(database.sqlite, "update categories set name = ? where id = ? and server_id = ?", [name, categoryId, serverId]);
-    audit(database, owner.id, "category.renamed", null, serverId);
+    audit(database, actor.id, "category.renamed", null, serverId);
     database.save();
     const category = { ...current, name };
     io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
@@ -276,9 +294,11 @@ export function registerServerRoutes(context: RouteContext) {
   });
 
   fastify.delete("/api/servers/:serverId/categories/:categoryId", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply, { categoryId: z.string().min(1).max(128) });
+    const scope = requirePermittedServer(context, request, reply, "manageChannels", {
+      categoryId: z.string().min(1).max(128)
+    });
     if (!scope) return;
-    const { owner, serverId, categoryId } = scope;
+    const { user: actor, serverId, categoryId } = scope;
     const category = one<CategoryRow>(
       database.sqlite,
       `select ${categoryColumns} from categories where id = ? and server_id = ?`,
@@ -307,7 +327,7 @@ export function registerServerRoutes(context: RouteContext) {
           serverId
         ]);
       });
-      audit(database, owner.id, "category.deleted", null, serverId);
+      audit(database, actor.id, "category.deleted", null, serverId);
       database.sqlite.exec("commit");
     } catch (cause) {
       database.sqlite.exec("rollback");
@@ -319,7 +339,7 @@ export function registerServerRoutes(context: RouteContext) {
   });
 
   fastify.patch("/api/servers/:serverId/layout", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply);
+    const scope = requirePermittedServer(context, request, reply, "manageChannels");
     if (!scope) return;
     const { serverId } = scope;
     const body = z
@@ -340,7 +360,15 @@ export function registerServerRoutes(context: RouteContext) {
 
     database.sqlite.exec("begin immediate");
     try {
-      const currentRooms = all<{ id: string }>(database.sqlite, "select id from rooms where server_id = ?", [serverId]);
+      // The layout names the channels its sender can see. A Hidden channel they
+      // cannot see keeps its category and its place among the others there.
+      const allRooms = all<{ id: string; category_id: string | null }>(
+        database.sqlite,
+        "select id, category_id from rooms where server_id = ? order by position asc",
+        [serverId]
+      );
+      const visibleIds = new Set(roomsVisibleTo(database.sqlite, serverId, scope.user.id).map((room) => room.id));
+      const currentRooms = allRooms.filter((room) => visibleIds.has(room.id));
       const currentCategories = all<{ id: string }>(database.sqlite, "select id from categories where server_id = ?", [
         serverId
       ]);
@@ -385,7 +413,18 @@ export function registerServerRoutes(context: RouteContext) {
       });
       let position = 10;
       for (const group of body.groups) {
-        for (const roomId of group.roomIds) {
+        const visibleQueue = [...group.roomIds];
+        const ordered: string[] = [];
+        for (const room of allRooms.filter((item) => item.category_id === group.categoryId)) {
+          if (visibleIds.has(room.id)) {
+            const next = visibleQueue.shift();
+            if (next) ordered.push(next);
+          } else {
+            ordered.push(room.id);
+          }
+        }
+        ordered.push(...visibleQueue);
+        for (const roomId of ordered) {
           run(database.sqlite, "update rooms set category_id = ?, position = ? where id = ? and server_id = ?", [
             group.categoryId,
             position,
@@ -403,7 +442,7 @@ export function registerServerRoutes(context: RouteContext) {
     database.save();
     io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
     return {
-      rooms: roomsVisibleTo(database.sqlite, serverId, scope.owner.id),
+      rooms: roomsVisibleTo(database.sqlite, serverId, scope.user.id),
       categories: categoriesForServer(database, serverId),
       uncategorizedPosition: uncategorizedPositionForServer(database, serverId)
     };
@@ -475,14 +514,15 @@ export function registerServerRoutes(context: RouteContext) {
   });
 
   fastify.patch("/api/servers/:serverId/rooms/:roomId", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply, { roomId: roomIdParam });
+    const scope = requirePermittedServer(context, request, reply, "manageChannels", { roomId: roomIdParam });
     if (!scope) return;
-    const { owner, serverId, roomId } = scope;
+    const { user: actor, serverId, roomId } = scope;
     const { name } = z.object({ name: roomNameSchema }).strict().parse(request.body);
     const current = roomById(database.sqlite, roomId);
     if (!current || current.serverId !== serverId) return reply.code(404).send({ error: "room_not_found" });
+    if (refuseUnenteredRoom(current, actor.id, reply)) return;
     run(database.sqlite, "update rooms set name = ? where id = ? and server_id = ?", [name, roomId, serverId]);
-    audit(database, owner.id, "room.renamed", null, serverId);
+    audit(database, actor.id, "room.renamed", null, serverId);
     database.save();
     io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
     return { room: { ...current, name } };
@@ -491,9 +531,9 @@ export function registerServerRoutes(context: RouteContext) {
   // One route replaces a channel's privacy and Channel access together, so an
   // owner never leaves a channel half-configured (ADR-0037).
   fastify.put("/api/servers/:serverId/rooms/:roomId/access", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply, { roomId: roomIdParam });
+    const scope = requirePermittedServer(context, request, reply, "manageChannels", { roomId: roomIdParam });
     if (!scope) return;
-    const { owner, serverId, roomId } = scope;
+    const { user: actor, serverId, roomId } = scope;
     const body = z
       .object({
         isPrivate: z.boolean(),
@@ -504,6 +544,7 @@ export function registerServerRoutes(context: RouteContext) {
       .parse(request.body);
     const current = roomById(database.sqlite, roomId);
     if (!current || current.serverId !== serverId) return reply.code(404).send({ error: "room_not_found" });
+    if (refuseUnenteredRoom(current, actor.id, reply)) return;
     if (body.isPrivate && current.isAfk) return reply.code(409).send({ error: "afk_room_cannot_be_private" });
     const welcomeRoomId = one<{ welcome_room_id: string | null }>(
       database.sqlite,
@@ -553,13 +594,13 @@ export function registerServerRoutes(context: RouteContext) {
         run(
           database.sqlite,
           "insert into room_access (room_id, user_id, granted_by_user_id, granted_at) values (?, ?, ?, ?)",
-          [roomId, userId, owner.id, now]
+          [roomId, userId, actor.id, now]
         );
       }
       const updated = roomById(database.sqlite, roomId)!;
       const newReaders = [...roomReaderIds(database.sqlite, updated)].filter((userId) => !readersBefore.has(userId));
       baselineRoomReadState(database.sqlite, roomId, newReaders);
-      audit(database, owner.id, "room.accessChanged", null, serverId);
+      audit(database, actor.id, "room.accessChanged", null, serverId);
       database.sqlite.exec("commit");
     } catch (cause) {
       database.sqlite.exec("rollback");
@@ -573,11 +614,12 @@ export function registerServerRoutes(context: RouteContext) {
   });
 
   fastify.delete("/api/servers/:serverId/rooms/:roomId", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply, { roomId: roomIdParam });
+    const scope = requirePermittedServer(context, request, reply, "manageChannels", { roomId: roomIdParam });
     if (!scope) return;
-    const { owner, serverId, roomId } = scope;
+    const { user: actor, serverId, roomId } = scope;
     const room = roomById(database.sqlite, roomId);
     if (!room || room.serverId !== serverId) return reply.code(404).send({ error: "room_not_found" });
+    if (refuseUnenteredRoom(room, actor.id, reply)) return;
     const roomCount =
       one<{ count: number }>(database.sqlite, "select count(*) as count from rooms where server_id = ?", [serverId])
         ?.count ?? 0;
@@ -589,7 +631,7 @@ export function registerServerRoutes(context: RouteContext) {
       run(database.sqlite, "delete from room_access where room_id = ?", [roomId]);
       run(database.sqlite, "delete from messages where room_id = ?", [roomId]);
       run(database.sqlite, "delete from rooms where id = ? and server_id = ?", [roomId, serverId]);
-      audit(database, owner.id, "room.deleted", null, serverId);
+      audit(database, actor.id, "room.deleted", null, serverId);
       database.sqlite.exec("commit");
     } catch (cause) {
       database.sqlite.exec("rollback");

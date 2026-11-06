@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, fetchServerOwnerData } from "../../api.js";
+import { ApiError, fetchServerInvites, fetchServerMembers } from "../../api.js";
 import type { ShellActions, ShellModel } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
 import {
@@ -20,6 +20,7 @@ import { ServerRolesSection } from "./ServerRolesSection.js";
 
 const sectionTitles = {
   overview: "serverSettings.overview",
+  invites: "serverSettings.invites",
   roles: "serverSettings.roles",
   members: "serverSettings.members",
   inviteTrail: "serverSettings.inviteTrail",
@@ -29,6 +30,7 @@ const sectionTitles = {
 
 const sectionIcons = {
   overview: <GearIcon />,
+  invites: <LinkIcon />,
   roles: <ShieldIcon />,
   members: <UsersIcon />,
   inviteTrail: <ShieldIcon />,
@@ -107,21 +109,25 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
   onCloseRef.current = props.onClose;
   const requestRef = useRef(0);
   const ownsServer = server?.role === "owner";
+  const readsInvites = Boolean(server?.permissions.includes("manageInvites"));
   const serverId = props.activeServerId;
 
   const reload = useCallback(async () => {
-    // Members, the Invite trail and access links read owner routes; nobody else asks.
-    if (!ownsServer) return;
+    // Each list is asked for only by someone whose Permissions reach it.
+    if (!ownsServer && !readsInvites) return;
     const requestId = ++requestRef.current;
     try {
-      const data = await fetchServerOwnerData(serverId);
+      const [members, invitesResponse] = await Promise.all([
+        ownsServer ? fetchServerMembers(serverId) : null,
+        readsInvites ? fetchServerInvites(serverId) : null
+      ]);
       if (requestId !== requestRef.current) return;
-      setUsers(data.users);
-      setInvites(data.invites);
+      if (members) setUsers(members.members);
+      if (invitesResponse) setInvites(invitesResponse.invites);
     } catch {
       if (requestId === requestRef.current) setStatus(t("owner.dataError"));
     }
-  }, [ownsServer, serverId, t]);
+  }, [ownsServer, readsInvites, serverId, t]);
 
   useEffect(() => {
     setStatus("");
@@ -319,6 +325,18 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
               onModerateMember={props.onModerateMember}
               onVoiceModeration={props.onVoiceModeration}
               onUpdateMemberNickname={props.onUpdateMemberNickname}
+            />
+          ) : null}
+          {section === "invites" ? (
+            <ServerInviteTrailSection
+              serverId={serverId}
+              invites={invites}
+              showTrail={false}
+              language={props.language}
+              timeFormat={props.timeFormat}
+              t={t}
+              onChanged={reload}
+              onError={setStatus}
             />
           ) : null}
           {section === "inviteTrail" ? (

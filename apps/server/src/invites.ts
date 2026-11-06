@@ -43,6 +43,8 @@ import { rejectBotTarget } from "./bots.js";
 import { all, defaultServerId, one, run, type VoxlyDatabase } from "./db/database.js";
 import {
   activateServerMembership,
+  hasPermission,
+  isServerOwner,
   requireServerPermission,
   serverHeadcount,
   serverMembership,
@@ -54,6 +56,7 @@ import { verifyTurnstile } from "./turnstile.js";
 import {
   authenticatedWriteLimit,
   requireOwnedServer,
+  requirePermittedServer,
   serverIdParam,
   unauthenticatedWriteLimit,
   userIdParam,
@@ -399,8 +402,8 @@ export function registerInviteRoutes(context: RouteContext) {
     if (!membership) return;
     const body = inviteBodySchema.parse(request.body ?? {});
     // A never-expiring link is a standing credential. Create invites lets a
-    // member add people; handing them a permanent one exceeds what it is for.
-    if (body.expiresInMinutes === null && membership.role !== "owner") {
+    // member add people; a permanent one takes Manage invites as well.
+    if (body.expiresInMinutes === null && !hasPermission(database.sqlite, serverId, user.id, "manageInvites")) {
       return reply.code(403).send({ error: "invite_expiry_required" });
     }
     if (activeInviteCount(database.sqlite, serverId, user.id) >= maxActiveInvitesPerCreator) {
@@ -413,16 +416,29 @@ export function registerInviteRoutes(context: RouteContext) {
   });
 
   fastify.get("/api/servers/:serverId/invites", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply);
+    const scope = requirePermittedServer(context, request, reply, "manageInvites");
     if (!scope) return;
-    return { invites: listInvites(scope.serverId) };
+    const invites = listInvites(scope.serverId);
+    // Manage invites sees and revokes every link; who made each and who came
+    // through it is the Invite trail, and that stays the owner's (ADR-0034).
+    if (isServerOwner(database.sqlite, scope.serverId, scope.user.id)) return { invites };
+    return {
+      invites: invites.map((invite) => ({
+        ...invite,
+        createdByUserId: null,
+        createdBy: null,
+        uses: [],
+        usedByUserId: null,
+        usedAt: null
+      }))
+    };
   });
 
   fastify.post("/api/servers/:serverId/invites/:inviteId/revoke", async (request, reply) => {
-    const scope = requireOwnedServer(context, request, reply, { inviteId: z.string().uuid() });
+    const scope = requirePermittedServer(context, request, reply, "manageInvites", { inviteId: z.string().uuid() });
     if (!scope) return;
-    const { owner, serverId, inviteId } = scope;
-    const result = revokeServerInvite(database, serverId, inviteId, owner.id);
+    const { user: actor, serverId, inviteId } = scope;
+    const result = revokeServerInvite(database, serverId, inviteId, actor.id);
     if (result === "not_found") return reply.code(404).send({ error: "invite_not_found" });
     if (result === "inactive") return reply.code(409).send({ error: "invite_not_active" });
     return reply.code(204).send();
@@ -771,7 +787,7 @@ export function accountInviteTrail(sqlite: DatabaseSync, userId: string) {
   return { joined, invited };
 }
 
-function revokeServerInvite(database: VoxlyDatabase, serverId: string, inviteId: string, ownerId: string) {
+function revokeServerInvite(database: VoxlyDatabase, serverId: string, inviteId: string, actorId: string) {
   const invite = one<{ id: string; max_uses: number | null; expires_at: string | null; revoked_at: string | null }>(
     database.sqlite,
     "select id, max_uses, expires_at, revoked_at from invites where id = ? and server_id = ?",
@@ -783,7 +799,7 @@ function revokeServerInvite(database: VoxlyDatabase, serverId: string, inviteId:
     return "inactive" as const;
   }
   run(database.sqlite, "update invites set revoked_at = ? where id = ?", [new Date().toISOString(), inviteId]);
-  audit(database, ownerId, "invite.revoked", inviteId, serverId);
+  audit(database, actorId, "invite.revoked", inviteId, serverId);
   database.save();
   return "revoked" as const;
 }

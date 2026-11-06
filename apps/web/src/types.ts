@@ -121,7 +121,8 @@ export interface OwnerInvite {
   id: string;
   serverId: string;
   label: string;
-  createdByUserId: string;
+  /** Null for anyone but the owner, like `createdBy`: it would name who made the link. */
+  createdByUserId: string | null;
   usedByUserId: string | null;
   usedAt: string | null;
   expiresAt: string | null;
@@ -129,7 +130,8 @@ export interface OwnerInvite {
   maxUses: InviteMaxUses;
   usedCount: number;
   createdAt: string;
-  createdBy: InviteTrailPerson;
+  /** Null for anyone but the owner: who made it is part of the Invite trail (ADR-0034). */
+  createdBy: InviteTrailPerson | null;
   /** Everyone who joined through it, newest first. */
   uses: InviteUse[];
   /** When it stopped admitting anyone; null while it still does. */

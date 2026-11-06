@@ -229,7 +229,7 @@ requirement.
   the workspace rail. Its items come from `serverMenuItems`, read off the
   Server's reported `permissions` — Server settings when any section is
   reachable, Invite people on Create invites, Create channel and Create
-  category while channel routes still need the owner — followed by the
+  category on Manage channels — followed by the
   notification mutes. An item for a Server not on screen switches to it first.
   Invite people opens the rail's invite popover, and the create items open the
   channel organizer's form, so each has one implementation.
@@ -245,7 +245,11 @@ requirement.
   section's entry.
 - Keep selected-server settings and destructive actions separate from the new
   server creation section. Creation fields affect only the new server.
-- Owners rename text and voice channels through the shared channel action menu
+- Members holding Manage channels get the rail's channel and category actions,
+  dragging, the background create menu and the Channel access dialog, read from
+  the summary's `permissions` exactly as the server checks them; a channel's
+  own actions appear only on channels they can enter. They rename
+  text and voice channels through the shared channel action menu
   and focused dialog. Acknowledged names update in place; IDs and calls survive.
 - Uncategorized channels render under one text heading and one voice heading,
   preserving saved order within each type. Layout moves use that displayed order.
@@ -254,6 +258,9 @@ requirement.
   acknowledgement by changing only the summary's name, and apply scoped
   realtime name updates to the matching server summary without disturbing
   other memberships.
+- Server settings › Invites (Manage invites) lists every invite with Revoke and
+  no trail; › Invite trail is the owner's same list with who made each and who
+  joined. The invite composer offers "Never" only with Manage invites.
 - The Invite trail, access links, membership actions, and history operate on
   the Server whose settings are open; do not reintroduce a target selector.
 - Each Invite row names its Inviter by nickname in that Server and Mention
@@ -787,7 +794,7 @@ requests` and `Accounts`, under one `Installation` heading, with a label
   "Private channel" label. When `canEnter` is false the row is view-only: a
   Listed text channel opens without a composer or message actions, and a
   Listed voice channel lists its members but never joins, never offers Music,
-  and shows no Call length. Owners set access from the channel menu's Channel
+  and shows no Call length. Manage channels holders set access from the channel menu's Channel
   access dialog; the move menu offers only channels the member can enter, and
   the Mention picker in a private channel offers only people with access.
   Leaving the route when a refreshed room list no longer holds the viewed

@@ -32,17 +32,22 @@ export const inviteExpiryOptions: Array<{
 export const inviteMaxUseOptions: InviteMaxUses[] = [1, 5, 10, 25, 50, 100, null];
 
 /**
- * The single invite-creation surface. Owners reach it from the dashboard and
- * granted members from the rail, so both paths stay in step when the invite
- * options change.
+ * The single invite-creation surface, in the rail's invite popover, which the
+ * server menu's Invite people also opens (ADR-0038).
  */
 export function InviteComposer({
   serverId,
   publicUrl,
   idPrefix,
+  allowPermanent = false,
   t,
   onCreated
 }: {
+  /**
+   * Offer "Never": a permanent link takes Manage invites as well as Create
+   * invites, and the server refuses it otherwise.
+   */
+  allowPermanent?: boolean;
   serverId: string;
   publicUrl: string | null;
   idPrefix: string;
@@ -152,11 +157,13 @@ export function InviteComposer({
                   )
                 }
               >
-                {inviteExpiryOptions.map((option) => (
-                  <option key={option.value ?? "never"} value={option.value ?? "never"}>
-                    {t(option.key)}
-                  </option>
-                ))}
+                {inviteExpiryOptions
+                  .filter((option) => option.value !== null || allowPermanent)
+                  .map((option) => (
+                    <option key={option.value ?? "never"} value={option.value ?? "never"}>
+                      {t(option.key)}
+                    </option>
+                  ))}
               </select>
             </label>
             <label className="form-field" htmlFor={`${idPrefix}MaxUses`}>

@@ -133,8 +133,11 @@ function ChannelLabel({ room, t }: { room: RoomSummary; t: ChannelRailProps["t"]
 
 export function ChannelRail(props: ChannelRailProps) {
   const canManageServer = activeServerRole(props) === "owner";
+
   const canInvite = canInviteToActiveServer(props);
   const activeServer = props.servers.find((server) => server.id === props.activeServerId);
+  // Channel actions follow Manage channels, exactly as the server checks them (ADR-0038).
+  const canManageChannels = Boolean(activeServer?.permissions.includes("manageChannels"));
   const [renameTarget, setRenameTarget] = useState<{ room: RoomSummary; trigger: HTMLButtonElement | null } | null>(
     null
   );
@@ -171,24 +174,27 @@ export function ChannelRail(props: ChannelRailProps) {
   ];
   const renderRoom = (room: RoomSummary, actions: ChannelRoomActions) => {
     const actionMenuHeight = channelActionMenuHeight();
-    const actionControl = canManageServer ? (
-      <ChannelDeleteControl
-        actionMenu={props.actionMenu}
-        room={room}
-        categories={categoryChoices}
-        actions={actions}
-        disabled={props.rooms.text.length + props.rooms.voice.length <= 1}
-        onRename={(trigger) => setRenameTarget({ room, trigger })}
-        onAccess={(trigger) => setAccessTarget({ room, trigger })}
-        onRequest={() => setDeleteTarget(room)}
-        t={props.t}
-      />
-    ) : null;
+    // A channel's own actions reach only channels the holder can enter, as the
+    // server checks: a Listed one they may only read offers none.
+    const actionControl =
+      canManageChannels && room.canEnter ? (
+        <ChannelDeleteControl
+          actionMenu={props.actionMenu}
+          room={room}
+          categories={categoryChoices}
+          actions={actions}
+          disabled={props.rooms.text.length + props.rooms.voice.length <= 1}
+          onRename={(trigger) => setRenameTarget({ room, trigger })}
+          onAccess={(trigger) => setAccessTarget({ room, trigger })}
+          onRequest={() => setDeleteTarget(room)}
+          t={props.t}
+        />
+      ) : null;
     const rowData = {
       "data-drop-room": room.id,
       "data-drop-category-id": room.categoryId ?? "",
-      "data-drag-kind": canManageServer ? "room" : undefined,
-      "data-drag-id": canManageServer ? room.id : undefined
+      "data-drag-kind": canManageChannels ? "room" : undefined,
+      "data-drag-id": canManageChannels ? room.id : undefined
     };
     if (room.kind === "text") {
       return (
@@ -197,7 +203,7 @@ export function ChannelRail(props: ChannelRailProps) {
           key={room.id}
           {...rowData}
           onContextMenu={
-            canManageServer
+            canManageChannels
               ? (event) =>
                   openSidebarMenuFromPointer(event, props.actionMenu, `channel:${room.id}`, 220, actionMenuHeight)
               : undefined
@@ -236,7 +242,7 @@ export function ChannelRail(props: ChannelRailProps) {
           className="channel-row"
           {...rowData}
           onContextMenu={
-            canManageServer
+            canManageChannels
               ? (event) =>
                   openSidebarMenuFromPointer(event, props.actionMenu, `channel:${room.id}`, 220, actionMenuHeight)
               : undefined
@@ -431,7 +437,7 @@ export function ChannelRail(props: ChannelRailProps) {
     <aside
       className="rail"
       onContextMenu={
-        canManageServer
+        canManageChannels
           ? (event) => {
               if (event.defaultPrevented) return;
               const target = event.target as Element;
@@ -486,6 +492,7 @@ export function ChannelRail(props: ChannelRailProps) {
         </button>
         {canInvite ? (
           <InviteQuickAction
+            allowPermanent={Boolean(activeServer?.permissions.includes("manageInvites"))}
             openRequest={props.railRequest?.kind === "invite" ? props.railRequest.nonce : 0}
             serverId={props.activeServerId}
             serverName={activeServer?.name ?? "Voxly"}
@@ -499,7 +506,7 @@ export function ChannelRail(props: ChannelRailProps) {
         categories={props.categories}
         uncategorizedPosition={props.uncategorizedPosition}
         rooms={[...props.rooms.text, ...props.rooms.voice]}
-        canManage={canManageServer}
+        canManage={canManageChannels}
         createRequest={
           props.railRequest && props.railRequest.kind !== "invite"
             ? { kind: props.railRequest.kind, nonce: props.railRequest.nonce }

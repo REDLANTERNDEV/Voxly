@@ -508,6 +508,11 @@ export async function revokeServerInvite(serverId: string, inviteId: string) {
   await apiPost<void>(`/api/servers/${encodeURIComponent(serverId)}/invites/${encodeURIComponent(inviteId)}/revoke`);
 }
 
+/** Every invite of a Server, on Manage invites; only the owner's copy carries the Invite trail. */
+export async function fetchServerInvites(serverId: string) {
+  return apiGet<{ invites: OwnerInvite[] }>(`/api/servers/${encodeURIComponent(serverId)}/invites`);
+}
+
 export async function fetchServerOwnerData(serverId: string) {
   const [members, invites] = await Promise.all([
     fetchServerMembers(serverId),

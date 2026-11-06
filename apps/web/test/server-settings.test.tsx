@@ -68,12 +68,14 @@ describe("Server settings (ADR-0038, decisions 14–16 and 20)", () => {
       "overview",
       "roles",
       "members",
+      "invites",
       "inviteTrail",
       "accessLinks",
       "deleteServer"
     ]);
     // An Admin runs the Server but never the owner's own three.
-    assert.deepEqual(serverSettingsSections(admin), ["overview", "roles"]);
+    assert.deepEqual(serverSettingsSections(admin), ["overview", "roles", "invites"]);
+    assert.deepEqual(serverSettingsSections({ role: "member", permissions: ["manageInvites"] }), ["invites"]);
     assert.deepEqual(serverSettingsSections({ role: "member", permissions: ["manageServer"] }), ["overview"]);
     assert.deepEqual(serverSettingsSections(recruiter), []);
     assert.deepEqual(serverSettingsSections(plain), []);
@@ -82,7 +84,11 @@ describe("Server settings (ADR-0038, decisions 14–16 and 20)", () => {
 
   it("offers the server menu's items by Permission, and no settings entry with no section", () => {
     assert.deepEqual(serverMenuItems(owner), ["settings", "invite", "createChannel", "createCategory"]);
-    assert.deepEqual(serverMenuItems(admin), ["settings", "invite"]);
+    assert.deepEqual(serverMenuItems(admin), ["settings", "invite", "createChannel", "createCategory"]);
+    assert.deepEqual(serverMenuItems({ role: "member", permissions: ["manageChannels"] }), [
+      "createChannel",
+      "createCategory"
+    ]);
     assert.deepEqual(serverMenuItems(recruiter), ["invite"]);
     assert.deepEqual(serverMenuItems(plain), []);
   });
@@ -102,6 +108,7 @@ describe("Server settings (ADR-0038, decisions 14–16 and 20)", () => {
   it("shows an Admin only Overview, and nothing at all to a member without a section", () => {
     const html = renderWindow(summary(admin));
     assert.match(html, /<span>Overview<\/span>/);
+    assert.match(html, /<span>Invites<\/span>/);
     assert.doesNotMatch(html, /Invite trail|Access links|Delete server|Owner only/);
     assert.equal(renderWindow(summary(recruiter)), "");
   });

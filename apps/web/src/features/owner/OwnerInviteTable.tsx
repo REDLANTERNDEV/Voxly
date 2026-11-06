@@ -15,6 +15,8 @@ type InviteTableProps = {
   timeFormat: TimeFormatPreference;
   t: Translate;
   onRevoke(invite: OwnerInvite): void;
+  /** Whether to show who made each Invite and who joined through it: the owner's view alone. */
+  showTrail?: boolean;
 };
 
 /** The Inviter as owners read it: nickname here and Mention code, or Deleted member. */
@@ -29,10 +31,11 @@ export function InviterName({ person, t }: { person: InviteTrailPerson; t: Trans
 }
 
 /**
- * One Server's invites with each one's Invite trail a click away. Owner-only:
- * the server refuses the list to a member holding the invite grant (ADR-0034).
+ * One Server's invites. For the owner each one's Invite trail is a click away;
+ * for anyone else holding Manage invites the server sends no trail, and
+ * `showTrail` is off (ADR-0034, ADR-0038).
  */
-export function OwnerInviteTable({ invites, language, timeFormat, t, onRevoke }: InviteTableProps) {
+export function OwnerInviteTable({ invites, language, timeFormat, t, onRevoke, showTrail = true }: InviteTableProps) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const toggle = (inviteId: string) =>
     setOpen((current) => {
@@ -60,18 +63,23 @@ export function OwnerInviteTable({ invites, language, timeFormat, t, onRevoke }:
               <span className="dash-cell" role="cell">
                 <strong>{label}</strong>
                 <span className="mono muted small">{inviteReference(invite.id)}</span>
-                <span className="invite-creator small">
-                  <span className="muted">{t("owner.createdBy")}</span> <InviterName person={invite.createdBy} t={t} />
-                </span>
-                <button
-                  className="invite-trail-toggle"
-                  type="button"
-                  aria-expanded={expanded}
-                  aria-controls={trailId}
-                  onClick={() => toggle(invite.id)}
-                >
-                  {t("owner.whoJoined", { count: invite.uses.length })}
-                </button>
+                {showTrail && invite.createdBy ? (
+                  <>
+                    <span className="invite-creator small">
+                      <span className="muted">{t("owner.createdBy")}</span>{" "}
+                      <InviterName person={invite.createdBy} t={t} />
+                    </span>
+                    <button
+                      className="invite-trail-toggle"
+                      type="button"
+                      aria-expanded={expanded}
+                      aria-controls={trailId}
+                      onClick={() => toggle(invite.id)}
+                    >
+                      {t("owner.whoJoined", { count: invite.uses.length })}
+                    </button>
+                  </>
+                ) : null}
               </span>
               <span className="dash-cell" role="cell">
                 <span>
@@ -100,7 +108,7 @@ export function OwnerInviteTable({ invites, language, timeFormat, t, onRevoke }:
                 ) : null}
               </span>
             </div>
-            {expanded ? (
+            {expanded && showTrail ? (
               <div className="dash-table-row invite-trail-row" role="row">
                 <div className="invite-trail" role="cell" id={trailId}>
                   {invite.uses.length === 0 ? (

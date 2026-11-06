@@ -315,12 +315,23 @@ queries across endpoints.
   member's identity (`server:memberUpdated` with `roleIds`), and emits
   `server:rolesChanged` to the Server room. Removing a Role that leaves the
   member without Create invites revokes the Invites they issued, as revoking
-  the old grant did. Listing and revoking invites remain owner-only, so a
-  member who may invite can add people but cannot audit or undo anyone's links.
-- The owner invite list carries each Invite's creator and its Invite trail,
-  resolved per Server, with a Deleted account's nickname and Mention code
-  withheld. Reading the list deletes that Server's past invites nobody joined
-  through 30 days after they stopped being active; an Invite with any use is
+  the old grant did. Listing and revoking every invite, and creating one that
+  never expires, take Manage invites (ADR-0038), so a member who may only
+  invite can add people but cannot audit or undo anyone's links.
+- Every channel and category route — create, rename, delete, the layout and
+  Channel access — runs on Manage channels through `requirePermittedServer`.
+  A channel's own routes (rename, Channel access, delete) also need the holder
+  to be able to enter it: a Hidden one answers 404 and a Listed one 403, so
+  Manage channels can never add its holder to a Private channel. The layout
+  names the channels its sender can see; a Hidden one keeps its category and
+  place.
+- The invite list carries each Invite's creator and its Invite trail only for
+  the Server owner, resolved per Server, with a Deleted account's nickname and
+  Mention code withheld. Anyone else holding Manage invites gets every link
+  with `createdBy`, `createdByUserId`, `usedByUserId`, `usedAt` nulled and no
+  `uses`: the trail stays the owner's (ADR-0034). Reading the list, by anyone
+  allowed to, deletes that Server's past invites nobody joined through 30 days
+  after they stopped being active; an Invite with any use is
   kept while its Server exists. No scheduled job does this (ADR-0034).
 - An Account's owner details add, per Membership, the Invite it joined through
   and the people that Account's Invites brought in. `requireOwner` guards it:

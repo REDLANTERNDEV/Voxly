@@ -14,7 +14,8 @@ export interface ServerStanding {
   permissions: readonly Permission[];
 }
 
-export type ServerSettingsSection = "overview" | "roles" | "members" | "inviteTrail" | "accessLinks" | "deleteServer";
+export type ServerSettingsSection =
+  "overview" | "roles" | "members" | "invites" | "inviteTrail" | "accessLinks" | "deleteServer";
 
 /** In the order the window lists them. */
 const sectionRules: ReadonlyArray<{
@@ -28,6 +29,7 @@ const sectionRules: ReadonlyArray<{
   // Voice moderation and Manage roles; a section that could only be refused
   // is not offered.
   { id: "members", reaches: (server) => server.role === "owner" },
+  { id: "invites", reaches: (server) => server.permissions.includes("manageInvites") },
   // These three stay with the owner for good (decision 10).
   { id: "inviteTrail", reaches: (server) => server.role === "owner", ownerOnly: true },
   { id: "accessLinks", reaches: (server) => server.role === "owner", ownerOnly: true },
@@ -49,15 +51,14 @@ export type ServerMenuItem = "settings" | "invite" | "createChannel" | "createCa
 
 /**
  * The server name menu's own items, each only for a member whose Permissions
- * reach it. Channel creation is still checked as the owner's on the server, so
- * it is offered to the owner alone until those routes run on Manage channels.
+ * reach it.
  */
 export function serverMenuItems(server: ServerStanding | undefined): ServerMenuItem[] {
   if (!server) return [];
   const items: ServerMenuItem[] = [];
   if (serverSettingsSections(server).length > 0) items.push("settings");
   if (server.permissions.includes("createInvites")) items.push("invite");
-  if (server.role === "owner" && server.permissions.includes("manageChannels")) {
+  if (server.permissions.includes("manageChannels")) {
     items.push("createChannel", "createCategory");
   }
   return items;
