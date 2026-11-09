@@ -24,7 +24,7 @@
  *   with `defaultServerId` substituted for a path parameter, so they live with
  *   the invite rules in `invites.ts` and are covered by its tests.
  * - Not membership moderation. Ban, unban, kick, permissions, nickname and the
- *   voice controls are server-scoped, speak `requireOwnedServer`, and stay in
+ *   voice controls are server-scoped, ask a Permission and rank (ADR-0038), and stay in
  *   `app.ts` with the member directory.
  *
  * The four routes share no preamble beyond `requireOwner`, which is already the

@@ -113,3 +113,23 @@ The browser only reflects the answer.
   read.
 - Changing a Role or a Permission has to reach every open screen at once, and
   so does losing access to a Private channel through a Role.
+
+## Settled while building
+
+Each closes a gap the decisions above left open; none reverses one.
+
+- **A Role carrying Administrator is the owner's, like Admin.** Only the owner
+  gives, removes, changes or deletes it. Otherwise an Admin could hand out an
+  "Admin 2" the owner made, which is the escape this ADR rejects.
+- **Nobody but the owner switches on a Permission they do not hold.** Manage
+  roles alone could otherwise put Manage server on a lower Role its holder
+  already has, or on `@everyone`, and promote them.
+- **Manage channels reaches the channels its holder can enter.** A Hidden one
+  answers as if it did not exist and a Listed one is refused, so the Channel
+  access route can never add its holder to a Private channel.
+- **Manage invites sees every link without the Invite trail.** Who made a link
+  and who came through it stay the owner's (ADR-0034).
+- **Manage messages also covers suppressing another member's preview,** which
+  was the owner's alongside deleting their message.
+- **Server settings opens for whoever reaches one of its sections,** rather
+  than for any Permission: Create invites alone reaches none of them.

@@ -360,8 +360,8 @@ requirement.
   every way out (close button, Escape, backdrop, cancel) is refused until the
   member saves or resets: the bar blinks red, shakes unless reduced motion is
   requested, and says why. A failed save keeps that row's edit and marks it.
-- Kicked members disappear from the owner member list; banned members remain
-  visible so owners can unban them.
+- Kicked members disappear from Server settings › Members; banned members
+  stay listed under › Bans for Manage members holders to unban.
 - Nicknames are server-scoped presentation. A member may set or clear their own
   nickname on any Server they belong to; Manage members renames someone strictly
   below the viewer, never an owner. Keep the global account nickname unchanged and update directory,

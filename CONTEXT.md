@@ -83,7 +83,7 @@ in their own language.
 _Avoid_: System message, join message, greeting
 
 **Pinned message**:
-A message selected by the Server owner for the channel's shared pinned list.
+A message a Manage messages holder selected for the channel's shared pinned list.
 _Avoid_: Bookmark, personal favorite
 
 **External preview**:
@@ -278,8 +278,8 @@ _Avoid_: Level (that is the levels and leagues measure), priority
 
 **Server settings**:
 The window where a Server is run: its overview, Roles, members, invites and
-bans. Anyone holding at least one Permission opens it, and sees only the
-sections their Permissions reach. It is not the owner panel, which covers the
+bans. Anyone whose Permissions reach at least one of its sections opens it,
+and sees only those sections. It is not the owner panel, which covers the
 whole installation.
 _Avoid_: Owner panel, dashboard, admin panel
 

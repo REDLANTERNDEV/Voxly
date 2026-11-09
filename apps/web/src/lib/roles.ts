@@ -54,7 +54,7 @@ export function memberRoleRows(
     if (role.kind === "everyone") return { role, held: true, lock: "everyone" };
     const lock: RoleLock | null = isOwner
       ? null
-      : role.kind === "admin"
+      : role.kind === "admin" || role.permissions.includes("administrator")
         ? "ownerOnly"
         : role.position >= actor.rank
           ? "belowYours"
@@ -81,20 +81,24 @@ export function roleDisplayName(role: Pick<RoleSummary, "name" | "kind">, t: (ke
  * anyone else holding Manage roles only a Role strictly below their own
  * highest, and never Admin. Mirrors what the server checks.
  */
-export function canManageRole(actor: RoleActor | undefined, role: Pick<RoleSummary, "kind" | "position">) {
+export function canManageRole(
+  actor: RoleActor | undefined,
+  role: Pick<RoleSummary, "kind" | "position"> & Partial<Pick<RoleSummary, "permissions">>
+) {
   if (!actor || !holdsPermission(actor, "manageRoles")) return false;
   if (actor.role === "owner") return true;
-  if (role.kind === "admin") return false;
+  // A Role carrying Administrator is the owner's to change, as Admin is (decision 5).
+  if (role.kind === "admin" || role.permissions?.includes("administrator")) return false;
   return role.position < actor.rank;
 }
 
 /** Why a Role cannot be changed by this actor, or null when it can. */
 export function roleEditLock(
   actor: RoleActor | undefined,
-  role: Pick<RoleSummary, "kind" | "position">
+  role: Pick<RoleSummary, "kind" | "position"> & Partial<Pick<RoleSummary, "permissions">>
 ): "ownerOnly" | "belowYours" | null {
   if (canManageRole(actor, role)) return null;
-  return role.kind === "admin" ? "ownerOnly" : "belowYours";
+  return role.kind === "admin" || role.permissions?.includes("administrator") ? "ownerOnly" : "belowYours";
 }
 
 /**

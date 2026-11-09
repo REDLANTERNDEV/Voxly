@@ -35,6 +35,8 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
   const [profileOpen, setProfileOpen] = useState(false);
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
   const [railRequest, setRailRequest] = useState<RailRequest | null>(null);
+  const railNonceRef = useRef(0);
+  const clearRailRequest = useCallback(() => setRailRequest(null), []);
   const [nicknameTarget, setNicknameTarget] = useState<{
     user: PresenceUser;
     returnFocus: HTMLButtonElement | null;
@@ -90,7 +92,8 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         return;
       }
       const kind = item === "invite" ? "invite" : item === "createChannel" ? "room" : "category";
-      setRailRequest((current) => ({ kind, nonce: (current?.nonce ?? 0) + 1 }));
+      railNonceRef.current += 1;
+      setRailRequest({ kind, nonce: railNonceRef.current });
     },
     [activeServerId, onSelectServer]
   );
@@ -229,6 +232,7 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
         />
         <ChannelRail
           railRequest={railRequest}
+          onRailRequestHandled={clearRailRequest}
           mobileStatus={
             <div className="mobile-drawer-status">
               <VoiceDock

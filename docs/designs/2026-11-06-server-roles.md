@@ -1,6 +1,6 @@
 # Design — Server roles and Server settings (2026-11-06)
 
-Decision record: ADR-0038. Status: designed, not built. Tickets:
+Decision record: ADR-0038. Status: built (tickets 01–07 done). Tickets:
 `.scratch/roles/issues/` (local, not committed).
 
 ## Problem

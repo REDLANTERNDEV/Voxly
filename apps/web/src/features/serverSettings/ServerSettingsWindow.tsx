@@ -141,6 +141,19 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
     };
   }, [reload]);
 
+  // The directory and Roles change live (decision 22); the moderation list
+  // follows them rather than keeping what it read when the window opened.
+  const directoryVersion = props.serverMembers;
+  const rolesVersion = props.serverRoles;
+  const firstLoad = useRef(true);
+  useEffect(() => {
+    if (firstLoad.current) {
+      firstLoad.current = false;
+      return;
+    }
+    void reload();
+  }, [directoryVersion, rolesVersion, reload]);
+
   // Losing the last Permission that reached anything closes the window itself.
   const empty = sections.length === 0;
   useEffect(() => {

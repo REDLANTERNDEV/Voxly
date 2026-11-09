@@ -16,6 +16,7 @@ export function InviteQuickAction({
   serverName,
   publicUrl,
   openRequest = 0,
+  onOpenRequestHandled,
   allowPermanent = false,
   t
 }: {
@@ -23,6 +24,8 @@ export function InviteQuickAction({
   allowPermanent?: boolean;
   /** Bumped by the server menu's Invite people to open this popover from elsewhere. */
   openRequest?: number;
+  /** Clears the request once it opened the popover, so a later mount never replays it. */
+  onOpenRequestHandled?: () => void;
   serverId: string;
   serverName: string;
   publicUrl: string | null;
@@ -60,11 +63,12 @@ export function InviteQuickAction({
   // for the server the user just navigated away from.
   useEffect(() => setIsOpen(false), [serverId]);
 
-  // A request made before this mounted is not replayed: only a new one opens it.
-  const seenRequestRef = useRef(openRequest);
+  // A pending request opens it, even one made just before this mounted (the
+  // server menu switches Server first); handling it clears it, so it is never
+  // replayed by a later mount.
   useEffect(() => {
-    if (openRequest === seenRequestRef.current) return;
-    seenRequestRef.current = openRequest;
+    if (!openRequest) return;
+    onOpenRequestHandled?.();
     const rect = triggerRef.current?.getBoundingClientRect();
     if (rect) {
       setPosition({
@@ -73,7 +77,7 @@ export function InviteQuickAction({
       });
     }
     setIsOpen(true);
-  }, [openRequest]);
+  }, [openRequest, onOpenRequestHandled]);
 
   return (
     <>

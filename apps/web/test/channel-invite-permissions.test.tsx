@@ -58,7 +58,7 @@ describe("channels and invites on Permissions (ADR-0038, ticket 04)", () => {
   it("gates the rail's channel actions on Manage channels, not ownership", () => {
     const rail = readFileSync("src/components/shell/ChannelRail.tsx", "utf8");
     assert.match(rail, /permissions\.includes\("manageChannels"\)/);
-    assert.match(rail, /const actionControl =\s+canManageChannels && room\.canEnter \?/);
+    assert.match(rail, /const\s+actionControl\s*=\s*canManageChannels\s*&&\s*room\.canEnter\s*\?/);
     assert.match(rail, /canManage=\{canManageChannels\}/);
   });
 });

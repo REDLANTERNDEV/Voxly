@@ -19,7 +19,7 @@ const bot: PresenceUser = { userId: "bot", nickname: "Music", role: "member", is
 const memberPanel = readFileSync("src/components/shell/MemberPanel.tsx", "utf8");
 const channelRail = readFileSync("src/components/shell/ChannelRail.tsx", "utf8");
 const appChrome = readFileSync("src/components/shell/AppChrome.tsx", "utf8");
-const ownerPanel = readFileSync("src/features/serverSettings/ServerMembersSection.tsx", "utf8");
+const membersSection = readFileSync("src/features/serverSettings/ServerMembersSection.tsx", "utf8");
 const accessLinks = readFileSync("src/features/serverSettings/ServerAccessSections.tsx", "utf8");
 const styles = readFileSync("src/styles.css", "utf8");
 
@@ -99,21 +99,21 @@ describe("bot moderation offers", () => {
 
   it("counts the Server settings member figures by people too", () => {
     assert.match(
-      ownerPanel,
+      membersSection,
       /const\s+people\s+=\s+props\.users\.filter\(\s*\(\s*member\s*\)\s+=>\s+!member\.isBot\s*\);/
     );
     assert.match(
-      ownerPanel,
+      membersSection,
       /const\s+activeMembers\s+=\s+people\.filter\(\s*\(\s*member\s*\)\s+=>\s+!member\.bannedAt\s*\);/
     );
-    assert.doesNotMatch(ownerPanel, /value:\s+users\.length\s+-\s+activeMembers\.length/);
+    assert.doesNotMatch(membersSection, /value:\s+users\.length\s+-\s+activeMembers\.length/);
   });
 
   it("splits the Server settings member menu so a bot keeps voice moderation and loses the rest", () => {
-    assert.match(ownerPanel, /canVoiceModerate\(actor, props\.serverRoles, target\)/);
-    assert.match(ownerPanel, /canModeratePerson\(actor, props\.serverRoles, target\)/);
+    assert.match(membersSection, /canVoiceModerate\(\s*actor,\s*props\.serverRoles,\s*target\s*\)/);
+    assert.match(membersSection, /canModeratePerson\(\s*actor,\s*props\.serverRoles,\s*target\s*\)/);
     // The ban and kick entries must sit under the membership guard.
-    const membershipGroup = ownerPanel.slice(ownerPanel.search(/\{canManageMembership\s*\?\s*\(?\s*<>/));
+    const membershipGroup = membersSection.slice(membersSection.search(/\{canManageMembership\s*\?\s*\(?\s*<>/));
     assert.match(membershipGroup, /requestBan\(\s*member\s*\)/);
     assert.match(membershipGroup, /member\.kickTitle/);
     // Access links have their own section, which never offers one to a Bot.

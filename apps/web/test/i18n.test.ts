@@ -81,8 +81,8 @@ describe("frontend localization", () => {
   });
 
   it("translates owner voice, invite limits, and reconnect states in both languages", () => {
-    assert.equal(translate("en", "member.ownerMuted"), "Muted by owner");
-    assert.equal(translate("tr", "member.ownerDeafened"), "Owner tarafından sağırlaştırıldı");
+    assert.equal(translate("en", "member.ownerMuted"), "Muted by a moderator");
+    assert.equal(translate("tr", "member.ownerDeafened"), "Bir moderatör tarafından sağırlaştırıldı");
     assert.equal(translate("en", "invite.remainingUses", { count: 5 }), "5 uses remaining");
     assert.equal(translate("tr", "invite.expiry30d"), "30 gün");
     assert.equal(translate("en", "connection.retryAttempt", { count: 3 }), "Reconnect attempt 3");

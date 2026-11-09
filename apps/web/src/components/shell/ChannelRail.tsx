@@ -115,6 +115,7 @@ type ChannelRailProps = Pick<
     mobileStatus?: ReactNode;
     /** A server menu item asking the rail to open its invite popover or a create form. */
     railRequest?: RailRequest | null;
+    onRailRequestHandled?: () => void;
   };
 
 export type RailRequest = { kind: "invite" | "room" | "category"; nonce: number };
@@ -498,6 +499,7 @@ export function ChannelRail(props: ChannelRailProps) {
           <InviteQuickAction
             allowPermanent={Boolean(activeServer?.permissions.includes("manageInvites"))}
             openRequest={props.railRequest?.kind === "invite" ? props.railRequest.nonce : 0}
+            onOpenRequestHandled={props.onRailRequestHandled}
             serverId={props.activeServerId}
             serverName={activeServer?.name ?? "Voxly"}
             publicUrl={props.appConfig.publicUrl}
@@ -511,6 +513,7 @@ export function ChannelRail(props: ChannelRailProps) {
         uncategorizedPosition={props.uncategorizedPosition}
         rooms={[...props.rooms.text, ...props.rooms.voice]}
         canManage={canManageChannels}
+        onCreateRequestHandled={props.onRailRequestHandled}
         createRequest={
           props.railRequest && props.railRequest.kind !== "invite"
             ? { kind: props.railRequest.kind, nonce: props.railRequest.nonce }

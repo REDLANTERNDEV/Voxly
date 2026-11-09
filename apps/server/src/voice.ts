@@ -162,9 +162,9 @@ export interface VoiceRealtime {
   isVoiceSocketMember: (roomId: string, userId: string, socket: VoxlySocket) => boolean;
   /** Drop the voice membership a disconnecting socket still holds. */
   leaveAllRooms: (socket: VoxlySocket, userId: string) => void;
-  /** Owner-initiated disconnect of one member from one voice room. */
+  /** A Voice moderation holder's disconnect of one member from one voice room. */
   disconnectMember: (serverId: string, roomId: string, userId: string) => boolean;
-  /** Owner-initiated move of one member to another voice room in the same server. */
+  /** A Voice moderation holder's move of one member to another voice room in the same server. */
   moveMember: (serverId: string, userId: string, targetRoomId: string) => boolean;
   /**
    * Evict a user from voice, everywhere by default or from one server's rooms
@@ -176,7 +176,7 @@ export interface VoiceRealtime {
   deleteRoom: (roomId: string, reason: "room_deleted" | "server_deleted") => void;
   /** Republish live snapshots after a member's identity changed. */
   refreshMemberIdentity: (serverId: string, userId: string, user: PresenceUser) => void;
-  /** Reapply owner mute/deafen to the member's live media state. */
+  /** Reapply moderator mute/deafen to the member's live media state. */
   updateModeration: (serverId: string, userId: string, moderation: VoiceModerationState) => void;
   /** Let this Music bot into this voice channel for the Summon just made. */
   allowSummon: (botUserId: string, roomId: string) => void;

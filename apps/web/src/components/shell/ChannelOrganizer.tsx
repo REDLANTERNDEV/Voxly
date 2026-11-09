@@ -69,6 +69,7 @@ export function ChannelOrganizer({
   uncategorizedPosition,
   canManage,
   createRequest = null,
+  onCreateRequestHandled,
   actionMenu,
   t,
   onCreateCategory,
@@ -85,6 +86,8 @@ export function ChannelOrganizer({
   canManage: boolean;
   /** Bumped by the server menu's Create channel or Create category to open that form here. */
   createRequest?: { kind: "room" | "category"; nonce: number } | null;
+  /** Clears the request once it opened the form, so a later mount never replays it. */
+  onCreateRequestHandled?: () => void;
   actionMenu: SidebarActionMenuController;
   t: Translate;
   onCreateCategory: (name: string) => Promise<void>;
@@ -129,16 +132,15 @@ export function ChannelOrganizer({
   useEffect(() => setLocalGroups(groups), [groups]);
   const createNonce = createRequest?.nonce;
   const createKind = createRequest?.kind;
-  // A request made before this mounted is not replayed: only a new one opens the form.
-  const seenCreateRef = useRef(createNonce);
+  // A pending request opens the form; handling it clears it, so it is never replayed.
   useEffect(() => {
-    if (createNonce === seenCreateRef.current || !createKind) return;
-    seenCreateRef.current = createNonce;
+    if (!createNonce || !createKind) return;
+    onCreateRequestHandled?.();
     setEditor({ kind: createKind, categoryId: null, trigger: null });
     setEditorName("");
     setEditorRoomKind("text");
     setEditorError(false);
-  }, [createNonce, createKind]);
+  }, [createNonce, createKind, onCreateRequestHandled]);
   useEffect(() => {
     const organizer = organizerRef.current;
     if (!organizer) return;

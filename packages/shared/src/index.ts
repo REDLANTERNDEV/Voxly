@@ -346,15 +346,6 @@ export interface RoleSummary {
 export type RoleChange = Partial<Pick<RoleSummary, "name" | "color" | "separate" | "permissions">>;
 
 /**
- * The finite refusals of the Role routes, beside the generic `forbidden`:
- * too many Roles, a reorder that does not name every movable Role once, a
- * field a fixed Role keeps (`@everyone`'s name, colour and grouping; Admin's
- * Administrator), and deleting Admin or `@everyone`.
- */
-export type RoleError =
-  "role_limit_reached" | "role_order_invalid" | "role_field_fixed" | "role_fixed" | "role_not_found";
-
-/**
  * A Server's Roles, highest first, with what they make the asking member: the
  * Permissions they hold (already expanded, so `administrator` arrives with
  * every other one) and their rank. The client reads these answers; it never

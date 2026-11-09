@@ -172,6 +172,25 @@ describe("the Role editor's routes", () => {
     assert.equal((await update(mod, helpers.id, { permissions: [] })).statusCode, 200);
   });
 
+  it("keeps a Role carrying Administrator the owner's alone, so an Admin cannot make an Admin 2", async () => {
+    const deputies = (await create(owner, "Deputies")).json().role as RoleSummary;
+    assert.equal((await update(owner, deputies.id, { permissions: ["administrator"] })).statusCode, 200);
+    const given = await app.server.inject({
+      method: "PUT",
+      url: `/api/servers/${defaultServerId}/members/${plain.user.id}/roles/${deputies.id}`,
+      cookies: admin.cookies
+    });
+    assert.equal(given.statusCode, 403);
+    assert.equal((await update(admin, deputies.id, { name: "Mine" })).statusCode, 403);
+    assert.equal((await remove(admin, deputies.id)).statusCode, 403);
+    const byOwner = await app.server.inject({
+      method: "PUT",
+      url: `/api/servers/${defaultServerId}/members/${plain.user.id}/roles/${deputies.id}`,
+      cookies: owner.cookies
+    });
+    assert.equal(byOwner.statusCode, 200);
+  });
+
   it("writes nothing for a change that changes nothing", async () => {
     const helpers = (await create(owner, "Helpers")).json().role as RoleSummary;
     assert.equal((await update(owner, helpers.id, { name: "Helpers" })).statusCode, 200);

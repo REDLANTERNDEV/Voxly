@@ -18,7 +18,7 @@ web serving, and owner recovery CLIs.
   domain module owns — health, config and RTC, `/api/me`, the four endpoints
   that mint or end a session (owner bootstrap, the owner claim, the bot
   exchange, logout), and the member directory with the membership-moderation
-  routes. Those last are server-scoped and speak `requireOwnedServer`; do not
+  routes. Those last are server-scoped and ask a Permission and rank (ADR-0038); do not
   move them to `ownerPanel.ts`, which is the global role.
 - `src/http.ts` owns the plumbing every route module shares, as `socket.ts` does
   for socket handlers: the `RouteContext` a route module is handed, the
@@ -282,9 +282,10 @@ queries across endpoints.
 ## Membership and Moderation
 
 - Every server-scoped route and event requires an active, non-banned,
-  non-removed membership; owner actions additionally require active owner role,
-  until a ticket moves them onto a Permission. Invite creation asks for the
-  Create invites Permission through `requireServerPermission`.
+  non-removed membership; each action then asks its Permission
+  (`requirePermittedServer`, `requireServerPermission`), and an action on a
+  person also `outranks`. Only deleting the Server, access links and the Invite
+  trail stay with the owner (`requireOwnedServer`, decision 10).
 - Permissions add up (ADR-0038): `@everyone` plus every Role a member holds,
   with Administrator implying every other one. The owner holds them all and
   stands one above the highest Role; a Bot holds none, whatever a row says.
@@ -535,12 +536,12 @@ before changing it.
 - Persist messages only in text rooms and enforce server membership before
   history, create, edit, or delete operations.
 - Message bodies remain trimmed, non-empty, and capped at 2,000 characters.
-- Members may edit/delete their own messages; owners may delete other users'
-  messages but do not gain edit ownership.
+- Members may edit/delete their own messages; Manage messages holders may
+  delete other users' messages but do not gain edit ownership.
 - Keep creation time stable on edit and set `editedAt` separately.
 - Persist suppressed rich-preview keys with each message as a bounded list with
-  an additive legacy-safe default. Only the message author or an active owner
-  of that message's server may suppress one key, and the operation must still
+  an additive legacy-safe default. Only the message author or a Manage messages
+  holder in that message's server may suppress one key, and the operation must still
   require active membership in the text room's server.
 - Preview suppression keeps the message body unchanged, persists before
   acknowledgement, and emits the updated message only to that room. The server
@@ -565,13 +566,14 @@ before changing it.
 - Server enforcement stops the indicator, not the sound: media flows peer to
   peer, so the client must also hold the local track closed. Neither half is
   sufficient alone.
-- An owner may move a member between voice rooms in their own server. The server
+- A Voice moderation holder may move a member below them between voice rooms
+  of their Server. The server
   cannot join for them, so it emits `voice:moveTo` and the target's client uses
   the ordinary join path — which carries the AFK mute and the previous room's
   departure with it. Scope the target room to the server and require the member
   to already be in voice there, so a move can never place someone in a room they
   hold no membership for.
-- The AFK timeout is per server, owner-only, and restricted to the shared option
+- The AFK timeout is per server, set on Manage server, and restricted to the shared option
   list; legacy rows with no value read as the default. Changing it emits to the
   whole server room, because every member runs their own idle clock.
 - Measured idle is per connection. A member is Idle only when every one of

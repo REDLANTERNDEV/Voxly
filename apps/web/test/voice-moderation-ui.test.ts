@@ -27,7 +27,7 @@ describe("voice moderation UI", () => {
     const app = readAppSource();
     const rail = app.match(/function\s+ChannelRail[\s\S]*?\n}\n\nfunction\s+ChannelDeleteControl/)?.[0] ?? "";
 
-    assert.match(rail, /canVoiceModerate\(actor, props\.serverRoles, member\.user\)/);
+    assert.match(rail, /canVoiceModerate\(\s*actor,\s*props\.serverRoles,\s*member\.user\s*\)/);
     assert.match(rail, /moderation=\{\s*canVoiceModerateMember\s+\?\s+member\.moderation\s+:\s+undefined\s*\}/);
     assert.match(rail, /onVoiceModeration=\{\s*canVoiceModerateMember/);
   });

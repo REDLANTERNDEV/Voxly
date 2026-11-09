@@ -74,7 +74,9 @@ export function mayChangeMemberRole(
   if (!outranks(sqlite, serverId, actorId, targetId)) return false;
   const actorIsOwner = activeServerMembership(sqlite, serverId, actorId)?.role === "owner";
   if (actorIsOwner) return true;
-  if (role.kind === "admin") return false;
+  // A Role carrying Administrator is Admin by another name: only the owner
+  // gives or removes it, or an Admin could make an "Admin 2" (decision 5).
+  if (role.kind === "admin" || role.permissions.includes("administrator")) return false;
   return role.position < rankOf(sqlite, serverId, actorId);
 }
 
@@ -97,7 +99,7 @@ const roleBodySchema = z
  */
 export function mayManageRole(sqlite: DatabaseSync, serverId: string, actorId: string, role: RoleSummary) {
   if (activeServerMembership(sqlite, serverId, actorId)?.role === "owner") return true;
-  if (role.kind === "admin") return false;
+  if (role.kind === "admin" || role.permissions.includes("administrator")) return false;
   return role.position < rankOf(sqlite, serverId, actorId);
 }
 
