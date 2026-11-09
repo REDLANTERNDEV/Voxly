@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PresenceUser, RoomAccessUpdate, RoomSummary } from "@voxly/shared";
+import type { PresenceUser, RoleSummary, RoomAccessUpdate, RoomSummary } from "@voxly/shared";
 import type { Translate } from "../../app/types.js";
+import { roleDisplayName } from "../../lib/roles.js";
 
 /**
- * Where a Server owner makes a channel private and chooses its Channel access
- * (ADR-0037). The server is the authority: this only proposes a whole new
- * setting, and owners appear checked and locked because they always have
- * access whatever the list says.
+ * Where a Manage channels holder makes a channel private and chooses its
+ * Channel access (ADR-0037): Roles first, then members (ADR-0038). The server
+ * is the authority: this only proposes a whole new setting, and owners and
+ * Roles holding Administrator appear checked and locked because they always
+ * have access whatever the list says.
  */
 export function ChannelAccessDialog({
   room,
   members,
+  roles = [],
   lockedReason,
   returnFocus,
   t,
@@ -20,6 +23,8 @@ export function ChannelAccessDialog({
   room: RoomSummary;
   /** The member-safe directory of this Server. Bots are left out here. */
   members: PresenceUser[];
+  /** The Server's Roles, highest first. */
+  roles?: readonly RoleSummary[];
   /** Why this channel can never be private, when it cannot. */
   lockedReason: string | null;
   returnFocus: HTMLButtonElement | null;
@@ -30,6 +35,9 @@ export function ChannelAccessDialog({
   const [isPrivate, setIsPrivate] = useState(room.isPrivate);
   const [listed, setListed] = useState(room.listed);
   const [chosen, setChosen] = useState(() => new Set(room.accessUserIds ?? []));
+  const [chosenRoles, setChosenRoles] = useState(() => new Set(room.accessRoleIds ?? []));
+  // `@everyone` on the list would make the channel public under another name.
+  const listableRoles = roles.filter((role) => role.kind !== "everyone");
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -113,7 +121,10 @@ export function ChannelAccessDialog({
           void onSave({
             isPrivate,
             listed: isPrivate && listed,
-            userIds: isPrivate ? [...chosen].filter((userId) => !ownerIds.has(userId)) : []
+            userIds: isPrivate ? [...chosen].filter((userId) => !ownerIds.has(userId)) : [],
+            // Kept as chosen, Administrator Roles included: their entry outlives
+            // Administrator being switched off later.
+            roleIds: isPrivate ? [...chosenRoles] : []
           })
             .then(close)
             .catch(() => setError(t("channel.accessFailed")))
@@ -163,6 +174,37 @@ export function ChannelAccessDialog({
                 {t("channel.accessListedHint")}
               </p>
             </fieldset>
+            {listableRoles.length > 0 ? (
+              <fieldset className="channel-access-members channel-access-roles" disabled={saving}>
+                <legend>{t("channel.accessRoles")}</legend>
+                <ul className="channel-access-list">
+                  {listableRoles.map((role) => {
+                    // Administrator enters every Private channel; its Roles are in already.
+                    const implicit = role.permissions.includes("administrator");
+                    return (
+                      <li key={role.id}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={implicit || chosenRoles.has(role.id)}
+                            disabled={implicit}
+                            onChange={() =>
+                              setChosenRoles((current) => {
+                                const next = new Set(current);
+                                if (!next.delete(role.id)) next.add(role.id);
+                                return next;
+                              })
+                            }
+                          />
+                          <span className="channel-access-name">{roleDisplayName(role, t)}</span>
+                          {implicit ? <span className="muted">{t("channel.accessAdministratorAlways")}</span> : null}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </fieldset>
+            ) : null}
             <fieldset className="channel-access-members" disabled={saving}>
               <legend>{t("channel.accessMembers")}</legend>
               <input

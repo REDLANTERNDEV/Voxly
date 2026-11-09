@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { PresenceUser, RoomSummary } from "@voxly/shared";
+import type { PresenceUser, RoleSummary, RoomSummary } from "@voxly/shared";
 import { forceLeaveNoticeKey } from "../src/app/presentation.js";
 import { ChannelAccessDialog } from "../src/features/owner/ChannelAccessDialog.js";
 import { translate } from "../src/lib/i18n.js";
@@ -100,5 +100,69 @@ describe("private channels (ADR-0037)", () => {
     const screen = readFileSync("src/features/chat/TextRoomScreen.tsx", "utf8");
     assert.match(screen, /const\s+readOnly\s*=\s*props\.currentRoom\s*\?\s*!props\.currentRoom\.canEnter\s*:\s*false;/);
     assert.match(screen, /\{\s*readOnly\s*\?\s*null\s*:\s*\(\s*<form\s+onSubmit=\{\s*submit\s*\}>/);
+  });
+});
+
+describe("Roles on Channel access (ADR-0038, ticket 07)", () => {
+  const roles: RoleSummary[] = [
+    {
+      id: "admins",
+      serverId: "server",
+      name: "Admins",
+      color: null,
+      position: 2,
+      separate: false,
+      permissions: ["administrator"],
+      kind: null
+    },
+    {
+      id: "crew",
+      serverId: "server",
+      name: "Crew",
+      color: null,
+      position: 1,
+      separate: false,
+      permissions: [],
+      kind: null
+    },
+    {
+      id: "everyone",
+      serverId: "server",
+      name: null,
+      color: null,
+      position: 0,
+      separate: false,
+      permissions: [],
+      kind: "everyone"
+    }
+  ];
+  const crewRoom: RoomSummary = { ...room, accessUserIds: [], accessRoleIds: ["crew"] };
+
+  it("lets in a member through a Role on the access, or through Administrator", () => {
+    assert.equal(canMemberEnter(crewRoom, { ...outsider, roleIds: ["crew"] }, roles), true);
+    assert.equal(canMemberEnter(crewRoom, { ...outsider, roleIds: [] }, roles), false);
+    assert.equal(canMemberEnter(crewRoom, { ...outsider, roleIds: ["admins"] }, roles), true);
+    // A Bot is never let in by a Role.
+    assert.equal(canMemberEnter(crewRoom, { ...bot, roleIds: ["crew"] }, roles), false);
+  });
+
+  it("lists Roles above members, @everyone left out and Administrator locked on", () => {
+    const html = renderToStaticMarkup(
+      <ChannelAccessDialog
+        room={crewRoom}
+        members={[owner, insider]}
+        roles={roles}
+        lockedReason={null}
+        returnFocus={null}
+        t={t}
+        onCancel={() => undefined}
+        onSave={async () => undefined}
+      />
+    );
+    assert.ok(html.indexOf("channel-access-roles") < html.indexOf("Insider"), "Roles come before members");
+    assert.match(html, /Administrator, always has access/);
+    assert.doesNotMatch(html, /@everyone/);
+    assert.match(html, /checked=""[^>]*\/><span class="channel-access-name">Crew/);
+    assert.notEqual(translate("tr", "channel.accessRoles"), translate("en", "channel.accessRoles"));
   });
 });

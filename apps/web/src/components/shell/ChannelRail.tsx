@@ -241,7 +241,7 @@ export function ChannelRail(props: ChannelRailProps) {
     // cannot enter it; the rail does not show one it may still hold either.
     const showCallLength = callStart !== undefined && room.canEnter;
     const moveTargetsFor = (user: PresenceUser) =>
-      props.rooms.voice.filter((target) => target.id !== room.id && canMemberEnter(target, user));
+      props.rooms.voice.filter((target) => target.id !== room.id && canMemberEnter(target, user, props.serverRoles));
     return (
       <div className="voice-channel-block" key={room.id}>
         <div
@@ -544,6 +544,7 @@ export function ChannelRail(props: ChannelRailProps) {
           key={accessTarget.room.id}
           room={accessTarget.room}
           members={props.serverMembers}
+          roles={props.serverRoles}
           lockedReason={
             accessTarget.room.isAfk
               ? props.t("channel.accessAfkLocked")

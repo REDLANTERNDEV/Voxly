@@ -133,7 +133,9 @@ export function StageMemberActions({
         }
         roles={roles}
         moveTargets={
-          canMove ? props.rooms.voice.filter((room) => room.id !== roomId && canMemberEnter(room, member)) : undefined
+          canMove
+            ? props.rooms.voice.filter((room) => room.id !== roomId && canMemberEnter(room, member, props.serverRoles))
+            : undefined
         }
         onMove={canMove ? (target) => props.onMoveMember(member.userId, target) : undefined}
         selfControls={selfControls}

@@ -608,18 +608,29 @@ before changing it.
   viewers off a room that no longer exists.
 
 - Private channels (ADR-0037) have one rule, `roomAccess` in `members.ts`:
-  Server owners and members on a channel's `room_access` list may enter it;
+  Server owners, Administrator holders, members on a channel's `room_access`
+  list and members holding a Role on its `room_access_roles` list may enter it
+  (ADR-0038); a Bot never through a Role;
   everyone else of an active Membership may read a Listed channel and nothing
   of a Hidden one. Every channel route asks it — read routes need `canRead`,
   writes and reactions need `canEnter` — and the room list, unread state,
   Mention recipients and `message:new` audiences are filtered by it. Never
   check access at write time or copy it onto messages.
-- The access route is owner-only, strips owners and Bots from the list, and
+- `roomEntrantIds` works out the same answer as `roomAccess` for a whole
+  Server in a few queries, because every message in a Private channel asks;
+  `test/role-channel-access.test.ts` holds the two to the same set. Change
+  them together.
+- The access route runs on Manage channels, takes `roleIds` beside `userIds`
+  (never `@everyone` or another Server's Role: `access_role_invalid`), strips
+  owners and Bots from the list, and
   refuses the AFK room and the Welcome notice channel; neither may become
   private, and a private channel may not be chosen for either. Losing access
   evicts in the same request: voice members get `room_access_revoked`, and
   sockets that may no longer read leave the text room. Kick, ban and Account
-  deletion clear that Membership's grants.
+  deletion clear that Membership's grants. A Role change — given, removed, its
+  Administrator switched on or off, or the Role deleted (which also leaves every Channel
+  access) — re-applies every Private channel of the Server the same way, emits
+  `server:roomsChanged`, and starts anyone it let in with the channel read.
 
 ## Atomic Voice and Realtime State
 

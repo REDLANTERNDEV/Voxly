@@ -39,7 +39,9 @@ import {
   requireServerMember,
   requireServerPermission,
   roomAccess,
-  roomReaderIds
+  roomGrantRoleIds,
+  roomReaderIds,
+  serverRoles
 } from "./members.js";
 import { baselineRoomReadState } from "./readState.js";
 import { seedServerRoles } from "./roleSeeds.js";
@@ -538,7 +540,8 @@ export function registerServerRoutes(context: RouteContext) {
       .object({
         isPrivate: z.boolean(),
         listed: z.boolean(),
-        userIds: z.array(z.string().min(1).max(128)).max(500)
+        userIds: z.array(z.string().min(1).max(128)).max(500),
+        roleIds: z.array(z.string().uuid()).max(50).optional()
       })
       .strict()
       .parse(request.body);
@@ -578,6 +581,17 @@ export function registerServerRoutes(context: RouteContext) {
       return reply.code(400).send({ error: "access_member_invalid" });
     }
     const userIds = body.isPrivate ? [...new Set(grantees)] : [];
+    // A Role on Channel access lets its members in (ADR-0038). `@everyone`
+    // would only make the channel public under another name.
+    const serverRoleKinds = new Map(serverRoles(database.sqlite, serverId).map((role) => [role.id, role.kind]));
+
+    // Left out, the Role entries already there stay, so a caller that only
+    // knows about people never clears them by accident.
+    const requestedRoleIds = body.roleIds ?? roomGrantRoleIds(database.sqlite, roomId);
+    if (requestedRoleIds.some((id) => !serverRoleKinds.has(id) || serverRoleKinds.get(id) === "everyone")) {
+      return reply.code(400).send({ error: "access_role_invalid" });
+    }
+    const roleIds = body.isPrivate ? [...new Set(requestedRoleIds)] : [];
 
     const readersBefore = roomReaderIds(database.sqlite, current);
     const now = new Date().toISOString();
@@ -590,6 +604,14 @@ export function registerServerRoutes(context: RouteContext) {
         serverId
       ]);
       run(database.sqlite, "delete from room_access where room_id = ?", [roomId]);
+      run(database.sqlite, "delete from room_access_roles where room_id = ?", [roomId]);
+      for (const roleId of roleIds) {
+        run(
+          database.sqlite,
+          "insert into room_access_roles (room_id, role_id, granted_by_user_id, granted_at) values (?, ?, ?, ?)",
+          [roomId, roleId, actor.id, now]
+        );
+      }
       for (const userId of userIds) {
         run(
           database.sqlite,
@@ -610,7 +632,7 @@ export function registerServerRoutes(context: RouteContext) {
     realtime.revokeRoomAccess(serverId, roomId);
     io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
     const room = roomById(database.sqlite, roomId)!;
-    return { room: room.isPrivate ? { ...room, accessUserIds: userIds } : room };
+    return { room: room.isPrivate ? { ...room, accessUserIds: userIds, accessRoleIds: roleIds } : room };
   });
 
   fastify.delete("/api/servers/:serverId/rooms/:roomId", async (request, reply) => {
@@ -629,6 +651,7 @@ export function registerServerRoutes(context: RouteContext) {
     try {
       run(database.sqlite, "delete from room_read_cursors where room_id = ?", [roomId]);
       run(database.sqlite, "delete from room_access where room_id = ?", [roomId]);
+      run(database.sqlite, "delete from room_access_roles where room_id = ?", [roomId]);
       run(database.sqlite, "delete from messages where room_id = ?", [roomId]);
       run(database.sqlite, "delete from rooms where id = ? and server_id = ?", [roomId, serverId]);
       audit(database, actor.id, "room.deleted", null, serverId);
@@ -675,6 +698,11 @@ export function registerServerRoutes(context: RouteContext) {
       run(database.sqlite, "delete from room_access where room_id in (select id from rooms where server_id = ?)", [
         serverId
       ]);
+      run(
+        database.sqlite,
+        "delete from room_access_roles where room_id in (select id from rooms where server_id = ?)",
+        [serverId]
+      );
       run(database.sqlite, "delete from messages where room_id in (select id from rooms where server_id = ?)", [
         serverId
       ]);

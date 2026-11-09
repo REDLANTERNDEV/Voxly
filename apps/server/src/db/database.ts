@@ -414,6 +414,15 @@ function migrate(sqlite: DatabaseSync) {
       primary key (role_id, user_id)
     );
     create index if not exists idx_member_roles_member on member_roles (server_id, user_id);
+    -- Channel access by Role (ADR-0038), beside room_access's direct entries.
+    create table if not exists room_access_roles (
+      room_id text not null,
+      role_id text not null,
+      granted_by_user_id text,
+      granted_at text not null,
+      primary key (room_id, role_id)
+    );
+    create index if not exists idx_room_access_roles_role on room_access_roles (role_id);
   `);
 
   sqlite.exec(`

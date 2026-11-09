@@ -66,7 +66,7 @@ type-check and build, then fail at server start with `ERR_MODULE_NOT_FOUND`.
   (ADR-0038).
 
 - `RoomSummary` is per viewer: `isPrivate`, `listed` and `canEnter` describe
-  what that viewer may do, and `accessUserIds` is sent only to viewers who can
+  what that viewer may do, and `accessUserIds` and `accessRoleIds` are sent only to viewers who can
   enter. Nothing on the wire may let a client infer a Hidden channel it cannot
   see (ADR-0037).
 

@@ -28,7 +28,8 @@ import {
   roleNameMaxLength,
   serverPermissions,
   type Permission,
-  type RoleSummary
+  type RoleSummary,
+  type RoomSummary
 } from "@voxly/shared";
 import { audit } from "./audit.js";
 import { isBotUser } from "./bots.js";
@@ -41,6 +42,8 @@ import {
   type RouteContext
 } from "./http.js";
 import { revokeInvitesCreatedBy } from "./invites.js";
+import { baselineRoomReadState } from "./readState.js";
+import { roomById } from "./rooms.js";
 import {
   activeServerMembership,
   hasPermission,
@@ -48,6 +51,7 @@ import {
   outranks,
   permissionsFor,
   rankOf,
+  roomReaderIds,
   serverPresenceUser,
   serverRole,
   serverRoles
@@ -127,6 +131,29 @@ function renumberRoles(sqlite: DatabaseSync, serverId: string) {
   ids.forEach((row, index) => run(sqlite, "update roles set position = ? where id = ?", [index, row.id]));
 }
 
+/**
+ * Who may read each Private channel of a Server right now, so a Role change
+ * can tell who it just let in (ADR-0038, decision 21).
+ */
+function privateRoomReaders(sqlite: DatabaseSync, serverId: string) {
+  const readers = new Map<string, { room: RoomSummary; readers: Set<string> }>();
+  for (const { id } of all<{ id: string }>(sqlite, "select id from rooms where server_id = ? and is_private = 1", [
+    serverId
+  ])) {
+    const room = roomById(sqlite, id);
+    if (room) readers.set(id, { room, readers: roomReaderIds(sqlite, room) });
+  }
+  return readers;
+}
+
+/** Someone a Role change let into a channel starts it read, as a direct grant does. */
+function baselineNewReaders(sqlite: DatabaseSync, before: ReturnType<typeof privateRoomReaders>) {
+  for (const [roomId, { room, readers }] of before) {
+    const fresh = [...roomReaderIds(sqlite, room)].filter((userId) => !readers.has(userId));
+    if (fresh.length > 0) baselineRoomReadState(sqlite, roomId, fresh);
+  }
+}
+
 function inTransaction<T>(database: VoxlyDatabase, work: () => T): T {
   database.sqlite.exec("begin immediate");
   try {
@@ -141,6 +168,16 @@ function inTransaction<T>(database: VoxlyDatabase, work: () => T): T {
 
 export function registerRoleRoutes(context: RouteContext) {
   const { fastify, database, io, realtime } = context;
+
+  /**
+   * Re-apply every Private channel's access after a Role change: losing it
+   * through a Role takes effect at once, exactly as losing a direct grant does
+   * (voice out, reading sockets off), and every list is refreshed (decision 21).
+   */
+  function reapplyRoomAccess(serverId: string, rooms: Iterable<string>) {
+    for (const roomId of rooms) realtime.revokeRoomAccess(serverId, roomId);
+    io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
+  }
 
   fastify.get("/api/servers/:serverId/roles", async (request, reply) => {
     const scope = requireJoinedServer(context, request, reply);
@@ -272,6 +309,11 @@ export function registerRoleRoutes(context: RouteContext) {
       (permissions === undefined || permissions.join() === role.permissions.join());
     if (unchanged) return { role };
     const now = new Date().toISOString();
+    // Only Administrator decides who enters a Private channel; no other
+    // Permission changes anyone's access.
+    const administratorChanged =
+      permissions !== undefined && permissions.includes("administrator") !== role.permissions.includes("administrator");
+    const readersBefore = administratorChanged ? privateRoomReaders(database.sqlite, serverId) : null;
     inTransaction(database, () => {
       const before = inviteCreators(database.sqlite, serverId);
       if (body.name !== undefined) run(database.sqlite, "update roles set name = ? where id = ?", [body.name, roleId]);
@@ -283,11 +325,14 @@ export function registerRoleRoutes(context: RouteContext) {
       if (permissions) {
         run(database.sqlite, "update roles set permissions = ? where id = ?", [JSON.stringify(permissions), roleId]);
         revokeLostInvites(database, serverId, before, now);
+        // Administrator enters every Private channel, so switching it moves people in or out.
+        if (readersBefore) baselineNewReaders(database.sqlite, readersBefore);
       }
       audit(database, actor.id, "role.updated", null, serverId);
     });
     database.save();
     io.to(`server:${serverId}`).emit("server:rolesChanged", { serverId });
+    if (readersBefore) reapplyRoomAccess(serverId, readersBefore.keys());
     return { role: serverRole(database.sqlite, serverId, roleId) };
   });
 
@@ -307,10 +352,12 @@ export function registerRoleRoutes(context: RouteContext) {
         roleId
       ]).map((row) => row.user_id);
       const now = new Date().toISOString();
+      const readersBefore = privateRoomReaders(database.sqlite, serverId);
       inTransaction(database, () => {
         const before = inviteCreators(database.sqlite, serverId);
-        // Deleting a Role takes it from its members (decision 7).
+        // Deleting a Role takes it from its members and from every Channel access (decision 7).
         run(database.sqlite, "delete from member_roles where role_id = ?", [roleId]);
+        run(database.sqlite, "delete from room_access_roles where role_id = ?", [roleId]);
         run(database.sqlite, "delete from roles where id = ? and server_id = ?", [roleId, serverId]);
         renumberRoles(database.sqlite, serverId);
         revokeLostInvites(database, serverId, before, now);
@@ -319,6 +366,7 @@ export function registerRoleRoutes(context: RouteContext) {
       database.save();
       for (const userId of holders) realtime.refreshMemberIdentity(serverId, userId);
       io.to(`server:${serverId}`).emit("server:rolesChanged", { serverId });
+      reapplyRoomAccess(serverId, readersBefore.keys());
       return reply.code(204).send();
     }
   );
@@ -344,6 +392,7 @@ export function registerRoleRoutes(context: RouteContext) {
       return current ? { user: current } : reply.code(404).send({ error: "member_not_found" });
     }
     const now = new Date().toISOString();
+    const readersBefore = privateRoomReaders(database.sqlite, serverId);
     database.sqlite.exec("begin immediate");
     try {
       if (give) {
@@ -365,6 +414,7 @@ export function registerRoleRoutes(context: RouteContext) {
           revokeInvitesCreatedBy(database, serverId, userId, now);
         }
       }
+      baselineNewReaders(database.sqlite, readersBefore);
       audit(database, actor.id, give ? "role.given" : "role.removed", userId, serverId);
       database.sqlite.exec("commit");
     } catch (cause) {
@@ -374,6 +424,7 @@ export function registerRoleRoutes(context: RouteContext) {
     database.save();
     const updated = realtime.refreshMemberIdentity(serverId, userId);
     io.to(`server:${serverId}`).emit("server:rolesChanged", { serverId });
+    reapplyRoomAccess(serverId, readersBefore.keys());
     if (!updated) return reply.code(404).send({ error: "member_not_found" });
     return { user: updated };
   };

@@ -183,7 +183,7 @@ export function MemberPanel({
               roles={roles}
               moveTargets={
                 canMove && voiceRoom
-                  ? voiceRooms.filter((room) => room.id !== voiceRoom.id && canMemberEnter(room, user))
+                  ? voiceRooms.filter((room) => room.id !== voiceRoom.id && canMemberEnter(room, user, serverRoles))
                   : undefined
               }
               onMove={canMove && voiceRoom ? (roomId) => onMoveMember(user.userId, roomId) : undefined}

@@ -22,6 +22,7 @@ import {
   reconcileReplyIdentity,
   type MemberIdentityChanges
 } from "../../lib/memberIdentity.js";
+import { useServerRoles } from "../../app/serverRolesContext.js";
 type TextRoomProps = Pick<
   ShellModel,
   | "user"
@@ -88,8 +89,9 @@ export function TextRoomScreen(props: TextRoomProps) {
   // channel's Mention picker offers only those who can read it (ADR-0037).
   const readOnly = props.currentRoom ? !props.currentRoom.canEnter : false;
   const currentRoom = props.currentRoom;
+  const serverRoles = useServerRoles();
   const mentionMembers = currentRoom
-    ? props.serverMembers.filter((member) => canMemberEnter(currentRoom, member))
+    ? props.serverMembers.filter((member) => canMemberEnter(currentRoom, member, serverRoles))
     : props.serverMembers;
   useEffect(() => {
     if (roomId) composerDrafts.write(userId, roomId, { body: draft, mentions: draftMentions, replyTo: replyTarget });

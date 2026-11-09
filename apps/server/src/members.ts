@@ -498,8 +498,10 @@ export function publicPresence(user: { id: string; nickname: string; role: UserR
  * `canSee`: the channel appears in their list. `canRead`: they may read its
  * history, unread state and live messages, and see who is in it. `canEnter`:
  * they may write, react and join. A public channel grants all three to every
- * active Membership; a private one grants them to the Server's owners and its
- * Channel access, and only `canSee` and `canRead` to others when it is Listed.
+ * active Membership; a private one grants them to the Server's owners, to
+ * Administrator holders and to its Channel access — a member on it directly or
+ * through a Role they hold (ADR-0038) — and only `canSee` and `canRead` to
+ * others when it is Listed. Still decided when something is read.
  */
 export type RoomAccess = { canSee: boolean; canRead: boolean; canEnter: boolean };
 
@@ -514,13 +516,42 @@ export function hasRoomGrant(sqlite: DatabaseSync, roomId: string, userId: strin
   );
 }
 
+/** Whether a Role the member holds is on the channel's Channel access. A Bot holds none. */
+export function hasRoomRoleGrant(sqlite: DatabaseSync, room: Pick<RoomSummary, "id" | "serverId">, userId: string) {
+  return Boolean(
+    one(
+      sqlite,
+      `select 1 as granted from room_access_roles a
+       join member_roles mr on mr.role_id = a.role_id and mr.server_id = ? and mr.user_id = ?
+       join users u on u.id = mr.user_id and u.is_bot = 0
+       where a.room_id = ?`,
+      [room.serverId, userId, room.id]
+    )
+  );
+}
+
 export function roomAccess(sqlite: DatabaseSync, room: RoomAccessSubject, userId: string): RoomAccess {
   const membership = activeServerMembership(sqlite, room.serverId, userId);
   if (!membership) return noRoomAccess;
-  if (!room.isPrivate || membership.role === "owner" || hasRoomGrant(sqlite, room.id, userId)) {
+  if (
+    !room.isPrivate ||
+    membership.role === "owner" ||
+    hasRoomGrant(sqlite, room.id, userId) ||
+    hasRoomRoleGrant(sqlite, room, userId) ||
+    hasPermission(sqlite, room.serverId, userId, "administrator")
+  ) {
     return { canSee: true, canRead: true, canEnter: true };
   }
   return room.listed ? { canSee: true, canRead: true, canEnter: false } : noRoomAccess;
+}
+
+/** The Roles on one private channel's Channel access. */
+export function roomGrantRoleIds(sqlite: DatabaseSync, roomId: string) {
+  return all<{ role_id: string }>(
+    sqlite,
+    "select role_id from room_access_roles where room_id = ? order by granted_at",
+    [roomId]
+  ).map((row) => row.role_id);
 }
 
 /** The Channel access of one private channel, owners not included. */
@@ -532,24 +563,49 @@ export function roomGrantUserIds(sqlite: DatabaseSync, roomId: string) {
 
 /**
  * Everyone an active Membership currently lets enter a channel: every member
- * for a public channel, otherwise owners plus its Channel access.
+ * for a public channel, otherwise exactly whom `roomAccess` lets in — owners,
+ * Administrator holders and the Channel access, direct or by a Role — worked
+ * out with a handful of queries for the whole Server rather than the resolver
+ * once per member, since every message in a Private channel asks.
+ * `test/role-channel-access.test.ts` holds the two to the same answers.
  */
 export function roomEntrantIds(sqlite: DatabaseSync, room: Omit<RoomAccessSubject, "listed">): Set<string> {
-  const rows = room.isPrivate
-    ? all<{ user_id: string }>(
-        sqlite,
-        `select m.user_id from server_members m join users u on u.id = m.user_id
-         where m.server_id = ? and m.banned_at is null and m.removed_at is null and u.banned_at is null
-           and (m.role = 'owner' or exists (select 1 from room_access a where a.room_id = ? and a.user_id = m.user_id))`,
-        [room.serverId, room.id]
-      )
-    : all<{ user_id: string }>(
-        sqlite,
-        `select m.user_id from server_members m join users u on u.id = m.user_id
-         where m.server_id = ? and m.banned_at is null and m.removed_at is null and u.banned_at is null`,
-        [room.serverId]
-      );
-  return new Set(rows.map((row) => row.user_id));
+  const rows = all<{ user_id: string; role: "owner" | "member"; is_bot: number }>(
+    sqlite,
+    `select m.user_id, m.role, u.is_bot from server_members m join users u on u.id = m.user_id
+     where m.server_id = ? and m.banned_at is null and m.removed_at is null and u.banned_at is null`,
+    [room.serverId]
+  );
+  if (!room.isPrivate) return new Set(rows.map((row) => row.user_id));
+  const roles = serverRoles(sqlite, room.serverId);
+  const everyoneAdministrator = roles.some(
+    (role) => role.kind === "everyone" && role.permissions.includes("administrator")
+  );
+  const administratorRoles = new Set(
+    roles.filter((role) => role.permissions.includes("administrator")).map((role) => role.id)
+  );
+  const heldBy = new Map<string, string[]>();
+  for (const row of all<{ user_id: string; role_id: string }>(
+    sqlite,
+    "select user_id, role_id from member_roles where server_id = ?",
+    [room.serverId]
+  )) {
+    heldBy.set(row.user_id, [...(heldBy.get(row.user_id) ?? []), row.role_id]);
+  }
+  const grantedRoles = new Set(roomGrantRoleIds(sqlite, room.id));
+  const granted = new Set(roomGrantUserIds(sqlite, room.id));
+  return new Set(
+    rows
+      .filter((row) => {
+        if (row.role === "owner" || granted.has(row.user_id)) return true;
+        // A Bot holds no Roles and no Permissions (ADR-0038).
+        if (row.is_bot) return false;
+        if (everyoneAdministrator) return true;
+        const held = heldBy.get(row.user_id) ?? [];
+        return held.some((roleId) => administratorRoles.has(roleId) || grantedRoles.has(roleId));
+      })
+      .map((row) => row.user_id)
+  );
 }
 
 /** Everyone who may read a channel: entrants, or every member when it is public or Listed. */

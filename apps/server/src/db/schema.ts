@@ -191,12 +191,51 @@ export const roomAccess = sqliteTable(
   (table) => [primaryKey({ columns: [table.roomId, table.userId] })]
 );
 
+/** Channel access by Role (ADR-0038), beside `room_access`'s direct entries. */
+export const roomAccessRoles = sqliteTable(
+  "room_access_roles",
+  {
+    roomId: text("room_id").notNull(),
+    roleId: text("role_id").notNull(),
+    grantedByUserId: text("granted_by_user_id"),
+    grantedAt: text("granted_at").notNull()
+  },
+  (table) => [primaryKey({ columns: [table.roomId, table.roleId] })]
+);
+
+/** A Server's Roles (ADR-0038). `name` is null while a seeded Role keeps its seeded name. */
+export const roles = sqliteTable("roles", {
+  id: text("id").primaryKey(),
+  serverId: text("server_id").notNull(),
+  name: text("name"),
+  kind: text("kind", { enum: ["everyone", "admin"] }),
+  seed: text("seed", { enum: ["everyone", "admin", "recruiter"] }),
+  color: text("color"),
+  position: integer("position").notNull(),
+  separate: integer("separate").notNull().default(0),
+  permissions: text("permissions").notNull().default("[]"),
+  createdAt: text("created_at").notNull()
+});
+
+export const memberRoles = sqliteTable(
+  "member_roles",
+  {
+    serverId: text("server_id").notNull(),
+    userId: text("user_id").notNull(),
+    roleId: text("role_id").notNull(),
+    grantedByUserId: text("granted_by_user_id"),
+    grantedAt: text("granted_at").notNull()
+  },
+  (table) => [primaryKey({ columns: [table.roleId, table.userId] })]
+);
+
 export const servers = sqliteTable("servers", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   createdByUserId: text("created_by_user_id"),
   createdAt: text("created_at").notNull(),
   uncategorizedPosition: integer("uncategorized_position").notNull().default(0),
+  rolesSeededAt: text("roles_seeded_at"),
   welcomeNotices: integer("welcome_notices", { mode: "boolean" }).notNull().default(true),
   welcomeRoomId: text("welcome_room_id")
 });

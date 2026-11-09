@@ -210,7 +210,7 @@ requirement.
   offering them would be a menu of guaranteed errors — and the client hiding them
   is presentation, never the enforcement.
 - A move is the one that reads like it belongs on the other list, so gate it on
-  `canOwnerModeratePerson` rather than on the voice answer beside it. The bot is
+  `canMovePerson` rather than on the voice answer beside it. The bot is
   summoned into a room by somebody in it and never pushed sideways; ADR-0010
   records what each half of a move would otherwise do. Mute and disconnect are
   honoured by the bot process itself (ADR-0009).
@@ -236,8 +236,9 @@ requirement.
 - **Server settings** (decisions 15 and 20) is a full-screen window over the
   shell, below the shared menu layer so a member menu inside it still draws on
   top. Its sections come from `serverSettingsSections`: Overview on Manage
-  server; Members while membership routes need the owner; and, under an "Owner
-  only" heading, Invite trail, Access links and Delete server. It recomputes
+  server; Roles on Manage roles; Members on Manage members, Voice moderation or
+  Manage roles; Invites on Manage invites; Bans on Manage members; and, under
+  an "Owner only" heading, Invite trail, Access links and Delete server. It recomputes
   them from the live `ServerSummary`, so a lost Permission closes its section
   and an empty list closes the window. Escape closes it unless a dialog or menu
   inside it is open. Under 900px it is two steps: the section list, then one
@@ -808,7 +809,7 @@ requests` and `Accounts`, under one `Installation` heading, with a label
   "Private channel" label. When `canEnter` is false the row is view-only: a
   Listed text channel opens without a composer or message actions, and a
   Listed voice channel lists its members but never joins, never offers Music,
-  and shows no Call length. Manage channels holders set access from the channel menu's Channel
+  and shows no Call length. Manage channels holders set access — Roles first, then members, with Roles holding Administrator locked on — from the channel menu's Channel
   access dialog; the move menu offers only channels the member can enter, and
   the Mention picker in a private channel offers only people with access.
   Leaving the route when a refreshed room list no longer holds the viewed

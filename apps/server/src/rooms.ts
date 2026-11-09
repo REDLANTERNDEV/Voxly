@@ -10,7 +10,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { RoomSummary } from "@voxly/shared";
 import { all, one } from "./db/database.js";
-import { roomAccess, roomGrantUserIds } from "./members.js";
+import { roomAccess, roomGrantRoleIds, roomGrantUserIds } from "./members.js";
 
 export type RoomRow = {
   id: string;
@@ -59,7 +59,12 @@ export function roomForViewer(sqlite: DatabaseSync, room: RoomSummary, userId: s
   const access = roomAccess(sqlite, room, userId);
   if (!access.canSee) return null;
   return access.canEnter
-    ? { ...room, canEnter: true, accessUserIds: roomGrantUserIds(sqlite, room.id) }
+    ? {
+        ...room,
+        canEnter: true,
+        accessUserIds: roomGrantUserIds(sqlite, room.id),
+        accessRoleIds: roomGrantRoleIds(sqlite, room.id)
+      }
     : { ...room, canEnter: false };
 }
 

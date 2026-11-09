@@ -119,16 +119,24 @@ export function memberPresenceState(user: { status?: PresenceStatus }, online: b
 }
 
 /**
- * Whether this member may enter this channel, as far as the viewer can tell
- * (ADR-0037). Owners always may; for a private channel anyone else must be on
- * its Channel access, which only a viewer who can enter it is sent. The server
- * decides; this only keeps the move menu and Mention picker from offering what
- * it would refuse.
+ * Whether a member may enter a channel, as far as the viewer can tell
+ * (ADR-0037, ADR-0038): a public channel lets everyone in; a private one lets
+ * in owners, its Channel access by person or by a Role the member holds (sent
+ * only to a viewer who can enter), and anyone whose Roles carry Administrator.
+ * The server decides; this only keeps the move menu and Mention picker from
+ * offering what it would refuse.
  */
 export function canMemberEnter(
-  room: Pick<RoomSummary, "isPrivate" | "accessUserIds">,
-  member: Pick<PresenceUser, "userId" | "role">
+  room: Pick<RoomSummary, "isPrivate" | "accessUserIds" | "accessRoleIds">,
+  member: Pick<PresenceUser, "userId" | "role" | "roleIds" | "isBot">,
+  roles: readonly RoleSummary[] = []
 ) {
   if (!room.isPrivate || member.role === "owner") return true;
-  return room.accessUserIds?.includes(member.userId) ?? false;
+  if (room.accessUserIds?.includes(member.userId)) return true;
+  if (member.isBot) return false;
+  const held = new Set(member.roleIds ?? []);
+  if (room.accessRoleIds?.some((roleId) => held.has(roleId))) return true;
+  return roles.some(
+    (role) => (role.kind === "everyone" || held.has(role.id)) && role.permissions.includes("administrator")
+  );
 }

@@ -62,13 +62,20 @@ export interface RoomSummary {
    * enter it. Server owners are not listed: they always have access.
    */
   accessUserIds?: string[];
+  /**
+   * The Roles on its Channel access (ADR-0038), sent under the same rule as
+   * `accessUserIds`: only to viewers who can enter.
+   */
+  accessRoleIds?: string[];
 }
 
-/** An owner's replacement of one channel's privacy and Channel access. */
+/** A Manage channels holder's replacement of one channel's privacy and Channel access. */
 export interface RoomAccessUpdate {
   isPrivate: boolean;
   listed: boolean;
   userIds: string[];
+  /** Roles whose members enter; left out, the Role entries already there stay. */
+  roleIds?: string[];
 }
 
 /** A server-wide group of text and voice rooms. */
