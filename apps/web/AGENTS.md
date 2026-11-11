@@ -316,7 +316,12 @@ requirement.
   role, which makes "new role" and opens it. Movable Roles reorder by dragging
   and by named Move up / Move down buttons that give the same order
   (`moveRole`, `dropRole`); Admin and `@everyone` never move, and a Role at or
-  above the viewer's rank neither moves nor is passed. The Role editor has the
+  above the viewer's rank neither moves nor is passed. Dragging runs from the
+  row's grip on pointer events, never HTML5 drag, which touch never fires; the
+  grip alone takes `touch-action: none`, so the rest of the row still scrolls.
+  A move shows at once (`rolesInOrder`) and the next builds on it: one reorder
+  is in flight at a time and only the latest waiting order follows it, so a
+  quick second press neither repeats the first nor undoes it. The Role editor has the
   Role list with a back button and **+**, and tabs Display (name, a palette
   colour as a named radio, the separate-group switch, Delete with
   confirmation), Permissions (one named switch with its description per

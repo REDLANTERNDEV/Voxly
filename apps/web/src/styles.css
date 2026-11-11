@@ -5978,9 +5978,15 @@ button.reply-quote:focus-visible .reply-quote-body {
     transform: translateX(105%);
   }
 
+  /*
+   * An open drawer is the scroll owner of its list, so it drops its transform
+   * rather than holding translateX(0): a transformed fixed scroller stays on
+   * its own compositing layer, and mobile browsers left the rows below the
+   * first screen unpainted until a tap repainted them.
+   */
   .app-shell.drawer-channels .rail,
   .app-shell.drawer-members .member-panel {
-    transform: translateX(0);
+    transform: none;
   }
 
   .drawer-scrim {
@@ -8033,9 +8039,17 @@ button.reply-quote:focus-visible .reply-quote-body {
 .server-settings-back .ui-icon {
   transform: scaleX(-1);
 }
+/*
+ * The one scroll owner of a section. Its rows are max-content because every
+ * section is a `.dash-panel`, and a panel's `overflow: hidden` drops its
+ * automatic minimum height to zero: in an `auto` row the panel, and the table
+ * inside it, shrank to the viewport and clipped the rest, leaving nothing to
+ * scroll.
+ */
 .server-settings-content {
   display: grid;
   align-content: start;
+  grid-auto-rows: max-content;
   gap: 16px;
   max-width: 820px;
   min-height: 0;
@@ -8137,11 +8151,33 @@ button.reply-quote:focus-visible .reply-quote-body {
     min-width: 44px;
   }
 }
+/*
+ * The copy and Create role wrap onto two lines rather than squeezing the
+ * button: `.btn` allows `min-width: 0` and does not wrap its label.
+ */
 .server-roles-head {
-  align-items: flex-start;
+  align-items: center;
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   justify-content: space-between;
+}
+/* Doubled to outrank visual-refresh's `.dash-panel-head` spacing; the panel's gap spaces it. */
+.server-roles-head.dash-panel-head {
+  margin-bottom: 0;
+}
+.server-roles-head.dash-panel-head > p {
+  flex: 1 1 16rem;
+  margin: 0;
+}
+.server-roles-head > .btn {
+  flex: 0 0 auto;
+}
+@media (max-width: 560px) {
+  .server-roles-head > .btn {
+    flex-basis: 100%;
+    justify-content: center;
+  }
 }
 .server-roles-list {
   display: grid;
@@ -8159,15 +8195,41 @@ button.reply-quote:focus-visible .reply-quote-body {
   grid-template-columns: 16px 10px minmax(0, 1fr) auto;
   padding: 4px 6px;
 }
-.server-roles-row[draggable="true"] {
-  cursor: grab;
-}
 .server-roles-row.is-dragging {
   opacity: 0.5;
 }
+/* Where the dragged Role lands: an accent edge, not colour on the row alone. */
+.server-roles-row.is-drop-target {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 .server-roles-grip {
+  align-items: center;
   color: var(--muted);
   display: inline-flex;
+  justify-content: center;
+}
+/*
+ * The drag handle claims the touch itself, so a finger on the grip drags at
+ * once; anywhere else on the row still scrolls the page.
+ */
+.server-roles-grip.is-handle {
+  align-self: stretch;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.server-roles-list.is-dragging,
+.server-roles-list.is-dragging .server-roles-grip.is-handle {
+  cursor: grabbing;
+}
+@media (pointer: coarse) {
+  .server-roles-row {
+    grid-template-columns: 44px 10px minmax(0, 1fr) auto;
+  }
+  .server-roles-grip.is-handle {
+    min-height: 44px;
+  }
 }
 .server-roles-open {
   align-items: baseline;
@@ -8200,6 +8262,18 @@ button.reply-quote:focus-visible .reply-quote-body {
 }
 .server-roles-move .icon-btn:last-child .ui-icon {
   transform: rotate(90deg);
+}
+@media (max-width: 560px) {
+  /* The grip and both arrows keep their 44px; the name takes the line it has left. */
+  .server-roles-open {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0;
+    justify-content: center;
+  }
+  .server-roles-name {
+    max-width: 100%;
+  }
 }
 .server-role-editor {
   display: grid;

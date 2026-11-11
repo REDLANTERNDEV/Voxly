@@ -146,6 +146,21 @@ export function dropRole(
   return ids;
 }
 
+/**
+ * The Roles as a reorder still on its way to the server will leave them: the
+ * movable Roles in `order`, the fixed ones where they stand. Moves made in
+ * quick succession build on this rather than on the last answer, so a second
+ * press neither repeats the first nor undoes it. Without an order, or once the
+ * movable Roles are no longer the ones it names, the Roles as given.
+ */
+export function rolesInOrder(roles: readonly RoleSummary[], order: readonly string[] | null): readonly RoleSummary[] {
+  if (!order) return roles;
+  const movable = new Map(roles.filter((role) => role.kind === null).map((role) => [role.id, role]));
+  if (movable.size !== order.length || order.some((id) => !movable.has(id))) return roles;
+  let next = 0;
+  return roles.map((role) => (role.kind === null ? movable.get(order[next++]!)! : role));
+}
+
 /** How many people hold a Role: everyone for `@everyone`, never a Bot. */
 export function roleMemberCount(role: Pick<RoleSummary, "id" | "kind">, members: readonly PresenceUser[]) {
   const people = members.filter((member) => !member.isBot);

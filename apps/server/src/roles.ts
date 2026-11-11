@@ -240,13 +240,17 @@ export function registerRoleRoutes(context: RouteContext) {
     if (movable.every((role) => nextPosition.get(role.id) === role.position)) {
       return { roles: serverRoles(database.sqlite, serverId) };
     }
-    // Anyone but the owner moves only what is below them: every Role at or
-    // above their rank keeps its place, which also keeps the rest below it.
-    if (activeServerMembership(database.sqlite, serverId, actor.id)?.role !== "owner") {
-      const rank = rankOf(database.sqlite, serverId, actor.id);
-      if (movable.some((role) => role.position >= rank && nextPosition.get(role.id) !== role.position)) {
-        return reply.code(403).send({ error: "forbidden" });
-      }
+    // Every Role whose place changes must be one the actor may manage: the
+    // owner any; anyone else only a Role below their rank, and never one
+    // carrying Administrator, which is the owner's like Admin (ADR-0038). A
+    // Role at or above their rank keeping its place also keeps the rest below it.
+    if (
+      movable.some(
+        (role) =>
+          nextPosition.get(role.id) !== role.position && !mayManageRole(database.sqlite, serverId, actor.id, role)
+      )
+    ) {
+      return reply.code(403).send({ error: "forbidden" });
     }
     inTransaction(database, () => {
       for (const [id, position] of nextPosition) {

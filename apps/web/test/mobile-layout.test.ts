@@ -110,6 +110,25 @@ describe("narrow layout", () => {
     assert.match(narrow, /\.dash-split\.is-invites,[\s\S]{0,200}?grid-template-columns:\s+minmax\(0,\s+1fr\);/);
   });
 
+  it("slides a drawer in without leaving it transformed, and hides it only once it has left", () => {
+    // A transformed fixed scroller left the rows below the first screen
+    // unpainted on phones until a tap repainted them.
+    assert.match(
+      narrow,
+      /\.app-shell\.drawer-channels \.rail,\s*\.app-shell\.drawer-members \.member-panel\s+\{\s*transform:\s+none;/
+    );
+    const visual = readFileSync("src/visual-refresh.css", "utf8");
+    assert.match(visual, /\.app-shell\.drawer-channels > \.rail\s+\{\s*transform:\s+none;/);
+    assert.match(
+      visual,
+      /\.app-shell > \.member-panel\s+\{\s*transition:\s+transform 180ms ease,\s+visibility 0s linear 180ms;\s+visibility:\s+hidden;/
+    );
+    assert.match(
+      visual,
+      /\.app-shell\.drawer-members > \.member-panel\s+\{\s*transition:\s+transform 180ms ease,\s+visibility 0s;\s+visibility:\s+visible;/
+    );
+  });
+
   it("folds an owner table row into a card instead of a stack of full-width blocks", () => {
     assert.match(narrow, /\.dash-table-row\s+\{[^}]*grid-template-columns:\s+minmax\(0,\s+1fr\)\s+auto;/);
     assert.match(narrow, /\.dash-table-row\s+>\s+\.dash-cell\.is-actions\s+\{[^}]*grid-row:\s+1;/);
@@ -121,6 +140,34 @@ describe("phone layout", () => {
   it("keeps the account chip, which is the only way to sign out", () => {
     assert.match(declaration("VoiceDock", "ConnectionSignal"), /common\.logout/);
     assert.doesNotMatch(phone, /\.dock-self\s+\{\s*display:\s+none;/);
+  });
+
+  it("gives Create role its own line and a Role's name the line its controls leave", () => {
+    assert.match(
+      mediaBlock("(max-width: 560px)", ".server-roles-head"),
+      /\.server-roles-head > \.btn\s+\{\s*flex-basis:\s+100%;/
+    );
+    assert.match(
+      mediaBlock("(max-width: 560px)", ".server-roles-open"),
+      /\.server-roles-open\s+\{[^}]*flex-direction:\s+column;/
+    );
+  });
+});
+
+describe("server settings", () => {
+  it("scrolls a section instead of shrinking its panel to the window", () => {
+    // Every section is a `.dash-panel`, whose `overflow: hidden` lets an
+    // `auto` row shrink it and clip the table inside: nothing left to scroll.
+    assert.match(styles, /\.server-settings-content\s+\{[^}]*grid-auto-rows:\s+max-content;[^}]*overflow-y:\s+auto;/);
+  });
+
+  it("wraps the Roles header rather than squeezing Create role", () => {
+    assert.match(styles, /\.server-roles-head\s+\{[^}]*flex-wrap:\s+wrap;/);
+    assert.match(styles, /\.server-roles-head > \.btn\s+\{\s*flex:\s+0 0 auto;/);
+  });
+
+  it("lets a finger on a Role's grip drag it while the rest of the row scrolls", () => {
+    assert.match(styles, /\.server-roles-grip\.is-handle\s+\{[^}]*touch-action:\s+none;/);
   });
 });
 

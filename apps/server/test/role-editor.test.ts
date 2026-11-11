@@ -261,6 +261,23 @@ describe("the Role editor's routes", () => {
     assert.equal((await reorder(mover, [two.id, recruiter, one.id])).statusCode, 200);
   });
 
+  it("leaves a Role carrying Administrator for the owner to move, even below an Admin", async () => {
+    const one = (await create(owner, "One")).json().role as RoleSummary;
+    const sudo = (await create(owner, "Sudo")).json().role as RoleSummary;
+    const recruiter = seeded("recruiter");
+    assert.equal((await update(owner, sudo.id, { permissions: ["administrator"] })).statusCode, 200);
+    // Top first: Admin, Recruiter, One, Sudo, @everyone. Sudo sits below the Admin's rank.
+    assert.equal((await reorder(admin, [recruiter, sudo.id, one.id])).statusCode, 403);
+    assert.equal((await reorder(admin, [sudo.id, recruiter, one.id])).statusCode, 403);
+    // Moving the Roles around it, while it keeps its place, is still the Admin's to do.
+    assert.equal((await reorder(admin, [one.id, recruiter, sudo.id])).statusCode, 200);
+    assert.equal((await reorder(owner, [sudo.id, one.id, recruiter])).statusCode, 200);
+    assert.deepEqual(
+      roles().map((row) => row.id),
+      [seeded("admin"), sudo.id, one.id, recruiter, seeded("everyone")]
+    );
+  });
+
   it("deletes a Role from its members, never Admin or @everyone, and only below an Admin", async () => {
     const helpers = (await create(owner, "Helpers")).json().role as RoleSummary;
     await update(owner, helpers.id, { permissions: ["createInvites"] });

@@ -2621,7 +2621,7 @@ select {
   }
   .app-shell.drawer-channels > .workspace-rail,
   .app-shell.drawer-channels > .rail {
-    transform: translateX(0);
+    transform: none;
   }
   .rail-head {
     gap: 8px;
@@ -3184,15 +3184,26 @@ select {
 .stage-member-actions > .sidebar-menu-trigger {
   z-index: 1;
 }
+/*
+ * A closed drawer stays out of focus and the accessibility tree. Visibility is
+ * timed to the slide: it turns on before the drawer moves in, and off only once
+ * it has left, so it never flips in the same frame as the slide starts.
+ */
 @media (max-width: 900px) {
   .app-shell > .workspace-rail,
   .app-shell > .rail,
   .app-shell > .member-panel {
+    transition:
+      transform 180ms ease,
+      visibility 0s linear 180ms;
     visibility: hidden;
   }
   .app-shell.drawer-channels > .workspace-rail,
   .app-shell.drawer-channels > .rail,
   .app-shell.drawer-members > .member-panel {
+    transition:
+      transform 180ms ease,
+      visibility 0s;
     visibility: visible;
   }
 }

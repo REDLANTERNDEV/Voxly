@@ -7,7 +7,7 @@ import {
   type RoleChange,
   type RoleSummary
 } from "@voxly/shared";
-import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { ApiError } from "../../api.js";
 import type { Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
@@ -22,6 +22,7 @@ import {
   roleDisplayName,
   roleEditLock,
   roleMemberCount,
+  rolesInOrder,
   type RoleActor
 } from "../../lib/roles.js";
 
@@ -71,10 +72,16 @@ export function ServerRolesSection(
     onError: (message: string) => void;
   } & RoleActions
 ) {
-  const { actor, roles, t } = props;
+  const { actor, t } = props;
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [dragging, setDragging] = useState<string | null>(null);
-  const editing = roles.find((role) => role.id === editingId);
+  // The order a reorder on its way to the server will leave; drawn at once, so
+  // a press shows before the answer and the next press builds on it.
+  const [pendingOrder, setPendingOrder] = useState<string[] | null>(null);
+  const roles = rolesInOrder(props.roles, pendingOrder);
+  const orderKey = roles.map((role) => role.id).join(" ");
+  // A pointer drag runs from a row's grip: HTML5 drag events never fire from touch.
+  const [drag, setDrag] = useState<{ roleId: string; pointerId: number; targetId: string | null } | null>(null);
+  const editing = props.roles.find((role) => role.id === editingId);
   const listRef = useRef<HTMLUListElement | null>(null);
   const createRef = useRef<HTMLButtonElement | null>(null);
   const returningRef = useRef(false);
@@ -97,7 +104,7 @@ export function ServerRolesSection(
     const other = row?.querySelector<HTMLButtonElement>(`[data-move="${moved.direction === "up" ? "down" : "up"}"]`);
     const target = [same, other].find((button) => button && !button.disabled) ?? row?.querySelector("button");
     target?.focus();
-  }, [roles]);
+  }, [orderKey]);
 
   const failed = (error: unknown) =>
     props.onError(
@@ -109,10 +116,73 @@ export function ServerRolesSection(
       .then((role) => setEditingId(role.id))
       .catch(failed);
   };
+  // One reorder in flight at a time. A move made meanwhile waits, and only the
+  // latest waiting order is sent: each one names every movable Role, so it
+  // already carries the moves before it.
+  const inFlightRef = useRef(false);
+  const queuedRef = useRef<string[] | null>(null);
+  const send = (ids: string[]) => {
+    inFlightRef.current = true;
+    void props.onReorderRoles(ids).then(
+      () => {
+        const next = queuedRef.current;
+        queuedRef.current = null;
+        if (next) return send(next);
+        inFlightRef.current = false;
+        setPendingOrder(null);
+      },
+      (error: unknown) => {
+        queuedRef.current = null;
+        inFlightRef.current = false;
+        setPendingOrder(null);
+        failed(error);
+      }
+    );
+  };
   const reorder = (ids: string[] | null, moved?: { roleId: string; direction: "up" | "down" }) => {
     if (!ids) return;
     movedRef.current = moved ?? null;
-    void props.onReorderRoles(ids).catch(failed);
+    setPendingOrder(ids);
+    if (inFlightRef.current) queuedRef.current = ids;
+    else send(ids);
+  };
+
+  // The Role row under a pointer, by height alone so a finger drifting sideways
+  // still lands; a target the actor may not drop onto is no target.
+  const dropTargetAt = (roleId: string, clientY: number) => {
+    const rows = Array.from(listRef.current?.querySelectorAll<HTMLElement>("[data-role-row]") ?? []);
+    for (const row of rows) {
+      const bounds = row.getBoundingClientRect();
+      if (clientY < bounds.top || clientY > bounds.bottom) continue;
+      const targetId = row.dataset.roleRow ?? null;
+      return targetId && dropRole(actor, roles, roleId, targetId) ? targetId : null;
+    }
+    return null;
+  };
+  const startDrag = (roleId: string, event: ReactPointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDrag({ roleId, pointerId: event.pointerId, targetId: null });
+  };
+  const moveDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    // The section scrolls under the drag near its edges, so a Role can travel
+    // past the first screen.
+    const scroller = listRef.current?.closest<HTMLElement>(".server-settings-content");
+    if (scroller) {
+      const bounds = scroller.getBoundingClientRect();
+      if (event.clientY < bounds.top + 32) scroller.scrollTop -= 12;
+      else if (event.clientY > bounds.bottom - 32) scroller.scrollTop += 12;
+    }
+    const targetId = dropTargetAt(drag.roleId, event.clientY);
+    if (targetId !== drag.targetId) setDrag({ ...drag, targetId });
+  };
+  const endDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setDrag(null);
+    if (event.type === "pointerup" && drag.targetId) reorder(dropRole(actor, roles, drag.roleId, drag.targetId));
   };
 
   if (editing) {
@@ -141,37 +211,37 @@ export function ServerRolesSection(
           <span>{t("roles.create")}</span>
         </button>
       </header>
-      <p className="muted small">{t("roles.dragHint")}</p>
-      <ul className="server-roles-list" ref={listRef}>
+      {roles.some((role) => moveRole(actor, roles, role.id, -1) || moveRole(actor, roles, role.id, 1)) ? (
+        <p className="muted small">{t("roles.dragHint")}</p>
+      ) : null}
+      <ul className={`server-roles-list${drag ? " is-dragging" : ""}`} ref={listRef}>
         {roles.map((role) => {
           const name = roleDisplayName(role, t);
           const movable = role.kind === null && canManageRole(actor, role);
           const up = moveRole(actor, roles, role.id, -1);
           const down = moveRole(actor, roles, role.id, 1);
+          const dragClass =
+            drag?.roleId === role.id ? " is-dragging" : drag?.targetId === role.id ? " is-drop-target" : "";
           return (
-            <li
-              key={role.id}
-              data-role-row={role.id}
-              className={`server-roles-row${dragging === role.id ? " is-dragging" : ""}`}
-              draggable={movable}
-              onDragStart={(event) => {
-                setDragging(role.id);
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", role.id);
-              }}
-              onDragEnd={() => setDragging(null)}
-              onDragOver={(event) => {
-                if (dragging && dropRole(actor, roles, dragging, role.id)) event.preventDefault();
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (dragging) reorder(dropRole(actor, roles, dragging, role.id));
-                setDragging(null);
-              }}
-            >
-              <span className="server-roles-grip" aria-hidden="true">
-                {movable ? <GripIcon /> : null}
-              </span>
+            <li key={role.id} data-role-row={role.id} className={`server-roles-row${dragClass}`}>
+              {/* The grip is the drag handle, for a mouse, a pen and a finger alike.
+                  It is hidden from assistive technology: the named Move up and
+                  Move down buttons give the same order. */}
+              {movable ? (
+                <span
+                  className="server-roles-grip is-handle"
+                  aria-hidden="true"
+                  onPointerDown={(event) => startDrag(role.id, event)}
+                  onPointerMove={moveDrag}
+                  onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
+                  onLostPointerCapture={endDrag}
+                >
+                  <GripIcon />
+                </span>
+              ) : (
+                <span className="server-roles-grip" aria-hidden="true" />
+              )}
               <RoleDot role={role} />
               <button
                 className="server-roles-open"

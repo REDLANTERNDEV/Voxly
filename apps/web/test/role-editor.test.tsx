@@ -14,6 +14,7 @@ import {
   dropRole,
   moveRole,
   roleMemberCount,
+  rolesInOrder,
   type RoleActor
 } from "../src/lib/roles.js";
 import { serverSettingsSections } from "../src/lib/serverSettings.js";
@@ -81,6 +82,37 @@ describe("the Role editor (ADR-0038, decisions 5–7, 17 and 19)", () => {
     assert.equal(dropRole(helperManager, roles, "fans", "mods"), null);
   });
 
+  it("builds a second quick move on the first rather than on the last answer", () => {
+    const first = moveRole(admin, roles, "fans", -1)!;
+    assert.deepEqual(first, ["mods", "fans", "helpers"]);
+    const pending = rolesInOrder(roles, first);
+    assert.deepEqual(
+      pending.map((item) => item.id),
+      ["admin", "mods", "fans", "helpers", "everyone"]
+    );
+    // The second press moves fans again; built on the old list it would repeat the first.
+    assert.deepEqual(moveRole(admin, pending, "fans", -1), ["fans", "mods", "helpers"]);
+    // No pending order, or one naming other Roles than there are, leaves the list as it is.
+    assert.equal(rolesInOrder(roles, null), roles);
+    assert.equal(rolesInOrder(roles, ["mods", "fans"]), roles);
+    assert.equal(rolesInOrder(roles, ["mods", "fans", "ghost"]), roles);
+  });
+
+  it("offers dragging only when some Role can move", () => {
+    const html = renderToStaticMarkup(
+      <ServerRolesSection
+        actor={{ role: "member", permissions: ["manageRoles"], rank: 1 }}
+        roles={roles}
+        members={members}
+        t={t}
+        onError={() => undefined}
+        {...actions}
+      />
+    );
+    assert.doesNotMatch(html, /Drag to reorder/);
+    assert.doesNotMatch(html, /is-handle/);
+  });
+
   it("counts people, not Bots, and everyone for @everyone", () => {
     assert.equal(roleMemberCount(roles[3]!, members), 2);
     assert.equal(roleMemberCount(roles[4]!, members), 3);
@@ -101,7 +133,14 @@ describe("the Role editor (ADR-0038, decisions 5–7, 17 and 19)", () => {
     const names = [...html.matchAll(/class="server-roles-name">([^<]+)</g)].map((match) => match[1]);
     assert.deepEqual(names, ["Admin", "mods", "helpers", "fans", "@everyone"]);
     assert.match(html, /aria-label="Move mods up"[^>]*disabled=""|disabled=""[^>]*aria-label="Move mods up"/);
-    assert.match(html, /<li data-role-row="mods" class="server-roles-row" draggable="true"/);
+    // Dragging runs from the grip, by pointer events: HTML5 drag never fires from touch.
+    assert.doesNotMatch(html, /draggable=/);
+    assert.match(html, /<li data-role-row="mods" class="server-roles-row"><span class="server-roles-grip is-handle"/);
+    assert.match(
+      html,
+      /<li data-role-row="admin" class="server-roles-row"><span class="server-roles-grip" aria-hidden="true"><\/span>/
+    );
+    assert.match(html, /Drag to reorder/);
     assert.match(html, /2 members/);
   });
 
