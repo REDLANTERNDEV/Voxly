@@ -377,8 +377,13 @@ export function useWorkspaceController({
       );
       return response.server;
     },
-    createRoom: async (name: string, kind: "text" | "voice", categoryId: string | null = null) => {
-      const response = await createServerRoom(activeServerId, name, kind, categoryId);
+    createRoom: async (
+      name: string,
+      kind: "text" | "voice",
+      categoryId: string | null = null,
+      access?: RoomAccessUpdate
+    ) => {
+      const response = await createServerRoom(activeServerId, name, kind, categoryId, access);
       indexRooms([response.room]);
       setRooms((current) =>
         [...current.filter((room) => room.id !== response.room.id), response.room].sort(

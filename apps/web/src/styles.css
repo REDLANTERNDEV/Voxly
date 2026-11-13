@@ -7902,49 +7902,392 @@ button.reply-quote:focus-visible .reply-quote-body {
   padding: 10px 4px;
   text-align: center;
 }
-.channel-access-dialog {
-  max-height: min(640px, calc(100dvh - 32px));
+/*
+ * Channel access (ADR-0037): one set of controls in the channel menu's dialog
+ * and on the last step of creating a channel. Native inputs stay in the
+ * markup for keyboards and screen readers; only their drawing is replaced.
+ */
+.confirm-dialog.channel-access-dialog {
+  gap: 16px;
+  max-height: min(720px, calc(100dvh - 32px));
+  max-width: 520px;
   overflow-y: auto;
+  width: min(100%, 520px);
 }
-.channel-access-toggle,
-.channel-access-visibility label,
-.channel-access-list label {
+.channel-access-fields {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.channel-create-access-copy {
+  font-size: 13px;
+  line-height: 1.45;
+  margin: -8px 0 0;
+}
+
+/* The Private switch: one card, lit when the channel is private. */
+.channel-access-private {
   align-items: center;
+  background: var(--control-fill);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
   display: flex;
-  gap: 8px;
-  min-height: 32px;
+  gap: 12px;
+  padding: 12px 14px;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
 }
+.channel-access-fields.is-private .channel-access-private {
+  background: var(--selected-fill);
+  border-color: var(--selected-border);
+}
+.channel-access-private-mark,
+.channel-access-tile-mark {
+  align-items: center;
+  border-radius: var(--radius-md);
+  display: grid;
+  flex: none;
+  justify-items: center;
+}
+.channel-access-private-mark {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  color: var(--muted);
+  height: 38px;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+  width: 38px;
+}
+.channel-access-fields.is-private .channel-access-private-mark {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-on);
+}
+.channel-access-private-mark .ui-icon,
+.channel-access-tile-mark .ui-icon {
+  height: 18px;
+  width: 18px;
+}
+.channel-access-private-copy,
+.channel-access-tile-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.channel-access-private-copy {
+  flex: 1;
+}
+.channel-access-private-copy strong,
+.channel-access-tile-copy strong {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.channel-access-private-copy .muted,
+.channel-access-tile-copy .muted {
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.channel-access-switch {
+  appearance: none;
+  background: var(--border-strong);
+  border-radius: 999px;
+  cursor: pointer;
+  flex: none;
+  height: 24px;
+  margin: 0;
+  position: relative;
+  transition: background 140ms ease;
+  width: 42px;
+}
+.channel-access-switch::before {
+  background: var(--surface);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.28);
+  content: "";
+  height: 18px;
+  left: 3px;
+  position: absolute;
+  top: 3px;
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  width: 18px;
+}
+.channel-access-switch:checked {
+  background: var(--accent);
+}
+.channel-access-switch:checked::before {
+  background: var(--accent-on);
+  transform: translateX(18px);
+}
+.channel-access-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Section headings: a quiet label with the running count beside it. */
 .channel-access-visibility,
 .channel-access-members {
   border: 0;
   display: grid;
-  gap: 4px;
-  margin: 8px 0 0;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
   padding: 0;
 }
 .channel-access-visibility legend,
 .channel-access-members legend {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 11.5px;
+  font-weight: 650;
+  gap: 8px;
+  justify-content: space-between;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+  padding: 0;
+  text-transform: uppercase;
+  width: 100%;
+}
+.channel-access-count {
+  background: var(--surface-2);
+  border-radius: 999px;
+  color: var(--fg-2);
+  font-size: 11.5px;
   font-weight: 600;
-  margin-bottom: 4px;
+  letter-spacing: 0;
+  padding: 2px 9px;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/* Who else sees it: two choices as tiles rather than bare radios. */
+.channel-access-tiles {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.channel-access-tile {
+  align-items: start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 12px 34px 12px 12px;
+  position: relative;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+.channel-access-tile:hover {
+  background: var(--control-hover);
+}
+.channel-access-tile:has(input:checked) {
+  background: var(--selected-fill);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.channel-access-tile input {
+  appearance: none;
+  background: var(--surface);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 50%;
+  height: 16px;
+  margin: 0;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  transition: border-width 140ms ease;
+  width: 16px;
+}
+.channel-access-tile input:checked {
+  border: 5px solid var(--accent);
+}
+.channel-access-tile-mark {
+  background: var(--surface-2);
+  color: var(--muted);
+  height: 30px;
+  width: 30px;
+}
+.channel-access-tile:has(input:checked) .channel-access-tile-mark {
+  background: var(--accent);
+  color: var(--accent-on);
+}
+
+/* Roles and members: rows with a mark, a name and a checkbox at the end. */
+.channel-access-search {
+  width: 100%;
 }
 .channel-access-list {
+  background: var(--control-fill);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
   display: grid;
   gap: 2px;
   list-style: none;
-  margin: 6px 0 0;
-  max-height: 240px;
+  margin: 0;
+  max-height: 236px;
   overflow-y: auto;
-  padding: 0;
+  overscroll-behavior: contain;
+  padding: 4px;
+}
+.channel-access-list label {
+  align-items: center;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 10px;
+  transition: background 120ms ease;
+}
+.channel-access-list label:hover {
+  background: var(--control-hover);
+}
+.channel-access-list label:has(input:checked) {
+  background: var(--surface);
+}
+.channel-access-list label.is-locked {
+  cursor: default;
+}
+.channel-access-avatar {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 50%;
+  color: var(--fg-2);
+  display: grid;
+  flex: none;
+  font-size: 12px;
+  font-weight: 650;
+  height: 28px;
+  justify-items: center;
+  order: -1;
+  width: 28px;
+}
+.channel-access-avatar.is-role {
+  background: color-mix(in srgb-linear, var(--role-color) 70%, var(--fg));
+  border: 0;
+  height: 12px;
+  margin: 0 8px;
+  width: 12px;
+}
+.channel-access-avatar.is-role.is-plain {
+  background: var(--muted-2);
 }
 .channel-access-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.channel-access-list .muted {
-  font-size: 12px;
-  margin-left: auto;
+.channel-access-list label .muted {
+  font-size: 11.5px;
+  line-height: 1.3;
+  max-width: 45%;
+  order: 1;
+  text-align: right;
+}
+.channel-access-list input[type="checkbox"] {
+  align-items: center;
+  appearance: none;
+  background: var(--surface);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 6px;
+  cursor: pointer;
+  display: grid;
+  flex: none;
+  height: 20px;
+  justify-items: center;
+  margin: 0;
+  order: 2;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+  width: 20px;
+}
+.channel-access-list input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.channel-access-list input[type="checkbox"]:checked::after {
+  border-bottom: 2px solid var(--accent-on);
+  border-left: 2px solid var(--accent-on);
+  content: "";
+  height: 5px;
+  transform: translateY(-1px) rotate(-45deg);
+  width: 10px;
+}
+.channel-access-list input[type="checkbox"]:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.channel-access-empty {
+  font-size: 13px;
+  padding: 14px;
+  text-align: center;
+}
+.channel-access-switch:focus-visible,
+.channel-access-tile input:focus-visible,
+.channel-access-list input[type="checkbox"]:focus-visible {
+  box-shadow: 0 0 0 3px var(--focus-ring);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The error line stays mounted for screen readers but takes no room empty. */
+.channel-access-dialog > .error-text:empty {
+  margin-top: -16px;
+}
+
+/* The actions stay in reach while a long member list scrolls under them. */
+.channel-access-dialog > .confirm-actions,
+.channel-organizer-editor:has(.channel-access-fields) .channel-create-actions {
+  background: var(--surface);
+  border-top: 1px solid var(--border-soft);
+  bottom: -20px;
+  margin: 0 -20px -20px;
+  padding: 12px 20px 20px;
+  position: sticky;
+  z-index: 1;
+}
+.channel-organizer-editor:has(.channel-access-fields) .channel-create-actions {
+  bottom: -22px;
+  margin: 0 -22px -22px;
+  padding: 12px 22px 22px;
+}
+@media (max-width: 560px) {
+  .channel-access-tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* The create step is full-screen on a phone, with its own padding. */
+  .channel-organizer-editor:has(.channel-access-fields) .channel-create-actions {
+    bottom: calc(-1 * max(20px, env(safe-area-inset-bottom)));
+    margin: 0 -18px calc(-1 * max(20px, env(safe-area-inset-bottom)));
+    padding: 12px 18px max(20px, env(safe-area-inset-bottom));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .channel-access-private,
+  .channel-access-private-mark,
+  .channel-access-switch,
+  .channel-access-switch::before,
+  .channel-access-tile,
+  .channel-access-tile input,
+  .channel-access-list label,
+  .channel-access-list input[type="checkbox"] {
+    transition: none;
+  }
 }
 
 /*

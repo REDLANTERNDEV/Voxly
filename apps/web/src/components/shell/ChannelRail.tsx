@@ -525,6 +525,8 @@ export function ChannelRail(props: ChannelRailProps) {
         onRenameCategory={props.onRenameCategory}
         onDeleteCategory={props.onDeleteCategory}
         onCreateRoom={props.onCreateRoom}
+        members={props.serverMembers}
+        roles={props.serverRoles}
         onSaveLayout={props.onSaveRoomLayout}
         renderRoom={renderRoom}
       />

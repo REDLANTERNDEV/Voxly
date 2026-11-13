@@ -4,6 +4,7 @@ import type {
   RoleChange,
   RoleSummary,
   RoomAccessUpdate,
+  RoomCreateRequest,
   ServerRolesResponse
 } from "@voxly/shared";
 import type {
@@ -294,13 +295,11 @@ export async function createServerRoom(
   serverId: string,
   name: string,
   kind: "text" | "voice",
-  categoryId: string | null = null
+  categoryId: string | null = null,
+  access?: RoomAccessUpdate
 ) {
-  return apiPost<{ room: RoomSummary }>(`/api/servers/${encodeURIComponent(serverId)}/rooms`, {
-    name,
-    kind,
-    categoryId
-  });
+  const body = { name, kind, categoryId, ...(access ? { access } : {}) } satisfies RoomCreateRequest;
+  return apiPost<{ room: RoomSummary }>(`/api/servers/${encodeURIComponent(serverId)}/rooms`, body);
 }
 
 export async function createServerCategory(serverId: string, name: string) {

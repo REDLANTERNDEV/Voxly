@@ -207,7 +207,8 @@ export function registerServerRoutes(context: RouteContext) {
       .object({
         name: roomNameSchema,
         kind: z.enum(["text", "voice"]),
-        categoryId: z.string().min(1).max(128).nullable().optional()
+        categoryId: z.string().min(1).max(128).nullable().optional(),
+        access: roomAccessSchema.optional()
       })
       .parse(request.body);
     const roomTotal =
@@ -232,8 +233,33 @@ export function registerServerRoutes(context: RouteContext) {
         "select max(position) as position from rooms where server_id = ?",
         [serverId]
       )?.position ?? 0;
-    const room = createServerRoom(database, serverId, body.name, body.kind, position + 10, false, categoryId);
-    audit(database, actor.id, "room.created", null, serverId);
+    // A channel born private is checked before anything is written, then
+    // created with its Channel access in one transaction (ADR-0037), so no
+    // member ever sees it public in between.
+    const access = body.access?.isPrivate ? body.access : null;
+    const resolved = access
+      ? resolveRoomAccess(database, serverId, { ...access, roleIds: access.roleIds ?? [] })
+      : null;
+    if (resolved && "error" in resolved) return reply.code(400).send({ error: resolved.error });
+    let room: RoomSummary;
+    database.sqlite.exec("begin immediate");
+    try {
+      room = createServerRoom(database, serverId, body.name, body.kind, position + 10, false, categoryId);
+      audit(database, actor.id, "room.created", null, serverId);
+      if (access && resolved) {
+        writeRoomAccess(database, serverId, room.id, { ...access, ...resolved }, actor.id, new Date().toISOString());
+        audit(database, actor.id, "room.accessChanged", null, serverId);
+        room = {
+          ...roomById(database.sqlite, room.id)!,
+          accessUserIds: resolved.userIds,
+          accessRoleIds: resolved.roleIds
+        };
+      }
+      database.sqlite.exec("commit");
+    } catch (cause) {
+      database.sqlite.exec("rollback");
+      throw cause;
+    }
     database.save();
     // Members already in the server hold a cached room list, so a new channel is
     // invisible until they reload unless the same signal that covers deletion
@@ -536,15 +562,7 @@ export function registerServerRoutes(context: RouteContext) {
     const scope = requirePermittedServer(context, request, reply, "manageChannels", { roomId: roomIdParam });
     if (!scope) return;
     const { user: actor, serverId, roomId } = scope;
-    const body = z
-      .object({
-        isPrivate: z.boolean(),
-        listed: z.boolean(),
-        userIds: z.array(z.string().min(1).max(128)).max(500),
-        roleIds: z.array(z.string().uuid()).max(50).optional()
-      })
-      .strict()
-      .parse(request.body);
+    const body = roomAccessSchema.parse(request.body);
     const current = roomById(database.sqlite, roomId);
     if (!current || current.serverId !== serverId) return reply.code(404).send({ error: "room_not_found" });
     if (refuseUnenteredRoom(current, actor.id, reply)) return;
@@ -558,67 +576,20 @@ export function registerServerRoutes(context: RouteContext) {
       return reply.code(409).send({ error: "welcome_room_cannot_be_private" });
     }
 
-    // Only ordinary active human members are listed: owners always have access,
-    // and a Bot is let in by a Summon, never by the list.
-    const eligible = new Set(
-      all<{ user_id: string }>(
-        database.sqlite,
-        `select m.user_id from server_members m join users u on u.id = m.user_id
-         where m.server_id = ? and m.role = 'member' and m.banned_at is null and m.removed_at is null
-           and u.banned_at is null and u.deleted_at is null and coalesce(u.is_bot, 0) = 0`,
-        [serverId]
-      ).map((row) => row.user_id)
-    );
-    const owners = new Set(
-      all<{ user_id: string }>(
-        database.sqlite,
-        "select user_id from server_members where server_id = ? and role = 'owner'",
-        [serverId]
-      ).map((row) => row.user_id)
-    );
-    const grantees = body.userIds.filter((userId) => !owners.has(userId));
-    if (grantees.some((userId) => !eligible.has(userId))) {
-      return reply.code(400).send({ error: "access_member_invalid" });
-    }
-    const userIds = body.isPrivate ? [...new Set(grantees)] : [];
-    // A Role on Channel access lets its members in (ADR-0038). `@everyone`
-    // would only make the channel public under another name.
-    const serverRoleKinds = new Map(serverRoles(database.sqlite, serverId).map((role) => [role.id, role.kind]));
-
     // Left out, the Role entries already there stay, so a caller that only
     // knows about people never clears them by accident.
-    const requestedRoleIds = body.roleIds ?? roomGrantRoleIds(database.sqlite, roomId);
-    if (requestedRoleIds.some((id) => !serverRoleKinds.has(id) || serverRoleKinds.get(id) === "everyone")) {
-      return reply.code(400).send({ error: "access_role_invalid" });
-    }
-    const roleIds = body.isPrivate ? [...new Set(requestedRoleIds)] : [];
+    const resolved = resolveRoomAccess(database, serverId, {
+      ...body,
+      roleIds: body.roleIds ?? roomGrantRoleIds(database.sqlite, roomId)
+    });
+    if ("error" in resolved) return reply.code(400).send({ error: resolved.error });
+    const { userIds, roleIds } = resolved;
 
     const readersBefore = roomReaderIds(database.sqlite, current);
     const now = new Date().toISOString();
     database.sqlite.exec("begin immediate");
     try {
-      run(database.sqlite, "update rooms set is_private = ?, listed = ? where id = ? and server_id = ?", [
-        body.isPrivate ? 1 : 0,
-        body.isPrivate && body.listed ? 1 : 0,
-        roomId,
-        serverId
-      ]);
-      run(database.sqlite, "delete from room_access where room_id = ?", [roomId]);
-      run(database.sqlite, "delete from room_access_roles where room_id = ?", [roomId]);
-      for (const roleId of roleIds) {
-        run(
-          database.sqlite,
-          "insert into room_access_roles (room_id, role_id, granted_by_user_id, granted_at) values (?, ?, ?, ?)",
-          [roomId, roleId, actor.id, now]
-        );
-      }
-      for (const userId of userIds) {
-        run(
-          database.sqlite,
-          "insert into room_access (room_id, user_id, granted_by_user_id, granted_at) values (?, ?, ?, ?)",
-          [roomId, userId, actor.id, now]
-        );
-      }
+      writeRoomAccess(database, serverId, roomId, { ...body, userIds, roleIds }, actor.id, now);
       const updated = roomById(database.sqlite, roomId)!;
       const newReaders = [...roomReaderIds(database.sqlite, updated)].filter((userId) => !readersBefore.has(userId));
       baselineRoomReadState(database.sqlite, roomId, newReaders);
@@ -758,6 +729,88 @@ export function afkTimeoutOf(stored: number | null | undefined): AfkTimeoutMinut
  * clients still name them. Every other room gets a UUID, so two servers may
  * hold rooms of the same name.
  */
+const roomAccessSchema = z
+  .object({
+    isPrivate: z.boolean(),
+    listed: z.boolean(),
+    userIds: z.array(z.string().min(1).max(128)).max(500),
+    roleIds: z.array(z.string().uuid()).max(50).optional()
+  })
+  .strict();
+
+/**
+ * Checks a proposed Channel access against the Server and returns the lists
+ * to store. Only ordinary active human members are listed: owners always have
+ * access, and a Bot is let in by a Summon, never by the list. A Role lets its
+ * members in (ADR-0038); `@everyone` would only make the channel public under
+ * another name.
+ */
+function resolveRoomAccess(
+  database: VoxlyDatabase,
+  serverId: string,
+  access: { isPrivate: boolean; userIds: string[]; roleIds: string[] }
+): { userIds: string[]; roleIds: string[] } | { error: "access_member_invalid" | "access_role_invalid" } {
+  const eligible = new Set(
+    all<{ user_id: string }>(
+      database.sqlite,
+      `select m.user_id from server_members m join users u on u.id = m.user_id
+       where m.server_id = ? and m.role = 'member' and m.banned_at is null and m.removed_at is null
+         and u.banned_at is null and u.deleted_at is null and coalesce(u.is_bot, 0) = 0`,
+      [serverId]
+    ).map((row) => row.user_id)
+  );
+  const owners = new Set(
+    all<{ user_id: string }>(
+      database.sqlite,
+      "select user_id from server_members where server_id = ? and role = 'owner'",
+      [serverId]
+    ).map((row) => row.user_id)
+  );
+  const grantees = access.userIds.filter((userId) => !owners.has(userId));
+  if (grantees.some((userId) => !eligible.has(userId))) return { error: "access_member_invalid" };
+  const serverRoleKinds = new Map(serverRoles(database.sqlite, serverId).map((role) => [role.id, role.kind]));
+  if (access.roleIds.some((id) => !serverRoleKinds.has(id) || serverRoleKinds.get(id) === "everyone")) {
+    return { error: "access_role_invalid" };
+  }
+  return {
+    userIds: access.isPrivate ? [...new Set(grantees)] : [],
+    roleIds: access.isPrivate ? [...new Set(access.roleIds)] : []
+  };
+}
+
+/** Replaces one channel's privacy and Channel access. Runs inside the caller's transaction. */
+function writeRoomAccess(
+  database: VoxlyDatabase,
+  serverId: string,
+  roomId: string,
+  access: { isPrivate: boolean; listed: boolean; userIds: string[]; roleIds: string[] },
+  actorId: string,
+  now: string
+) {
+  run(database.sqlite, "update rooms set is_private = ?, listed = ? where id = ? and server_id = ?", [
+    access.isPrivate ? 1 : 0,
+    access.isPrivate && access.listed ? 1 : 0,
+    roomId,
+    serverId
+  ]);
+  run(database.sqlite, "delete from room_access where room_id = ?", [roomId]);
+  run(database.sqlite, "delete from room_access_roles where room_id = ?", [roomId]);
+  for (const roleId of access.roleIds) {
+    run(
+      database.sqlite,
+      "insert into room_access_roles (room_id, role_id, granted_by_user_id, granted_at) values (?, ?, ?, ?)",
+      [roomId, roleId, actorId, now]
+    );
+  }
+  for (const userId of access.userIds) {
+    run(
+      database.sqlite,
+      "insert into room_access (room_id, user_id, granted_by_user_id, granted_at) values (?, ?, ?, ?)",
+      [roomId, userId, actorId, now]
+    );
+  }
+}
+
 export function createServerRoom(
   database: VoxlyDatabase,
   serverId: string,

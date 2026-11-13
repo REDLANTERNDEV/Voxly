@@ -140,7 +140,12 @@ export interface ShellActions {
   onUpdateServerName: (name: string) => Promise<ServerSummary>;
   onSetAfkTimeout: (minutes: AfkTimeoutMinutes) => Promise<void>;
   onSetWelcome: (settings: ServerWelcomeSettings) => Promise<void>;
-  onCreateRoom: (name: string, kind: "text" | "voice", categoryId?: string | null) => Promise<void>;
+  onCreateRoom: (
+    name: string,
+    kind: "text" | "voice",
+    categoryId?: string | null,
+    access?: RoomAccessUpdate
+  ) => Promise<void>;
   onCreateCategory: (name: string) => Promise<void>;
   onRenameCategory: (categoryId: string, name: string) => Promise<void>;
   onDeleteCategory: (categoryId: string) => Promise<void>;

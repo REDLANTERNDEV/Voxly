@@ -27,7 +27,10 @@ function mediaBlock(condition: string, contains: string) {
 describe("server channel organizer", () => {
   it("opens the shared create flow from the toolbar plus, and a channel in place from a category's plus", () => {
     assert.match(organizer, /onCreateCategory\(\s*name\s*\)/);
-    assert.match(organizer, /onCreateRoom\(\s*name,\s+editorRoomKind,\s+editor\.categoryId\s*\)/);
+    assert.match(
+      organizer,
+      /onCreateRoom\(\s*name,\s+editorRoomKind,\s+editor\.categoryId,\s+editorAccess\.isPrivate\s*\?\s*channelAccessUpdate\(editorAccess,\s*members\)\s*:\s*undefined\s*\)/
+    );
     assert.equal(
       (organizer.match(/<PlusIcon\s+\/>\s*/g) ?? []).length,
       2,

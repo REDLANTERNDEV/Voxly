@@ -546,6 +546,11 @@ requests` and `Accounts`, under one `Installation` heading, with a label
   still traps the next tap, and is drawn behind the drawer and its scrim — on a
   phone that reads as a control that does nothing. This covers the shared menu
   and the rail's invite popover; the dialogs above them keep `--layer-modal`.
+  A dialog opened from the rail renders through `ModalPortal`, never inside the
+  drawer: there it shares the drawer's stacking context and taps on its field
+  land on the scrim. Dialogs focus once per opening; an effect keyed on a
+  caller's inline `onCancel` re-runs on every realtime re-render and pulls
+  focus out of the field being typed in, closing a phone's keyboard.
 - Menu rows are a mark and a label, laid out as a centered flex row rather than
   left to sit the glyph on the text baseline. In a menu where any row has a
   mark, the rows without one indent by the same gutter so every label starts in
@@ -815,7 +820,10 @@ requests` and `Accounts`, under one `Installation` heading, with a label
   Listed text channel opens without a composer or message actions, and a
   Listed voice channel lists its members but never joins, never offers Music,
   and shows no Call length. Manage channels holders set access — Roles first, then members, with Roles holding Administrator locked on — from the channel menu's Channel
-  access dialog; the move menu offers only channels the member can enter, and
+  access dialog, and on the last step of creating a channel, after its type
+  and name — both draw the same `ChannelAccessFields`. A channel chosen private
+  there is created private in the same request, never created public and
+  changed after; the move menu offers only channels the member can enter, and
   the Mention picker in a private channel offers only people with access.
   Leaving the route when a refreshed room list no longer holds the viewed
   channel is how a member who lost a Hidden channel is moved off it.

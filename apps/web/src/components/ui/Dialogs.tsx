@@ -1,6 +1,20 @@
 import type { PresenceUser } from "@voxly/shared";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { Translate } from "../../app/types.js";
+
+/**
+ * Renders a modal at the document root. A dialog opened from the phone's
+ * channel drawer would otherwise sit inside the drawer's stacking context,
+ * under the scrim and the dock, and every tap meant for its field would land
+ * on whatever is drawn above it. Without a document (static rendering) it
+ * renders in place.
+ */
+export function ModalPortal({ children }: { children: ReactNode }) {
+  if (typeof document === "undefined") return <>{children}</>;
+  return createPortal(children, document.fullscreenElement ?? document.body);
+}
+
 export function ConfirmDialog({
   title,
   copy,
@@ -24,57 +38,87 @@ export function ConfirmDialog({
   onConfirm: () => void;
 }) {
   const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const confirmationRef = useRef<HTMLInputElement | null>(null);
   const [confirmationValue, setConfirmationValue] = useState("");
   const isConfirmationValid = !confirmationText || confirmationValue === confirmationText;
+  // Callers pass a fresh `onCancel` on every render, and a realtime update
+  // re-renders them often; reading it through a ref keeps the effects below
+  // from re-running, which used to move focus back to Cancel mid-typing and
+  // close a phone's keyboard.
+  const cancelHandler = useRef(onCancel);
+  cancelHandler.current = onCancel;
 
+  // Focus once per opening: the field to type into when there is one, since
+  // nothing can be confirmed without it, and otherwise the safe choice.
   useEffect(() => {
-    cancelRef.current?.focus();
+    (confirmationRef.current ?? cancelRef.current)?.focus();
+  }, []);
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
+      if (event.key === "Escape") cancelHandler.current();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel]);
+  }, []);
 
   return (
-    <div className="confirm-backdrop" role="presentation" onMouseDown={onCancel}>
-      <section
-        className="confirm-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="confirmDialogTitle"
-        onMouseDown={(event) => event.stopPropagation()}
+    <ModalPortal>
+      <div
+        className="confirm-backdrop"
+        role="presentation"
+        onMouseDown={onCancel}
+        // A portal still bubbles through the React tree; a long press here is
+        // not a press on the rail behind it.
+        onContextMenu={(event) => event.stopPropagation()}
       >
-        <h2 id="confirmDialogTitle">{title}</h2>
-        <p>{copy}</p>
-        {confirmationText ? (
-          <label className="form-field" htmlFor="confirmDialogValue">
-            <span className="label">{confirmationLabel}</span>
-            <input
-              className="input"
-              id="confirmDialogValue"
-              value={confirmationValue}
-              onChange={(event) => setConfirmationValue(event.currentTarget.value)}
-              autoComplete="off"
-              spellCheck={false}
-            />
-          </label>
-        ) : null}
-        <div className="confirm-actions">
-          <button className="btn btn-ghost" type="button" ref={cancelRef} onClick={onCancel}>
-            {cancelLabel}
-          </button>
-          <button
-            className={`btn ${tone === "danger" ? "btn-danger" : "btn-primary"}`}
-            type="button"
-            disabled={!isConfirmationValid}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </section>
-    </div>
+        <section
+          className="confirm-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirmDialogTitle"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <h2 id="confirmDialogTitle">{title}</h2>
+          <p>{copy}</p>
+          {confirmationText ? (
+            <label className="form-field" htmlFor="confirmDialogValue">
+              <span className="label">{confirmationLabel}</span>
+              <input
+                ref={confirmationRef}
+                className="input"
+                id="confirmDialogValue"
+                value={confirmationValue}
+                onChange={(event) => setConfirmationValue(event.currentTarget.value)}
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="done"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && isConfirmationValid) {
+                    event.preventDefault();
+                    onConfirm();
+                  }
+                }}
+              />
+            </label>
+          ) : null}
+          <div className="confirm-actions">
+            <button className="btn btn-ghost" type="button" ref={cancelRef} onClick={onCancel}>
+              {cancelLabel}
+            </button>
+            <button
+              className={`btn ${tone === "danger" ? "btn-danger" : "btn-primary"}`}
+              type="button"
+              disabled={!isConfirmationValid}
+              onClick={onConfirm}
+            >
+              {confirmLabel}
+            </button>
+          </div>
+        </section>
+      </div>
+    </ModalPortal>
   );
 }
 
@@ -227,65 +271,67 @@ export function ChannelNameDialog({
     return () => window.removeEventListener("keydown", keydown);
   }, [close, saving]);
   return (
-    <div
-      className="confirm-backdrop"
-      onMouseDown={() => {
-        if (!saving) close();
-      }}
-    >
-      <form
-        ref={form}
-        noValidate
-        className="confirm-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="channelRenameTitle"
-        aria-busy={saving}
-        onMouseDown={(event) => event.stopPropagation()}
-        onSubmit={(event) => {
-          event.preventDefault();
-          const next = name.trim();
-          if (next.length < 2 || next.length > 64) {
-            setError(t("channel.nameLength"));
-            return;
-          }
-          setSaving(true);
-          setError("");
-          void onSave(next)
-            .then(close)
-            .catch(() => setError(t("channel.renameFailed")))
-            .finally(() => setSaving(false));
+    <ModalPortal>
+      <div
+        className="confirm-backdrop"
+        onMouseDown={() => {
+          if (!saving) close();
         }}
       >
-        <h2 id="channelRenameTitle">{t("channel.rename")}</h2>
-        <label className="form-field" htmlFor="channelRenameName">
-          <span>{t("channel.name")}</span>
-          <input
-            ref={input}
-            className="input"
-            id="channelRenameName"
-            aria-invalid={Boolean(error)}
-            aria-describedby="channelRenameError"
-            value={name}
-            minLength={2}
-            maxLength={64}
-            autoComplete="off"
-            disabled={saving}
-            onChange={(event) => setName(event.currentTarget.value)}
-          />
-        </label>
-        <p id="channelRenameError" className="error-text" aria-live="polite">
-          {error}
-        </p>
-        <div className="confirm-actions">
-          <button className="btn btn-ghost" type="button" disabled={saving} onClick={close}>
-            {t("common.cancel")}
-          </button>
-          <button className="btn btn-primary" type="submit" disabled={saving || name.trim() === initialName}>
-            {t("common.save")}
-          </button>
-        </div>
-      </form>
-    </div>
+        <form
+          ref={form}
+          noValidate
+          className="confirm-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="channelRenameTitle"
+          aria-busy={saving}
+          onMouseDown={(event) => event.stopPropagation()}
+          onSubmit={(event) => {
+            event.preventDefault();
+            const next = name.trim();
+            if (next.length < 2 || next.length > 64) {
+              setError(t("channel.nameLength"));
+              return;
+            }
+            setSaving(true);
+            setError("");
+            void onSave(next)
+              .then(close)
+              .catch(() => setError(t("channel.renameFailed")))
+              .finally(() => setSaving(false));
+          }}
+        >
+          <h2 id="channelRenameTitle">{t("channel.rename")}</h2>
+          <label className="form-field" htmlFor="channelRenameName">
+            <span>{t("channel.name")}</span>
+            <input
+              ref={input}
+              className="input"
+              id="channelRenameName"
+              aria-invalid={Boolean(error)}
+              aria-describedby="channelRenameError"
+              value={name}
+              minLength={2}
+              maxLength={64}
+              autoComplete="off"
+              disabled={saving}
+              onChange={(event) => setName(event.currentTarget.value)}
+            />
+          </label>
+          <p id="channelRenameError" className="error-text" aria-live="polite">
+            {error}
+          </p>
+          <div className="confirm-actions">
+            <button className="btn btn-ghost" type="button" disabled={saving} onClick={close}>
+              {t("common.cancel")}
+            </button>
+            <button className="btn btn-primary" type="submit" disabled={saving || name.trim() === initialName}>
+              {t("common.save")}
+            </button>
+          </div>
+        </form>
+      </div>
+    </ModalPortal>
   );
 }

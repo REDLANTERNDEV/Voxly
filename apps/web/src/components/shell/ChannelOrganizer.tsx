@@ -1,4 +1,12 @@
-import type { CategorySummary, RoomKind, RoomSummary, ServerRoomLayout } from "@voxly/shared";
+import type {
+  CategorySummary,
+  PresenceUser,
+  RoleSummary,
+  RoomKind,
+  RoomSummary,
+  ServerRoomLayout
+} from "@voxly/shared";
+import type { RoomAccessUpdate } from "@voxly/shared";
 import {
   Fragment,
   useCallback,
@@ -15,6 +23,12 @@ import { createPortal } from "react-dom";
 import type { Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
 import { ChevronIcon, MoreIcon, PlusIcon } from "../../components/ui/Icons.js";
+import {
+  ChannelAccessFields,
+  channelAccessDraft,
+  channelAccessUpdate,
+  type ChannelAccessDraft
+} from "../../features/owner/ChannelAccessDialog.js";
 import {
   channelGroups,
   moveGroup,
@@ -46,7 +60,8 @@ type DragState = {
   target: DropState | null;
 };
 type EditorState = {
-  kind: "choose" | "category" | "rename" | "room";
+  /** `roomAccess` is the last step of creating a channel: who may see and enter it. */
+  kind: "choose" | "category" | "rename" | "room" | "roomAccess";
   categoryId: string | null;
   trigger: HTMLElement | null;
 };
@@ -77,7 +92,9 @@ export function ChannelOrganizer({
   onDeleteCategory,
   onCreateRoom,
   onSaveLayout,
-  renderRoom
+  renderRoom,
+  members = [],
+  roles = []
 }: {
   serverId: string;
   categories: CategorySummary[];
@@ -93,9 +110,13 @@ export function ChannelOrganizer({
   onCreateCategory: (name: string) => Promise<void>;
   onRenameCategory: (categoryId: string, name: string) => Promise<void>;
   onDeleteCategory: (categoryId: string) => Promise<void>;
-  onCreateRoom: (name: string, kind: RoomKind, categoryId: string | null) => Promise<void>;
+  onCreateRoom: (name: string, kind: RoomKind, categoryId: string | null, access?: RoomAccessUpdate) => Promise<void>;
   onSaveLayout: (layout: ServerRoomLayout) => Promise<void>;
   renderRoom: (room: RoomSummary, actions: ChannelRoomActions) => ReactNode;
+  /** The Server's member-safe directory, offered on a new channel's access step. */
+  members?: readonly PresenceUser[];
+  /** The Server's Roles, highest first, offered on the same step. */
+  roles?: readonly RoleSummary[];
 }) {
   const organizerRef = useRef<HTMLDivElement | null>(null);
   const dragCandidateRef = useRef<DragState | null>(null);
@@ -107,6 +128,7 @@ export function ChannelOrganizer({
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [editorName, setEditorName] = useState("");
   const [editorRoomKind, setEditorRoomKind] = useState<RoomKind>("text");
+  const [editorAccess, setEditorAccess] = useState<ChannelAccessDraft>(() => channelAccessDraft());
   const [editorBusy, setEditorBusy] = useState(false);
   const [editorError, setEditorError] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CategorySummary | null>(null);
@@ -139,6 +161,7 @@ export function ChannelOrganizer({
     setEditor({ kind: createKind, categoryId: null, trigger: null });
     setEditorName("");
     setEditorRoomKind("text");
+    setEditorAccess(channelAccessDraft());
     setEditorError(false);
   }, [createNonce, createKind, onCreateRequestHandled]);
   useEffect(() => {
@@ -172,7 +195,9 @@ export function ChannelOrganizer({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const input = document.querySelector<HTMLInputElement>(".channel-organizer-editor input[name='organizerName']");
-    const firstAction = document.querySelector<HTMLElement>(".channel-organizer-editor [data-autofocus='true']");
+    const firstAction = document.querySelector<HTMLElement>(
+      ".channel-organizer-editor [data-autofocus='true'], .channel-organizer-editor .channel-access-switch"
+    );
     (input ?? firstAction)?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !editorBusy) {
@@ -211,6 +236,7 @@ export function ChannelOrganizer({
     setEditor({ kind, categoryId, trigger });
     setEditorName(initialName);
     setEditorRoomKind("text");
+    setEditorAccess(channelAccessDraft());
     setEditorError(false);
   }
 
@@ -221,11 +247,23 @@ export function ChannelOrganizer({
       setEditorError(true);
       return;
     }
+    // Type and name come first; who may see and enter it is the next step.
+    if (editor.kind === "room") {
+      setEditorError(false);
+      setEditor({ ...editor, kind: "roomAccess" });
+      return;
+    }
     setEditorBusy(true);
     setEditorError(false);
     try {
-      if (editor.kind === "room") await onCreateRoom(name, editorRoomKind, editor.categoryId);
-      else if (editor.kind === "category") await onCreateCategory(name);
+      if (editor.kind === "roomAccess") {
+        await onCreateRoom(
+          name,
+          editorRoomKind,
+          editor.categoryId,
+          editorAccess.isPrivate ? channelAccessUpdate(editorAccess, members) : undefined
+        );
+      } else if (editor.kind === "category") await onCreateCategory(name);
       else if (editor.categoryId) await onRenameCategory(editor.categoryId, name);
       closeEditor();
     } catch {
@@ -720,15 +758,17 @@ export function ChannelOrganizer({
               >
                 <header className="channel-organizer-modal-head">
                   <h2 id="channel-organizer-title">
-                    {t(
-                      editor.kind === "choose"
-                        ? "organizer.createTitle"
-                        : editor.kind === "room"
-                          ? "organizer.createChannelTitle"
-                          : editor.kind === "category"
-                            ? "organizer.createCategoryTitle"
-                            : "category.rename"
-                    )}
+                    {editor.kind === "roomAccess"
+                      ? t("channel.accessTitle", { channel: editorName.trim() })
+                      : t(
+                          editor.kind === "choose"
+                            ? "organizer.createTitle"
+                            : editor.kind === "room"
+                              ? "organizer.createChannelTitle"
+                              : editor.kind === "category"
+                                ? "organizer.createCategoryTitle"
+                                : "category.rename"
+                        )}
                   </h2>
                   <button
                     className="icon-btn"
@@ -762,7 +802,22 @@ export function ChannelOrganizer({
                   </div>
                 ) : (
                   <form onSubmit={(event) => void submitEditor(event)}>
-                    {editor.kind === "room" ? (
+                    {editor.kind === "roomAccess" ? (
+                      <>
+                        <p className="muted channel-create-access-copy">{t("organizer.accessCopy")}</p>
+                        <ChannelAccessFields
+                          draft={editorAccess}
+                          onChange={setEditorAccess}
+                          members={members}
+                          roles={roles}
+                          lockedReason={null}
+                          privateLocked={false}
+                          disabled={editorBusy}
+                          idPrefix="channelCreateAccess"
+                          t={t}
+                        />
+                      </>
+                    ) : editor.kind === "room" ? (
                       <>
                         <label className="form-field">
                           <span>{t("channel.type")}</span>
@@ -811,7 +866,7 @@ export function ChannelOrganizer({
                         {t(
                           editorName.trim().length < 2
                             ? "channel.nameTooShort"
-                            : editor.kind === "room"
+                            : editor.kind === "room" || editor.kind === "roomAccess"
                               ? "channel.createFailed"
                               : editor.kind === "category"
                                 ? "category.createFailed"
@@ -826,7 +881,10 @@ export function ChannelOrganizer({
                         disabled={editorBusy}
                         onClick={() => {
                           if (editor.kind === "rename") closeEditor();
-                          else {
+                          else if (editor.kind === "roomAccess") {
+                            setEditor({ ...editor, kind: "room" });
+                            setEditorError(false);
+                          } else {
                             setEditor({ ...editor, kind: "choose" });
                             setEditorName("");
                             setEditorError(false);
@@ -837,7 +895,13 @@ export function ChannelOrganizer({
                       </button>
                       <button className="btn btn-primary" type="submit" disabled={editorBusy}>
                         {t(
-                          editorBusy ? "channel.creating" : editor.kind === "rename" ? "common.save" : "channel.create"
+                          editorBusy
+                            ? "channel.creating"
+                            : editor.kind === "rename"
+                              ? "common.save"
+                              : editor.kind === "room"
+                                ? "organizer.next"
+                                : "channel.create"
                         )}
                       </button>
                     </div>

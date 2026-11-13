@@ -78,6 +78,17 @@ export interface RoomAccessUpdate {
   roleIds?: string[];
 }
 
+/**
+ * A Manage channels holder's new channel. With `access` it is born private,
+ * in the same write, so it is never briefly public to everyone first.
+ */
+export interface RoomCreateRequest {
+  name: string;
+  kind: "text" | "voice";
+  categoryId?: string | null;
+  access?: RoomAccessUpdate;
+}
+
 /** A server-wide group of text and voice rooms. */
 export interface CategorySummary {
   id: string;

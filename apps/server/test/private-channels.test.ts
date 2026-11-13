@@ -165,6 +165,36 @@ describe("private channels (ADR-0037)", () => {
     assert.equal(chooseHidden.statusCode, 400);
   });
 
+  it("creates a channel already private, and creates nothing when its access is refused", async () => {
+    const created = await app.server.inject({
+      method: "POST",
+      url: "/api/servers/the-basement/rooms",
+      cookies: owner.cookies,
+      payload: {
+        name: "born-private",
+        kind: "text",
+        access: { isPrivate: true, listed: false, userIds: [insider.user.id], roleIds: [] }
+      }
+    });
+    assert.equal(created.statusCode, 201);
+    const room = created.json().room as RoomSummary;
+    assert.equal(room.isPrivate, true);
+    assert.deepEqual(room.accessUserIds, [insider.user.id]);
+    assert.ok((await roomsOf(insider)).some((candidate) => candidate.id === room.id));
+    assert.ok(!(await roomsOf(outsider)).some((candidate) => candidate.id === room.id));
+
+    const before = (await roomsOf(owner)).length;
+    const refused = await app.server.inject({
+      method: "POST",
+      url: "/api/servers/the-basement/rooms",
+      cookies: owner.cookies,
+      payload: { name: "never", kind: "text", access: { isPrivate: true, listed: false, userIds: ["nobody"] } }
+    });
+    assert.equal(refused.statusCode, 400);
+    assert.equal(refused.json().error, "access_member_invalid");
+    assert.equal((await roomsOf(owner)).length, before);
+  });
+
   it("hides a Hidden text channel from everyone without access, history included", async () => {
     const secret = await createRoom("secret", "text");
     assert.equal((await post(secret, outsider, { body: "said while public" })).statusCode, 201);

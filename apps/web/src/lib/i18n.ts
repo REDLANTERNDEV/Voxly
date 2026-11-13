@@ -96,6 +96,8 @@ const translations = {
     "channel.accessHidden": "Hidden from everyone else",
     "channel.accessListed": "Visible to everyone, view only",
     "channel.accessListedHint": "Others can read it or see who is inside, but not write or join.",
+    "channel.accessHiddenHint": "Only people with access see it in the channel list.",
+    "channel.accessSelected": "{count} chosen",
     "channel.accessMembers": "Members with access",
     "channel.accessSearch": "Search members",
     "channel.accessOwnerAlways": "Owner, always has access",
@@ -1129,6 +1131,9 @@ const translations = {
     "organizer.createCategoryTitle": "Create category",
     "organizer.createChannelTitle": "Create channel",
     "organizer.createTitle": "Create category or channel",
+    "organizer.next": "Next",
+    "organizer.accessCopy":
+      "Leave it open to everyone, or make it private and choose who gets in. You can change this later from the channel menu.",
     "category.actionsFor": "Actions for {category}",
     "category.collapse": "Collapse {category}",
     "category.create": "Create category",
@@ -1271,6 +1276,8 @@ const translations = {
     "channel.accessListed": "Herkese görünür, yalnızca görüntüleme",
     "channel.accessListedHint":
       "Diğerleri okuyabilir veya içeride kimin olduğunu görebilir, ancak yazamaz ve katılamaz.",
+    "channel.accessHiddenHint": "Kanal listesinde yalnızca erişimi olanlar görür.",
+    "channel.accessSelected": "{count} seçili",
     "channel.accessMembers": "Erişimi olan üyeler",
     "channel.accessSearch": "Üye ara",
     "channel.accessOwnerAlways": "Sahip, her zaman erişimi var",
@@ -2304,6 +2311,9 @@ const translations = {
     "organizer.createCategoryTitle": "Kategori oluştur",
     "organizer.createChannelTitle": "Kanal oluştur",
     "organizer.createTitle": "Kategori veya kanal oluştur",
+    "organizer.next": "İleri",
+    "organizer.accessCopy":
+      "Herkese açık bırakın ya da özel yapıp kimlerin girebileceğini seçin. Bunu daha sonra kanal menüsünden değiştirebilirsiniz.",
     "category.actionsFor": "{category} kategori işlemleri",
     "category.collapse": "{category} kategorisini daralt",
     "category.create": "Kategori oluştur",

@@ -166,3 +166,46 @@ describe("Roles on Channel access (ADR-0038, ticket 07)", () => {
     assert.notEqual(translate("tr", "channel.accessRoles"), translate("en", "channel.accessRoles"));
   });
 });
+
+describe("Channel access while creating a channel", () => {
+  it("starts public with only the switch, and opens the lists once it is private", async () => {
+    const { ChannelAccessFields, channelAccessDraft, channelAccessUpdate } =
+      await import("../src/features/owner/ChannelAccessDialog.js");
+    const props = {
+      onChange: () => undefined,
+      members: [owner, insider],
+      lockedReason: null,
+      privateLocked: false,
+      disabled: false,
+      idPrefix: "channelCreateAccess",
+      t
+    };
+    const closed = renderToStaticMarkup(<ChannelAccessFields draft={channelAccessDraft()} {...props} />);
+    assert.match(closed, /role="switch"/);
+    assert.doesNotMatch(closed, /Insider/);
+    const draft = { ...channelAccessDraft(), isPrivate: true, userIds: new Set(["owner", "insider"]) };
+    const open = renderToStaticMarkup(<ChannelAccessFields draft={draft} {...props} />);
+    assert.match(open, /name="channelCreateAccessVisibility"/);
+    assert.match(open, /Insider/);
+    // Owners always have access, so they are never sent on the list.
+    assert.deepEqual(channelAccessUpdate(draft, [owner, insider]), {
+      isPrivate: true,
+      listed: false,
+      userIds: ["insider"],
+      roleIds: []
+    });
+    assert.notEqual(translate("tr", "organizer.accessCopy"), translate("en", "organizer.accessCopy"));
+  });
+
+  it("keeps a confirmation's focus where the member put it, above the phone drawer", () => {
+    const dialogs = readFileSync("src/components/ui/Dialogs.tsx", "utf8");
+    const confirm = dialogs.slice(
+      dialogs.indexOf("export function ConfirmDialog"),
+      dialogs.indexOf("export function NicknameDialog")
+    );
+    // Focus moves once per opening, never again on a parent's re-render.
+    assert.match(confirm, /\(confirmationRef\.current \?\? cancelRef\.current\)\?\.focus\(\);\s*\},\s*\[\]\);/);
+    assert.doesNotMatch(confirm, /\[onCancel\]\)/);
+    assert.match(confirm, /<ModalPortal>/);
+  });
+});
