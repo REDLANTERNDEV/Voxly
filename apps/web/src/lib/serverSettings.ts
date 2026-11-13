@@ -15,7 +15,7 @@ export interface ServerStanding {
 }
 
 export type ServerSettingsSection =
-  "overview" | "roles" | "members" | "invites" | "bans" | "inviteTrail" | "accessLinks" | "deleteServer";
+  "overview" | "roles" | "members" | "invites" | "bans" | "auditLog" | "inviteTrail" | "accessLinks" | "deleteServer";
 
 /** In the order the window lists them. */
 const sectionRules: ReadonlyArray<{
@@ -31,6 +31,7 @@ const sectionRules: ReadonlyArray<{
   },
   { id: "invites", reaches: (server) => server.permissions.includes("manageInvites") },
   { id: "bans", reaches: (server) => server.permissions.includes("manageMembers") },
+  { id: "auditLog", reaches: (server) => server.permissions.includes("viewAuditLog") },
   // These three stay with the owner for good (decision 10).
   { id: "inviteTrail", reaches: (server) => server.role === "owner", ownerOnly: true },
   { id: "accessLinks", reaches: (server) => server.role === "owner", ownerOnly: true },

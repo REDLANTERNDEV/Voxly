@@ -49,6 +49,7 @@ import {
   serverPresenceUser,
   visiblyOnlineUserIds
 } from "./members.js";
+import { audit, auditRoom } from "./audit.js";
 import { roomById } from "./rooms.js";
 import { messageLimit, roomIdParam, type RouteContext } from "./http.js";
 
@@ -189,15 +190,34 @@ export function registerMessageRoutes(context: RouteContext) {
         if (!room) return;
         if (!hasPermission(database.sqlite, room.serverId, user.id, "manageMessages"))
           return reply.code(403).send({ error: "forbidden" });
-        if (!messageById(database.sqlite, roomId, messageId))
-          return reply.code(404).send({ error: "message_not_found" });
-        run(
-          database.sqlite,
-          method === "PUT"
-            ? "update messages set pinned_at = coalesce(pinned_at, ?) where id = ?"
-            : "update messages set pinned_at = ? where id = ?",
-          [method === "PUT" ? new Date().toISOString() : null, messageId]
-        );
+        const before = messageById(database.sqlite, roomId, messageId);
+        if (!before) return reply.code(404).send({ error: "message_not_found" });
+        const pinning = method === "PUT";
+        database.sqlite.exec("begin immediate");
+        try {
+          run(
+            database.sqlite,
+            pinning
+              ? "update messages set pinned_at = coalesce(pinned_at, ?) where id = ?"
+              : "update messages set pinned_at = ? where id = ?",
+            [pinning ? new Date().toISOString() : null, messageId]
+          );
+          // Only a change is a line: pinning a pinned message does nothing.
+          if (Boolean(before.pinnedAt) !== pinning)
+            audit(
+              database,
+              user.id,
+              pinning ? "message.pinned" : "message.unpinned",
+              before.userId,
+              room.serverId,
+              null,
+              auditRoom(room)
+            );
+          database.sqlite.exec("commit");
+        } catch (cause) {
+          database.sqlite.exec("rollback");
+          throw cause;
+        }
         database.save();
         const message = messageById(database.sqlite, roomId, messageId)!;
         io.to(`room:${roomId}`).emit("message:updated", message);
@@ -598,6 +618,11 @@ export function registerMessageRoutes(context: RouteContext) {
         "update messages set deleted_at = ?, deleted_by_user_id = ?, pinned_at = null where id = ?",
         [new Date().toISOString(), user.id, messageId]
       );
+      // Deleting one's own message is not moderation; deleting someone
+      // else's is, and that is the line Discord's log keeps too. What the
+      // message said is never written down.
+      if (current.userId !== user.id)
+        audit(database, user.id, "message.deleted", current.userId, room.serverId, null, auditRoom(room));
       database.sqlite.exec("COMMIT");
     } catch (cause) {
       database.sqlite.exec("ROLLBACK");

@@ -206,7 +206,7 @@ describe("Channel access while creating a channel", () => {
     // Focus moves once per opening, never again on a parent's re-render.
     assert.match(confirm, /\(confirmationRef\.current \?\? cancelRef\.current\)\?\.focus\(\);\s*\},\s*\[\]\);/);
     assert.doesNotMatch(confirm, /\[onCancel\]\)/);
-    assert.match(confirm, /<ModalPortal>/);
+    assert.match(confirm, /<ModalDialog /);
   });
 });
 

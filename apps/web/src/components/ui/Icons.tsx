@@ -120,6 +120,13 @@ export function EditIcon() {
     </svg>
   );
 }
+export function ListIcon() {
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
+    </svg>
+  );
+}
 export function TrashIcon() {
   return (
     <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">

@@ -102,6 +102,7 @@ Decision ownership is intentionally scoped rather than repeated everywhere:
 | Which owner actions a Bot can be the subject of, and why a move is not one          | ADR-0010; `apps/server/AGENTS.md` — The Music Bot; `apps/web/AGENTS.md` — Member and Owner Surfaces                                                 |
 | Where the Music bot runs, where its two binaries come from, and why it is opt-in    | ADR-0012; `apps/bot/AGENTS.md` — Deployment; `docs/self-hosting.md` — Running the Music bot                                                         |
 | How Roles combine into Permissions, what rank decides, and who may give a Role      | ADR-0038; server Membership and Moderation; web Member and Owner Surfaces and Context Menus and Layering; shared Contract Rules                     |
+| What a Server's Audit log records, who reads it, and what each reader may not see   | ADR-0039; `apps/server/src/auditLog.ts`; `packages/shared` `auditLogActions`                                                                        |
 
 ## Repository Map
 

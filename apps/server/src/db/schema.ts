@@ -308,6 +308,7 @@ export const auditEvents = sqliteTable("audit_events", {
   targetUserId: text("target_user_id"),
   serverId: text("server_id"),
   sessionId: text("session_id"),
+  details: text("details"),
   createdAt: text("created_at").notNull()
 });
 

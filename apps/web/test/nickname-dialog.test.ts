@@ -13,6 +13,7 @@ describe("nickname dialog input lifecycle", () => {
 
     assert.match(focusEffect, /\}, \[\]\);$/);
     assert.doesNotMatch(focusEffect, /addEventListener/);
-    assert.match(dialog, /useEffect\(\(\) => \{[\s\S]*?addEventListener\("keydown"[\s\S]*?\}, \[close, isSaving\]\);/);
+    // Escape is the shared shell's, and it is held while saving.
+    assert.match(dialog, /<ModalDialog[\s\S]*?busy=\{isSaving\}[\s\S]*?onDismiss=\{close\}/);
   });
 });

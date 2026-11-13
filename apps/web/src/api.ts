@@ -1,4 +1,6 @@
 import type {
+  AuditLogAction,
+  AuditLogPage,
   MessageMentionInput,
   MessageReactionsEvent,
   RoleChange,
@@ -510,6 +512,18 @@ export async function revokeServerInvite(serverId: string, inviteId: string) {
 /** Every invite of a Server, on Manage invites; only the owner's copy carries the Invite trail. */
 export async function fetchServerInvites(serverId: string) {
   return apiGet<{ invites: OwnerInvite[] }>(`/api/servers/${encodeURIComponent(serverId)}/invites`);
+}
+
+export async function fetchAuditLog(
+  serverId: string,
+  query: { before?: string | null; actorId?: string | null; action?: AuditLogAction | null } = {}
+) {
+  const params = new URLSearchParams();
+  if (query.before) params.set("before", query.before);
+  if (query.actorId) params.set("actorId", query.actorId);
+  if (query.action) params.set("action", query.action);
+  const search = params.toString();
+  return apiGet<AuditLogPage>(`/api/servers/${encodeURIComponent(serverId)}/audit-log${search ? `?${search}` : ""}`);
 }
 
 export async function fetchServerOwnerData(serverId: string) {

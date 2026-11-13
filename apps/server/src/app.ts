@@ -16,7 +16,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AnalyticsConfig } from "./analytics.js";
-import { audit } from "./audit.js";
+import { audit, auditRoom } from "./audit.js";
+import { registerAuditLogRoutes } from "./auditLog.js";
 import {
   authenticateSocket,
   clearSessionCookie,
@@ -243,6 +244,7 @@ export async function createVoxlyApp(options: CreateVoxlyAppOptions): Promise<Vo
   registerServerRoutes(context);
   registerInviteRoutes(context);
   registerRoleRoutes(context);
+  registerAuditLogRoutes(context);
   registerMessageRoutes(context);
   registerNotificationRoutes(context);
   registerOwnerPanelRoutes(context);
@@ -577,12 +579,21 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     if (!renamingSelf && !outranks(database.sqlite, serverId, caller.id, userId)) {
       return reply.code(403).send({ error: "forbidden" });
     }
+    const previousNickname =
+      one<{ nickname: string | null }>(
+        database.sqlite,
+        "select nickname from server_members where server_id = ? and user_id = ?",
+        [serverId, userId]
+      )?.nickname ?? null;
     run(database.sqlite, "update server_members set nickname = ? where server_id = ? and user_id = ?", [
       nickname,
       serverId,
       userId
     ]);
-    audit(database, caller.id, "member.nickname_updated", userId, serverId);
+    audit(database, caller.id, "member.nickname_updated", userId, serverId, null, {
+      name: nickname,
+      previousName: previousNickname
+    });
     database.save();
     const updated = realtime.refreshMemberIdentity(serverId, userId);
     if (!updated) return reply.code(404).send({ error: "member_not_found" });
@@ -616,7 +627,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
        where server_id = ? and user_id = ?`,
       [moderation.muted ? 1 : 0, moderation.deafened ? 1 : 0, serverId, userId]
     );
-    audit(database, actor.id, "member.voice_moderation_updated", userId, serverId);
+    audit(database, actor.id, "member.voice_moderation_updated", userId, serverId, null, moderation);
     database.save();
     realtime.updateVoiceModeration(serverId, userId, moderation);
     io.to(`server:${serverId}`).emit("server:directoryChanged", { serverId });
@@ -700,7 +711,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     if (!outranks(database.sqlite, serverId, actor.id, userId)) return reply.code(403).send({ error: "forbidden" });
     if (!realtime.disconnectVoice(serverId, roomId, userId))
       return reply.code(409).send({ error: "member_not_in_voice" });
-    audit(database, actor.id, "voice.disconnected", userId, serverId);
+    audit(database, actor.id, "voice.disconnected", userId, serverId, null, auditRoom(room));
     database.save();
     return reply.code(204).send();
   });
@@ -733,7 +744,7 @@ function registerRoutes(options: CreateVoxlyAppOptions, context: RouteContext, c
     if (!realtime.moveVoice(serverId, userId, roomId)) {
       return reply.code(409).send({ error: "member_not_in_voice" });
     }
-    audit(database, actor.id, "voice.moved", userId, serverId);
+    audit(database, actor.id, "voice.moved", userId, serverId, null, auditRoom(room));
     database.save();
     return reply.code(204).send();
   });

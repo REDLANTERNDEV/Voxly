@@ -70,12 +70,15 @@ describe("Server settings (ADR-0038, decisions 14–16 and 20)", () => {
       "members",
       "invites",
       "bans",
+      "auditLog",
       "inviteTrail",
       "accessLinks",
       "deleteServer"
     ]);
     // An Admin runs the Server but never the owner's own three.
-    assert.deepEqual(serverSettingsSections(admin), ["overview", "roles", "members", "invites", "bans"]);
+    assert.deepEqual(serverSettingsSections(admin), ["overview", "roles", "members", "invites", "bans", "auditLog"]);
+    // View audit log alone opens the window on the Audit log (ADR-0039).
+    assert.deepEqual(serverSettingsSections({ role: "member", permissions: ["viewAuditLog"] }), ["auditLog"]);
     assert.deepEqual(serverSettingsSections({ role: "member", permissions: ["voiceModeration"] }), ["members"]);
     assert.deepEqual(serverSettingsSections({ role: "member", permissions: ["manageInvites"] }), ["invites"]);
     assert.deepEqual(serverSettingsSections({ role: "member", permissions: ["manageServer"] }), ["overview"]);

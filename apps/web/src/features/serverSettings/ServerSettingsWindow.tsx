@@ -8,6 +8,7 @@ import {
   CloseIcon,
   GearIcon,
   LinkIcon,
+  ListIcon,
   ShieldIcon,
   TrashIcon,
   UsersIcon
@@ -16,6 +17,7 @@ import { isOwnerOnlySection, serverSettingsSections, type ServerSettingsSection 
 import type { OwnerInvite, ServerMember } from "../../types.js";
 import { ServerOverviewSettings } from "../owner/OwnerServerContext.js";
 import { ServerAccessLinksSection, ServerInviteTrailSection } from "./ServerAccessSections.js";
+import { ServerAuditLogSection } from "./ServerAuditLogSection.js";
 import { ServerMembersSection } from "./ServerMembersSection.js";
 import { ServerRolesSection } from "./ServerRolesSection.js";
 
@@ -23,6 +25,7 @@ const sectionTitles = {
   overview: "serverSettings.overview",
   invites: "serverSettings.invites",
   bans: "serverSettings.bans",
+  auditLog: "serverSettings.auditLog",
   roles: "serverSettings.roles",
   members: "serverSettings.members",
   inviteTrail: "serverSettings.inviteTrail",
@@ -34,6 +37,7 @@ const sectionIcons = {
   overview: <GearIcon />,
   invites: <LinkIcon />,
   bans: <ShieldIcon />,
+  auditLog: <ListIcon />,
   roles: <ShieldIcon />,
   members: <UsersIcon />,
   inviteTrail: <ShieldIcon />,
@@ -357,6 +361,16 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
               t={t}
               onChanged={reload}
               onError={setStatus}
+            />
+          ) : null}
+          {section === "auditLog" ? (
+            <ServerAuditLogSection
+              key={serverId}
+              serverId={serverId}
+              members={props.serverMembers}
+              language={props.language}
+              timeFormat={props.timeFormat}
+              t={t}
             />
           ) : null}
           {section === "inviteTrail" ? (

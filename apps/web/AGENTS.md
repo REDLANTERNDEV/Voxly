@@ -546,9 +546,13 @@ requests` and `Accounts`, under one `Installation` heading, with a label
   still traps the next tap, and is drawn behind the drawer and its scrim — on a
   phone that reads as a control that does nothing. This covers the shared menu
   and the rail's invite popover; the dialogs above them keep `--layer-modal`.
-  A dialog opened from the rail renders through `ModalPortal`, never inside the
-  drawer: there it shares the drawer's stacking context and taps on its field
-  land on the scrim. Dialogs focus once per opening; an effect keyed on a
+  A small dialog is built on `ModalDialog` (`components/ui/Dialogs.tsx`), never
+  a hand-drawn `confirm-backdrop`: the shell renders through `ModalPortal`,
+  closes on Escape and outside presses unless busy, keeps Tab inside, and only
+  the topmost modal answers a key. Drawn in place, a dialog shares the stacking
+  context of whatever opened it — the rail's Join dialog was drawn under the
+  channel sidebar, and one opened from the drawer lands taps on the scrim.
+  `test/modal-dialog.test.tsx` fails any backdrop drawn without a portal. Dialogs focus once per opening; an effect keyed on a
   caller's inline `onCancel` re-runs on every realtime re-render and pulls
   focus out of the field being typed in, closing a phone's keyboard.
 - Menu rows are a mark and a label, laid out as a centered flex row rather than

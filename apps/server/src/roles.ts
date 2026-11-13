@@ -214,7 +214,7 @@ export function registerRoleRoutes(context: RouteContext) {
         "insert into roles (id, server_id, name, position, permissions, created_at) values (?, ?, ?, 1, '[]', ?)",
         [roleId, serverId, name, now]
       );
-      audit(database, actor.id, "role.created", null, serverId);
+      audit(database, actor.id, "role.created", null, serverId, null, { name, roleKind: null });
     });
     database.save();
     io.to(`server:${serverId}`).emit("server:rolesChanged", { serverId });
@@ -334,7 +334,19 @@ export function registerRoleRoutes(context: RouteContext) {
         // Administrator enters every Private channel, so switching it moves people in or out.
         if (readersBefore) baselineNewReaders(database.sqlite, readersBefore);
       }
-      audit(database, actor.id, "role.updated", null, serverId);
+      audit(database, actor.id, "role.updated", null, serverId, null, {
+        name: body.name ?? role.name,
+        previousName: body.name !== undefined && body.name !== role.name ? role.name : undefined,
+        roleKind: role.kind,
+        changes: [
+          ...(["name", "color", "separate"] as const).filter(
+            (field) => body[field] !== undefined && body[field] !== role[field]
+          ),
+          ...(permissions && permissions.join() !== role.permissions.join() ? (["permissions"] as const) : [])
+        ],
+        added: permissions?.filter((permission) => !role.permissions.includes(permission)),
+        removed: permissions ? role.permissions.filter((permission) => !permissions.includes(permission)) : undefined
+      });
     });
     database.save();
     io.to(`server:${serverId}`).emit("server:rolesChanged", { serverId });
@@ -367,7 +379,7 @@ export function registerRoleRoutes(context: RouteContext) {
         run(database.sqlite, "delete from roles where id = ? and server_id = ?", [roleId, serverId]);
         renumberRoles(database.sqlite, serverId);
         revokeLostInvites(database, serverId, before, now);
-        audit(database, actor.id, "role.deleted", null, serverId);
+        audit(database, actor.id, "role.deleted", null, serverId, null, { name: role.name, roleKind: role.kind });
       });
       database.save();
       for (const userId of holders) realtime.refreshMemberIdentity(serverId, userId);
@@ -421,7 +433,10 @@ export function registerRoleRoutes(context: RouteContext) {
         }
       }
       baselineNewReaders(database.sqlite, readersBefore);
-      audit(database, actor.id, give ? "role.given" : "role.removed", userId, serverId);
+      audit(database, actor.id, give ? "role.given" : "role.removed", userId, serverId, null, {
+        name: role.name,
+        roleKind: role.kind
+      });
       database.sqlite.exec("commit");
     } catch (cause) {
       database.sqlite.exec("rollback");

@@ -348,6 +348,10 @@ function migrate(sqlite: DatabaseSync) {
   addColumnIfMissing(sqlite, "invites", "max_uses", "integer default 1");
   addColumnIfMissing(sqlite, "audit_events", "server_id", "text");
   addColumnIfMissing(sqlite, "audit_events", "session_id", "text");
+  // What an audit line touched, as JSON: a channel's name, a Role's, a move's
+  // destination. Lines written before it have none and read as a bare action.
+  addColumnIfMissing(sqlite, "audit_events", "details", "text");
+  sqlite.exec("create index if not exists audit_events_server_time on audit_events (server_id, created_at)");
   addColumnIfMissing(sqlite, "access_claims", "revoked_at", "text");
   addColumnIfMissing(sqlite, "server_members", "nickname", "text");
   addColumnIfMissing(sqlite, "server_members", "moderator_muted", "integer not null default 0");

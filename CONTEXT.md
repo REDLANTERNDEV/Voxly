@@ -191,7 +191,16 @@ _Avoid_: Referrer, sponsor, parent
 Who created each Invite of a Server, and who joined through it and when. Only
 owners see it: a Server's owners for that Server, the Installation owner
 across all of them (ADR-0034).
-_Avoid_: Referral tree, invite log, audit log (that is the operator's)
+_Avoid_: Referral tree, invite log, Audit log (that is a different record)
+
+**Audit log**:
+A Server's record of who changed what in it — channels, categories, Roles,
+members, voice moderation, a moderator's message deletes and pins, Invites —
+newest first, for anyone holding View audit log. Every line is written about
+running the Server and kept; an Account's own business (sign-ins, Devices,
+recovery, access links) is never in it. It never names a channel the reader
+cannot see, and only the owner sees who created an Invite (ADR-0039).
+_Avoid_: Activity feed, history, server log, Set log (that is the Music bot's)
 
 ### Presence
 
@@ -261,8 +270,8 @@ _Avoid_: Moderator, operator, owner
 **Permission**:
 One named right inside a Server — Create invites, Manage channels, Manage
 server, Manage roles, Manage members, Voice moderation, Manage messages, Manage
-invites, or Administrator. The list is closed; the server checks it on every
-action.
+invites, View audit log, or Administrator. The list is closed; the server checks
+it on every action.
 _Avoid_: Grant (that was the old per-member invite switch), privilege, access
 
 **Administrator**:
@@ -277,8 +286,8 @@ a Permission allows. The Server owner stands above every rank.
 _Avoid_: Level (that is the levels and leagues measure), priority
 
 **Server settings**:
-The window where a Server is run: its overview, Roles, members, invites and
-bans. Anyone whose Permissions reach at least one of its sections opens it,
+The window where a Server is run: its overview, Roles, members, invites, bans
+and Audit log. Anyone whose Permissions reach at least one of its sections opens it,
 and sees only those sections. It is not the owner panel, which covers the
 whole installation.
 _Avoid_: Owner panel, dashboard, admin panel

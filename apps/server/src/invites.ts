@@ -410,7 +410,11 @@ export function registerInviteRoutes(context: RouteContext) {
       return reply.code(409).send({ error: "invite_limit_reached" });
     }
     const invite = createInviteForServer(database, serverId, user.id, body);
-    audit(database, user.id, "invite.created", null, serverId);
+    audit(database, user.id, "invite.created", null, serverId, null, {
+      name: invite.label,
+      maxUses: invite.maxUses,
+      expiresAt: invite.expiresAt
+    });
     database.save();
     return reply.code(201).send({ invite });
   });
@@ -788,9 +792,15 @@ export function accountInviteTrail(sqlite: DatabaseSync, userId: string) {
 }
 
 function revokeServerInvite(database: VoxlyDatabase, serverId: string, inviteId: string, actorId: string) {
-  const invite = one<{ id: string; max_uses: number | null; expires_at: string | null; revoked_at: string | null }>(
+  const invite = one<{
+    id: string;
+    label: string;
+    max_uses: number | null;
+    expires_at: string | null;
+    revoked_at: string | null;
+  }>(
     database.sqlite,
-    "select id, max_uses, expires_at, revoked_at from invites where id = ? and server_id = ?",
+    "select id, label, max_uses, expires_at, revoked_at from invites where id = ? and server_id = ?",
     [inviteId, serverId]
   );
   if (!invite) return "not_found" as const;
@@ -799,7 +809,7 @@ function revokeServerInvite(database: VoxlyDatabase, serverId: string, inviteId:
     return "inactive" as const;
   }
   run(database.sqlite, "update invites set revoked_at = ? where id = ?", [new Date().toISOString(), inviteId]);
-  audit(database, actorId, "invite.revoked", inviteId, serverId);
+  audit(database, actorId, "invite.revoked", inviteId, serverId, null, { name: invite.label });
   database.save();
   return "revoked" as const;
 }

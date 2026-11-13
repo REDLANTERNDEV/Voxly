@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import type { PresenceUser, RoleSummary, RoomAccessUpdate, RoomSummary } from "@voxly/shared";
 import type { Translate } from "../../app/types.js";
 import { EyeIcon, LockIcon } from "../../components/ui/Icons.js";
-import { ModalPortal } from "../../components/ui/Dialogs.js";
+import { ModalDialog } from "../../components/ui/Dialogs.js";
 import { roleDisplayName } from "../../lib/roles.js";
 
 /** A proposed Channel access, before it is sent. */
@@ -269,7 +269,6 @@ export function ChannelAccessDialog({
   const [draft, setDraft] = useState<ChannelAccessDraft>(() => channelAccessDraft(room));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const form = useRef<HTMLFormElement>(null);
   const firstControl = useRef<HTMLInputElement>(null);
   const close = useCallback(() => {
     onCancel();
@@ -280,89 +279,47 @@ export function ChannelAccessDialog({
   useEffect(() => {
     firstControl.current?.focus();
   }, []);
-  useEffect(() => {
-    const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !saving) {
-        event.preventDefault();
-        close();
-      }
-      if (event.key !== "Tab") return;
-      const controls = form.current?.querySelectorAll<HTMLElement>("input:not(:disabled), button:not(:disabled)");
-      if (!controls?.length) {
-        event.preventDefault();
-        return;
-      }
-      const first = controls[0],
-        last = controls[controls.length - 1];
-      if (!form.current?.contains(document.activeElement)) {
-        event.preventDefault();
-        first?.focus();
-      } else if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first?.focus();
-      }
-    };
-    window.addEventListener("keydown", keydown);
-    return () => window.removeEventListener("keydown", keydown);
-  }, [close, saving]);
-
   return (
-    <ModalPortal>
-      <div
-        className="confirm-backdrop"
-        onMouseDown={() => {
-          if (!saving) close();
-        }}
-        onContextMenu={(event) => event.stopPropagation()}
-      >
-        <form
-          ref={form}
-          noValidate
-          className="confirm-dialog channel-access-dialog"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="channelAccessTitle"
-          aria-busy={saving}
-          onMouseDown={(event) => event.stopPropagation()}
-          onSubmit={(event) => {
-            event.preventDefault();
-            setSaving(true);
-            setError("");
-            void onSave(channelAccessUpdate(draft, members))
-              .then(close)
-              .catch(() => setError(t("channel.accessFailed")))
-              .finally(() => setSaving(false));
-          }}
-        >
-          <h2 id="channelAccessTitle">{t("channel.accessTitle", { channel: room.name })}</h2>
-          <ChannelAccessFields
-            draft={draft}
-            onChange={setDraft}
-            members={members}
-            roles={roles}
-            lockedReason={lockedReason}
-            privateLocked={lockedReason !== null}
-            disabled={saving}
-            idPrefix="channelAccess"
-            firstControl={firstControl}
-            t={t}
-          />
-          <p className="error-text" aria-live="polite">
-            {error}
-          </p>
-          <div className="confirm-actions">
-            <button className="btn btn-ghost" type="button" disabled={saving} onClick={close}>
-              {t("common.cancel")}
-            </button>
-            <button className="btn btn-primary" type="submit" disabled={saving}>
-              {t("channel.accessSave")}
-            </button>
-          </div>
-        </form>
+    <ModalDialog
+      as="form"
+      className="channel-access-dialog"
+      labelledBy="channelAccessTitle"
+      busy={saving}
+      onDismiss={close}
+      onSubmit={(event) => {
+        event.preventDefault();
+        setSaving(true);
+        setError("");
+        void onSave(channelAccessUpdate(draft, members))
+          .then(close)
+          .catch(() => setError(t("channel.accessFailed")))
+          .finally(() => setSaving(false));
+      }}
+    >
+      <h2 id="channelAccessTitle">{t("channel.accessTitle", { channel: room.name })}</h2>
+      <ChannelAccessFields
+        draft={draft}
+        onChange={setDraft}
+        members={members}
+        roles={roles}
+        lockedReason={lockedReason}
+        privateLocked={lockedReason !== null}
+        disabled={saving}
+        idPrefix="channelAccess"
+        firstControl={firstControl}
+        t={t}
+      />
+      <p className="error-text" aria-live="polite">
+        {error}
+      </p>
+      <div className="confirm-actions">
+        <button className="btn btn-ghost" type="button" disabled={saving} onClick={close}>
+          {t("common.cancel")}
+        </button>
+        <button className="btn btn-primary" type="submit" disabled={saving}>
+          {t("channel.accessSave")}
+        </button>
       </div>
-    </ModalPortal>
+    </ModalDialog>
   );
 }

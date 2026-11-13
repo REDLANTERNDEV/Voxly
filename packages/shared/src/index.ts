@@ -285,6 +285,7 @@ export const serverPermissions = [
   "voiceModeration",
   "manageMessages",
   "manageInvites",
+  "viewAuditLog",
   "administrator"
 ] as const;
 
@@ -300,6 +301,107 @@ export const memberSettingsPermissions = [
   "voiceModeration",
   "manageRoles"
 ] as const satisfies readonly (typeof serverPermissions)[number][];
+
+/**
+ * What a Server's Audit log shows: every line written about running the
+ * Server, and nothing about an Account's own business — sign-ins, Devices,
+ * recovery and access links stay out (ADR-0039). A line written under any
+ * other action is not shown. The order is the filter's order.
+ */
+export const auditLogActions = [
+  "server.created",
+  "server.renamed",
+  "server.afkTimeoutChanged",
+  "server.welcomeChanged",
+  "room.created",
+  "room.renamed",
+  "room.accessChanged",
+  "room.deleted",
+  "category.created",
+  "category.renamed",
+  "category.deleted",
+  "role.created",
+  "role.updated",
+  "role.reordered",
+  "role.deleted",
+  "role.given",
+  "role.removed",
+  "member.nickname_updated",
+  "member.kick",
+  "member.ban",
+  "member.unban",
+  "member.voice_moderation_updated",
+  "voice.disconnected",
+  "voice.moved",
+  "message.deleted",
+  "message.pinned",
+  "message.unpinned",
+  "invite.created",
+  "invite.revoked",
+  "bot.created"
+] as const;
+
+export type AuditLogAction = (typeof auditLogActions)[number];
+
+/**
+ * What an audit line touched, as it was at the time. Every field is optional:
+ * each action fills only what it has, and lines written before details were
+ * kept carry none.
+ */
+export interface AuditLogDetails {
+  /** A Server, category, Role, Invite label or nickname; null for a cleared nickname or a seeded Role's name. */
+  name?: string | null;
+  previousName?: string | null;
+  roleKind?: RoleKind | null;
+  /** The channel the line is about, or where it happened. */
+  roomId?: string;
+  room?: string;
+  previousRoom?: string;
+  roomKind?: "text" | "voice";
+  /** Whether that channel was private; reading it back withholds its name from anyone who cannot see it. */
+  roomPrivate?: boolean;
+  /** Set on read instead of `room` when the reader may not see a private channel's name. */
+  roomHidden?: boolean;
+  minutes?: number | null;
+  /** On or off: welcome notices, or a channel made private. */
+  enabled?: boolean;
+  muted?: boolean;
+  deafened?: boolean;
+  /** Which parts of a Role an edit changed. */
+  changes?: Array<"name" | "color" | "separate" | "permissions">;
+  added?: Permission[];
+  removed?: Permission[];
+  maxUses?: number | null;
+  expiresAt?: string | null;
+}
+
+/** Someone in an audit line. A Deleted account has no nickname (ADR-0017). */
+export interface AuditLogPerson {
+  userId: string;
+  nickname: string | null;
+  isBot: boolean;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  action: AuditLogAction;
+  createdAt: string;
+  /** Null when the server itself acted, or for an Invite line a non-owner reads (ADR-0034). */
+  actor: AuditLogPerson | null;
+  /** The member acted on, when the action has one. */
+  target: AuditLogPerson | null;
+  details: AuditLogDetails;
+}
+
+/** One page of a Server's Audit log, newest first. */
+export interface AuditLogPage {
+  entries: AuditLogEntry[];
+  /** Pass as `before` for the next page; null when this page reached the end. */
+  nextBefore: string | null;
+}
+
+/** How many lines one page of the Audit log holds. */
+export const auditLogPageSize = 50;
 
 /**
  * The colours a Role may take: a fixed palette, each legible as name text on

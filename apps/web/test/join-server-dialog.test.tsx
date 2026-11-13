@@ -27,7 +27,9 @@ describe("the rail's join dialog (ADR-0036)", () => {
     const dialog = readFileSync("src/features/invites/JoinServerDialog.tsx", "utf8");
     assert.match(dialog, /parseInviteInput\(value,\s*installationOrigins\(\)\)/);
     assert.match(dialog, /onOpenInvite\(parsed\.token\)/);
-    assert.match(dialog, /event\.key === "Escape"/);
+    // Escape, Tab and the document-root portal come from the shared shell,
+    // so the dialog can never again be drawn under the channel sidebar.
+    assert.match(dialog, /<ModalDialog[\s\S]*?onDismiss=\{close\}/);
     // Another Installation's invite is handed off, never accepted here.
     assert.doesNotMatch(dialog, /acceptInvite/);
   });

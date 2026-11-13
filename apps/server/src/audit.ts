@@ -16,19 +16,40 @@
  * lose the record of something that did.
  */
 
+import type { AuditLogDetails, RoomSummary } from "@voxly/shared";
 import { defaultServerId, run, type VoxlyDatabase } from "./db/database.js";
 
+/**
+ * Writes one audit line. `details` names what the action touched — a channel,
+ * a Role, a move's destination — at the time it happened, so the Audit log
+ * still reads after the thing is renamed or gone. It never holds message
+ * text, a token or anything a member typed beyond a name.
+ */
 export function audit(
   database: VoxlyDatabase,
   actorUserId: string | null,
   action: string,
   targetUserId: string | null,
   serverId: string = defaultServerId,
-  sessionId: string | null = null
+  sessionId: string | null = null,
+  details: AuditLogDetails | null = null
 ) {
+  const recorded = details && Object.keys(details).length > 0 ? JSON.stringify(details) : null;
   run(
     database.sqlite,
-    "insert into audit_events (id, actor_user_id, action, target_user_id, server_id, created_at, session_id) values (?, ?, ?, ?, ?, ?, ?)",
-    [crypto.randomUUID(), actorUserId, action, targetUserId, serverId, new Date().toISOString(), sessionId]
+    "insert into audit_events (id, actor_user_id, action, target_user_id, server_id, created_at, session_id, details) values (?, ?, ?, ?, ?, ?, ?, ?)",
+    [crypto.randomUUID(), actorUserId, action, targetUserId, serverId, new Date().toISOString(), sessionId, recorded]
   );
+}
+
+/**
+ * The room an audit line touched or happened in, named as it was. Whether it
+ * was private goes with it, so reading the line back can withhold a Hidden
+ * channel's name from someone who cannot see that channel (ADR-0037).
+ */
+export function auditRoom(
+  room: Pick<RoomSummary, "id" | "name" | "kind" | "isPrivate">,
+  isPrivate: boolean = room.isPrivate
+): AuditLogDetails {
+  return { roomId: room.id, room: room.name, roomKind: room.kind, roomPrivate: isPrivate };
 }

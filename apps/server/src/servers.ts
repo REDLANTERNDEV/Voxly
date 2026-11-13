@@ -28,7 +28,7 @@ import {
   type AfkTimeoutMinutes,
   type RoomSummary
 } from "@voxly/shared";
-import { audit } from "./audit.js";
+import { audit, auditRoom } from "./audit.js";
 import { requireOwner, requireUser } from "./auth/sessions.js";
 import { createMusicBotAccount } from "./bots.js";
 import { all, defaultServerId, one, run, type VoxlyDatabase } from "./db/database.js";
@@ -245,10 +245,13 @@ export function registerServerRoutes(context: RouteContext) {
     database.sqlite.exec("begin immediate");
     try {
       room = createServerRoom(database, serverId, body.name, body.kind, position + 10, false, categoryId);
-      audit(database, actor.id, "room.created", null, serverId);
+      audit(database, actor.id, "room.created", null, serverId, null, auditRoom(room, Boolean(access)));
       if (access && resolved) {
         writeRoomAccess(database, serverId, room.id, { ...access, ...resolved }, actor.id, new Date().toISOString());
-        audit(database, actor.id, "room.accessChanged", null, serverId);
+        audit(database, actor.id, "room.accessChanged", null, serverId, null, {
+          ...auditRoom(room, true),
+          enabled: true
+        });
         room = {
           ...roomById(database.sqlite, room.id)!,
           accessUserIds: resolved.userIds,
@@ -294,7 +297,7 @@ export function registerServerRoutes(context: RouteContext) {
       category.name,
       category.position
     ]);
-    audit(database, actor.id, "category.created", null, serverId);
+    audit(database, actor.id, "category.created", null, serverId, null, { name });
     database.save();
     io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
     return reply.code(201).send({ category });
@@ -314,7 +317,7 @@ export function registerServerRoutes(context: RouteContext) {
     );
     if (!current) return reply.code(404).send({ error: "category_not_found" });
     run(database.sqlite, "update categories set name = ? where id = ? and server_id = ?", [name, categoryId, serverId]);
-    audit(database, actor.id, "category.renamed", null, serverId);
+    audit(database, actor.id, "category.renamed", null, serverId, null, { name, previousName: current.name });
     database.save();
     const category = { ...current, name };
     io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
@@ -355,7 +358,7 @@ export function registerServerRoutes(context: RouteContext) {
           serverId
         ]);
       });
-      audit(database, actor.id, "category.deleted", null, serverId);
+      audit(database, actor.id, "category.deleted", null, serverId, null, { name: category.name });
       database.sqlite.exec("commit");
     } catch (cause) {
       database.sqlite.exec("rollback");
@@ -486,7 +489,7 @@ export function registerServerRoutes(context: RouteContext) {
       })
       .parse(request.body);
     run(database.sqlite, "update servers set afk_timeout_minutes = ? where id = ?", [afkTimeoutMinutes, serverId]);
-    audit(database, actor.id, "server.afkTimeoutChanged", null, serverId);
+    audit(database, actor.id, "server.afkTimeoutChanged", null, serverId, null, { minutes: afkTimeoutMinutes });
     database.save();
     // Every member runs their own idle clock, so all of them need the new value
     // rather than only the owner who set it.
@@ -509,7 +512,7 @@ export function registerServerRoutes(context: RouteContext) {
       welcomeRoomId,
       serverId
     ]);
-    audit(database, actor.id, "server.welcomeChanged", null, serverId);
+    audit(database, actor.id, "server.welcomeChanged", null, serverId, null, { enabled: welcomeNotices });
     database.save();
     // Everyone else with Server settings open keeps the setting on screen too.
     io.to(`server:${serverId}`).emit("server:welcomeUpdated", { serverId, welcomeNotices, welcomeRoomId });
@@ -526,8 +529,10 @@ export function registerServerRoutes(context: RouteContext) {
     const { name } = z.object({ name: serverNameSchema }).parse(request.body);
     const membership = requireServerPermission(database, serverId, actor.id, "manageServer", reply);
     if (!membership) return;
+    const previousName =
+      one<{ name: string }>(database.sqlite, "select name from servers where id = ?", [serverId])?.name ?? null;
     run(database.sqlite, "update servers set name = ? where id = ?", [name, serverId]);
-    audit(database, actor.id, "server.renamed", null, serverId);
+    audit(database, actor.id, "server.renamed", null, serverId, null, { name, previousName });
     database.save();
     io.to(`server:${serverId}`).emit("server:updated", { serverId, name });
     return {
@@ -550,7 +555,10 @@ export function registerServerRoutes(context: RouteContext) {
     if (!current || current.serverId !== serverId) return reply.code(404).send({ error: "room_not_found" });
     if (refuseUnenteredRoom(current, actor.id, reply)) return;
     run(database.sqlite, "update rooms set name = ? where id = ? and server_id = ?", [name, roomId, serverId]);
-    audit(database, actor.id, "room.renamed", null, serverId);
+    audit(database, actor.id, "room.renamed", null, serverId, null, {
+      ...auditRoom({ ...current, name }),
+      previousRoom: current.name
+    });
     database.save();
     io.to(`server:${serverId}`).emit("server:roomsChanged", { serverId });
     return { room: { ...current, name } };
@@ -593,7 +601,11 @@ export function registerServerRoutes(context: RouteContext) {
       const updated = roomById(database.sqlite, roomId)!;
       const newReaders = [...roomReaderIds(database.sqlite, updated)].filter((userId) => !readersBefore.has(userId));
       baselineRoomReadState(database.sqlite, roomId, newReaders);
-      audit(database, actor.id, "room.accessChanged", null, serverId);
+      // Private either side: a channel made public was hidden until now.
+      audit(database, actor.id, "room.accessChanged", null, serverId, null, {
+        ...auditRoom(updated, current.isPrivate || updated.isPrivate),
+        enabled: updated.isPrivate
+      });
       database.sqlite.exec("commit");
     } catch (cause) {
       database.sqlite.exec("rollback");
@@ -625,7 +637,7 @@ export function registerServerRoutes(context: RouteContext) {
       run(database.sqlite, "delete from room_access_roles where room_id = ?", [roomId]);
       run(database.sqlite, "delete from messages where room_id = ?", [roomId]);
       run(database.sqlite, "delete from rooms where id = ? and server_id = ?", [roomId, serverId]);
-      audit(database, actor.id, "room.deleted", null, serverId);
+      audit(database, actor.id, "room.deleted", null, serverId, null, auditRoom(room));
       database.sqlite.exec("commit");
     } catch (cause) {
       database.sqlite.exec("rollback");

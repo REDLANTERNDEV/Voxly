@@ -9,7 +9,7 @@ import {
 import { formatShortDate } from "../../app/presentation.js";
 import type { Translate } from "../../app/types.js";
 import { ArrowIcon, TrashIcon } from "../../components/ui/Icons.js";
-import { ConfirmDialog } from "../../components/ui/Dialogs.js";
+import { ConfirmDialog, ModalDialog } from "../../components/ui/Dialogs.js";
 import type { LanguageCode } from "../../lib/i18n.js";
 import type { TimeFormatPreference } from "../../lib/timeFormat.js";
 import type {
@@ -505,48 +505,45 @@ export function OwnerAccountsSection({
       )}
       {status ? <p role="status">{status}</p> : null}
       {deleteTarget ? (
-        <div className="confirm-backdrop" role="presentation">
-          <form
-            className="confirm-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("ownerAccounts.deleteTitle", { nickname: deleteTarget.nickname })}
-            onSubmit={submitDelete}
-          >
-            <h2>{t("ownerAccounts.deleteTitle", { nickname: deleteTarget.nickname })}</h2>
-            <p>{t("ownerAccounts.deleteCopy")}</p>
-            <label className="form-field">
-              <span>{t("accountDeletion.confirmNickname", { nickname: deleteTarget.nickname })}</span>
-              <input
-                autoFocus
-                className="input"
-                value={confirmation}
-                onChange={(event) => setConfirmation(event.currentTarget.value)}
-              />
-            </label>
-            <label className="check-row">
-              <input
-                type="checkbox"
-                checked={permanent}
-                onChange={(event) => setPermanent(event.currentTarget.checked)}
-              />
-              <span>{t("accountDeletion.permanentConfirm")}</span>
-            </label>
-            <div className="confirm-actions">
-              <button className="btn btn-ghost" type="button" onClick={closeDeleteDialog}>
-                {t("common.cancel")}
-              </button>
-              <button
-                className="btn btn-danger"
-                type="submit"
-                disabled={confirmation !== deleteTarget.nickname || !permanent}
-              >
-                <TrashIcon />
-                <span>{t("ownerAccounts.deleteNow")}</span>
-              </button>
-            </div>
-          </form>
-        </div>
+        <ModalDialog
+          as="form"
+          label={t("ownerAccounts.deleteTitle", { nickname: deleteTarget.nickname })}
+          onDismiss={closeDeleteDialog}
+          onSubmit={(event) => void submitDelete(event)}
+        >
+          <h2>{t("ownerAccounts.deleteTitle", { nickname: deleteTarget.nickname })}</h2>
+          <p>{t("ownerAccounts.deleteCopy")}</p>
+          <label className="form-field">
+            <span>{t("accountDeletion.confirmNickname", { nickname: deleteTarget.nickname })}</span>
+            <input
+              autoFocus
+              className="input"
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.currentTarget.value)}
+            />
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={permanent}
+              onChange={(event) => setPermanent(event.currentTarget.checked)}
+            />
+            <span>{t("accountDeletion.permanentConfirm")}</span>
+          </label>
+          <div className="confirm-actions">
+            <button className="btn btn-ghost" type="button" onClick={closeDeleteDialog}>
+              {t("common.cancel")}
+            </button>
+            <button
+              className="btn btn-danger"
+              type="submit"
+              disabled={confirmation !== deleteTarget.nickname || !permanent}
+            >
+              <TrashIcon />
+              <span>{t("ownerAccounts.deleteNow")}</span>
+            </button>
+          </div>
+        </ModalDialog>
       ) : null}
     </section>
   );
