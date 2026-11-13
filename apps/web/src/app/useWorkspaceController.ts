@@ -46,6 +46,7 @@ import { resolveRememberedRoom, roomsForServer, type RoomHistory } from "../lib/
 import { currentServerPresence } from "../lib/memberDirectory.js";
 import { replacePresenceUser, replaceServerPresenceUserIfPresent } from "../lib/memberIdentity.js";
 import { indexAfkRoom } from "../lib/idleActivity.js";
+import { latestRequests } from "../lib/latestRequest.js";
 import { defaultServerId, firstServerRoomPath } from "../lib/navigation.js";
 import type { ServerSummary } from "../types.js";
 import { serverPath } from "./navigation.js";
@@ -157,9 +158,15 @@ export function useWorkspaceController({
     []
   );
 
+  // Each `server:roomsChanged` starts a fetch, and quick changes overlap: only
+  // the newest fetch for a Server may apply, or an older answer arriving last
+  // puts stale Channel access back on screen.
+  const roomRefreshes = useRef(latestRequests<string>());
   const refreshRooms = useCallback(
     async (serverId: string, deletedRoomId?: string) => {
+      const isNewest = roomRefreshes.current.begin(serverId);
       const response = await fetchServerRooms(serverId);
+      if (!isNewest()) return;
       const currentRoute = routeRef.current;
       if (
         (currentRoute.name !== "text" && currentRoute.name !== "voice" && currentRoute.name !== "owner") ||
