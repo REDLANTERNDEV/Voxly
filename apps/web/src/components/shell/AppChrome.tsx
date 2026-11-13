@@ -11,7 +11,7 @@ import { NotificationViewport, useNotificationCenter } from "../../components/ui
 import type { AppNotification } from "../../lib/notifications.js";
 import { contextMenuReducer, createContextMenuDescriptor } from "../../lib/contextMenu.js";
 import { type TranslationKey } from "../../lib/i18n.js";
-import { countPeople } from "../../lib/memberDirectory.js";
+import { channelAudience, countPeople } from "../../lib/memberDirectory.js";
 import { settingsRequestEvent, type RequestedSettingsSection } from "../../lib/settingsNavigation.js";
 import { ChannelRail } from "./ChannelRail.js";
 import { MemberPanel } from "./MemberPanel.js";
@@ -359,8 +359,11 @@ export function AppChrome(props: ShellModel & ShellActions & { children: ReactNo
                 }
               : undefined
           }
-          members={props.serverMembers}
-          onlineUsers={props.onlineUsers}
+          // A private channel lists only those with access to it (ADR-0037),
+          // and follows its access as the room list refreshes.
+          members={[...channelAudience(props.currentRoom, props.serverMembers, props.serverRoles)]}
+          onlineUsers={[...channelAudience(props.currentRoom, props.onlineUsers, props.serverRoles)]}
+          scopedToChannel={Boolean(props.currentRoom?.isPrivate && props.currentRoom.canEnter)}
           selfPresence={selfPresence}
           voiceRooms={props.rooms.voice}
           voiceSnapshots={props.voiceSnapshots}

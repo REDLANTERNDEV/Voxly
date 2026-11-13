@@ -825,6 +825,10 @@ requests` and `Accounts`, under one `Installation` heading, with a label
   there is created private in the same request, never created public and
   changed after; the move menu offers only channels the member can enter, and
   the Mention picker in a private channel offers only people with access.
+  On a private channel the viewer can enter, the right member panel lists only
+  those with access (`channelAudience`) under "Members with access", and follows
+  the access as the room list refreshes. A Listed channel the viewer only reads
+  keeps the whole Server's list: its access list never reaches them.
   Leaving the route when a refreshed room list no longer holds the viewed
   channel is how a member who lost a Hidden channel is moved off it.
 

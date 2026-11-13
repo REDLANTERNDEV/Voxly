@@ -126,6 +126,21 @@ export function memberPresenceState(user: { status?: PresenceStatus }, online: b
  * The server decides; this only keeps the move menu and Mention picker from
  * offering what it would refuse.
  */
+/**
+ * Who a channel's member panel lists: everyone for a public channel, and for
+ * a private one only those who may enter it (ADR-0037). A viewer who cannot
+ * enter gets no access list from the server, because the list is itself
+ * private, so a Listed channel they only read keeps the whole Server's list.
+ */
+export function channelAudience<T extends Pick<PresenceUser, "userId" | "role" | "roleIds" | "isBot">>(
+  room: Pick<RoomSummary, "isPrivate" | "canEnter" | "accessUserIds" | "accessRoleIds"> | undefined,
+  members: readonly T[],
+  roles: readonly RoleSummary[] = []
+): readonly T[] {
+  if (!room?.isPrivate || !room.canEnter) return members;
+  return members.filter((member) => canMemberEnter(room, member, roles));
+}
+
 export function canMemberEnter(
   room: Pick<RoomSummary, "isPrivate" | "accessUserIds" | "accessRoleIds">,
   member: Pick<PresenceUser, "userId" | "role" | "roleIds" | "isBot">,

@@ -209,3 +209,26 @@ describe("Channel access while creating a channel", () => {
     assert.match(confirm, /<ModalPortal>/);
   });
 });
+
+describe("the member panel of a private channel", () => {
+  it("lists only those with access, and the whole Server elsewhere", async () => {
+    const { channelAudience } = await import("../src/lib/memberDirectory.js");
+    const everyone = [owner, insider, outsider];
+    const names = (list: readonly PresenceUser[]) => list.map((member) => member.nickname);
+    assert.deepEqual(names(channelAudience(room, everyone)), ["Owner", "Insider"]);
+    assert.deepEqual(names(channelAudience({ ...room, isPrivate: false }, everyone)), ["Owner", "Insider", "Outsider"]);
+    assert.deepEqual(names(channelAudience(undefined, everyone)), ["Owner", "Insider", "Outsider"]);
+    // A Listed channel the viewer only reads carries no access list to narrow by.
+    assert.deepEqual(names(channelAudience({ ...room, canEnter: false, accessUserIds: undefined }, everyone)), [
+      "Owner",
+      "Insider",
+      "Outsider"
+    ]);
+    // A Role on the access lets its members in.
+    const crew = { ...outsider, roleIds: ["crew"] };
+    assert.deepEqual(names(channelAudience({ ...room, accessRoleIds: ["crew"] }, [owner, crew])), [
+      "Owner",
+      "Outsider"
+    ]);
+  });
+});

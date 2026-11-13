@@ -50,6 +50,7 @@ export function MemberPanel({
   onRequestMemberAction,
   actionMenu,
   selfVoice,
+  scopedToChannel = false,
   t
 }: {
   members: PresenceUser[];
@@ -85,6 +86,8 @@ export function MemberPanel({
   onRequestNickname: (user: PresenceUser, returnFocus: HTMLButtonElement | null) => void;
   onRequestMemberAction: (user: PresenceUser, action: MemberAction, roomId?: string) => void;
   actionMenu: SidebarActionMenuController;
+  /** True when the list is narrowed to the private channel on screen. */
+  scopedToChannel?: boolean;
   t: Translate;
 }) {
   const [query, setQuery] = useState("");
@@ -201,7 +204,7 @@ export function MemberPanel({
   return (
     <aside className="member-panel">
       <div className="member-panel-toolbar">
-        <strong>{t("common.members")}</strong>
+        <strong>{t(scopedToChannel ? "channel.accessMembers" : "common.members")}</strong>
         <span>
           {countPeople(groupedMembers.online)} {t("common.online").toLocaleLowerCase()}
         </span>
