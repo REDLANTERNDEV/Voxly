@@ -8,10 +8,13 @@ import type { AfkTimeoutMinutes, RoomSummary } from "@voxly/shared";
  * that is open, connected, and completely untouched is exactly the case this
  * exists for, and the server cannot tell that apart from someone listening.
  *
- * What it drives is a presence dot and nothing else. The browser sees only its
- * own window, so a member playing a fullscreen game with a muted microphone is
- * indistinguishable from one who walked away, and no threshold separates them.
- * That makes this a signal to display, not one to act on.
+ * In a browser it drives a presence dot and nothing else. The browser sees only
+ * its own window, so a member playing a fullscreen game with a muted microphone
+ * is indistinguishable from one who walked away, and no threshold separates
+ * them. That makes a browser's measurement a signal to display, not one to act
+ * on. The desktop app sees input anywhere on the machine, which removes that
+ * ambiguity, so only there does a long idle also park the member in the AFK
+ * room (ADR-0040).
  */
 
 /**
@@ -59,4 +62,45 @@ export function indexAfkRoom(afkRoomIdsByServer: Record<string, string>, serverI
   const afkRoom = rooms.find((room) => room.isAfk && room.kind === "voice" && room.serverId === serverId);
   if (afkRoom) afkRoomIdsByServer[serverId] = afkRoom.id;
   else delete afkRoomIdsByServer[serverId];
+}
+
+/**
+ * A move is a bigger consequence than a dot, so it never comes sooner than
+ * this, whatever the Server's AFK timeout says.
+ */
+export const afkMoveFloorMinutes = 30;
+
+export function afkMoveAfterMs(minutes: AfkTimeoutMinutes) {
+  return afkTimeoutMs(Math.max(minutes, afkMoveFloorMinutes) as AfkTimeoutMinutes);
+}
+
+/**
+ * The AFK room to park this member in, or null to leave them where they are.
+ *
+ * Only machine-wide input can justify a move: without it a present game player
+ * looks exactly like someone who left. The idle time passed here is measured
+ * from real input; a locked machine marks the member Idle at once but does not
+ * shorten the wait for a move.
+ */
+export function afkMoveTarget({
+  machineWide,
+  activeVoiceRoomId,
+  roomServerIds,
+  afkRoomIdsByServer,
+  timeoutsByServer,
+  idleForMs
+}: {
+  machineWide: boolean;
+  activeVoiceRoomId: string | null;
+  roomServerIds: Record<string, string>;
+  afkRoomIdsByServer: Record<string, string>;
+  timeoutsByServer: Record<string, AfkTimeoutMinutes>;
+  idleForMs: number;
+}): string | null {
+  if (!machineWide || !activeVoiceRoomId) return null;
+  const serverId = roomServerIds[activeVoiceRoomId];
+  const afkRoomId = serverId ? afkRoomIdsByServer[serverId] : undefined;
+  if (!afkRoomId || afkRoomId === activeVoiceRoomId) return null;
+  const minutes = afkTimeoutFor(roomServerIds, timeoutsByServer, activeVoiceRoomId);
+  return idleForMs >= afkMoveAfterMs(minutes) ? afkRoomId : null;
 }

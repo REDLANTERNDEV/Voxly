@@ -8,6 +8,9 @@ import { describe, it } from "node:test";
 import {
   afkActivityEvents,
   afkIdleCheckIntervalMs,
+  afkMoveAfterMs,
+  afkMoveFloorMinutes,
+  afkMoveTarget,
   afkTimeoutFor,
   afkTimeoutMs,
   indexAfkRoom
@@ -62,15 +65,19 @@ describe("idle threshold", () => {
 });
 
 describe("idle presence", () => {
-  it("marks the member and never moves them", () => {
+  it("marks the member, and moves them only on machine-wide evidence", () => {
     // A browser sees only its own window, so a muted player in a fullscreen
     // game produces exactly the signal of someone who left. Acting on that
-    // guess pulls a present member out of the conversation and mutes them;
-    // showing it costs a dot. Only the dot is justified.
+    // guess pulls a present member out of the conversation and mutes them.
+    // Only the desktop's machine-wide input earns a move (ADR-0040).
     const hook = readFileSync("src/app/useIdlePresence.ts", "utf8");
 
     assert.match(hook, /socketRef\.current\?\.emit\("presence:setStatus", status\)/);
-    assert.doesNotMatch(hook, /joinVoice|shouldMoveToAfk|afkRoomId/);
+    assert.match(hook, /machineWide: machineWideRef\.current/);
+    assert.match(hook, /subscribeDesktopSystemActivity\(window, \(signal\) => \{\s+machineWideRef\.current = true;/);
+    // A lock backdates the dot, never the move.
+    assert.match(hook, /idleForMs: Date\.now\(\) - lastInputAtRef\.current/);
+    assert.doesNotMatch(hook, /lastInputAtRef\.current = 0/);
   });
 
   it("reports only transitions, so the socket is not a heartbeat", () => {
@@ -119,6 +126,41 @@ describe("idle presence", () => {
   });
 });
 
+describe("AFK room move", () => {
+  const base = {
+    machineWide: true,
+    activeVoiceRoomId: "talk",
+    roomServerIds: { talk: "s1", afk: "s1", other: "s2" },
+    afkRoomIdsByServer: { s1: "afk" },
+    timeoutsByServer: { s1: 60 as const },
+    idleForMs: afkTimeoutMs(60)
+  };
+
+  it("parks a desktop member idle past the Server's timeout", () => {
+    assert.equal(afkMoveTarget(base), "afk");
+    assert.equal(afkMoveTarget({ ...base, idleForMs: afkTimeoutMs(60) - 1 }), null);
+  });
+
+  it("never moves a member whose idle was not measured machine-wide", () => {
+    assert.equal(afkMoveTarget({ ...base, machineWide: false, idleForMs: afkTimeoutMs(240) }), null);
+  });
+
+  it("never moves sooner than the floor, even under a shorter timeout", () => {
+    assert.equal(afkMoveFloorMinutes, 30);
+    const short = { ...base, timeoutsByServer: { s1: 15 as const } };
+    assert.equal(afkMoveAfterMs(15), afkTimeoutMs(30));
+    assert.equal(afkMoveTarget({ ...short, idleForMs: afkTimeoutMs(15) }), null);
+    assert.equal(afkMoveTarget({ ...short, idleForMs: afkTimeoutMs(30) }), "afk");
+  });
+
+  it("leaves alone a member out of voice, already parked, or on a Server with no AFK room", () => {
+    const long = { ...base, idleForMs: afkTimeoutMs(240) };
+    assert.equal(afkMoveTarget({ ...long, activeVoiceRoomId: null }), null);
+    assert.equal(afkMoveTarget({ ...long, activeVoiceRoomId: "afk" }), null);
+    assert.equal(afkMoveTarget({ ...long, activeVoiceRoomId: "other" }), null);
+  });
+});
+
 describe("idle setting copy", () => {
   it("describes what the setting does now, not what it used to do", () => {
     // The threshold once triggered a move. Copy that still promises one would
@@ -129,6 +171,9 @@ describe("idle setting copy", () => {
     assert.doesNotMatch(translate("tr", "owner.afkTimeout"), /taşıma/i);
     assert.match(translate("en", "owner.afkTimeoutHint"), /inactive members as idle/);
     assert.match(translate("tr", "owner.afkTimeoutHint"), /Aktif olmayan üyeleri boşta/);
+    // The move is promised only where it happens, and with its floor.
+    assert.match(translate("en", "owner.afkTimeoutHint"), /desktop app[\s\S]*30 minutes[\s\S]*AFK channel/);
+    assert.match(translate("tr", "owner.afkTimeoutHint"), /Masaüstü uygulamasında[\s\S]*30 dakika[\s\S]*AFK kanalına/);
   });
 
   it("names all three presence states in both languages", () => {

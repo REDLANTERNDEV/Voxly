@@ -128,13 +128,20 @@ requirement.
   explicit request, and the toggle refuses while the member is in it — the same
   guard owner mute uses. Show the control locked; an enabled control the server
   will not honour reads as a bug.
-- Idle marks a member; it never moves them. The browser sees input only inside
-  its own window, so a muted player in a fullscreen game and someone who walked
-  away produce the identical signal, and no threshold separates them. The costs
-  of confusing them are not symmetric: failing to flag an absent member leaves a
-  stale name in a list, while acting on a present one pulls them out of the
-  conversation and mutes them, in a window they are not looking at. A dot is the
-  only consequence that guess earns.
+- In a browser, Idle marks a member and never moves them. The browser sees
+  input only inside its own window, so a muted player in a fullscreen game and
+  someone who walked away produce the identical signal, and no threshold
+  separates them. The costs of confusing them are not symmetric: failing to flag
+  an absent member leaves a stale name in a list, while acting on a present one
+  pulls them out of the conversation and mutes them, in a window they are not
+  looking at. A dot is the only consequence that guess earns.
+- The desktop app removes the guess, so only there does a long Idle also park
+  the member in their Server's AFK room (ADR-0040). The move waits for the
+  Server's AFK timeout and never less than 30 minutes; it is measured from real
+  input, so a locked machine shows Idle at once without hurrying the move. It is
+  enabled by the first desktop activity signal, not by the bridge existing,
+  because only Windows samples. It runs through the same join an owner's move
+  uses, and a Server with no AFK room moves nobody.
 - Moving a member between voice rooms is an owner action, taken deliberately,
   and it reaches the target as an instruction rather than a state change: the
   client owns the peer connections, so it carries the move out through the same

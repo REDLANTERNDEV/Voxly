@@ -1,13 +1,20 @@
 import { useEffect, useRef, type RefObject } from "react";
 import type { AfkTimeoutMinutes, PresenceStatus, VoiceSnapshot } from "@voxly/shared";
 import { subscribeDesktopSystemActivity } from "../lib/desktopVoice.js";
-import { afkActivityEvents, afkIdleCheckIntervalMs, afkTimeoutFor, afkTimeoutMs } from "../lib/idleActivity.js";
+import {
+  afkActivityEvents,
+  afkIdleCheckIntervalMs,
+  afkMoveTarget,
+  afkTimeoutFor,
+  afkTimeoutMs
+} from "../lib/idleActivity.js";
 import type { VoxlySocket } from "../socket.js";
 
 /**
- * Marks a member away once they have gone long enough without interacting.
+ * Marks a member Idle once they have gone long enough without interacting, and
+ * in the desktop app parks them in the AFK room after a longer idle.
  *
- * It marks and does not move. A browser can only observe input inside its own
+ * A browser marks and does not move. It can only observe input inside its own
  * window, so someone playing a fullscreen game with their microphone muted
  * produces exactly the same signal as someone who left the room — no events, no
  * speech. The two are indistinguishable here, and the costs of confusing them
@@ -18,23 +25,39 @@ import type { VoxlySocket } from "../socket.js";
  *
  * The desktop app narrows the guess: it reports input anywhere on the machine,
  * so the game player above stays present, and it reports a locked or sleeping
- * machine, which is as close to proof of absence as anything here gets. A
- * browser has neither signal and keeps relying on its own window.
+ * machine, which is as close to proof of absence as anything here gets. With
+ * that signal the guess is no longer a guess, so a desktop member idle past the
+ * Server's AFK timeout, and never sooner than half an hour, is moved to the AFK
+ * room through the same join an owner's move uses (ADR-0040). A browser has
+ * neither signal, keeps relying on its own window, and is never moved.
  */
 export function useIdlePresence({
   roomServerIdsRef,
   afkTimeoutsByServerRef,
-  activeVoiceRoomId,
+  afkRoomIdsByServerRef,
+  voice,
   speaking,
   socket
 }: {
   roomServerIdsRef: RefObject<Record<string, string>>;
   afkTimeoutsByServerRef: RefObject<Record<string, AfkTimeoutMinutes>>;
-  activeVoiceRoomId: string | null;
+  afkRoomIdsByServerRef: RefObject<Record<string, string>>;
+  /** `moveTo` is the ordinary join, the same one an owner's move runs through. */
+  voice: { activeRoomId: string | null; moveTo: (roomId: string) => Promise<unknown> };
   speaking: boolean;
   socket: VoxlySocket | null;
 }) {
+  const activeVoiceRoomId = voice.activeRoomId;
   const lastActivityAtRef = useRef(Date.now());
+  /** Real input only. A lock marks Idle at once but does not hurry a move. */
+  const lastInputAtRef = useRef(Date.now());
+  /**
+   * Set by the first desktop signal. The desktop bridge exists on every
+   * platform but only Windows samples, so its presence alone proves nothing.
+   */
+  const machineWideRef = useRef(false);
+  const moveToAfkRoomRef = useRef(voice.moveTo);
+  moveToAfkRoomRef.current = voice.moveTo;
   const reportedStatusRef = useRef<PresenceStatus>("online");
   const socketRef = useRef(socket);
   const activeVoiceRoomIdRef = useRef(activeVoiceRoomId);
@@ -51,6 +74,7 @@ export function useIdlePresence({
   useEffect(() => {
     const markActive = () => {
       lastActivityAtRef.current = Date.now();
+      lastInputAtRef.current = Date.now();
       publishStatus("online");
     };
     for (const event of afkActivityEvents) {
@@ -68,8 +92,10 @@ export function useIdlePresence({
   useEffect(
     () =>
       subscribeDesktopSystemActivity(window, (signal) => {
+        machineWideRef.current = true;
         if (signal === "active") {
           lastActivityAtRef.current = Date.now();
+          lastInputAtRef.current = Date.now();
           publishStatus("online");
           return;
         }
@@ -99,6 +125,7 @@ export function useIdlePresence({
   useEffect(() => {
     if (!speaking) return;
     lastActivityAtRef.current = Date.now();
+    lastInputAtRef.current = Date.now();
     publishStatus("online");
   }, [speaking]);
 
@@ -110,9 +137,18 @@ export function useIdlePresence({
         activeVoiceRoomIdRef.current
       );
       publishStatus(Date.now() - lastActivityAtRef.current >= afkTimeoutMs(timeoutMinutes) ? "idle" : "online");
+      const afkRoomId = afkMoveTarget({
+        machineWide: machineWideRef.current,
+        activeVoiceRoomId: activeVoiceRoomIdRef.current,
+        roomServerIds: roomServerIdsRef.current,
+        afkRoomIdsByServer: afkRoomIdsByServerRef.current,
+        timeoutsByServer: afkTimeoutsByServerRef.current,
+        idleForMs: Date.now() - lastInputAtRef.current
+      });
+      if (afkRoomId) void moveToAfkRoomRef.current(afkRoomId);
     }, afkIdleCheckIntervalMs);
     return () => window.clearInterval(interval);
-  }, [afkTimeoutsByServerRef, roomServerIdsRef]);
+  }, [afkRoomIdsByServerRef, afkTimeoutsByServerRef, roomServerIdsRef]);
 }
 
 /** Whether this member is speaking in the voice room they are connected to. */

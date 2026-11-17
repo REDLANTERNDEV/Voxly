@@ -220,7 +220,8 @@ _Avoid_: Presence, mood, custom status, availability
 **Idle**:
 Present but not at the keyboard, either because the member picked it or because
 no input reached any of their Devices for the Server's AFK timeout. Idle marks a
-member; it never moves them.
+member. Only in the desktop app, where input anywhere on the machine is seen, does
+a long Idle also move them to the AFK room (ADR-0040).
 _Avoid_: Away, AFK (that is the room), inactive
 
 **Do Not Disturb**:

@@ -732,7 +732,8 @@ const translations = {
     "presence.forever": "Forever",
     "presence.durationMenu": "How long to stay {status}",
     "owner.afkTimeout": "Show as idle after",
-    "owner.afkTimeoutHint": "Mark inactive members as idle.",
+    "owner.afkTimeoutHint":
+      "Mark inactive members as idle. In the desktop app, a member idle this long, and for at least 30 minutes, is moved to the AFK channel.",
     "owner.afkTimeoutMinutes": "{count} minutes",
     "owner.afkTimeoutOneHour": "1 hour",
     "owner.afkTimeoutHours": "{count} hours",
@@ -2006,7 +2007,8 @@ const translations = {
     "presence.forever": "Süresiz",
     "presence.durationMenu": "{status} ne kadar sürsün",
     "owner.afkTimeout": "Boşta gösterme süresi",
-    "owner.afkTimeoutHint": "Aktif olmayan üyeleri boşta göster.",
+    "owner.afkTimeoutHint":
+      "Aktif olmayan üyeleri boşta göster. Masaüstü uygulamasında bu süre kadar ve en az 30 dakika boşta kalan üye AFK kanalına taşınır.",
     "owner.afkTimeoutMinutes": "{count} dakika",
     "owner.afkTimeoutOneHour": "1 saat",
     "owner.afkTimeoutHours": "{count} saat",

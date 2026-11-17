@@ -173,7 +173,8 @@ export function App() {
   useIdlePresence({
     roomServerIdsRef,
     afkTimeoutsByServerRef: workspace.afkTimeoutsByServerRef,
-    activeVoiceRoomId: audio.voice.activeRoomId,
+    afkRoomIdsByServerRef: workspace.afkRoomIdsByServerRef,
+    voice: audio.voice,
     speaking: selfSpeaking(audio.voice, session.user?.id),
     socket: realtime.socket
   });
