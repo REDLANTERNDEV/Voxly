@@ -286,3 +286,40 @@ pub(crate) fn configure_taskbar_identity(app: &AppHandle) {
     #[cfg(not(windows))]
     let _ = app;
 }
+
+// tauri-plugin-single-instance keeps a zero-size layered window so a second
+// launch can find this process and hand it its arguments. The plugin marks that
+// window visible, and the screen-share picker lists every visible titled window,
+// so it appeared there as a black "<identifier>-siw" tile. Hiding it changes
+// nothing for the handover: FindWindowW still finds hidden windows and
+// WM_COPYDATA is delivered regardless of visibility.
+pub(crate) fn hide_single_instance_window(app: &AppHandle) {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::System::Threading::GetCurrentProcessId;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            FindWindowW, GetWindowThreadProcessId, ShowWindow, SW_HIDE,
+        };
+        let wide = |suffix: &str| -> Vec<u16> {
+            format!("{}-{suffix}", app.config().identifier)
+                .encode_utf16()
+                .chain(Some(0))
+                .collect()
+        };
+        let (class, title) = (wide("sic"), wide("siw"));
+        unsafe {
+            let hwnd = FindWindowW(class.as_ptr(), title.as_ptr());
+            if hwnd.is_null() {
+                return;
+            }
+            let mut owner = 0;
+            GetWindowThreadProcessId(hwnd, &mut owner);
+            // Only ever touch this process's own window.
+            if owner == GetCurrentProcessId() {
+                ShowWindow(hwnd, SW_HIDE);
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = app;
+}

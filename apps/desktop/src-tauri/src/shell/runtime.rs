@@ -80,6 +80,7 @@ pub(super) fn run() {
         ])
         .setup(|app| {
             crate::platform::configure_taskbar_identity(app.handle());
+            crate::platform::hide_single_instance_window(app.handle());
             if let Ok(cache) = app.path().app_cache_dir() {
                 update_installer::cleanup(&cache.join("updates"));
             }
