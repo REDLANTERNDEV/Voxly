@@ -4409,17 +4409,17 @@ select {
   background: var(--surface-2);
   color: var(--fg);
 }
-.profile-unsaved {
+.unsaved-bar {
   background: var(--surface-2);
   border: 1px solid var(--border);
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.22);
 }
 /* After a refused close the bar stays red until the edits are saved or reset. */
-.profile-unsaved.is-blocked {
+.unsaved-bar.is-blocked {
   background: color-mix(in oklab, var(--danger) 16%, var(--surface));
   border-color: var(--danger);
 }
-.profile-unsaved.is-blocked > p {
+.unsaved-bar.is-blocked > p {
   color: var(--danger);
 }
 

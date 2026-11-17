@@ -15,7 +15,7 @@ import {
 } from "../../components/ui/Icons.js";
 import { isOwnerOnlySection, serverSettingsSections, type ServerSettingsSection } from "../../lib/serverSettings.js";
 import type { OwnerInvite, ServerMember } from "../../types.js";
-import { ServerOverviewSettings } from "../owner/OwnerServerContext.js";
+import { ServerOverviewSettings, type UnsavedGuard } from "../owner/OwnerServerContext.js";
 import { ServerAccessLinksSection, ServerInviteTrailSection } from "./ServerAccessSections.js";
 import { ServerAuditLogSection } from "./ServerAuditLogSection.js";
 import { ServerMembersSection } from "./ServerMembersSection.js";
@@ -114,6 +114,21 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
   const navRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(props.onClose);
   onCloseRef.current = props.onClose;
+  // A section holding unsaved drafts answers here. Every way the member leaves
+  // it — another section, back to the list, close, Escape — asks first; losing
+  // access closes it regardless.
+  const unsavedGuardRef = useRef<UnsavedGuard | null>(null);
+  const leave = (action: () => void) => {
+    const guard = unsavedGuardRef.current;
+    if (guard?.dirty) {
+      guard.alert();
+      return;
+    }
+    action();
+  };
+  const requestClose = () => leave(() => onCloseRef.current());
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
   const requestRef = useRef(0);
   const actor = moderationActor(props);
   const readsMembers = sections.includes("members");
@@ -192,7 +207,7 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
         !event.defaultPrevented &&
         !document.querySelector("dialog[open], .confirm-dialog, .chat-dialog, .sidebar-context-menu")
       )
-        onCloseRef.current();
+        requestCloseRef.current();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -212,10 +227,11 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
     }
   ].filter((group) => group.items.length > 0);
 
-  const backToList = () => {
-    setShowingSection(false);
-    window.setTimeout(() => navRef.current?.querySelector<HTMLElement>(`[data-section="${section}"]`)?.focus(), 0);
-  };
+  const backToList = () =>
+    leave(() => {
+      setShowingSection(false);
+      window.setTimeout(() => navRef.current?.querySelector<HTMLElement>(`[data-section="${section}"]`)?.focus(), 0);
+    });
 
   // The owner may not delete the last Server they own; the server refuses it too.
   const ownedServers = props.servers.filter((item) => item.role === "owner").length;
@@ -241,7 +257,7 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
               type="button"
               title={t("common.close")}
               aria-label={t("common.close")}
-              onClick={props.onClose}
+              onClick={requestClose}
             >
               <CloseIcon />
             </button>
@@ -266,14 +282,19 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
                   data-section={item}
                   aria-current={section === item ? true : undefined}
                   onClick={() => {
-                    setChosen(item);
-                    setShowingSection(true);
-                    setStatus("");
-                    // On a phone the list this button sits in is about to be
-                    // hidden; the section's own way back takes focus instead.
-                    window.setTimeout(() => {
-                      if (backRef.current?.getClientRects().length) backRef.current.focus();
-                    }, 0);
+                    const open = () => {
+                      setChosen(item);
+                      setShowingSection(true);
+                      setStatus("");
+                      // On a phone the list this button sits in is about to be
+                      // hidden; the section's own way back takes focus instead.
+                      window.setTimeout(() => {
+                        if (backRef.current?.getClientRects().length) backRef.current.focus();
+                      }, 0);
+                    };
+                    // Reopening the section already shown leaves nothing behind.
+                    if (item === section) open();
+                    else leave(open);
                   }}
                 >
                   <span className="settings-nav-icon" aria-hidden="true">
@@ -299,7 +320,7 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
             title={t("common.close")}
             aria-label={t("common.close")}
             ref={closeRef}
-            onClick={props.onClose}
+            onClick={requestClose}
           >
             <CloseIcon />
           </button>
@@ -318,6 +339,7 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
               onSetAfkTimeout={props.onSetAfkTimeout}
               textRooms={props.rooms.text}
               onSetWelcome={props.onSetWelcome}
+              guardRef={unsavedGuardRef}
             />
           ) : null}
           {section === "roles" ? (
@@ -332,6 +354,7 @@ export function ServerSettingsWindow(props: ServerSettingsWindowProps) {
               onReorderRoles={props.onReorderRoles}
               onDeleteRole={props.onDeleteRole}
               onSetMemberRole={props.onSetMemberRole}
+              guardRef={unsavedGuardRef}
             />
           ) : null}
           {(section === "members" || section === "bans") && actor ? (

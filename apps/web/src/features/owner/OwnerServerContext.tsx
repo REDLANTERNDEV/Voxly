@@ -6,9 +6,10 @@ import {
   type RoomSummary,
   type ServerWelcomeSettings
 } from "@voxly/shared";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import type { Translate } from "../../app/types.js";
-import { EditIcon, EyeIcon, PlusIcon } from "../../components/ui/Icons.js";
+import { EyeIcon, PlusIcon } from "../../components/ui/Icons.js";
+import { UnsavedChangesBar, useUnsavedChanges } from "../../components/ui/UnsavedChangesBar.js";
 import { maskSecretLink } from "../../lib/invites.js";
 import type { ServerSummary } from "../../types.js";
 export function SecretLinkDisplay({ value, t }: { value: string; t: Translate }) {
@@ -31,9 +32,27 @@ export function SecretLinkDisplay({ value, t }: { value: string; t: Translate })
   );
 }
 
+/** What leaving the Overview has to ask first; the window holds the ref. */
+export interface UnsavedGuard {
+  dirty: boolean;
+  alert: () => void;
+}
+
+interface OverviewDraft {
+  name?: string;
+  afkTimeoutMinutes?: AfkTimeoutMinutes;
+  welcomeNotices?: boolean;
+  welcomeRoomId?: string | null;
+}
+
 /**
  * One Server's name, AFK timeout and Welcome notice: Server settings ›
  * Overview, on Manage server (ADR-0038). The server re-checks every save.
+ *
+ * Every field is a draft until the shared Save/Reset bar saves it, the way the
+ * Profile dialog works. Only a field the member touched is held: the rest keep
+ * following the server, so another manager's change is not hidden behind a
+ * stale value. While anything is unsaved, the window refuses to be left.
  */
 export function ServerOverviewSettings({
   server,
@@ -41,7 +60,8 @@ export function ServerOverviewSettings({
   onRename,
   onSetAfkTimeout,
   textRooms,
-  onSetWelcome
+  onSetWelcome,
+  guardRef
 }: {
   server: ServerSummary;
   t: Translate;
@@ -50,17 +70,81 @@ export function ServerOverviewSettings({
   /** The Server's text channels, in sidebar order. */
   textRooms: RoomSummary[];
   onSetWelcome: (settings: ServerWelcomeSettings) => Promise<void>;
+  guardRef?: RefObject<UnsavedGuard | null>;
 }) {
-  const [afkStatus, setAfkStatus] = useState("");
-  const [welcomeStatus, setWelcomeStatus] = useState("");
-  const [renameName, setRenameName] = useState("");
-  const [renameStatus, setRenameStatus] = useState("");
-  const [isRenaming, setIsRenaming] = useState(false);
+  const [draft, setDraft] = useState<OverviewDraft>({});
+  const [failures, setFailures] = useState<{ name?: string; afk?: string; welcome?: string }>({});
+  const [saving, setSaving] = useState(false);
+  const { barRef, blocked, setBlocked, alertUnsaved } = useUnsavedChanges();
 
+  // Drafts belong to one Server.
   useEffect(() => {
-    setRenameName(server.name);
-    setRenameStatus("");
-  }, [server.id, server.name]);
+    setDraft({});
+    setFailures({});
+    setBlocked(false);
+  }, [server.id, setBlocked]);
+
+  const savedAfk = server.afkTimeoutMinutes ?? DEFAULT_AFK_TIMEOUT_MINUTES;
+  const name = draft.name ?? server.name;
+  const afkTimeoutMinutes = draft.afkTimeoutMinutes ?? savedAfk;
+  const welcomeNotices = draft.welcomeNotices ?? server.welcomeNotices;
+  const welcomeRoomId = draft.welcomeRoomId !== undefined ? draft.welcomeRoomId : server.welcomeRoomId;
+
+  const nameChanged = name.trim() !== server.name;
+  const afkChanged = afkTimeoutMinutes !== savedAfk;
+  const welcomeChanged = welcomeNotices !== server.welcomeNotices || welcomeRoomId !== server.welcomeRoomId;
+  const dirty = nameChanged || afkChanged || welcomeChanged;
+  const nameInvalid = nameChanged && (name.trim().length < 2 || name.trim().length > 64);
+
+  if (guardRef) guardRef.current = { dirty, alert: alertUnsaved };
+  useEffect(
+    () => () => {
+      if (guardRef) guardRef.current = null;
+    },
+    [guardRef]
+  );
+
+  const edit = (change: OverviewDraft) => setDraft((current) => ({ ...current, ...change }));
+
+  const reset = () => {
+    setDraft({});
+    setFailures({});
+    setBlocked(false);
+  };
+
+  const save = async () => {
+    if (!dirty || nameInvalid) return;
+    setSaving(true);
+    setFailures({});
+    const nextFailures: typeof failures = {};
+    const saved: Array<keyof OverviewDraft> = [];
+    await Promise.all([
+      nameChanged
+        ? onRename(name.trim())
+            .then(() => saved.push("name"))
+            .catch(() => (nextFailures.name = t("server.renameFailed")))
+        : null,
+      afkChanged
+        ? onSetAfkTimeout(afkTimeoutMinutes)
+            .then(() => saved.push("afkTimeoutMinutes"))
+            .catch(() => (nextFailures.afk = t("owner.afkTimeoutFailed")))
+        : null,
+      welcomeChanged
+        ? onSetWelcome({ welcomeNotices, welcomeRoomId })
+            .then(() => saved.push("welcomeNotices", "welcomeRoomId"))
+            .catch(() => (nextFailures.welcome = t("owner.welcomeFailed")))
+        : null
+    ]);
+    // A saved field follows the server again; a failed one stays a draft.
+    setDraft((current) => {
+      const next = { ...current };
+      for (const key of saved) delete next[key];
+      return next;
+    });
+    setFailures(nextFailures);
+    if (Object.keys(nextFailures).length === 0) setBlocked(false);
+    setSaving(false);
+  };
 
   return (
     <div className="owner-server-context">
@@ -69,56 +153,35 @@ export function ServerOverviewSettings({
           <h2 id="ownerServerContextTitle">{t("server.current", { server: server.name })}</h2>
           <p className="muted small">{t("server.currentCopy")}</p>
         </div>
-        <form
-          className="owner-server-rename-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const nextName = renameName.trim();
-            if (nextName.length < 2 || nextName.length > 64) {
-              setRenameStatus(t("server.nameLength"));
-              return;
-            }
-            setIsRenaming(true);
-            setRenameStatus("");
-            void onRename(nextName)
-              .then(() => setRenameStatus(t("server.renamed")))
-              .catch(() => setRenameStatus(t("server.renameFailed")))
-              .finally(() => setIsRenaming(false));
-          }}
-        >
+        <div className="owner-server-rename-form">
           <label className="form-field owner-server-rename-field" htmlFor="ownerServerRename">
             <span>{t("server.rename")}</span>
             <input
               className="input"
               id="ownerServerRename"
               name="ownerServerRename"
-              value={renameName}
+              value={name}
               minLength={2}
               maxLength={64}
               autoComplete="off"
-              onChange={(event) => setRenameName(event.currentTarget.value)}
+              aria-invalid={nameInvalid}
+              onChange={(event) => edit({ name: event.currentTarget.value })}
             />
           </label>
-          <button className="btn btn-primary" type="submit" disabled={isRenaming || renameName.trim() === server.name}>
-            <EditIcon />
-            <span>{t("common.save")}</span>
-          </button>
           <p className="muted small owner-server-rename-copy">{t("server.renameCopy")}</p>
           <p className="small owner-server-rename-status" aria-live="polite">
-            {renameStatus}
+            {nameInvalid ? t("server.nameLength") : (failures.name ?? "")}
           </p>
-        </form>
+        </div>
         <label className="form-field owner-server-afk" htmlFor="ownerServerAfkTimeout">
           <span>{t("owner.afkTimeout")}</span>
           <select
             className="input"
             id="ownerServerAfkTimeout"
-            value={server.afkTimeoutMinutes ?? DEFAULT_AFK_TIMEOUT_MINUTES}
+            value={afkTimeoutMinutes}
             onChange={(event) => {
               const minutes = Number(event.currentTarget.value);
-              if (!isAfkTimeoutMinutes(minutes)) return;
-              setAfkStatus("");
-              void onSetAfkTimeout(minutes).catch(() => setAfkStatus(t("owner.afkTimeoutFailed")));
+              if (isAfkTimeoutMinutes(minutes)) edit({ afkTimeoutMinutes: minutes });
             }}
           >
             {afkTimeoutOptions.map((minutes) => (
@@ -133,7 +196,7 @@ export function ServerOverviewSettings({
           </select>
           <span className="muted small">{t("owner.afkTimeoutHint")}</span>
           <span className="small" aria-live="polite">
-            {afkStatus}
+            {failures.afk ?? ""}
           </span>
         </label>
         <fieldset className="form-field owner-server-welcome">
@@ -141,14 +204,8 @@ export function ServerOverviewSettings({
           <label className="owner-server-welcome-toggle">
             <input
               type="checkbox"
-              checked={server.welcomeNotices}
-              onChange={(event) => {
-                setWelcomeStatus("");
-                void onSetWelcome({
-                  welcomeNotices: event.currentTarget.checked,
-                  welcomeRoomId: server.welcomeRoomId
-                }).catch(() => setWelcomeStatus(t("owner.welcomeFailed")));
-              }}
+              checked={welcomeNotices}
+              onChange={(event) => edit({ welcomeNotices: event.currentTarget.checked })}
             />
             <span>{t("owner.welcomeNoticesHint")}</span>
           </label>
@@ -157,15 +214,9 @@ export function ServerOverviewSettings({
             <select
               className="input"
               id="ownerServerWelcomeRoom"
-              disabled={!server.welcomeNotices}
-              value={server.welcomeRoomId ?? ""}
-              onChange={(event) => {
-                setWelcomeStatus("");
-                void onSetWelcome({
-                  welcomeNotices: server.welcomeNotices,
-                  welcomeRoomId: event.currentTarget.value || null
-                }).catch(() => setWelcomeStatus(t("owner.welcomeFailed")));
-              }}
+              disabled={!welcomeNotices}
+              value={welcomeRoomId ?? ""}
+              onChange={(event) => edit({ welcomeRoomId: event.currentTarget.value || null })}
             >
               <option value="">{t("owner.welcomeRoomTop")}</option>
               {/* A Welcome notice in a channel the newcomer cannot read greets nobody (ADR-0037). */}
@@ -179,10 +230,22 @@ export function ServerOverviewSettings({
             </select>
           </label>
           <span className="small" aria-live="polite">
-            {welcomeStatus}
+            {failures.welcome ?? ""}
           </span>
         </fieldset>
       </section>
+      <UnsavedChangesBar
+        barRef={barRef}
+        className="server-settings-unsaved"
+        dirty={dirty}
+        blocked={blocked}
+        blockedMessage={t("serverSettings.unsavedBlocked")}
+        saving={saving}
+        canSave={!nameInvalid}
+        t={t}
+        onReset={reset}
+        onSave={() => void save()}
+      />
     </div>
   );
 }

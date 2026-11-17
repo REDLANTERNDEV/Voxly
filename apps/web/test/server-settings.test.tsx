@@ -149,4 +149,37 @@ describe("Server settings (ADR-0038, decisions 14–16 and 20)", () => {
     assert.match(panel, /"overview" \| "deletionRequests" \| "accounts"/);
     assert.doesNotMatch(panel, /dashServerSelect|targetServer|fetchServerOwnerData/);
   });
+
+  it("holds Overview edits as drafts behind the shared Save/Reset bar", () => {
+    const overview = readFileSync("src/features/owner/OwnerServerContext.tsx", "utf8");
+    const body = overview.slice(
+      overview.indexOf("export function ServerOverviewSettings"),
+      overview.indexOf("export function CreateServerSection")
+    );
+    // No control saves on its own any more: no form submit, no save-on-change.
+    assert.doesNotMatch(body, /type="submit"|onSubmit=/);
+    assert.doesNotMatch(body, /onChange=\{[^}]*on(Rename|SetAfkTimeout|SetWelcome)\(/);
+    assert.match(body, /<UnsavedChangesBar[\s\S]*?blockedMessage=\{t\("serverSettings\.unsavedBlocked"\)\}/);
+    // Saved fields follow the server again; failed ones stay drafts.
+    assert.match(body, /for \(const key of saved\) delete next\[key\];/);
+  });
+
+  it("refuses every way out of a section while it holds unsaved drafts", () => {
+    const window = readFileSync("src/features/serverSettings/ServerSettingsWindow.tsx", "utf8");
+    assert.match(window, /if \(guard\?\.dirty\) \{\s*guard\.alert\(\);\s*return;\s*\}/);
+    assert.doesNotMatch(window, /onClick=\{props\.onClose\}/, "both close buttons ask first");
+    assert.match(window, /requestCloseRef\.current\(\);/, "so does Escape");
+    assert.match(window, /const backToList = \(\) =>\s+leave\(/, "so does the phone's way back");
+    assert.match(window, /if \(item === section\) open\(\);\s+else leave\(open\);/, "so does another section");
+    assert.match(window, /guardRef=\{unsavedGuardRef\}/);
+    // Losing every section is not the member leaving; it still closes at once.
+    assert.match(window, /if \(empty\) onCloseRef\.current\(\);/);
+  });
+
+  it("renders the Overview with no save button until something changes", () => {
+    const html = renderWindow(summary(owner));
+    assert.match(html, /class="unsaved-bar server-settings-unsaved "[^>]*hidden=""/);
+    assert.doesNotMatch(html, /owner-server-rename-form[\s\S]*?type="submit"/);
+    assert.notEqual(translate("en", "serverSettings.unsavedBlocked"), translate("tr", "serverSettings.unsavedBlocked"));
+  });
 });

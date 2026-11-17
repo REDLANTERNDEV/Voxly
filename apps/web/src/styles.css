@@ -7774,7 +7774,7 @@ button.reply-quote:focus-visible .reply-quote-body {
   grid-area: error;
   margin: 0;
 }
-.profile-unsaved {
+.unsaved-bar {
   align-items: center;
   border-radius: 10px;
   display: flex;
@@ -7784,14 +7784,14 @@ button.reply-quote:focus-visible .reply-quote-body {
   margin: 0 16px 16px;
   padding: 10px 12px 10px 16px;
 }
-.profile-unsaved[hidden] {
+.unsaved-bar[hidden] {
   display: none;
 }
-.profile-unsaved > p {
+.unsaved-bar > p {
   font-weight: 600;
   margin: 0;
 }
-.profile-unsaved-actions {
+.unsaved-bar-actions {
   display: flex;
   gap: 8px;
   margin-inline-start: auto;
@@ -7844,7 +7844,7 @@ button.reply-quote:focus-visible .reply-quote-body {
   .profile-server-list {
     overflow: visible;
   }
-  .profile-unsaved {
+  .unsaved-bar.profile-unsaved {
     border-radius: 0;
     margin: 0;
     padding-bottom: calc(10px + env(safe-area-inset-bottom));
@@ -7862,10 +7862,10 @@ button.reply-quote:focus-visible .reply-quote-body {
     height: 36px;
     width: 36px;
   }
-  .profile-unsaved-actions {
+  .unsaved-bar-actions {
     width: 100%;
   }
-  .profile-unsaved-actions .btn {
+  .unsaved-bar-actions .btn {
     flex: 1 1 0;
   }
 }
@@ -8860,4 +8860,13 @@ button.reply-quote:focus-visible .reply-quote-body {
 }
 .audit-log-more {
   justify-self: center;
+}
+
+/* Server settings › Overview keeps its Save/Reset bar in view at the bottom of
+   the section's scroll, the way the Profile dialog pins its own. */
+.unsaved-bar.server-settings-unsaved {
+  bottom: 0;
+  margin: 16px 0 0;
+  position: sticky;
+  z-index: 1;
 }

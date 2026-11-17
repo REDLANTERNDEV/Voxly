@@ -14,6 +14,7 @@ import {
   type ProfileNicknameRow
 } from "../../lib/profileNicknames.js";
 import { CloseIcon } from "../ui/Icons.js";
+import { UnsavedChangesBar, useUnsavedChanges } from "../ui/UnsavedChangesBar.js";
 import { PresenceDot } from "./AccountStatusMenu.js";
 
 type Row = ProfileNicknameRow & {
@@ -35,7 +36,7 @@ type Row = ProfileNicknameRow & {
  * listener that this keypress was already answered.
  *
  * Unsaved edits hold the dialog open. Every way out goes through
- * `requestClose`, which refuses while anything is unsaved and makes the
+ * `requestClose`, which refuses while anything is unsaved and makes the shared
  * Save/Reset bar say so instead.
  */
 export function ProfileDialog({
@@ -54,7 +55,6 @@ export function ProfileDialog({
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const barRef = useRef<HTMLDivElement>(null);
   const pressedBackdrop = useRef(false);
   // Read once: the list must not reload under a member's unsaved edits when
   // the viewed server changes (a kick, a deletion) while the dialog is open.
@@ -67,7 +67,7 @@ export function ProfileDialog({
   const [retryCount, setRetryCount] = useState(0);
   const [previewId, setPreviewId] = useState("");
   const [saving, setSaving] = useState(false);
-  const [blocked, setBlocked] = useState(false);
+  const { barRef, blocked, setBlocked, alertUnsaved } = useUnsavedChanges();
 
   const changed = changedNicknameRows(rows);
   const dirty = changed.length > 0;
@@ -115,35 +115,6 @@ export function ProfileDialog({
       current = false;
     };
   }, [retryCount]);
-
-  const alertUnsaved = () => {
-    setBlocked(true);
-    const bar = barRef.current;
-    if (!bar?.animate) return;
-    const style = getComputedStyle(bar);
-    // The theme's own tokens, read from the bar, so the blink matches both themes.
-    const rest = { backgroundColor: style.backgroundColor, color: style.color };
-    const alarm = {
-      backgroundColor: style.getPropertyValue("--danger").trim(),
-      color: style.getPropertyValue("--danger-on").trim()
-    };
-    // A refused close blinks the bar red; the shake is motion and goes with a
-    // reduced-motion preference, the colour stays.
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    bar.animate(
-      reducedMotion
-        ? [rest, alarm, rest, alarm, rest]
-        : [
-            { ...rest, transform: "translateX(0)" },
-            { ...alarm, transform: "translateX(-8px)" },
-            { ...alarm, transform: "translateX(8px)" },
-            { ...alarm, transform: "translateX(-6px)" },
-            { ...alarm, transform: "translateX(4px)" },
-            { ...rest, transform: "translateX(0)" }
-          ],
-      { duration: reducedMotion ? 900 : 560, easing: "ease-out" }
-    );
-  };
 
   const requestClose = () => {
     if (saving) return;
@@ -197,8 +168,6 @@ export function ProfileDialog({
     if (pressedBackdrop.current && event.target === dialogRef.current) requestClose();
     pressedBackdrop.current = false;
   };
-
-  const unsavedMessage = blocked ? t("profile.unsavedBlocked") : t("profile.unsaved");
 
   return createPortal(
     <dialog
@@ -363,20 +332,18 @@ export function ProfileDialog({
             ) : null}
           </section>
         </div>
-        <p className="sr-only" role="status">
-          {dirty ? unsavedMessage : ""}
-        </p>
-        <div ref={barRef} className={`profile-unsaved ${blocked ? "is-blocked" : ""}`} hidden={!dirty}>
-          <p>{unsavedMessage}</p>
-          <div className="profile-unsaved-actions">
-            <button className="btn btn-ghost" type="button" disabled={saving} onClick={reset}>
-              {t("profile.reset")}
-            </button>
-            <button className="btn btn-primary" type="button" disabled={saving || invalid} onClick={() => void save()}>
-              {saving ? t("profile.saving") : t("profile.save")}
-            </button>
-          </div>
-        </div>
+        <UnsavedChangesBar
+          barRef={barRef}
+          className="profile-unsaved"
+          dirty={dirty}
+          blocked={blocked}
+          blockedMessage={t("profile.unsavedBlocked")}
+          saving={saving}
+          canSave={!invalid}
+          t={t}
+          onReset={reset}
+          onSave={() => void save()}
+        />
       </div>
     </dialog>,
     document.body

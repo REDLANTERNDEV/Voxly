@@ -7,10 +7,20 @@ import {
   type RoleChange,
   type RoleSummary
 } from "@voxly/shared";
-import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject
+} from "react";
 import { ApiError } from "../../api.js";
 import type { Translate } from "../../app/types.js";
 import { ConfirmDialog } from "../../components/ui/Dialogs.js";
+import { UnsavedChangesBar, useUnsavedChanges } from "../../components/ui/UnsavedChangesBar.js";
+import type { UnsavedGuard } from "../owner/OwnerServerContext.js";
 import { ArrowIcon, GripIcon, PlusIcon, TrashIcon } from "../../components/ui/Icons.js";
 import { MemberRow } from "../../components/ui/Primitives.js";
 import {
@@ -70,6 +80,8 @@ export function ServerRolesSection(
     members: PresenceUser[];
     t: Translate;
     onError: (message: string) => void;
+    /** Held by the window: the open Role's unsaved drafts answer here. */
+    guardRef?: RefObject<UnsavedGuard | null>;
   } & RoleActions
 ) {
   const { actor, t } = props;
@@ -198,6 +210,7 @@ export function ServerRolesSection(
         }}
         onCreate={createRole}
         onFailed={failed}
+        guardRef={props.guardRef}
       />
     );
   }
@@ -294,6 +307,36 @@ export function ServerRolesSection(
 
 type EditorTab = "display" | "permissions" | "members";
 
+/** What the Role editor holds unsaved; a field is present only once touched. */
+export interface RoleDraft {
+  name?: string;
+  color?: RoleSummary["color"];
+  separate?: boolean;
+  permissions?: Permission[];
+}
+
+/**
+ * The change a Save would send: each drafted field that differs from the Role.
+ * A seeded Role saved under its shown name keeps no name of its own, so every
+ * reader goes on seeing it in their own language.
+ */
+export function roleDraftChange(role: RoleSummary, draft: RoleDraft, shownName: string): RoleChange {
+  const change: RoleChange = {};
+  if (draft.name !== undefined) {
+    const trimmed = draft.name.trim();
+    if (trimmed !== shownName) change.name = trimmed;
+  }
+  if (draft.color !== undefined && draft.color !== role.color) change.color = draft.color;
+  if (draft.separate !== undefined && draft.separate !== role.separate) change.separate = draft.separate;
+  if (
+    draft.permissions !== undefined &&
+    (draft.permissions.length !== role.permissions.length ||
+      draft.permissions.some((permission) => !role.permissions.includes(permission)))
+  )
+    change.permissions = draft.permissions;
+  return change;
+}
+
 export function RoleEditor(
   props: {
     actor: RoleActor;
@@ -305,6 +348,7 @@ export function RoleEditor(
     onBack: () => void;
     onCreate: () => void;
     onFailed: (error: unknown) => void;
+    guardRef?: RefObject<UnsavedGuard | null>;
   } & RoleActions
 ) {
   const { actor, role, t } = props;
@@ -316,11 +360,61 @@ export function RoleEditor(
   const tabId = useId();
   const name = roleDisplayName(role, t);
 
+  // Name, colour, Separate and Permissions are drafts until the shared bar
+  // saves them in one change, the way Server settings › Overview works. Only a
+  // touched field is held, so another manager's edit to the rest still shows.
+  // Members are given and taken at once: that is an action, not a setting.
+  const [draft, setDraft] = useState<RoleDraft>({});
+  const [saving, setSaving] = useState(false);
+  const { barRef, blocked, setBlocked, alertUnsaved } = useUnsavedChanges();
+  const change = roleDraftChange(role, draft, name);
+  const dirty = Object.keys(change).length > 0;
+  const draftName = draft.name ?? name;
+  const nameInvalid =
+    draft.name !== undefined && (draftName.trim().length < 1 || draftName.trim().length > roleNameMaxLength);
+  const view: RoleSummary = {
+    ...role,
+    color: draft.color !== undefined ? draft.color : role.color,
+    separate: draft.separate ?? role.separate,
+    permissions: draft.permissions ?? role.permissions
+  };
+  const edit = (next: RoleDraft) => setDraft((current) => ({ ...current, ...next }));
+  const reset = () => {
+    setDraft({});
+    setBlocked(false);
+  };
+  const save = async () => {
+    if (!dirty || nameInvalid) return;
+    setSaving(true);
+    try {
+      await props.onUpdateRole(role.id, change);
+      setDraft({});
+      setBlocked(false);
+    } catch (error) {
+      props.onFailed(error);
+    } finally {
+      setSaving(false);
+    }
+  };
+  // Leaving this Role — back to the list, another Role, a new one — asks first.
+  const leave = (action: () => void) => {
+    if (dirty) alertUnsaved();
+    else action();
+  };
+  if (props.guardRef) props.guardRef.current = { dirty, alert: alertUnsaved };
+  const guardRef = props.guardRef;
+  useEffect(
+    () => () => {
+      if (guardRef) guardRef.current = null;
+    },
+    [guardRef]
+  );
+
   return (
     <section className="server-role-editor">
       <nav className="server-role-editor-list" aria-label={t("roles.list")}>
         <div className="server-role-editor-list-head">
-          <button className="btn btn-ghost server-role-editor-back" type="button" onClick={props.onBack}>
+          <button className="btn btn-ghost server-role-editor-back" type="button" onClick={() => leave(props.onBack)}>
             <ArrowIcon />
             <span>{t("roles.back")}</span>
           </button>
@@ -329,7 +423,7 @@ export function RoleEditor(
             type="button"
             aria-label={t("roles.create")}
             title={t("roles.create")}
-            onClick={props.onCreate}
+            onClick={() => leave(props.onCreate)}
           >
             <PlusIcon />
           </button>
@@ -340,7 +434,7 @@ export function RoleEditor(
             className="settings-nav-item server-role-editor-item"
             type="button"
             aria-current={item.id === role.id ? true : undefined}
-            onClick={() => props.onSelect(item.id)}
+            onClick={() => (item.id === role.id ? undefined : leave(() => props.onSelect(item.id)))}
           >
             <RoleDot role={item} />
             <span>{roleDisplayName(item, t)}</span>
@@ -389,10 +483,33 @@ export function RoleEditor(
           ))}
         </div>
         <div role="tabpanel" id={`${tabId}-${tab}-panel`} aria-labelledby={`${tabId}-${tab}`}>
-          {tab === "display" ? <RoleDisplayTab {...props} editable={editable} /> : null}
-          {tab === "permissions" ? <RolePermissionsTab {...props} editable={editable} /> : null}
+          {tab === "display" ? (
+            <RoleDisplayTab
+              {...props}
+              role={view}
+              name={draftName}
+              nameInvalid={nameInvalid}
+              editable={editable}
+              onEdit={edit}
+            />
+          ) : null}
+          {tab === "permissions" ? (
+            <RolePermissionsTab {...props} role={view} editable={editable} onEdit={edit} />
+          ) : null}
           {tab === "members" ? <RoleMembersTab {...props} /> : null}
         </div>
+        <UnsavedChangesBar
+          barRef={barRef}
+          className="server-settings-unsaved"
+          dirty={dirty}
+          blocked={blocked}
+          blockedMessage={t("serverSettings.unsavedBlocked")}
+          saving={saving}
+          canSave={!nameInvalid}
+          t={t}
+          onReset={reset}
+          onSave={() => void save()}
+        />
       </div>
     </section>
   );
@@ -403,45 +520,23 @@ const colorChoices: ReadonlyArray<RoleSummary["color"]> = [null, ...roleColors];
 function RoleDisplayTab(
   props: {
     role: RoleSummary;
+    /** The name as drafted, or as shown when untouched. */
+    name: string;
+    nameInvalid: boolean;
     t: Translate;
     editable: boolean;
+    onEdit: (change: RoleDraft) => void;
     onBack: () => void;
     onFailed: (error: unknown) => void;
-  } & Pick<RoleActions, "onUpdateRole" | "onDeleteRole">
+  } & Pick<RoleActions, "onDeleteRole">
 ) {
-  const { role, t, editable } = props;
-  const shownName = roleDisplayName(role, t);
-  const [name, setName] = useState(shownName);
-  const [status, setStatus] = useState("");
+  const { role, t, editable, name, nameInvalid } = props;
   const [deleting, setDeleting] = useState(false);
   const nameId = useId();
-  // Only a new name resets the field: a colour change or a refresh from another
-  // member's edit must not wipe what is being typed.
-  useEffect(() => setName(shownName), [role.id, shownName]);
-  const update = (change: RoleChange) => {
-    setStatus("");
-    void props
-      .onUpdateRole(role.id, change)
-      .then(() => setStatus(t("roles.saved")))
-      .catch(props.onFailed);
-  };
+  const update = (change: RoleDraft) => props.onEdit(change);
   return (
     <div className="server-role-display">
-      <form
-        className="server-role-name-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const trimmed = name.trim();
-          if (trimmed.length < 1 || trimmed.length > roleNameMaxLength) {
-            setStatus(t("roles.nameLength"));
-            return;
-          }
-          // A seeded Role saved under its shown name keeps no name of its own,
-          // so every reader goes on seeing it in their own language.
-          if (role.name === null && trimmed === shownName) return;
-          update({ name: trimmed });
-        }}
-      >
+      <div className="server-role-name-form">
         <label className="form-field" htmlFor={nameId}>
           <span>{t("roles.name")}</span>
           <input
@@ -449,15 +544,12 @@ function RoleDisplayTab(
             id={nameId}
             value={name}
             autoComplete="off"
-            aria-invalid={name.trim().length < 1 || name.trim().length > roleNameMaxLength}
+            aria-invalid={nameInvalid}
             disabled={!editable}
-            onChange={(event) => setName(event.currentTarget.value)}
+            onChange={(event) => update({ name: event.currentTarget.value })}
           />
         </label>
-        <button className="btn btn-primary" type="submit" disabled={!editable}>
-          {t("common.save")}
-        </button>
-      </form>
+      </div>
       <fieldset className="form-field server-role-colors" disabled={!editable}>
         <legend>{t("roles.color")}</legend>
         <div
@@ -512,7 +604,7 @@ function RoleDisplayTab(
         </button>
       </div>
       <p className="small" aria-live="polite">
-        {status}
+        {nameInvalid ? t("roles.nameLength") : ""}
       </p>
       {role.kind === null && editable ? (
         <div className="server-role-danger">
@@ -539,24 +631,17 @@ function RoleDisplayTab(
   );
 }
 
-export function RolePermissionsTab(
-  props: {
-    actor: RoleActor;
-    role: RoleSummary;
-    t: Translate;
-    editable: boolean;
-    onFailed: (error: unknown) => void;
-  } & Pick<RoleActions, "onUpdateRole">
-) {
+export function RolePermissionsTab(props: {
+  actor: RoleActor;
+  role: RoleSummary;
+  t: Translate;
+  editable: boolean;
+  /** Drafts the change; the Role editor's Save/Reset bar sends it. */
+  onEdit: (change: RoleDraft) => void;
+}) {
   const { actor, role, t, editable } = props;
   const [query, setQuery] = useState("");
   const searchId = useId();
-  // Toggles in quick succession build on each other, not on the list as it
-  // stood when the page last drew; the server's answer resets it.
-  const pendingRef = useRef(role.permissions);
-  useEffect(() => {
-    pendingRef.current = role.permissions;
-  }, [role.permissions]);
   const normalized = query.trim().toLocaleLowerCase();
   const shown = serverPermissions.filter(
     (permission) =>
@@ -564,10 +649,7 @@ export function RolePermissionsTab(
       t(`permission.${permission}`).toLocaleLowerCase().includes(normalized) ||
       t(`permission.${permission}Hint`).toLocaleLowerCase().includes(normalized)
   );
-  const save = (permissions: Permission[]) => {
-    pendingRef.current = permissions;
-    void props.onUpdateRole(role.id, { permissions }).catch(props.onFailed);
-  };
+  const save = (permissions: Permission[]) => props.onEdit({ permissions });
   return (
     <div className="server-role-permissions">
       {role.kind === "everyone" ? <p className="muted small">{t("roles.everyoneNote")}</p> : null}
@@ -620,7 +702,7 @@ export function RolePermissionsTab(
                 className={`audio-switch ${on ? "is-on" : ""}`}
                 disabled={!editable || ownerOnly || notHeld}
                 onClick={() => {
-                  const current = pendingRef.current;
+                  const current = role.permissions;
                   save(
                     current.includes(permission)
                       ? current.filter((item) => item !== permission)

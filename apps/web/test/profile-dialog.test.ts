@@ -6,6 +6,7 @@ import { translate, type TranslationKey } from "../src/lib/i18n.js";
 const dialog = readFileSync("src/components/shell/ProfileDialog.tsx", "utf8");
 const chrome = readFileSync("src/components/shell/AppChrome.tsx", "utf8");
 const settings = readFileSync("src/components/shell/SettingsDialog.tsx", "utf8");
+const bar = readFileSync("src/components/ui/UnsavedChangesBar.tsx", "utf8");
 
 describe("Profile dialog", () => {
   it("is a native modal of its own, rendered beside Settings and never inside it", () => {
@@ -30,8 +31,13 @@ describe("Profile dialog", () => {
     assert.match(requestClose, /onClose\(\);/);
     assert.match(dialog, /onClick=\{requestClose\}/, "the close button goes through the guard");
     assert.match(dialog, /event\.target === dialogRef\.current\) requestClose\(\)/, "so does the backdrop");
-    assert.match(dialog, /prefers-reduced-motion: reduce/, "the shake gives way to reduced motion");
-    assert.match(dialog, /className=\{`profile-unsaved \$\{blocked \? "is-blocked" : ""\}`\}\s+hidden=\{!dirty\}/);
+    assert.match(dialog, /useUnsavedChanges\(\)/, "the bar and its alert are the shared ones");
+    assert.match(dialog, /<UnsavedChangesBar[\s\S]*?blockedMessage=\{t\("profile\.unsavedBlocked"\)\}/);
+    assert.match(bar, /prefers-reduced-motion: reduce/, "the shake gives way to reduced motion");
+    assert.match(
+      bar,
+      /className=\{`unsaved-bar \$\{className\} \$\{blocked \? "is-blocked" : ""\}`\}\s+hidden=\{!dirty\}/
+    );
   });
 
   it("is reached from Settings as a dialog, not as a section", () => {
@@ -53,10 +59,10 @@ describe("Profile dialog", () => {
       "profile.serverNicknamesHint",
       "profile.nicknameFor",
       "profile.clearNickname",
-      "profile.unsaved",
+      "unsaved.message",
       "profile.unsavedBlocked",
-      "profile.reset",
-      "profile.save",
+      "unsaved.reset",
+      "unsaved.save",
       "profile.loadFailed",
       "profile.noServers",
       "category.createChannelIn"

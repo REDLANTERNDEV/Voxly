@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { serverPermissions, type PresenceUser, type RoleSummary } from "@voxly/shared";
+import { readFileSync } from "node:fs";
 import {
   RoleEditor,
   RolePermissionsTab,
+  roleDraftChange,
   ServerRolesSection
 } from "../src/features/serverSettings/ServerRolesSection.js";
 import { translate } from "../src/lib/i18n.js";
@@ -172,14 +174,7 @@ describe("the Role editor (ADR-0038, decisions 5–7, 17 and 19)", () => {
 
     // Manage roles alone hands down only what its holder has.
     const fans = renderToStaticMarkup(
-      <RolePermissionsTab
-        actor={helperManager}
-        role={roles[3]!}
-        t={t}
-        editable
-        onFailed={() => undefined}
-        onUpdateRole={actions.onUpdateRole}
-      />
+      <RolePermissionsTab actor={helperManager} role={roles[3]!} t={t} editable onEdit={() => undefined} />
     );
     assert.match(fans, /aria-label="Manage server"[^>]*disabled=""/);
     assert.match(fans, /You can only switch on permissions you hold\./);
@@ -187,6 +182,38 @@ describe("the Role editor (ADR-0038, decisions 5–7, 17 and 19)", () => {
 
     const adminRole = editor(admin, roles[0]!);
     assert.match(adminRole, /Only the owner can change this role\./);
+  });
+
+  it("sends only the drafted fields that differ from the Role", () => {
+    const fans = roles[3]!;
+    assert.deepEqual(roleDraftChange(fans, {}, fans.name!), {});
+    // Typing a name back to what it was, or a colour back, is no change.
+    assert.deepEqual(roleDraftChange(fans, { name: ` ${fans.name!} `, color: null }, fans.name!), {});
+    assert.deepEqual(roleDraftChange(fans, { name: "Superfans", separate: true }, fans.name!), {
+      name: "Superfans",
+      separate: true
+    });
+    assert.deepEqual(roleDraftChange(fans, { permissions: ["createInvites"] }, fans.name!), {
+      permissions: ["createInvites"]
+    });
+    // A seeded Role saved under its shown name keeps no name of its own.
+    const admin = roles[0]!;
+    assert.deepEqual(roleDraftChange(admin, { name: "Admin" }, "Admin"), {});
+  });
+
+  it("holds Role edits behind the shared Save/Reset bar, and asks before leaving the Role", () => {
+    const source = readFileSync("src/features/serverSettings/ServerRolesSection.tsx", "utf8");
+    // Settings no longer save themselves; Members are still given at once.
+    assert.doesNotMatch(source, /onUpdateRole\(role\.id, \{ (permissions|name|color|separate)/);
+    assert.doesNotMatch(source, /server-role-name-form"[\s\S]{0,80}onSubmit/);
+    assert.match(source, /await props\.onUpdateRole\(role\.id, change\);/);
+    assert.match(source, /<UnsavedChangesBar[\s\S]*?blockedMessage=\{t\("serverSettings\.unsavedBlocked"\)\}/);
+    assert.match(source, /onClick=\{\(\) => leave\(props\.onBack\)\}/);
+    assert.match(source, /onClick=\{\(\) => leave\(props\.onCreate\)\}/);
+    assert.match(source, /leave\(\(\) => props\.onSelect\(item\.id\)\)/);
+    assert.match(source, /guardRef=\{props\.guardRef\}/);
+    const window = readFileSync("src/features/serverSettings/ServerSettingsWindow.tsx", "utf8");
+    assert.equal(window.match(/guardRef=\{unsavedGuardRef\}/g)?.length, 2, "Overview and Roles both answer the window");
   });
 
   it("speaks both languages for every Role editor and Permission string", () => {
