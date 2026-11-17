@@ -4,6 +4,7 @@ import type { PresenceUser } from "@voxly/shared";
 import { serverPermissions } from "@voxly/shared";
 import { canVoiceModerate, currentServerPresence, groupDirectoryMembers } from "../src/lib/memberDirectory.js";
 import { readFileSync } from "node:fs";
+import { translate } from "../src/lib/i18n.js";
 import { readAppSource } from "./app-source.js";
 
 const owner: PresenceUser = { userId: "owner", nickname: "Owner", role: "owner" };
@@ -64,6 +65,20 @@ describe("member directory presence", () => {
     assert.match(panel, /const hasRemoteActions = user\.userId !== currentUser\.id;/);
     assert.match(panel, /hasVolume: user\.userId !== currentUser\.id,/);
     assert.match(panel, /canDisconnect: Boolean\(voiceRoom && canModerateRemote\)/);
+  });
+
+  it("shows a picture and a name per row, with the crown and Bot tag beside it", () => {
+    // As in Discord: Roles show through name colour, separate groups and the
+    // profile card, and voice through the channel rail, so neither repeats
+    // under every name.
+    const panel = readFileSync("src/components/shell/MemberPanel.tsx", "utf8");
+    assert.doesNotMatch(panel, /memberRoleLabel|\{detail\}/);
+    const nameLine = panel.slice(panel.indexOf('className="member-name-line"'));
+    assert.match(
+      nameLine,
+      /^[^]*?<RoleTintedName[^]*?member-owner-crown[^]*?aria-label=\{t\("member\.serverOwner"\)\}[^]*?is-bot/
+    );
+    assert.notEqual(translate("en", "member.serverOwner"), translate("tr", "member.serverOwner"));
   });
 
   it("refreshes the directory when membership changes", () => {

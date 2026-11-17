@@ -7,7 +7,7 @@ import type {
   VoiceSnapshot
 } from "@voxly/shared";
 import { useState, type ComponentProps } from "react";
-import { initial, memberRoleLabel } from "../../app/presentation.js";
+import { initial } from "../../app/presentation.js";
 import type { MemberAction, Translate } from "../../app/types.js";
 import { PresenceDot } from "./AccountStatusMenu.js";
 import {
@@ -25,6 +25,7 @@ import {
 } from "../../lib/memberDirectory.js";
 import { DEFAULT_VOLUME_PERCENT } from "../../lib/voiceVolume.js";
 import { groupOnlineByRole, memberColor, roleDisplayName } from "../../lib/roles.js";
+import { CrownIcon } from "../ui/Icons.js";
 import { RoleTintedName } from "../ui/RoleTintedName.js";
 import {
   MemberActionMenu,
@@ -112,8 +113,6 @@ export function MemberPanel({
       const voiceMember = voiceRoom
         ? voiceSnapshots[voiceRoom.id]?.members.find((member) => member.user.userId === user.userId)
         : undefined;
-      const roleLabel = memberRoleLabel(user, t, serverRoles);
-      const detail = voiceRoom ? `${roleLabel} · ${voiceRoom.name}` : roleLabel;
       const isSelf = user.userId === currentUser.id;
       // Your own row shows the Status you picked, Invisible included, where
       // everyone else sees what the server told them.
@@ -148,19 +147,34 @@ export function MemberPanel({
             hasActions ? (event) => openSidebarMenuFromPointer(event, actionMenu, menuKey, 220, menuHeight) : undefined
           }
         >
-          <span className={`avatar ${user.role === "owner" ? "owner" : ""}`}>
+          {/* A row is a picture and a name, the way Discord's is. Roles show
+              through name colour, separate groups and the profile card, and
+              voice through the channel rail, so neither repeats under the
+              name. The owner's crown and a Bot's tag sit beside it. */}
+          <span className="avatar">
             {initial(user.nickname)}
             <PresenceDot state={presenceState} label={t(`presence.${presenceState}` as const)} />
           </span>
           <span className="member-copy">
-            <RoleTintedName name={user.nickname} color={memberColor(serverRoles, user)} />
-            <span>{detail}</span>
-          </span>
-          {user.isBot ? (
-            <span className="member-role-tag is-bot" title={t("member.botRole")}>
-              {t("common.bot")}
+            <span className="member-name-line">
+              <RoleTintedName name={user.nickname} color={memberColor(serverRoles, user)} />
+              {user.role === "owner" ? (
+                <span
+                  className="member-owner-crown"
+                  role="img"
+                  aria-label={t("member.serverOwner")}
+                  title={t("member.serverOwner")}
+                >
+                  <CrownIcon />
+                </span>
+              ) : null}
+              {user.isBot ? (
+                <span className="member-role-tag is-bot" title={t("member.botRole")}>
+                  {t("common.bot")}
+                </span>
+              ) : null}
             </span>
-          ) : null}
+          </span>
           {hasActions ? (
             <MemberActionMenu
               actionMenu={actionMenu}

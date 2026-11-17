@@ -8870,3 +8870,27 @@ button.reply-quote:focus-visible .reply-quote-body {
   position: sticky;
   z-index: 1;
 }
+
+/* The member panel's name line: the name, then the owner's crown or a Bot's
+   tag right beside it, the way Discord's member list reads. */
+.member-copy .member-name-line {
+  align-items: center;
+  color: inherit;
+  display: flex;
+  font-size: inherit;
+  gap: 4px;
+  min-width: 0;
+}
+.member-name-line > strong {
+  min-width: 0;
+}
+.member-copy .member-owner-crown {
+  color: var(--warn);
+  display: inline-flex;
+  flex: none;
+  overflow: visible;
+}
+.member-owner-crown .ui-icon {
+  height: 13px;
+  width: 13px;
+}

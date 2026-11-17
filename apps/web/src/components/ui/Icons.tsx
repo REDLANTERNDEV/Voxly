@@ -46,6 +46,14 @@ export function UsersIcon() {
     </svg>
   );
 }
+export function CrownIcon() {
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 8.5 8.5 12 12 6l3.5 6L20 8.5 18.5 17h-13z" />
+      <path d="M6 20h12" />
+    </svg>
+  );
+}
 export function ShieldIcon() {
   return (
     <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
